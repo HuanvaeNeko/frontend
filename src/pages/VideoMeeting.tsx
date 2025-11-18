@@ -12,7 +12,6 @@ import {
   faUser
 } from '@fortawesome/free-solid-svg-icons'
 import type { MeetingParticipant } from '../types'
-import { useApiConfigStore } from '../store/apiConfig'
 
 // 预览数据
 const mockParticipants: MeetingParticipant[] = [
@@ -27,7 +26,6 @@ export default function VideoMeeting() {
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const localVideoRef = useRef<HTMLVideoElement>(null)
-  const apiConfigStore = useApiConfigStore()
   const roomId = 'meeting-1'
   const userName = `用户${Math.floor(Math.random() * 1000)}`
 

@@ -10,7 +10,6 @@ import {
   faSignOutAlt
 } from '@fortawesome/free-solid-svg-icons'
 import type { GroupChatMessage, OnlineUser } from '../types'
-import { useApiConfigStore } from '../store/apiConfig'
 
 // 预览数据
 const mockUsers: OnlineUser[] = [
@@ -44,7 +43,6 @@ export default function GroupChat() {
   const [inputMessage, setInputMessage] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const apiConfigStore = useApiConfigStore()
   const roomId = 'room-1'
   const userName = `用户${Math.floor(Math.random() * 1000)}`
 
