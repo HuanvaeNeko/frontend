@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - main  # 当推送到 main 分支时触发
+      - dev   # dev 分支也触发（用于测试）
 
-# 设置 GITHUB_TOKEN 的权限以允许部署到 GitHub Pages
+# 设置 GITHUB_TOKEN 的权限
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write  # 需要写权限来推送到 gh-pages 分支
 
 # 只允许一个并发部署
 concurrency:
@@ -46,24 +45,14 @@ jobs:
       - name: 构建项目
         run: pnpm build
         env:
-          # 如果你的仓库名不是 username.github.io，需要设置 base 路径
-          # 例如仓库是 https://github.com/username/frontend
-          # 那么访问地址会是 https://username.github.io/frontend/
-          # 如果是自定义域名或 username.github.io 仓库，则不需要设置
           NODE_ENV: production
       
-      # 6. 设置 GitHub Pages
-      - name: 设置 Pages
-        uses: actions/configure-pages@v4
-      
-      # 7. 上传构建产物
-      - name: 上传构建产物
-        uses: actions/upload-pages-artifact@v3
+      # 6. 部署到 gh-pages 分支
+      - name: 部署到 gh-pages 分支
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: ./dist
-      
-      # 8. 部署到 GitHub Pages
-      - name: 部署到 GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          commit_message: "🚀 Deploy: ${{ github.event.head_commit.message }}"
 

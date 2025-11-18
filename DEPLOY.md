@@ -1,6 +1,6 @@
 # GitHub Pages 部署指南
 
-本项目已配置自动部署到 GitHub Pages。每次推送到 `main` 分支时，GitHub Actions 会自动构建并部署项目。
+本项目已配置自动部署到 GitHub Pages。每次推送到 `main` 或 `dev` 分支时，GitHub Actions 会自动构建并部署到 `gh-pages` 分支。
 
 ## 🚀 快速开始
 
@@ -9,7 +9,10 @@
 1. 进入你的 GitHub 仓库
 2. 点击 **Settings** (设置)
 3. 在左侧菜单中找到 **Pages**
-4. 在 **Source** (源) 下拉菜单中选择 **GitHub Actions**
+4. 在 **Build and deployment** 部分：
+   - **Source** (源) 选择 **Deploy from a branch**
+   - **Branch** (分支) 选择 **gh-pages** 和 **/ (root)**
+5. 点击 **Save** (保存)
 
 ### 2. 配置部署路径
 
@@ -41,10 +44,10 @@ export default defineConfig({
 ### 3. 推送代码触发部署
 
 ```bash
-# 提交并推送到 main 分支
+# 提交并推送到 dev 分支（或 main 分支）
 git add .
 git commit -m "配置 GitHub Pages 自动部署"
-git push origin main
+git push origin dev
 ```
 
 ### 4. 查看部署状态
@@ -52,7 +55,8 @@ git push origin main
 1. 进入仓库的 **Actions** 标签页
 2. 你会看到一个名为 "部署到 GitHub Pages" 的工作流正在运行
 3. 等待部署完成（通常需要 1-3 分钟）
-4. 部署成功后，访问你的 GitHub Pages 地址
+4. 部署成功后，会自动推送到 `gh-pages` 分支
+5. 访问你的 GitHub Pages 地址：`https://huanvaeneko.github.io/frontend/`
 
 ## 📋 工作流说明
 
@@ -63,19 +67,23 @@ git push origin main
 3. ✅ 设置 Node.js 环境 (v20) 并自动缓存 pnpm 依赖
 4. ✅ 安装项目依赖 (`pnpm install`)
 5. ✅ 构建项目 (`pnpm build`)
-6. ✅ 部署到 GitHub Pages
+6. ✅ 部署到 gh-pages 分支
+
+**触发条件**：推送到 `main` 或 `dev` 分支时自动触发
 
 ## 🔧 自定义配置
 
 ### 修改触发分支
 
-默认在推送到 `main` 分支时触发部署，如果你想修改触发分支，编辑 `.github/workflows/deploy.yml`：
+默认在推送到 `main` 或 `dev` 分支时触发部署，如果你想修改触发分支，编辑 `.github/workflows/deploy.yml`：
 
 ```yaml
 on:
   push:
     branches:
-      - main  # 改为你想要的分支名，如 master 或 develop
+      - main    # 生产分支
+      - dev     # 开发分支
+      # - develop  # 可以添加更多分支
 ```
 
 ### 修改 Node.js 版本
@@ -121,14 +129,13 @@ on:
 ### 3. GitHub Actions 工作流失败
 
 **可能原因**:
-- 没有正确配置 GitHub Pages 设置
 - 仓库的 Actions 权限不足
 
 **解决方法**:
-1. 确保在仓库 Settings > Pages 中选择了 "GitHub Actions" 作为源
-2. 检查 Settings > Actions > General > Workflow permissions
-   - 选择 "Read and write permissions"
-   - 勾选 "Allow GitHub Actions to create and approve pull requests"
+1. 进入 Settings > Actions > General > Workflow permissions
+2. 选择 **"Read and write permissions"**（必须允许写权限才能推送到 gh-pages 分支）
+3. 勾选 "Allow GitHub Actions to create and approve pull requests"（可选）
+4. 保存设置后，重新触发工作流
 
 ### 4. 部署后 API 请求失败
 
