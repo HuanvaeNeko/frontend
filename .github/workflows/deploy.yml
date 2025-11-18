@@ -1,0 +1,83 @@
+name: 部署到 GitHub Pages
+
+on:
+  push:
+    branches:
+      - main  # 当推送到 main 分支时触发
+
+# 设置 GITHUB_TOKEN 的权限以允许部署到 GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 只允许一个并发部署
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      # 2. 设置 Node.js 环境
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      # 3. 设置 pnpm
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      
+      # 4. 获取 pnpm store 目录
+      - name: 获取 pnpm store 目录
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      
+      # 5. 缓存 pnpm 依赖
+      - name: 缓存 pnpm 依赖
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      
+      # 6. 安装依赖
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      
+      # 7. 构建项目
+      - name: 构建项目
+        run: pnpm build
+        env:
+          # 如果你的仓库名不是 username.github.io，需要设置 base 路径
+          # 例如仓库是 https://github.com/username/frontend
+          # 那么访问地址会是 https://username.github.io/frontend/
+          # 如果是自定义域名或 username.github.io 仓库，则不需要设置
+          NODE_ENV: production
+      
+      # 8. 设置 GitHub Pages
+      - name: 设置 Pages
+        uses: actions/configure-pages@v4
+      
+      # 9. 上传构建产物
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+      
+      # 10. 部署到 GitHub Pages
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
