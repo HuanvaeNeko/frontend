@@ -31,23 +31,25 @@ jobs:
         with:
           node-version: '20'
       
-      # 3. 设置 pnpm
+      # 3. 设置 pnpm (自动缓存)
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
+          run_install: false
       
       # 4. 获取 pnpm store 目录
       - name: 获取 pnpm store 目录
+        id: pnpm-cache
         shell: bash
         run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
       
       # 5. 缓存 pnpm 依赖
       - name: 缓存 pnpm 依赖
         uses: actions/cache@v4
         with:
-          path: ${{ env.STORE_PATH }}
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
