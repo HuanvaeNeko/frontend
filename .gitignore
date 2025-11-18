@@ -23,6 +23,7 @@ lerna-debug.log*
 Thumbs.db
 
 # IDE
+.history
 .idea
 .vscode
 *.swp
