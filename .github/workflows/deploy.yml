@@ -25,40 +25,24 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
       
-      # 2. 设置 Node.js 环境
-      - name: 设置 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      # 3. 设置 pnpm (自动缓存)
+      # 2. 安装 pnpm
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
-          run_install: false
       
-      # 4. 获取 pnpm store 目录
-      - name: 获取 pnpm store 目录
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-      
-      # 5. 缓存 pnpm 依赖
-      - name: 缓存 pnpm 依赖
-        uses: actions/cache@v4
+      # 3. 设置 Node.js 环境（集成 pnpm 缓存）
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          node-version: '20'
+          cache: 'pnpm'
       
-      # 6. 安装依赖
+      # 4. 安装依赖
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
       
-      # 7. 构建项目
+      # 5. 构建项目
       - name: 构建项目
         run: pnpm build
         env:
@@ -68,17 +52,17 @@ jobs:
           # 如果是自定义域名或 username.github.io 仓库，则不需要设置
           NODE_ENV: production
       
-      # 8. 设置 GitHub Pages
+      # 6. 设置 GitHub Pages
       - name: 设置 Pages
         uses: actions/configure-pages@v4
       
-      # 9. 上传构建产物
+      # 7. 上传构建产物
       - name: 上传构建产物
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
       
-      # 10. 部署到 GitHub Pages
+      # 8. 部署到 GitHub Pages
       - name: 部署到 GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
