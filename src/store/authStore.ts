@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { AuthStore, LoginRequest, RegisterRequest, User } from '../types/auth'
+import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
 import { getAuthApiUrl } from '../utils/apiConfig'
 
