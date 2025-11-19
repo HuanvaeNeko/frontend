@@ -64,22 +64,36 @@ const fetchWithAuth = async (
 export const authApi = {
   // 登录
   login: async (credentials: { user_id: string; password: string; device_info?: string; mac_address?: string }) => {
+    const requestBody = {
+      'user-id': credentials.user_id,
+      password: credentials.password,
+      device_info: credentials.device_info || navigator.userAgent,
+      mac_address: credentials.mac_address || 'unknown',
+    }
+    
+    console.log('登录请求:', { ...requestBody, password: '***' })
+    
     const response = await fetch(`${AUTH_BASE_URL}/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        'user-id': credentials.user_id,
-        password: credentials.password,
-        device_info: credentials.device_info || navigator.userAgent,
-        mac_address: credentials.mac_address || 'unknown',
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: '登录失败' }))
-      throw new Error(error.message || '登录失败')
+      const error = await response.json().catch(() => ({ 
+        message: `登录失败 (${response.status})` 
+      }))
+      console.error('登录失败:', error)
+      
+      // 提取错误信息
+      let errorMessage = error.message || error.error || '登录失败'
+      if (error.details) {
+        errorMessage += ': ' + JSON.stringify(error.details)
+      }
+      
+      throw new Error(errorMessage)
     }
 
     return response.json()
@@ -87,22 +101,36 @@ export const authApi = {
 
   // 注册
   register: async (data: { user_id: string; nickname: string; email: string; password: string }) => {
+    const requestBody = {
+      'user-id': data.user_id,
+      nickname: data.nickname,
+      email: data.email,
+      password: data.password,
+    }
+    
+    console.log('注册请求:', requestBody)
+    
     const response = await fetch(`${AUTH_BASE_URL}/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        'user-id': data.user_id,
-        nickname: data.nickname,
-        email: data.email,
-        password: data.password,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: '注册失败' }))
-      throw new Error(error.message || '注册失败')
+      const error = await response.json().catch(() => ({ 
+        message: `注册失败 (${response.status})` 
+      }))
+      console.error('注册失败:', error)
+      
+      // 提取错误信息
+      let errorMessage = error.message || error.error || '注册失败'
+      if (error.details) {
+        errorMessage += ': ' + JSON.stringify(error.details)
+      }
+      
+      throw new Error(errorMessage)
     }
 
     return response.json()

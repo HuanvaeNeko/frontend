@@ -20,6 +20,19 @@ export default function Register() {
     e.preventDefault()
     setError('')
 
+    // 验证用户ID
+    if (formData.user_id.length < 3) {
+      setError('用户ID长度至少为3位')
+      return
+    }
+
+    // 验证邮箱格式
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      setError('邮箱格式不正确')
+      return
+    }
+
     // 验证密码
     if (formData.password !== formData.confirmPassword) {
       setError('两次输入的密码不一致')
@@ -28,6 +41,14 @@ export default function Register() {
 
     if (formData.password.length < 8) {
       setError('密码长度至少为8位')
+      return
+    }
+
+    // 验证密码强度：必须包含字母和数字
+    const hasLetter = /[a-zA-Z]/.test(formData.password)
+    const hasNumber = /[0-9]/.test(formData.password)
+    if (!hasLetter || !hasNumber) {
+      setError('密码必须包含字母和数字')
       return
     }
 
@@ -114,11 +135,13 @@ export default function Register() {
               id="password"
               type="password"
               required
+              minLength={8}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="至少8位，包含字母和数字"
+              placeholder="至少8位，必须包含字母和数字"
             />
+            <p className="text-xs text-gray-500 mt-1">例如: password123</p>
           </div>
 
           <div>
