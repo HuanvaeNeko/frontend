@@ -200,7 +200,7 @@ Authorization: Bearer eyJ... (仅需要认证的请求)
 #### Request Payload
 ```json
 {
-  "user-id": "testuser",  // ✅ 注意是连字符
+  "user_id": "testuser",  // ✅ 注意是下划线
   "password": "Test1234"
 }
 ```
@@ -224,7 +224,7 @@ Authorization: Bearer eyJ... (仅需要认证的请求)
 curl -X POST http://192.168.9.11:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "user-id": "testuser123",
+    "user_id": "testuser123",
     "nickname": "测试用户",
     "email": "test@example.com",
     "password": "Test1234"
@@ -234,7 +234,7 @@ curl -X POST http://192.168.9.11:8080/api/auth/register \
 curl -X POST http://192.168.9.11:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "user-id": "testuser123",
+    "user_id": "testuser123",
     "password": "Test1234",
     "device_info": "curl",
     "mac_address": "00:00:00:00:00:00"

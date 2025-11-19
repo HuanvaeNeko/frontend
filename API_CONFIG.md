@@ -51,20 +51,20 @@ VITE_AUTH_API_URL=http://192.168.9.11:8080
 
 ```json
 {
-  "user-id": "user123",
+  "user_id": "user123",
   "nickname": "张三",
   "email": "zhangsan@example.com",
   "password": "password123"
 }
 ```
 
-**注意**：字段名使用连字符 `user-id`，不是下划线。
+**注意**：字段名使用下划线 `user_id`。
 
 ### 登录请求
 
 ```json
 {
-  "user-id": "user123",
+  "user_id": "user123",
   "password": "password123",
   "device_info": "Chrome 120 on Windows 11",
   "mac_address": "00:11:22:33:44:55"

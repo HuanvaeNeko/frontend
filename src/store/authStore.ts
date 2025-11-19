@@ -18,7 +18,7 @@ export const useAuthStore = create<AuthStore>()(
       login: async (credentials: LoginRequest) => {
         try {
           const requestBody = {
-            'user-id': credentials.user_id,
+            user_id: credentials.user_id,  // 使用下划线，不是连字符
             password: credentials.password,
             device_info: credentials.device_info || navigator.userAgent,
             mac_address: credentials.mac_address || 'unknown',
@@ -75,7 +75,7 @@ export const useAuthStore = create<AuthStore>()(
       register: async (data: RegisterRequest) => {
         try {
           const requestBody = {
-            'user-id': data.user_id,
+            user_id: data.user_id,  // 使用下划线，不是连字符
             nickname: data.nickname,
             email: data.email,
             password: data.password,

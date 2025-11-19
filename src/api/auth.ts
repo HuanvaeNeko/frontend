@@ -65,7 +65,7 @@ export const authApi = {
   // 登录
   login: async (credentials: { user_id: string; password: string; device_info?: string; mac_address?: string }) => {
     const requestBody = {
-      'user-id': credentials.user_id,
+      user_id: credentials.user_id,  // 使用下划线，不是连字符
       password: credentials.password,
       device_info: credentials.device_info || navigator.userAgent,
       mac_address: credentials.mac_address || 'unknown',
@@ -102,7 +102,7 @@ export const authApi = {
   // 注册
   register: async (data: { user_id: string; nickname: string; email: string; password: string }) => {
     const requestBody = {
-      'user-id': data.user_id,
+      user_id: data.user_id,  // 使用下划线，不是连字符
       nickname: data.nickname,
       email: data.email,
       password: data.password,
