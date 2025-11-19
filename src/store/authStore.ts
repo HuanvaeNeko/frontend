@@ -23,7 +23,8 @@ export const useAuthStore = create<AuthStore>()(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              ...credentials,
+              'user-id': credentials.user_id,
+              password: credentials.password,
               device_info: credentials.device_info || navigator.userAgent,
               mac_address: credentials.mac_address || 'unknown',
             }),
@@ -60,7 +61,12 @@ export const useAuthStore = create<AuthStore>()(
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(data),
+            body: JSON.stringify({
+              'user-id': data.user_id,
+              nickname: data.nickname,
+              email: data.email,
+              password: data.password,
+            }),
           })
 
           if (!response.ok) {
