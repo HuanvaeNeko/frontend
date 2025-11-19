@@ -17,25 +17,43 @@ export const useAuthStore = create<AuthStore>()(
 
       login: async (credentials: LoginRequest) => {
         try {
+          const requestBody = {
+            'user-id': credentials.user_id,
+            password: credentials.password,
+            device_info: credentials.device_info || navigator.userAgent,
+            mac_address: credentials.mac_address || 'unknown',
+          }
+
+          console.log('🔐 登录请求 URL:', `${AUTH_BASE_URL}/login`)
+          console.log('🔐 登录请求数据:', { ...requestBody, password: '***' })
+
           const response = await fetch(`${AUTH_BASE_URL}/login`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              'user-id': credentials.user_id,
-              password: credentials.password,
-              device_info: credentials.device_info || navigator.userAgent,
-              mac_address: credentials.mac_address || 'unknown',
-            }),
+            body: JSON.stringify(requestBody),
           })
 
+          console.log('🔐 登录响应状态:', response.status, response.statusText)
+
           if (!response.ok) {
-            const error = await response.json().catch(() => ({ message: '登录失败' }))
-            throw new Error(error.message || '登录失败')
+            const errorText = await response.text()
+            console.error('🔐 登录失败响应:', errorText)
+            
+            let errorData
+            try {
+              errorData = JSON.parse(errorText)
+            } catch {
+              errorData = { message: errorText || `登录失败 (${response.status})` }
+            }
+            
+            const errorMessage = errorData.message || errorData.error || `登录失败 (${response.status}: ${response.statusText})`
+            throw new Error(errorMessage)
           }
 
           const data = await response.json()
+          console.log('🔐 登录成功，Token 已获取')
           
           set({
             accessToken: data.access_token,
@@ -49,30 +67,49 @@ export const useAuthStore = create<AuthStore>()(
             },
           })
         } catch (error) {
-          console.error('Login error:', error)
+          console.error('❌ 登录错误:', error)
           throw error
         }
       },
 
       register: async (data: RegisterRequest) => {
         try {
+          const requestBody = {
+            'user-id': data.user_id,
+            nickname: data.nickname,
+            email: data.email,
+            password: data.password,
+          }
+
+          console.log('📝 注册请求 URL:', `${AUTH_BASE_URL}/register`)
+          console.log('📝 注册请求数据:', { ...requestBody, password: '***' })
+
           const response = await fetch(`${AUTH_BASE_URL}/register`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              'user-id': data.user_id,
-              nickname: data.nickname,
-              email: data.email,
-              password: data.password,
-            }),
+            body: JSON.stringify(requestBody),
           })
 
+          console.log('📝 注册响应状态:', response.status, response.statusText)
+
           if (!response.ok) {
-            const error = await response.json().catch(() => ({ message: '注册失败' }))
-            throw new Error(error.message || '注册失败')
+            const errorText = await response.text()
+            console.error('📝 注册失败响应:', errorText)
+            
+            let errorData
+            try {
+              errorData = JSON.parse(errorText)
+            } catch {
+              errorData = { message: errorText || `注册失败 (${response.status})` }
+            }
+            
+            const errorMessage = errorData.message || errorData.error || `注册失败 (${response.status}: ${response.statusText})`
+            throw new Error(errorMessage)
           }
+
+          console.log('📝 注册成功，准备自动登录')
 
           // 注册成功后自动登录
           await get().login({
@@ -80,7 +117,7 @@ export const useAuthStore = create<AuthStore>()(
             password: data.password,
           })
         } catch (error) {
-          console.error('Register error:', error)
+          console.error('❌ 注册错误:', error)
           throw error
         }
       },
