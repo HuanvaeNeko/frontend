@@ -13,8 +13,7 @@ import {
   slideRightVariants, 
   staggerContainer,
   staggerItem,
-  scaleInVariants, 
-  shakeVariants,
+  scaleInVariants,
   pulseVariants,
   DURATION 
 } from '../utils/motionAnimations'
@@ -43,43 +42,21 @@ export default function Register() {
   const strengthScore = Object.values(passwordStrength).filter(Boolean).length
   const passwordMatch = formData.password && formData.password === formData.confirmPassword
 
-  // 页面进入动画
-  useEffect(() => {
-    if (leftSideRef.current) {
-      slideInLeft(leftSideRef.current, { duration: DURATION.slow })
-    }
-    
-    if (logoRef.current) {
-      pulse(logoRef.current, { duration: 2, scale: 1.05 })
-    }
-
-    if (benefitsRef.current) {
-      const items = benefitsRef.current.querySelectorAll('.benefit-item')
-      staggerFadeIn(Array.from(items) as HTMLElement[], { delay: 0.3 })
-    }
-
-    if (rightSideRef.current) {
-      slideInRight(rightSideRef.current, { duration: DURATION.slow })
-    }
-
-    if (formRef.current) {
-      scaleIn(formRef.current, { delay: 0.4, duration: DURATION.slow })
-    }
-  }, [])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
     if (formData.password !== formData.confirmPassword) {
       setError('两次输入的密码不一致')
-      if (formRef.current) shake(formRef.current)
+      setShouldShake(true)
+      setTimeout(() => setShouldShake(false), 500)
       return
     }
 
     if (!passwordStrength.length || !passwordStrength.hasLetter || !passwordStrength.hasNumber) {
       setError('密码必须至少8位，包含字母和数字')
-      if (formRef.current) shake(formRef.current)
+      setShouldShake(true)
+      setTimeout(() => setShouldShake(false), 500)
       return
     }
 
@@ -96,7 +73,8 @@ export default function Register() {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '注册失败，请稍后重试'
       setError(errorMsg)
-      if (formRef.current) shake(formRef.current)
+      setShouldShake(true)
+      setTimeout(() => setShouldShake(false), 500)
     } finally {
       setLoading(false)
     }
@@ -105,48 +83,75 @@ export default function Register() {
   return (
     <div className="min-h-screen flex">
       {/* 左侧 - 品牌展示区 */}
-      <div ref={leftSideRef} className="hidden lg:flex lg:w-1/2 gradient-bg-purple p-12 relative overflow-hidden">
+      <motion.div
+        variants={slideLeftVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ duration: DURATION.slow }}
+        className="hidden lg:flex lg:w-1/2 gradient-bg-purple p-12 relative overflow-hidden"
+      >
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 right-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
         </div>
         
         <div className="relative z-10 flex flex-col justify-center text-white">
-          <div ref={logoRef} className="mb-8">
+          <motion.div 
+            variants={pulseVariants}
+            animate="animate"
+            className="mb-8"
+          >
             <Bot size={96} strokeWidth={1.5} />
-          </div>
+          </motion.div>
           <h1 className="text-6xl font-black mb-6 leading-tight">
             开始你的<br/>智能之旅
           </h1>
           <p className="text-xl font-light mb-8">
             加入 HuanVae Chat，体验全新的智能通讯方式
           </p>
-          <div ref={benefitsRef} className="space-y-3">
-            <div className="benefit-item flex items-center gap-3 text-lg">
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="space-y-3"
+          >
+            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                 <Check size={20} />
               </div>
               <span>永久免费使用</span>
-            </div>
-            <div className="benefit-item flex items-center gap-3 text-lg">
+            </motion.div>
+            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                 <Check size={20} />
               </div>
               <span>AI 智能助手</span>
-            </div>
-            <div className="benefit-item flex items-center gap-3 text-lg">
+            </motion.div>
+            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                 <Check size={20} />
               </div>
               <span>安全加密通讯</span>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
 
       {/* 右侧 - 注册表单区 */}
-      <div ref={rightSideRef} className="flex-1 flex items-center justify-center p-8 bg-gray-50">
-        <div ref={formRef} className="w-full max-w-md">
+      <motion.div
+        variants={slideRightVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ duration: DURATION.slow }}
+        className="flex-1 flex items-center justify-center p-8 bg-gray-50"
+      >
+        <motion.div
+          variants={scaleInVariants}
+          initial="hidden"
+          animate={shouldShake ? "shake" : "visible"}
+          transition={{ delay: 0.4, duration: DURATION.slow }}
+          className="w-full max-w-md"
+        >
           <div className="lg:hidden text-center mb-8">
             <Bot size={64} strokeWidth={1.5} className="text-purple-500 mb-4 mx-auto" />
             <h1 className="text-4xl font-black gradient-text">HuanVae Chat</h1>
@@ -295,8 +300,8 @@ export default function Register() {
               </Button>
             </Link>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   )
 }

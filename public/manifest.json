@@ -33,44 +33,5 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-1.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "/screenshot-2.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow"
-    }
-  ],
-  "categories": ["social", "productivity"],
-  "shortcuts": [
-    {
-      "name": "AI 聊天",
-      "short_name": "AI Chat",
-      "description": "开始 AI 对话",
-      "url": "/ai-chat",
-      "icons": [{ "src": "/icon-ai.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "群聊",
-      "short_name": "Group",
-      "description": "进入群聊",
-      "url": "/group-chat",
-      "icons": [{ "src": "/icon-group.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "视频会议",
-      "short_name": "Video",
-      "description": "开始视频会议",
-      "url": "/video-meeting",
-      "icons": [{ "src": "/icon-video.png", "sizes": "192x192" }]
-    }
   ]
 }
-

@@ -44,7 +44,7 @@ export const initSentry = () => {
       ],
       
       // 过滤敏感信息
-      beforeSend(event, hint) {
+      beforeSend(event, _hint) {
         // 过滤密码等敏感信息
         if (event.request?.data) {
           const data = event.request.data as Record<string, unknown>

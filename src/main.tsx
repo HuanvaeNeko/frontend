@@ -12,6 +12,7 @@ initSentry()
 // 注册 Service Worker (PWA)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   registerSW({
+    immediate: true,
     onNeedRefresh() {
       if (confirm('发现新版本，是否更新？')) {
         window.location.reload()
@@ -30,4 +31,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>,
 )
-

@@ -192,8 +192,11 @@ export async function calculateFileHash(file: File): Promise<string> {
     dataToHash = combinedData
   }
   
-  // 计算 SHA-256 哈希
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataToHash)
+  // 计算 SHA-256 哈希 - 确保类型正确
+  const bufferToHash = dataToHash instanceof Uint8Array 
+    ? dataToHash.buffer.slice(dataToHash.byteOffset, dataToHash.byteOffset + dataToHash.byteLength) as ArrayBuffer
+    : dataToHash as ArrayBuffer
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bufferToHash)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }

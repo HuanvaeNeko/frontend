@@ -1,16 +1,16 @@
-import type { Variants, Transition } from 'framer-motion'
+import type { Variants, Transition, Easing } from 'framer-motion'
 
 /**
  * Framer Motion 动画配置
  * 替代 GSAP，提供更好的 React 集成
  */
 
-// 缓动函数
+// 缓动函数 - 使用类型断言确保正确的类型
 export const EASING = {
-  smooth: [0.6, 0.01, 0.05, 0.95],
-  elastic: [0.68, -0.55, 0.265, 1.55],
-  bounce: [0.68, -0.55, 0.265, 1.55],
-  expo: [0.87, 0, 0.13, 1],
+  smooth: [0.6, 0.01, 0.05, 0.95] as Easing,
+  elastic: [0.68, -0.55, 0.265, 1.55] as Easing,
+  bounce: [0.68, -0.55, 0.265, 1.55] as Easing,
+  expo: [0.87, 0, 0.13, 1] as Easing,
 }
 
 // 持续时间
@@ -68,6 +68,9 @@ export const slideDownVariants: Variants = {
   },
 }
 
+// 别名
+export const slideInDownVariants = slideDownVariants
+
 /**
  * 从左侧滑入
  */
@@ -83,6 +86,9 @@ export const slideLeftVariants: Variants = {
   },
 }
 
+// 别名
+export const slideInLeftVariants = slideLeftVariants
+
 /**
  * 从右侧滑入
  */
@@ -97,6 +103,9 @@ export const slideRightVariants: Variants = {
     },
   },
 }
+
+// 别名
+export const slideInRightVariants = slideRightVariants
 
 /**
  * 缩放进入
@@ -132,6 +141,8 @@ export const elasticScaleVariants: Variants = {
  * 摇晃动画 (用于错误提示)
  */
 export const shakeVariants: Variants = {
+  hidden: { x: 0 },
+  visible: { x: 0 },
   shake: {
     x: [-10, 10, -10, 10, 0],
     transition: {
@@ -179,6 +190,9 @@ export const cardContainer: Variants = {
   },
 }
 
+// 别名
+export const cardStaggerContainer = cardContainer
+
 export const cardItem: Variants = {
   hidden: { y: 50, opacity: 0, scale: 0.9 },
   visible: {
@@ -191,6 +205,9 @@ export const cardItem: Variants = {
     },
   },
 }
+
+// 别名
+export const cardStaggerItem = cardItem
 
 /**
  * 页面过渡动画
@@ -230,6 +247,8 @@ export const tapScale = {
  * 浮动动画 (持续)
  */
 export const floatVariants: Variants = {
+  hidden: { y: 0 },
+  visible: { y: 0 },
   animate: {
     y: [-10, 10],
     transition: {
@@ -282,4 +301,3 @@ export const gradientVariants: Variants = {
     },
   },
 }
-

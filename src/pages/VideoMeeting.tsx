@@ -41,7 +41,7 @@ export default function VideoMeeting() {
     ])
 
     // 自动隐藏控制栏
-    let timeout: NodeJS.Timeout
+    let timeout: ReturnType<typeof setTimeout>
     const resetTimer = () => {
       setShowControls(true)
       clearTimeout(timeout)

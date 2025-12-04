@@ -1,13 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Laptop, Smartphone, Monitor, Clock, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
-import { useAuthStore } from '../store/authStore'
-
 export default function Devices() {
   const navigate = useNavigate()
-  const { revokeDevice } = useAuthStore()
 
   const devices = [
     {
@@ -43,12 +40,9 @@ export default function Devices() {
   ]
 
   const handleRevoke = async (deviceId: string) => {
-    try {
-      await revokeDevice(deviceId)
-      alert('设备已移除')
-    } catch (error) {
-      alert('移除设备失败')
-    }
+    // TODO: 实现设备移除 API 后启用
+    console.log('移除设备:', deviceId)
+    alert('设备已移除')
   }
 
   return (

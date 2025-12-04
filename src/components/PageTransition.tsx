@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
-import { pageTransition } from '../utils/animations'
 
 /**
  * 页面切换过渡效果组件
@@ -9,18 +8,18 @@ import { pageTransition } from '../utils/animations'
 export default function PageTransition({ children }: { children: React.ReactNode }) {
   const location = useLocation()
 
-  useEffect(() => {
-    // 在路由变化时触发页面过渡动画
-    const element = document.querySelector('#page-content')
-    if (element) {
-      pageTransition.slideUp(element as HTMLElement)
-    }
-  }, [location.pathname])
-
   return (
-    <div id="page-content" className="w-full h-full">
-      {children}
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+        className="w-full h-full"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   )
 }
-

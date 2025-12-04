@@ -70,7 +70,7 @@ export default function Settings() {
                 <Switch.Root
                   className="w-11 h-6 bg-gray-200 rounded-full relative data-[state=checked]:bg-primary outline-none cursor-pointer"
                   defaultChecked
-                  onCheckedChange={apiConfigStore.toggleAi}
+                  onCheckedChange={(checked) => apiConfigStore.setApiConfig({ useCustomApi: checked })}
                 >
                   <Switch.Thumb className="block w-5 h-5 bg-white rounded-full transition-transform duration-100 translate-x-0.5 will-change-transform data-[state=checked]:translate-x-[22px]" />
                 </Switch.Root>

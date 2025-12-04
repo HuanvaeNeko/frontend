@@ -4,7 +4,6 @@ import {
   ArrowLeft, 
   Send, 
   Users,
-  User,
   LogIn,
   LogOut,
   Zap,

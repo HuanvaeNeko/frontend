@@ -12,8 +12,6 @@ import {
   cardContainer,
   cardItem,
   scaleInVariants,
-  hoverScale,
-  tapScale,
 } from '../utils/motionAnimations'
 
 export default function Home() {

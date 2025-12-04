@@ -4,22 +4,14 @@ import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePas
 
 interface ProfileState {
   profile: UserProfile | null
-  stats: {
-    friends_count: number
-    messages_count: number
-    groups_count: number
-    storage_used: number
-  } | null
   isLoading: boolean
   error: string | null
 
   // Actions
-  loadProfile: (userId?: string) => Promise<void>
+  loadProfile: () => Promise<void>
   updateProfile: (updates: UpdateProfileRequest) => Promise<void>
   uploadAvatar: (file: File) => Promise<void>
   changePassword: (passwordData: ChangePasswordRequest) => Promise<void>
-  deleteAccount: (password: string) => Promise<void>
-  loadStats: () => Promise<void>
   clearProfile: () => void
   clearError: () => void
 }
@@ -28,14 +20,13 @@ export const useProfileStore = create<ProfileState>()(
   persist(
     (set, get) => ({
       profile: null,
-      stats: null,
       isLoading: false,
       error: null,
 
-      loadProfile: async (userId?: string) => {
+      loadProfile: async () => {
         set({ isLoading: true, error: null })
         try {
-          const profile = await profileApi.getProfile(userId)
+          const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : '加载个人资料失败'
@@ -47,7 +38,9 @@ export const useProfileStore = create<ProfileState>()(
       updateProfile: async (updates: UpdateProfileRequest) => {
         set({ isLoading: true, error: null })
         try {
-          const profile = await profileApi.updateProfile(updates)
+          await profileApi.updateProfile(updates)
+          // 重新加载完整的 profile
+          const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : '更新个人资料失败'
@@ -64,7 +57,7 @@ export const useProfileStore = create<ProfileState>()(
           const currentProfile = get().profile
           if (currentProfile) {
             set({ 
-              profile: { ...currentProfile, avatar: avatar_url },
+              profile: { ...currentProfile, user_avatar_url: avatar_url },
               isLoading: false 
             })
           } else {
@@ -89,35 +82,9 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
-      deleteAccount: async (password: string) => {
-        set({ isLoading: true, error: null })
-        try {
-          await profileApi.deleteAccount(password)
-          get().clearProfile()
-          set({ isLoading: false })
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : '删除账号失败'
-          set({ error: errorMessage, isLoading: false })
-          throw error
-        }
-      },
-
-      loadStats: async () => {
-        set({ isLoading: true, error: null })
-        try {
-          const stats = await profileApi.getUserStats()
-          set({ stats, isLoading: false })
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : '加载统计信息失败'
-          set({ error: errorMessage, isLoading: false })
-          throw error
-        }
-      },
-
       clearProfile: () => {
         set({
           profile: null,
-          stats: null,
           error: null,
         })
       },
@@ -131,9 +98,7 @@ export const useProfileStore = create<ProfileState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         profile: state.profile,
-        stats: state.stats,
       }),
     }
   )
 )
-
