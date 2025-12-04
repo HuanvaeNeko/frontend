@@ -61,29 +61,24 @@ const fetchWithAuth = async (
   return response
 }
 
+// ============================================
+// 类型定义
+// ============================================
+
 export interface UserProfile {
   user_id: string
-  nickname: string
-  email: string
-  avatar?: string
-  bio?: string
-  phone?: string
-  birthday?: string
-  gender?: 'male' | 'female' | 'other'
-  location?: string
-  created_at?: string
-  updated_at?: string
+  user_nickname: string
+  user_email: string | null
+  user_signature: string | null
+  user_avatar_url: string | null
+  admin: string
+  created_at: string
+  updated_at: string
 }
 
 export interface UpdateProfileRequest {
-  nickname?: string
   email?: string
-  avatar?: string
-  bio?: string
-  phone?: string
-  birthday?: string
-  gender?: 'male' | 'female' | 'other'
-  location?: string
+  signature?: string
 }
 
 export interface ChangePasswordRequest {
@@ -91,15 +86,23 @@ export interface ChangePasswordRequest {
   new_password: string
 }
 
+export interface AvatarUploadResponse {
+  avatar_url: string
+  message: string
+}
+
+// ============================================
+// API 方法
+// ============================================
+
 export const profileApi = {
-  // 获取个人资料
-  getProfile: async (userId?: string): Promise<UserProfile> => {
-    const url = userId 
-      ? `${PROFILE_BASE_URL}/${userId}` 
-      : `${PROFILE_BASE_URL}/me`
-    
-    console.log('👤 获取个人资料:', url)
-    const response = await fetchWithAuth(url, {
+  /**
+   * 获取个人信息
+   * GET /api/profile
+   */
+  getProfile: async (): Promise<UserProfile> => {
+    console.log('👤 获取个人资料')
+    const response = await fetchWithAuth(`${PROFILE_BASE_URL}`, {
       method: 'GET',
     })
 
@@ -108,17 +111,21 @@ export const profileApi = {
         message: `获取个人资料失败 (${response.status})` 
       }))
       console.error('获取个人资料失败:', error)
-      throw new Error(error.message || '获取个人资料失败')
+      throw new Error(error.message || error.error || '获取个人资料失败')
     }
 
     const data = await response.json()
-    return data.profile || data
+    return data.data || data
   },
 
-  // 更新个人资料
-  updateProfile: async (updates: UpdateProfileRequest): Promise<UserProfile> => {
+  /**
+   * 更新个人信息
+   * PUT /api/profile
+   * 请求体: { email?, signature? }
+   */
+  updateProfile: async (updates: UpdateProfileRequest): Promise<{ message: string }> => {
     console.log('✏️ 更新个人资料:', updates)
-    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/me`, {
+    const response = await fetchWithAuth(`${PROFILE_BASE_URL}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     })
@@ -128,17 +135,60 @@ export const profileApi = {
         message: `更新个人资料失败 (${response.status})` 
       }))
       console.error('更新个人资料失败:', error)
-      throw new Error(error.message || '更新个人资料失败')
+      throw new Error(error.message || error.error || '更新个人资料失败')
     }
 
     const data = await response.json()
     console.log('✅ 个人资料更新成功')
-    return data.profile || data
+    return data
   },
 
-  // 上传头像
-  uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
+  /**
+   * 修改密码
+   * PUT /api/profile/password
+   * 请求体: { old_password, new_password }
+   */
+  changePassword: async (passwordData: ChangePasswordRequest): Promise<{ message: string }> => {
+    console.log('🔐 修改密码')
+    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/password`, {
+      method: 'PUT',
+      body: JSON.stringify(passwordData),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ 
+        message: `修改密码失败 (${response.status})` 
+      }))
+      console.error('修改密码失败:', error)
+      throw new Error(error.message || error.error || '修改密码失败')
+    }
+
+    const data = await response.json()
+    console.log('✅ 密码修改成功')
+    return data
+  },
+
+  /**
+   * 上传头像
+   * POST /api/profile/avatar
+   * 请求体: multipart/form-data (avatar 或 file 字段)
+   * 支持格式: jpg, jpeg, png, gif, webp
+   * 大小限制: 最大 10MB
+   */
+  uploadAvatar: async (file: File): Promise<AvatarUploadResponse> => {
     console.log('📸 上传头像:', file.name)
+    
+    // 验证文件大小
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxSize) {
+      throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
+    }
+    
+    // 验证文件类型
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
+    }
     
     const formData = new FormData()
     formData.append('avatar', file)
@@ -159,74 +209,11 @@ export const profileApi = {
         message: `上传头像失败 (${response.status})` 
       }))
       console.error('上传头像失败:', error)
-      throw new Error(error.message || '上传头像失败')
+      throw new Error(error.message || error.error || '上传头像失败')
     }
 
     const data = await response.json()
-    console.log('✅ 头像上传成功')
+    console.log('✅ 头像上传成功:', data.avatar_url)
     return data
   },
-
-  // 修改密码
-  changePassword: async (passwordData: ChangePasswordRequest): Promise<void> => {
-    console.log('🔐 修改密码')
-    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/password`, {
-      method: 'PUT',
-      body: JSON.stringify(passwordData),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `修改密码失败 (${response.status})` 
-      }))
-      console.error('修改密码失败:', error)
-      throw new Error(error.message || '修改密码失败')
-    }
-
-    console.log('✅ 密码修改成功')
-  },
-
-  // 删除账号
-  deleteAccount: async (password: string): Promise<void> => {
-    console.log('🗑️ 删除账号')
-    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/me`, {
-      method: 'DELETE',
-      body: JSON.stringify({ password }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `删除账号失败 (${response.status})` 
-      }))
-      console.error('删除账号失败:', error)
-      throw new Error(error.message || '删除账号失败')
-    }
-
-    console.log('✅ 账号已删除')
-  },
-
-  // 获取用户统计信息
-  getUserStats: async (): Promise<{
-    friends_count: number
-    messages_count: number
-    groups_count: number
-    storage_used: number
-  }> => {
-    console.log('📊 获取用户统计信息')
-    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/stats`, {
-      method: 'GET',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `获取统计信息失败 (${response.status})` 
-      }))
-      console.error('获取统计信息失败:', error)
-      throw new Error(error.message || '获取统计信息失败')
-    }
-
-    const data = await response.json()
-    return data.stats || data
-  },
 }
-

@@ -1,120 +1,148 @@
+/* ============================================ */
+/* Tailwind CSS + shadcn/ui Variables */
+/* ============================================ */
+
 @import "tailwindcss";
 
-/* 自定义全局样式 */
 @layer base {
-body {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+}
+
+  * {
+    border-color: hsl(var(--border));
+  }
+  
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
+/* ============================================ */
 /* 自定义动画 */
-@layer utilities {
-  @keyframes shake {
-    0%, 100% {
-      transform: translateX(0);
-    }
-    10%, 30%, 50%, 70%, 90% {
-      transform: translateX(-2px);
-    }
-    20%, 40%, 60%, 80% {
-      transform: translateX(2px);
-    }
-  }
+/* ============================================ */
 
-  .animate-shake {
-    animation: shake 0.5s ease-in-out;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .animate-fadeIn {
-    animation: fadeIn 0.3s ease-out;
-  }
-
-  @keyframes slideIn {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
-  }
-
-  .animate-slideIn {
-    animation: slideIn 0.3s ease-out;
-  }
-
-  /* 渐变文字 */
-  .gradient-text {
-    @apply bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent;
-  }
-
-  /* 玻璃态效果 */
-  .glass {
-    @apply bg-base-100/80 backdrop-blur-xl;
-  }
-
-  /* 卡片悬停效果 */
-  .card-hover {
-    @apply transition-all duration-300 hover:scale-105 hover:shadow-2xl;
-  }
-
-  /* 自定义滚动条 */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-
-  ::-webkit-scrollbar-track {
-    @apply bg-base-200;
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
 }
 
-  ::-webkit-scrollbar-thumb {
-    @apply bg-base-300 rounded-full;
-  }
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
 
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* 改进输入框焦点效果 */
-@layer components {
-  .input:focus,
-  .textarea:focus,
-  .select:focus {
-    @apply ring-2 ring-primary ring-offset-2 ring-offset-base-100;
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ============================================ */
+/* 渐变背景工具类 */
+/* ============================================ */
+
+.gradient-bg-blue {
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+}
+
+.gradient-bg-purple {
+  background: linear-gradient(135deg, #722ed1 0%, #531dab 100%);
+}
+
+.gradient-bg-green {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #1890ff, #722ed1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================ */
+/* 聊天气泡 */
+/* ============================================ */
+
+.chat-bubble {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  word-wrap: break-word;
+
+  &.chat-bubble-user {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-bottom-right-radius: 4px;
   }
 
-  /* 按钮悬停效果 */
-  .btn {
-    @apply transition-all duration-200;
-  }
-
-  .btn:hover {
-    @apply transform scale-105;
-  }
-
-  .btn:active {
-    @apply transform scale-95;
-  }
-
-  /* 卡片样式增强 */
-  .card {
-    @apply transition-all duration-300;
-  }
-
-  /* 聊天气泡增强 */
-  .chat-bubble {
-    @apply shadow-md;
+  &.chat-bubble-ai {
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border-bottom-left-radius: 4px;
   }
 }
+

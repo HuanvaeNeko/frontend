@@ -61,27 +61,52 @@ const fetchWithAuth = async (
   return response
 }
 
+// ============================================
+// 类型定义
+// ============================================
+
 export interface Friend {
   user_id: string
   nickname: string
-  avatar?: string
-  status?: 'online' | 'offline' | 'busy'
+  avatar_url?: string
+  email?: string
+  signature?: string
 }
 
 export interface FriendRequest {
-  request_id: string
-  from_user_id: string
-  to_user_id: string
-  message?: string
-  status: 'pending' | 'accepted' | 'rejected'
-  created_at: string
+  user_id: string
+  target_user_id: string
+  reason?: string
+  request_time: string
+  status?: 'pending' | 'approved' | 'rejected'
 }
 
+export interface PendingRequest {
+  applicant_user_id: string
+  nickname: string
+  reason?: string
+  request_time: string
+}
+
+export interface SentRequest {
+  target_user_id: string
+  reason?: string
+  request_time: string
+  status: string
+}
+
+// ============================================
+// API 方法
+// ============================================
+
 export const friendsApi = {
-  // 获取好友列表
+  /**
+   * 获取好友列表
+   * GET /api/friends
+   */
   getFriendsList: async (): Promise<Friend[]> => {
     console.log('📱 获取好友列表')
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/list`, {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}`, {
       method: 'GET',
     })
 
@@ -90,40 +115,34 @@ export const friendsApi = {
         message: `获取好友列表失败 (${response.status})` 
       }))
       console.error('获取好友列表失败:', error)
-      throw new Error(error.message || '获取好友列表失败')
+      throw new Error(error.message || error.error || '获取好友列表失败')
     }
 
     const data = await response.json()
-    return data.friends || []
+    return data.friends || data || []
   },
 
-  // 搜索用户
-  searchUsers: async (query: string): Promise<Friend[]> => {
-    console.log('🔍 搜索用户:', query)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/search?q=${encodeURIComponent(query)}`, {
-      method: 'GET',
-    })
+  /**
+   * 发送好友请求
+   * POST /api/friends/requests
+   * 请求体: { user_id, target_user_id, reason?, request_time }
+   */
+  sendFriendRequest: async (targetUserId: string, reason?: string): Promise<void> => {
+    console.log('📤 发送好友请求给:', targetUserId)
+    const authStore = useAuthStore.getState()
+    const userId = authStore.user?.user_id
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `搜索用户失败 (${response.status})` 
-      }))
-      console.error('搜索用户失败:', error)
-      throw new Error(error.message || '搜索用户失败')
+    if (!userId) {
+      throw new Error('用户未登录')
     }
 
-    const data = await response.json()
-    return data.users || []
-  },
-
-  // 发送好友请求
-  sendFriendRequest: async (toUserId: string, message?: string): Promise<void> => {
-    console.log('📤 发送好友请求给:', toUserId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/request`, {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests`, {
       method: 'POST',
       body: JSON.stringify({
-        to_user_id: toUserId,
-        message: message || '你好，我想加你为好友',
+        user_id: userId,
+        target_user_id: targetUserId,
+        reason: reason || '你好，我想加你为好友',
+        request_time: new Date().toISOString(),
       }),
     })
 
@@ -132,54 +151,68 @@ export const friendsApi = {
         message: `发送好友请求失败 (${response.status})` 
       }))
       console.error('发送好友请求失败:', error)
-      throw new Error(error.message || '发送好友请求失败')
+      throw new Error(error.message || error.error || '发送好友请求失败')
     }
 
     console.log('✅ 好友请求发送成功')
   },
 
-  // 获取好友请求列表
-  getFriendRequests: async (): Promise<FriendRequest[]> => {
-    console.log('📬 获取好友请求列表')
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests`, {
-      method: 'GET',
+  /**
+   * 同意好友请求
+   * POST /api/friends/requests/approve
+   * 请求体: { user_id, applicant_user_id, approved_time, approved_reason? }
+   */
+  approveFriendRequest: async (applicantUserId: string, approvedReason?: string): Promise<void> => {
+    console.log('✅ 同意好友请求:', applicantUserId)
+    const authStore = useAuthStore.getState()
+    const userId = authStore.user?.user_id
+
+    if (!userId) {
+      throw new Error('用户未登录')
+    }
+
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/approve`, {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        applicant_user_id: applicantUserId,
+        approved_time: new Date().toISOString(),
+        approved_reason: approvedReason,
+      }),
     })
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ 
-        message: `获取好友请求失败 (${response.status})` 
+        message: `同意好友请求失败 (${response.status})` 
       }))
-      console.error('获取好友请求失败:', error)
-      throw new Error(error.message || '获取好友请求失败')
+      console.error('同意好友请求失败:', error)
+      throw new Error(error.message || error.error || '同意好友请求失败')
     }
 
-    const data = await response.json()
-    return data.requests || []
+    console.log('✅ 已同意好友请求')
   },
 
-  // 接受好友请求
-  acceptFriendRequest: async (requestId: string): Promise<void> => {
-    console.log('✅ 接受好友请求:', requestId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/request/${requestId}/accept`, {
-      method: 'POST',
-    })
+  /**
+   * 拒绝好友请求
+   * POST /api/friends/requests/reject
+   * 请求体: { user_id, applicant_user_id, reject_reason? }
+   */
+  rejectFriendRequest: async (applicantUserId: string, rejectReason?: string): Promise<void> => {
+    console.log('❌ 拒绝好友请求:', applicantUserId)
+    const authStore = useAuthStore.getState()
+    const userId = authStore.user?.user_id
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `接受好友请求失败 (${response.status})` 
-      }))
-      console.error('接受好友请求失败:', error)
-      throw new Error(error.message || '接受好友请求失败')
+    if (!userId) {
+      throw new Error('用户未登录')
     }
 
-    console.log('✅ 已接受好友请求')
-  },
-
-  // 拒绝好友请求
-  rejectFriendRequest: async (requestId: string): Promise<void> => {
-    console.log('❌ 拒绝好友请求:', requestId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/request/${requestId}/reject`, {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/reject`, {
       method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        applicant_user_id: applicantUserId,
+        reject_reason: rejectReason,
+      }),
     })
 
     if (!response.ok) {
@@ -187,17 +220,78 @@ export const friendsApi = {
         message: `拒绝好友请求失败 (${response.status})` 
       }))
       console.error('拒绝好友请求失败:', error)
-      throw new Error(error.message || '拒绝好友请求失败')
+      throw new Error(error.message || error.error || '拒绝好友请求失败')
     }
 
     console.log('✅ 已拒绝好友请求')
   },
 
-  // 删除好友
-  deleteFriend: async (friendUserId: string): Promise<void> => {
+  /**
+   * 获取已发送的好友请求
+   * GET /api/friends/requests/sent
+   */
+  getSentRequests: async (): Promise<SentRequest[]> => {
+    console.log('📤 获取已发送的好友请求')
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/sent`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ 
+        message: `获取已发送请求失败 (${response.status})` 
+      }))
+      console.error('获取已发送请求失败:', error)
+      throw new Error(error.message || error.error || '获取已发送请求失败')
+    }
+
+    const data = await response.json()
+    return data.requests || data || []
+  },
+
+  /**
+   * 获取待处理的好友请求
+   * GET /api/friends/requests/pending
+   */
+  getPendingRequests: async (): Promise<PendingRequest[]> => {
+    console.log('📬 获取待处理的好友请求')
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/pending`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ 
+        message: `获取待处理请求失败 (${response.status})` 
+      }))
+      console.error('获取待处理请求失败:', error)
+      throw new Error(error.message || error.error || '获取待处理请求失败')
+    }
+
+    const data = await response.json()
+    return data.requests || data || []
+  },
+
+  /**
+   * 删除好友
+   * POST /api/friends/remove
+   * 请求体: { user_id, friend_user_id, remove_time, remove_reason? }
+   */
+  removeFriend: async (friendUserId: string, removeReason?: string): Promise<void> => {
     console.log('🗑️ 删除好友:', friendUserId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/${friendUserId}`, {
-      method: 'DELETE',
+    const authStore = useAuthStore.getState()
+    const userId = authStore.user?.user_id
+
+    if (!userId) {
+      throw new Error('用户未登录')
+    }
+
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/remove`, {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        friend_user_id: friendUserId,
+        remove_time: new Date().toISOString(),
+        remove_reason: removeReason,
+      }),
     })
 
     if (!response.ok) {
@@ -205,65 +299,9 @@ export const friendsApi = {
         message: `删除好友失败 (${response.status})` 
       }))
       console.error('删除好友失败:', error)
-      throw new Error(error.message || '删除好友失败')
+      throw new Error(error.message || error.error || '删除好友失败')
     }
 
     console.log('✅ 已删除好友')
   },
-
-  // 屏蔽用户
-  blockUser: async (userId: string): Promise<void> => {
-    console.log('🚫 屏蔽用户:', userId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/block/${userId}`, {
-      method: 'POST',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `屏蔽用户失败 (${response.status})` 
-      }))
-      console.error('屏蔽用户失败:', error)
-      throw new Error(error.message || '屏蔽用户失败')
-    }
-
-    console.log('✅ 已屏蔽用户')
-  },
-
-  // 取消屏蔽用户
-  unblockUser: async (userId: string): Promise<void> => {
-    console.log('✅ 取消屏蔽用户:', userId)
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/unblock/${userId}`, {
-      method: 'POST',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `取消屏蔽失败 (${response.status})` 
-      }))
-      console.error('取消屏蔽失败:', error)
-      throw new Error(error.message || '取消屏蔽失败')
-    }
-
-    console.log('✅ 已取消屏蔽')
-  },
-
-  // 获取屏蔽列表
-  getBlockedUsers: async (): Promise<Friend[]> => {
-    console.log('📋 获取屏蔽列表')
-    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blocked`, {
-      method: 'GET',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `获取屏蔽列表失败 (${response.status})` 
-      }))
-      console.error('获取屏蔽列表失败:', error)
-      throw new Error(error.message || '获取屏蔽列表失败')
-    }
-
-    const data = await response.json()
-    return data.blocked_users || []
-  },
 }
-

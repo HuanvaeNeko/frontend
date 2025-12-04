@@ -1,17 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
-import { Bot, ArrowRight, Star } from 'lucide-react'
+import { Bot, ArrowRight, Star, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
 import { 
-  slideInLeft, 
-  slideInRight, 
-  staggerFadeIn, 
-  scaleIn, 
-  shake,
-  buttonClick,
-  float,
+  slideLeftVariants, 
+  slideRightVariants, 
+  staggerContainer,
+  staggerItem,
+  scaleInVariants, 
+  shakeVariants,
+  floatVariants,
   DURATION 
-} from '../utils/animations'
+} from '../utils/motionAnimations'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -23,64 +29,21 @@ export default function Login() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // 动画引用
-  const leftSideRef = useRef<HTMLDivElement>(null)
-  const rightSideRef = useRef<HTMLDivElement>(null)
-  const logoRef = useRef<HTMLDivElement>(null)
-  const featuresRef = useRef<HTMLDivElement>(null)
-  const formRef = useRef<HTMLDivElement>(null)
-  const submitBtnRef = useRef<HTMLButtonElement>(null)
-
-  // 页面进入动画
-  useEffect(() => {
-    // 左侧品牌区动画
-    if (leftSideRef.current) {
-      slideInLeft(leftSideRef.current, { duration: DURATION.slow })
-    }
-    
-    // Logo 浮动动画
-    if (logoRef.current) {
-      float(logoRef.current, { duration: 3 })
-    }
-
-    // 特性列表渐进动画
-    if (featuresRef.current) {
-      const features = featuresRef.current.querySelectorAll('.feature-item')
-      staggerFadeIn(Array.from(features), { delay: 0.3 })
-    }
-
-    // 右侧表单区动画
-    if (rightSideRef.current) {
-      slideInRight(rightSideRef.current, { duration: DURATION.slow })
-    }
-
-    // 表单内容缩放进入
-    if (formRef.current) {
-      scaleIn(formRef.current, { delay: 0.4, duration: DURATION.slow })
-    }
-  }, [])
+  const [shouldShake, setShouldShake] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
-    // 按钮点击动画
-    if (submitBtnRef.current) {
-      buttonClick(submitBtnRef.current)
-    }
-
     try {
       await login(formData)
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败，请检查用户名和密码')
-      
-      // 错误时震动表单
-      if (formRef.current) {
-        shake(formRef.current)
-      }
+      const errorMsg = err instanceof Error ? err.message : '登录失败，请检查用户名和密码'
+      setError(errorMsg)
+      setShouldShake(true)
+      setTimeout(() => setShouldShake(false), 500)
     } finally {
       setLoading(false)
     }
@@ -89,7 +52,13 @@ export default function Login() {
   return (
     <div className="min-h-screen flex">
       {/* 左侧 - 品牌展示区 */}
-      <div ref={leftSideRef} className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-secondary to-accent p-12 relative overflow-hidden">
+      <motion.div
+        variants={slideLeftVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ duration: DURATION.slow }}
+        className="hidden lg:flex lg:w-1/2 gradient-bg-blue p-12 relative overflow-hidden"
+      >
         {/* 背景装饰 */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
@@ -97,129 +66,149 @@ export default function Login() {
         </div>
         
         <div className="relative z-10 flex flex-col justify-center text-white">
-          <div ref={logoRef} className="mb-8">
+          <motion.div variants={floatVariants} animate="animate" className="mb-8">
             <Bot size={96} strokeWidth={1.5} />
-          </div>
+          </motion.div>
           <h1 className="text-6xl font-black mb-6 leading-tight">
             HuanVae<br/>Chat
           </h1>
-          <div ref={featuresRef} className="space-y-4 text-xl font-light">
-            <div className="feature-item flex items-center gap-3">
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            transition={{ delay: 0.3 }}
+            className="space-y-4 text-xl font-light"
+          >
+            <motion.div variants={staggerItem} className="flex items-center gap-3">
               <Star size={24} fill="currentColor" />
               <span>AI 智能对话</span>
-            </div>
-            <div className="feature-item flex items-center gap-3">
+            </motion.div>
+            <motion.div variants={staggerItem} className="flex items-center gap-3">
               <Star size={24} fill="currentColor" />
               <span>实时群组聊天</span>
-            </div>
-            <div className="feature-item flex items-center gap-3">
+            </motion.div>
+            <motion.div variants={staggerItem} className="flex items-center gap-3">
               <Star size={24} fill="currentColor" />
               <span>高清视频会议</span>
-            </div>
-          </div>
-          <div className="mt-12 text-base-100/70">
+            </motion.div>
+          </motion.div>
+          <div className="mt-12 text-white/70">
             <p className="text-lg">体验新一代智能通讯平台</p>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* 右侧 - 登录表单区 */}
-      <div ref={rightSideRef} className="flex-1 flex items-center justify-center p-8 bg-base-100">
-        <div ref={formRef} className="w-full max-w-md">
+      <motion.div
+        variants={slideRightVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ duration: DURATION.slow }}
+        className="flex-1 flex items-center justify-center p-8 bg-gray-50"
+      >
+        <motion.div
+          variants={scaleInVariants}
+          initial="hidden"
+          animate={shouldShake ? "shake" : "visible"}
+          transition={{ delay: 0.4, duration: DURATION.slow }}
+          className="w-full max-w-md"
+        >
           {/* Logo for mobile */}
           <div className="lg:hidden text-center mb-8">
             <Bot size={64} strokeWidth={1.5} className="text-primary mb-4 mx-auto" />
-            <h1 className="text-4xl font-black bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+            <h1 className="text-4xl font-black gradient-text">
               HuanVae Chat
             </h1>
           </div>
 
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-2">欢迎回来</h2>
-            <p className="text-base-content/60">登录您的账号，继续精彩体验</p>
+            <p className="text-muted-foreground">登录您的账号，继续精彩体验</p>
           </div>
 
-        {error && (
-            <div className="alert alert-error mb-6 animate-shake">
-              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{error}</span>
-          </div>
-        )}
+          {error && (
+            <Alert variant="destructive" className="mb-6 animate-shake">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold text-base">用户ID</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.user_id}
-              onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-                className="input input-bordered input-lg w-full focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="user_id" className="font-semibold">用户ID</Label>
+              <Input
+                id="user_id"
+                type="text"
+                required
+                value={formData.user_id}
+                onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 placeholder="输入您的用户ID"
-            />
-          </div>
+                className="h-12"
+              />
+            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold text-base">密码</span>
-            </label>
-            <input
-              type="password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="input input-bordered input-lg w-full focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="password" className="font-semibold">密码</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="输入您的密码"
-            />
-              <label className="label">
-                <span className="label-text-alt"></span>
-                <a href="#" className="label-text-alt link link-hover link-primary">忘记密码？</a>
-              </label>
-          </div>
+                className="h-12"
+              />
+              <div className="flex justify-end">
+                <a href="#" className="text-sm text-primary hover:underline">
+                  忘记密码？
+                </a>
+              </div>
+            </div>
 
-          <button
-            ref={submitBtnRef}
-            type="submit"
-            disabled={loading}
-              className="btn btn-primary btn-lg w-full gap-2 group transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5"
-          >
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 text-base font-semibold"
+            >
               {loading ? (
                 <>
-                  <span className="loading loading-spinner"></span>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   登录中...
                 </>
               ) : (
                 <>
                   登录
-                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </>
               )}
-          </button>
-        </form>
+            </Button>
+          </form>
 
-          <div className="divider my-8">或</div>
+          <div className="my-8">
+            <Separator className="my-4" />
+            <p className="text-center text-sm text-muted-foreground">或</p>
+          </div>
 
           <div className="text-center">
-            <p className="text-base-content/70 mb-4">
+            <p className="text-muted-foreground mb-4">
               还没有账号？
             </p>
-            <Link to="/register" className="btn btn-outline btn-lg w-full">
-              立即注册
+            <Link to="/register">
+              <Button variant="outline" className="w-full h-12 font-semibold">
+                立即注册
+              </Button>
             </Link>
           </div>
 
-          <div className="mt-12 text-center text-sm text-base-content/50">
+          <div className="mt-12 text-center text-sm text-muted-foreground">
             <p>登录即表示您同意我们的</p>
             <p>
-              <a href="#" className="link link-hover">服务条款</a> 和 <a href="#" className="link link-hover">隐私政策</a>
-          </p>
+              <a href="#" className="text-primary hover:underline">服务条款</a>
+              {' '}和{' '}
+              <a href="#" className="text-primary hover:underline">隐私政策</a>
+            </p>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   )
 }

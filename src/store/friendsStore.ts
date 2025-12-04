@@ -1,31 +1,28 @@
 import { create } from 'zustand'
-import { friendsApi, type Friend, type FriendRequest } from '../api/friends'
+import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
 
 interface FriendsState {
   friends: Friend[]
-  friendRequests: FriendRequest[]
-  blockedUsers: Friend[]
+  pendingRequests: PendingRequest[]  // 待处理的请求（别人发给我的）
+  sentRequests: SentRequest[]        // 已发送的请求（我发给别人的）
   isLoading: boolean
   error: string | null
 
   // Actions
   loadFriends: () => Promise<void>
-  loadFriendRequests: () => Promise<void>
-  loadBlockedUsers: () => Promise<void>
-  searchUsers: (query: string) => Promise<Friend[]>
-  sendFriendRequest: (toUserId: string, message?: string) => Promise<void>
-  acceptFriendRequest: (requestId: string) => Promise<void>
-  rejectFriendRequest: (requestId: string) => Promise<void>
-  deleteFriend: (friendUserId: string) => Promise<void>
-  blockUser: (userId: string) => Promise<void>
-  unblockUser: (userId: string) => Promise<void>
+  loadPendingRequests: () => Promise<void>
+  loadSentRequests: () => Promise<void>
+  sendFriendRequest: (targetUserId: string, reason?: string) => Promise<void>
+  approveFriendRequest: (applicantUserId: string, approvedReason?: string) => Promise<void>
+  rejectFriendRequest: (applicantUserId: string, rejectReason?: string) => Promise<void>
+  removeFriend: (friendUserId: string, removeReason?: string) => Promise<void>
   clearError: () => void
 }
 
 export const useFriendsStore = create<FriendsState>((set, get) => ({
   friends: [],
-  friendRequests: [],
-  blockedUsers: [],
+  pendingRequests: [],
+  sentRequests: [],
   isLoading: false,
   error: null,
 
@@ -41,11 +38,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  loadFriendRequests: async () => {
+  loadPendingRequests: async () => {
     set({ isLoading: true, error: null })
     try {
-      const friendRequests = await friendsApi.getFriendRequests()
-      set({ friendRequests, isLoading: false })
+      const pendingRequests = await friendsApi.getPendingRequests()
+      set({ pendingRequests, isLoading: false })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '加载好友请求失败'
       set({ error: errorMessage, isLoading: false })
@@ -53,35 +50,24 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  loadBlockedUsers: async () => {
+  loadSentRequests: async () => {
     set({ isLoading: true, error: null })
     try {
-      const blockedUsers = await friendsApi.getBlockedUsers()
-      set({ blockedUsers, isLoading: false })
+      const sentRequests = await friendsApi.getSentRequests()
+      set({ sentRequests, isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '加载屏蔽列表失败'
+      const errorMessage = error instanceof Error ? error.message : '加载已发送请求失败'
       set({ error: errorMessage, isLoading: false })
       throw error
     }
   },
 
-  searchUsers: async (query: string) => {
+  sendFriendRequest: async (targetUserId: string, reason?: string) => {
     set({ isLoading: true, error: null })
     try {
-      const users = await friendsApi.searchUsers(query)
-      set({ isLoading: false })
-      return users
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '搜索用户失败'
-      set({ error: errorMessage, isLoading: false })
-      throw error
-    }
-  },
-
-  sendFriendRequest: async (toUserId: string, message?: string) => {
-    set({ isLoading: true, error: null })
-    try {
-      await friendsApi.sendFriendRequest(toUserId, message)
+      await friendsApi.sendFriendRequest(targetUserId, reason)
+      // 重新加载已发送请求列表
+      await get().loadSentRequests()
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '发送好友请求失败'
@@ -90,27 +76,27 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  acceptFriendRequest: async (requestId: string) => {
+  approveFriendRequest: async (applicantUserId: string, approvedReason?: string) => {
     set({ isLoading: true, error: null })
     try {
-      await friendsApi.acceptFriendRequest(requestId)
+      await friendsApi.approveFriendRequest(applicantUserId, approvedReason)
       // 重新加载好友列表和请求列表
       await get().loadFriends()
-      await get().loadFriendRequests()
+      await get().loadPendingRequests()
       set({ isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '接受好友请求失败'
+      const errorMessage = error instanceof Error ? error.message : '同意好友请求失败'
       set({ error: errorMessage, isLoading: false })
       throw error
     }
   },
 
-  rejectFriendRequest: async (requestId: string) => {
+  rejectFriendRequest: async (applicantUserId: string, rejectReason?: string) => {
     set({ isLoading: true, error: null })
     try {
-      await friendsApi.rejectFriendRequest(requestId)
+      await friendsApi.rejectFriendRequest(applicantUserId, rejectReason)
       // 重新加载请求列表
-      await get().loadFriendRequests()
+      await get().loadPendingRequests()
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '拒绝好友请求失败'
@@ -119,10 +105,10 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  deleteFriend: async (friendUserId: string) => {
+  removeFriend: async (friendUserId: string, removeReason?: string) => {
     set({ isLoading: true, error: null })
     try {
-      await friendsApi.deleteFriend(friendUserId)
+      await friendsApi.removeFriend(friendUserId, removeReason)
       // 重新加载好友列表
       await get().loadFriends()
       set({ isLoading: false })
@@ -133,37 +119,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  blockUser: async (userId: string) => {
-    set({ isLoading: true, error: null })
-    try {
-      await friendsApi.blockUser(userId)
-      // 重新加载相关列表
-      await get().loadFriends()
-      await get().loadBlockedUsers()
-      set({ isLoading: false })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '屏蔽用户失败'
-      set({ error: errorMessage, isLoading: false })
-      throw error
-    }
-  },
-
-  unblockUser: async (userId: string) => {
-    set({ isLoading: true, error: null })
-    try {
-      await friendsApi.unblockUser(userId)
-      // 重新加载屏蔽列表
-      await get().loadBlockedUsers()
-      set({ isLoading: false })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '取消屏蔽失败'
-      set({ error: errorMessage, isLoading: false })
-      throw error
-    }
-  },
-
   clearError: () => {
     set({ error: null })
   },
 }))
-

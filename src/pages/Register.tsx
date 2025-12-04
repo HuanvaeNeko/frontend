@@ -1,17 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
-import { Bot, ArrowRight, Check } from 'lucide-react'
+import { Bot, ArrowRight, Check, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
 import { 
-  slideInLeft, 
-  slideInRight, 
-  staggerFadeIn, 
-  scaleIn, 
-  shake,
-  buttonClick,
-  pulse,
+  slideLeftVariants, 
+  slideRightVariants, 
+  staggerContainer,
+  staggerItem,
+  scaleInVariants, 
+  shakeVariants,
+  pulseVariants,
   DURATION 
-} from '../utils/animations'
+} from '../utils/motionAnimations'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -26,14 +32,7 @@ export default function Register() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // 动画引用
-  const leftSideRef = useRef<HTMLDivElement>(null)
-  const rightSideRef = useRef<HTMLDivElement>(null)
-  const logoRef = useRef<HTMLDivElement>(null)
-  const benefitsRef = useRef<HTMLDivElement>(null)
-  const formRef = useRef<HTMLDivElement>(null)
-  const submitBtnRef = useRef<HTMLButtonElement>(null)
+  const [shouldShake, setShouldShake] = useState(false)
 
   // 密码强度检查
   const passwordStrength = {
@@ -41,32 +40,28 @@ export default function Register() {
     hasLetter: /[a-zA-Z]/.test(formData.password),
     hasNumber: /[0-9]/.test(formData.password),
   }
+  const strengthScore = Object.values(passwordStrength).filter(Boolean).length
   const passwordMatch = formData.password && formData.password === formData.confirmPassword
 
   // 页面进入动画
   useEffect(() => {
-    // 左侧品牌区动画
     if (leftSideRef.current) {
       slideInLeft(leftSideRef.current, { duration: DURATION.slow })
     }
     
-    // Logo 脉冲动画
     if (logoRef.current) {
       pulse(logoRef.current, { duration: 2, scale: 1.05 })
     }
 
-    // 权益列表渐进动画
     if (benefitsRef.current) {
       const items = benefitsRef.current.querySelectorAll('.benefit-item')
-      staggerFadeIn(Array.from(items), { delay: 0.3 })
+      staggerFadeIn(Array.from(items) as HTMLElement[], { delay: 0.3 })
     }
 
-    // 右侧表单区动画
     if (rightSideRef.current) {
       slideInRight(rightSideRef.current, { duration: DURATION.slow })
     }
 
-    // 表单内容缩放进入
     if (formRef.current) {
       scaleIn(formRef.current, { delay: 0.4, duration: DURATION.slow })
     }
@@ -75,19 +70,6 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-
-    if (formData.user_id.length < 3) {
-      setError('用户ID长度至少为3位')
-      if (formRef.current) shake(formRef.current)
-      return
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(formData.email)) {
-      setError('邮箱格式不正确')
-      if (formRef.current) shake(formRef.current)
-      return
-    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('两次输入的密码不一致')
@@ -103,11 +85,6 @@ export default function Register() {
 
     setLoading(true)
 
-    // 按钮点击动画
-    if (submitBtnRef.current) {
-      buttonClick(submitBtnRef.current)
-    }
-
     try {
       await register({
         user_id: formData.user_id,
@@ -117,7 +94,8 @@ export default function Register() {
       })
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '注册失败，请稍后重试')
+      const errorMsg = err instanceof Error ? err.message : '注册失败，请稍后重试'
+      setError(errorMsg)
       if (formRef.current) shake(formRef.current)
     } finally {
       setLoading(false)
@@ -127,7 +105,7 @@ export default function Register() {
   return (
     <div className="min-h-screen flex">
       {/* 左侧 - 品牌展示区 */}
-      <div ref={leftSideRef} className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-secondary via-accent to-primary p-12 relative overflow-hidden">
+      <div ref={leftSideRef} className="hidden lg:flex lg:w-1/2 gradient-bg-purple p-12 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 right-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
@@ -146,19 +124,19 @@ export default function Register() {
           <div ref={benefitsRef} className="space-y-3">
             <div className="benefit-item flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={24} />
+                <Check size={20} />
               </div>
               <span>永久免费使用</span>
             </div>
             <div className="benefit-item flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={24} />
+                <Check size={20} />
               </div>
               <span>AI 智能助手</span>
             </div>
             <div className="benefit-item flex items-center gap-3 text-lg">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={24} />
+                <Check size={20} />
               </div>
               <span>安全加密通讯</span>
             </div>
@@ -167,151 +145,154 @@ export default function Register() {
       </div>
 
       {/* 右侧 - 注册表单区 */}
-      <div ref={rightSideRef} className="flex-1 flex items-center justify-center p-8 bg-base-100">
+      <div ref={rightSideRef} className="flex-1 flex items-center justify-center p-8 bg-gray-50">
         <div ref={formRef} className="w-full max-w-md">
           <div className="lg:hidden text-center mb-8">
-            <Bot size={64} strokeWidth={1.5} className="text-primary mb-4 mx-auto" />
-            <h1 className="text-4xl font-black bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              HuanVae Chat
-            </h1>
+            <Bot size={64} strokeWidth={1.5} className="text-purple-500 mb-4 mx-auto" />
+            <h1 className="text-4xl font-black gradient-text">HuanVae Chat</h1>
           </div>
 
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-2">创建账号</h2>
-            <p className="text-base-content/60">填写信息，开始您的智能体验</p>
+            <p className="text-muted-foreground">填写信息，开始您的智能体验</p>
           </div>
 
-        {error && (
-            <div className="alert alert-error mb-6 animate-shake">
-              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{error}</span>
-          </div>
-        )}
+          {error && (
+            <Alert variant="destructive" className="mb-6 animate-shake">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold">用户ID</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.user_id}
-              onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-                className="input input-bordered input-lg focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="user_id">用户ID</Label>
+              <Input
+                id="user_id"
+                required
+                minLength={3}
+                value={formData.user_id}
+                onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 placeholder="至少3个字符"
-            />
-          </div>
+                className="h-12"
+              />
+            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold">昵称</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.nickname}
-              onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
-                className="input input-bordered input-lg focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="nickname">昵称</Label>
+              <Input
+                id="nickname"
+                required
+                value={formData.nickname}
+                onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
                 placeholder="您的昵称"
-            />
-          </div>
+                className="h-12"
+              />
+            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold">邮箱</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="input input-bordered input-lg focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="email">邮箱</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="your@email.com"
-            />
-          </div>
+                className="h-12"
+              />
+            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold">密码</span>
-            </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="input input-bordered input-lg focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="password">密码</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="至少8位，包含字母和数字"
+                className="h-12"
               />
               {formData.password && (
-                <div className="mt-2 space-y-1">
-                  <div className={`text-xs flex items-center gap-2 ${passwordStrength.length ? 'text-success' : 'text-base-content/50'}`}>
-                    <Check size={16} className={passwordStrength.length ? '' : 'opacity-30'} />
-                    至少8个字符
+                <div className="mt-2 p-3 bg-gray-100 rounded-lg space-y-2">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>密码强度</span>
+                    <span>{strengthScore === 3 ? '强' : strengthScore === 2 ? '中' : '弱'}</span>
                   </div>
-                  <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasLetter ? 'text-success' : 'text-base-content/50'}`}>
-                    <Check size={16} className={passwordStrength.hasLetter ? '' : 'opacity-30'} />
-                    包含字母
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${
+                        strengthScore === 3 ? 'bg-green-500' : 
+                        strengthScore === 2 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${(strengthScore / 3) * 100}%` }}
+                    />
                   </div>
-                  <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasNumber ? 'text-success' : 'text-base-content/50'}`}>
-                    <Check size={16} className={passwordStrength.hasNumber ? '' : 'opacity-30'} />
-                    包含数字
+                  <div className="space-y-1">
+                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.length ? 'text-green-600' : 'text-gray-400'}`}>
+                      <Check size={14} />至少8个字符
+                    </div>
+                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasLetter ? 'text-green-600' : 'text-gray-400'}`}>
+                      <Check size={14} />包含字母
+                    </div>
+                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasNumber ? 'text-green-600' : 'text-gray-400'}`}>
+                      <Check size={14} />包含数字
+                    </div>
                   </div>
                 </div>
               )}
-          </div>
+            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-semibold">确认密码</span>
-            </label>
-            <input
-              type="password"
-              required
-              value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                className="input input-bordered input-lg focus:input-primary transition-all"
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">确认密码</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                required
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                 placeholder="再次输入密码"
-            />
+                className="h-12"
+              />
               {formData.confirmPassword && (
-                <div className={`mt-2 text-xs flex items-center gap-2 ${passwordMatch ? 'text-success' : 'text-error'}`}>
-                  <Check size={24} />
+                <div className={`text-xs flex items-center gap-2 ${passwordMatch ? 'text-green-600' : 'text-red-600'}`}>
+                  <Check size={14} />
                   {passwordMatch ? '密码匹配' : '密码不匹配'}
                 </div>
               )}
-          </div>
+            </div>
 
-          <button
-            ref={submitBtnRef}
-            type="submit"
-            disabled={loading}
-              className="btn btn-primary btn-lg w-full gap-2 group mt-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5"
-          >
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 text-base font-semibold"
+            >
               {loading ? (
                 <>
-                  <span className="loading loading-spinner"></span>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   注册中...
                 </>
               ) : (
                 <>
                   创建账号
-                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </>
               )}
-          </button>
-        </form>
+            </Button>
+          </form>
 
-          <div className="divider my-8">或</div>
+          <div className="my-8">
+            <Separator className="my-4" />
+            <p className="text-center text-sm text-muted-foreground">或</p>
+          </div>
 
           <div className="text-center">
-            <p className="text-base-content/70 mb-4">
-              已有账号？
-            </p>
-            <Link to="/login" className="btn btn-outline btn-lg w-full">
-              立即登录
+            <p className="text-muted-foreground mb-4">已有账号？</p>
+            <Link to="/login">
+              <Button variant="outline" className="w-full h-12 font-semibold">
+                立即登录
+              </Button>
             </Link>
           </div>
         </div>

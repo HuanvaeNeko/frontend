@@ -1,442 +1,304 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, Users, UserPlus, UserMinus, Search, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import * as Tabs from '@radix-ui/react-tabs'
 import { useFriendsStore } from '../store/friendsStore'
-import { useAuthStore } from '../store/authStore'
 import { 
-  UserPlus, 
-  UserMinus, 
-  Check, 
-  X, 
-  Ban, 
-  Search,
-  ArrowLeft,
-  Users
-} from 'lucide-react'
-import type { Friend } from '../api/friends'
+  fadeInVariants, 
+  slideUpVariants, 
+  scaleInVariants,
+  staggerContainer,
+  staggerItem,
+} from '../utils/motionAnimations'
 
 export default function Friends() {
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuthStore()
-  const {
-    friends,
-    friendRequests,
-    blockedUsers,
+  const { 
+    friends, 
+    pendingRequests, 
     isLoading,
     error,
-    loadFriends,
-    loadFriendRequests,
-    loadBlockedUsers,
-    searchUsers,
-    sendFriendRequest,
-    acceptFriendRequest,
-    rejectFriendRequest,
-    deleteFriend,
-    blockUser,
-    unblockUser,
+    loadFriends, 
+    loadPendingRequests,
+    sendFriendRequest, 
+    approveFriendRequest, 
+    rejectFriendRequest, 
+    removeFriend,
     clearError,
   } = useFriendsStore()
+  
+  const [searchTerm, setSearchTerm] = useState('')
+  const [newFriendId, setNewFriendId] = useState('')
 
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'blocked' | 'search'>('friends')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Friend[]>([])
-  const [friendMessage, setFriendMessage] = useState('')
-  const [showMessageModal, setShowMessageModal] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
-
+  // 初始化加载好友和请求列表
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login')
+    loadFriends().catch(console.error)
+    loadPendingRequests().catch(console.error)
+  }, [loadFriends, loadPendingRequests])
+
+  // 显示错误提示
+  useEffect(() => {
+    if (error) {
+      alert(error)
+      clearError()
+    }
+  }, [error, clearError])
+
+  const handleAddFriend = async () => {
+    if (!newFriendId.trim()) {
+      alert('请输入用户ID')
       return
     }
-
-    // 初始加载数据
-    loadFriends()
-    loadFriendRequests()
-    loadBlockedUsers()
-  }, [isAuthenticated, navigate])
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return
     try {
-      const results = await searchUsers(searchQuery)
-      setSearchResults(results)
-      setActiveTab('search')
-    } catch (err) {
-      console.error('搜索失败:', err)
+      await sendFriendRequest(newFriendId.trim())
+      alert('好友请求已发送')
+      setNewFriendId('')
+    } catch (error) {
+      // 错误已在 store 中处理
     }
   }
 
-  const handleSendRequest = (userId: string) => {
-    setSelectedUserId(userId)
-    setShowMessageModal(true)
-  }
-
-  const handleConfirmSendRequest = async () => {
-    if (!selectedUserId) return
+  const handleAcceptRequest = async (applicantUserId: string) => {
     try {
-      await sendFriendRequest(selectedUserId, friendMessage || undefined)
-      setShowMessageModal(false)
-      setFriendMessage('')
-      setSelectedUserId(null)
-      alert('好友请求已发送！')
-    } catch (err) {
-      console.error('发送请求失败:', err)
+      await approveFriendRequest(applicantUserId)
+      alert('已添加为好友')
+    } catch (error) {
+      // 错误已在 store 中处理
     }
   }
 
-  const handleAcceptRequest = async (requestId: string) => {
+  const handleRejectRequest = async (applicantUserId: string) => {
     try {
-      await acceptFriendRequest(requestId)
-      alert('已接受好友请求！')
-    } catch (err) {
-      console.error('接受请求失败:', err)
+      await rejectFriendRequest(applicantUserId)
+      alert('已拒绝请求')
+    } catch (error) {
+      // 错误已在 store 中处理
     }
   }
 
-  const handleRejectRequest = async (requestId: string) => {
+  const handleRemoveFriend = async (friendUserId: string) => {
+    if (!confirm('确定要删除该好友吗？')) return
     try {
-      await rejectFriendRequest(requestId)
-      alert('已拒绝好友请求')
-    } catch (err) {
-      console.error('拒绝请求失败:', err)
-    }
-  }
-
-  const handleDeleteFriend = async (friendUserId: string, nickname: string) => {
-    if (!confirm(`确定要删除好友 "${nickname}" 吗？`)) return
-    try {
-      await deleteFriend(friendUserId)
+      await removeFriend(friendUserId)
       alert('已删除好友')
-    } catch (err) {
-      console.error('删除好友失败:', err)
+    } catch (error) {
+      // 错误已在 store 中处理
     }
   }
 
-  const handleBlockUser = async (userId: string, nickname: string) => {
-    if (!confirm(`确定要屏蔽用户 "${nickname}" 吗？`)) return
-    try {
-      await blockUser(userId)
-      alert('已屏蔽用户')
-    } catch (err) {
-      console.error('屏蔽用户失败:', err)
-    }
-  }
-
-  const handleUnblockUser = async (userId: string, nickname: string) => {
-    if (!confirm(`确定要取消屏蔽 "${nickname}" 吗？`)) return
-    try {
-      await unblockUser(userId)
-      alert('已取消屏蔽')
-    } catch (err) {
-      console.error('取消屏蔽失败:', err)
-    }
-  }
+  const filteredFriends = friends.filter(friend =>
+    friend.nickname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    friend.user_id.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      {/* Header */}
-      <div className="navbar bg-base-100 shadow-lg">
-        <div className="flex-1">
-          <button onClick={() => navigate('/home')} className="btn btn-ghost">
-            <ArrowLeft size={18} className="mr-2" />
-            返回首页
-          </button>
-          <h1 className="text-2xl font-bold ml-4">
-            <Users size={20} className="mr-2 text-primary" />
-            好友管理
-          </h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-6 py-8 max-w-4xl">
+        <div className="mb-6">
+          <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+            <ArrowLeft size={18} />返回首页
+          </Button>
         </div>
-        <div className="flex-none gap-2">
-          <div className="form-control flex flex-row gap-2">
-            <input
-              type="text"
-              placeholder="搜索用户..."
-              className="input input-bordered w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <button onClick={handleSearch} className="btn btn-primary">
-              <Search size={18} className="mr-2" />
-              搜索
-            </button>
+
+        <motion.div
+          variants={fadeInVariants}
+          initial="hidden"
+          animate="visible"
+          className="mb-8 flex items-center gap-4"
+        >
+          <Users size={32} className="text-green-500" />
+          <div>
+            <h1 className="text-4xl font-bold">好友管理</h1>
+            <p className="text-muted-foreground">管理您的好友关系</p>
           </div>
-        </div>
-      </div>
+        </motion.div>
 
-      <div className="container mx-auto p-6">
-        {/* Error Alert */}
-        {error && (
-          <div className="alert alert-error mb-4">
-            <span>{error}</span>
-            <button onClick={clearError} className="btn btn-sm btn-ghost">
-              <X size={18} />
-            </button>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="tabs tabs-boxed mb-6 bg-base-100 p-2 shadow-md">
-          <button
-            className={`tab tab-lg ${activeTab === 'friends' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('friends')}
-          >
-            好友列表 ({friends.length})
-          </button>
-          <button
-            className={`tab tab-lg ${activeTab === 'requests' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('requests')}
-          >
-            好友请求 ({friendRequests.filter(r => r.status === 'pending').length})
-          </button>
-          <button
-            className={`tab tab-lg ${activeTab === 'blocked' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('blocked')}
-          >
-            屏蔽列表 ({blockedUsers.length})
-          </button>
-          <button
-            className={`tab tab-lg ${activeTab === 'search' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('search')}
-          >
-            搜索结果 ({searchResults.length})
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="bg-base-100 rounded-lg shadow-xl p-6">
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <span className="loading loading-spinner loading-lg"></span>
+        <motion.div
+          variants={slideUpVariants}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.1 }}
+        >
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="flex gap-2">
+              <Input
+                placeholder="输入用户ID添加好友"
+                value={newFriendId}
+                onChange={(e) => setNewFriendId(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAddFriend()}
+                className="flex-1"
+                disabled={isLoading}
+              />
+              <Button 
+                onClick={handleAddFriend} 
+                className="gap-2"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <UserPlus size={18} />
+                )}
+                发送请求
+              </Button>
             </div>
-          ) : (
-            <>
-              {/* Friends Tab */}
-              {activeTab === 'friends' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {friends.length === 0 ? (
-                    <div className="col-span-full text-center py-12 text-gray-500">
-                      还没有好友，快去添加吧！
-                    </div>
-                  ) : (
-                    friends.map((friend) => (
-                      <div key={friend.user_id} className="card bg-base-200 shadow-md hover:shadow-xl transition-all">
-                        <div className="card-body">
+          </CardContent>
+        </Card>
+        </motion.div>
+
+        <motion.div
+          variants={scaleInVariants}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.2 }}
+        >
+        <Tabs.Root defaultValue="friends" className="w-full">
+          <Tabs.List className="flex border-b">
+            <Tabs.Trigger
+              value="friends"
+              className="flex-1 px-4 py-2 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary"
+            >
+              我的好友 ({friends.length})
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="requests"
+              className="flex-1 px-4 py-2 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary"
+            >
+              好友请求 ({pendingRequests.length})
+            </Tabs.Trigger>
+          </Tabs.List>
+
+          <Tabs.Content value="friends" className="mt-4">
+            <Input
+              placeholder="搜索好友"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="mb-4"
+            />
+            <Card>
+              <CardContent className="pt-6">
+                {isLoading && friends.length === 0 ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 size={32} className="animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredFriends.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">暂无好友</p>
+                ) : (
+                  <motion.div
+                    variants={staggerContainer}
+                    initial="hidden"
+                    animate="visible"
+                    className="space-y-4"
+                  >
+                    <AnimatePresence>
+                      {filteredFriends.map((friend) => (
+                        <motion.div
+                          key={friend.user_id}
+                          variants={staggerItem}
+                          layout
+                          className="flex items-center justify-between"
+                        >
                           <div className="flex items-center gap-4">
-                            <div className="avatar placeholder">
-                              <div className="bg-primary text-primary-content rounded-full w-16">
-                                {friend.avatar ? (
-                                  <img src={friend.avatar} alt={friend.nickname} />
-                                ) : (
-                                  <span className="text-2xl">{friend.nickname.charAt(0)}</span>
-                                )}
-                              </div>
+                            <Avatar className="h-12 w-12">
+                              <AvatarFallback className="bg-gradient-to-br from-green-400 to-blue-500 text-white">
+                                {friend.nickname[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-semibold">{friend.nickname}</p>
+                              <p className="text-sm text-muted-foreground">ID: {friend.user_id}</p>
                             </div>
-                            <div className="flex-1">
-                              <h3 className="card-title text-lg">{friend.nickname}</h3>
-                              <p className="text-sm text-gray-500">ID: {friend.user_id}</p>
-                              {friend.status && (
-                                <div className="badge badge-sm mt-1">
-                                  {friend.status === 'online' && '在线'}
-                                  {friend.status === 'offline' && '离线'}
-                                  {friend.status === 'busy' && '忙碌'}
-                                </div>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => handleRemoveFriend(friend.user_id)}
+                            disabled={isLoading}
+                          >
+                            <UserMinus size={16} />删除
+                          </Button>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </CardContent>
+            </Card>
+          </Tabs.Content>
+
+          <Tabs.Content value="requests" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {isLoading && pendingRequests.length === 0 ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 size={32} className="animate-spin text-muted-foreground" />
+                  </div>
+                ) : pendingRequests.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">暂无好友请求</p>
+                ) : (
+                  <motion.div
+                    variants={staggerContainer}
+                    initial="hidden"
+                    animate="visible"
+                    className="space-y-4"
+                  >
+                    <AnimatePresence>
+                      {pendingRequests.map((request) => (
+                        <motion.div
+                          key={request.applicant_user_id}
+                          variants={staggerItem}
+                          layout
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-4">
+                            <Avatar className="h-12 w-12">
+                              <AvatarFallback className="bg-gradient-to-br from-purple-400 to-pink-500 text-white">
+                                {request.nickname[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-semibold">{request.nickname}</p>
+                              <p className="text-sm text-muted-foreground">ID: {request.applicant_user_id}</p>
+                              {request.reason && (
+                                <p className="text-sm text-muted-foreground">留言: {request.reason}</p>
                               )}
                             </div>
                           </div>
-                          <div className="card-actions justify-end mt-4">
-                            <button
-                              onClick={() => handleBlockUser(friend.user_id, friend.nickname)}
-                              className="btn btn-sm btn-warning"
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleAcceptRequest(request.applicant_user_id)}
+                              disabled={isLoading}
                             >
-                              <Ban size={16} className="mr-1" />
-                              屏蔽
-                            </button>
-                            <button
-                              onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
-                              className="btn btn-sm btn-error"
+                              接受
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleRejectRequest(request.applicant_user_id)}
+                              disabled={isLoading}
                             >
-                              <UserMinus size={16} className="mr-1" />
-                              删除
-                            </button>
+                              拒绝
+                            </Button>
                           </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* Requests Tab */}
-              {activeTab === 'requests' && (
-                <div className="space-y-4">
-                  {friendRequests.filter(r => r.status === 'pending').length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      暂无好友请求
-                    </div>
-                  ) : (
-                    friendRequests
-                      .filter(r => r.status === 'pending')
-                      .map((request) => (
-                        <div key={request.request_id} className="card bg-base-200 shadow-md">
-                          <div className="card-body">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h3 className="font-bold">来自: {request.from_user_id}</h3>
-                                {request.message && (
-                                  <p className="text-sm text-gray-600 mt-1">{request.message}</p>
-                                )}
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {new Date(request.created_at).toLocaleString('zh-CN')}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleAcceptRequest(request.request_id)}
-                                  className="btn btn-success btn-sm"
-                                >
-                                  <Check size={16} className="mr-1" />
-                                  接受
-                                </button>
-                                <button
-                                  onClick={() => handleRejectRequest(request.request_id)}
-                                  className="btn btn-error btn-sm"
-                                >
-                                  <X size={16} className="mr-1" />
-                                  拒绝
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                  )}
-                </div>
-              )}
-
-              {/* Blocked Tab */}
-              {activeTab === 'blocked' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {blockedUsers.length === 0 ? (
-                    <div className="col-span-full text-center py-12 text-gray-500">
-                      暂无屏蔽用户
-                    </div>
-                  ) : (
-                    blockedUsers.map((user) => (
-                      <div key={user.user_id} className="card bg-base-200 shadow-md">
-                        <div className="card-body">
-                          <div className="flex items-center gap-4">
-                            <div className="avatar placeholder">
-                              <div className="bg-neutral text-neutral-content rounded-full w-16">
-                                {user.avatar ? (
-                                  <img src={user.avatar} alt={user.nickname} />
-                                ) : (
-                                  <span className="text-2xl">{user.nickname.charAt(0)}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="card-title text-lg">{user.nickname}</h3>
-                              <p className="text-sm text-gray-500">ID: {user.user_id}</p>
-                            </div>
-                          </div>
-                          <div className="card-actions justify-end mt-4">
-                            <button
-                              onClick={() => handleUnblockUser(user.user_id, user.nickname)}
-                              className="btn btn-sm btn-success"
-                            >
-                              <FontAwesomeIcon icon={faCheck} className="mr-1" />
-                              取消屏蔽
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* Search Results Tab */}
-              {activeTab === 'search' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {searchResults.length === 0 ? (
-                    <div className="col-span-full text-center py-12 text-gray-500">
-                      {searchQuery ? '没有找到相关用户' : '请输入关键词进行搜索'}
-                    </div>
-                  ) : (
-                    searchResults.map((user) => (
-                      <div key={user.user_id} className="card bg-base-200 shadow-md hover:shadow-xl transition-all">
-                        <div className="card-body">
-                          <div className="flex items-center gap-4">
-                            <div className="avatar placeholder">
-                              <div className="bg-accent text-accent-content rounded-full w-16">
-                                {user.avatar ? (
-                                  <img src={user.avatar} alt={user.nickname} />
-                                ) : (
-                                  <span className="text-2xl">{user.nickname.charAt(0)}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <h3 className="card-title text-lg">{user.nickname}</h3>
-                              <p className="text-sm text-gray-500">ID: {user.user_id}</p>
-                            </div>
-                          </div>
-                          <div className="card-actions justify-end mt-4">
-                            <button
-                              onClick={() => handleSendRequest(user.user_id)}
-                              className="btn btn-sm btn-primary"
-                            >
-                              <UserPlus size={16} className="mr-1" />
-                              添加好友
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </CardContent>
+            </Card>
+          </Tabs.Content>
+        </Tabs.Root>
+        </motion.div>
       </div>
-
-      {/* Send Friend Request Modal */}
-      {showMessageModal && (
-        <div className="modal modal-open">
-          <div className="modal-box">
-            <h3 className="font-bold text-lg mb-4">发送好友请求</h3>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">附加消息（可选）</span>
-              </label>
-              <textarea
-                className="textarea textarea-bordered h-24"
-                placeholder="你好，我想加你为好友"
-                value={friendMessage}
-                onChange={(e) => setFriendMessage(e.target.value)}
-              />
-            </div>
-            <div className="modal-action">
-              <button
-                onClick={() => {
-                  setShowMessageModal(false)
-                  setFriendMessage('')
-                  setSelectedUserId(null)
-                }}
-                className="btn"
-              >
-                取消
-              </button>
-              <button onClick={handleConfirmSendRequest} className="btn btn-primary">
-                发送请求
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
-
