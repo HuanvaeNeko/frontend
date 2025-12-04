@@ -10,6 +10,8 @@ import GroupChat from './pages/GroupChat'
 import VideoMeeting from './pages/VideoMeeting'
 import Settings from './pages/Settings'
 import Devices from './pages/Devices'
+import Friends from './pages/Friends'
+import Profile from './pages/Profile'
 
 function App() {
   const { checkTokenExpiry, refreshAccessToken, refreshToken } = useAuthStore()
@@ -74,6 +76,30 @@ function App() {
         element={
           <ProtectedRoute>
             <Devices />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <ProtectedRoute>
+            <Friends />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/home"
+        element={
+          <ProtectedRoute>
+            <Home />
           </ProtectedRoute>
         }
       />

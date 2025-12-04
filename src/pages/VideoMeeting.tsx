@@ -1,19 +1,22 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { 
-  faArrowLeft, 
-  faMicrophone,
-  faMicrophoneSlash,
-  faVideo,
-  faVideoSlash,
-  faPhoneSlash,
-  faUsers,
-  faUser
-} from '@fortawesome/free-solid-svg-icons'
+  ArrowLeft, 
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  PhoneOff,
+  Users,
+  User,
+  Monitor,
+  Maximize,
+  Minimize,
+  Settings,
+  Clock
+} from 'lucide-react'
 import type { MeetingParticipant } from '../types'
 
-// 预览数据
 const mockParticipants: MeetingParticipant[] = [
   { id: '1', userName: 'Alice', videoEnabled: true, audioEnabled: true },
   { id: '2', userName: 'Bob', videoEnabled: true, audioEnabled: false },
@@ -25,22 +28,36 @@ export default function VideoMeeting() {
   const [participants, setParticipants] = useState<MeetingParticipant[]>(mockParticipants)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showControls, setShowControls] = useState(true)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const roomId = 'meeting-1'
   const userName = `用户${Math.floor(Math.random() * 1000)}`
 
   useEffect(() => {
-    // 添加本地参与者
     setParticipants(prev => [
       { id: 'local', userName, videoEnabled: isVideoEnabled, audioEnabled: !isMuted },
       ...prev
     ])
+
+    // 自动隐藏控制栏
+    let timeout: NodeJS.Timeout
+    const resetTimer = () => {
+      setShowControls(true)
+      clearTimeout(timeout)
+      timeout = setTimeout(() => setShowControls(false), 3000)
+    }
+
+    window.addEventListener('mousemove', resetTimer)
+    resetTimer()
+
+    return () => {
+      window.removeEventListener('mousemove', resetTimer)
+      clearTimeout(timeout)
+    }
   }, [])
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted)
-  }
-
+  const toggleMute = () => setIsMuted(!isMuted)
   const toggleVideo = () => {
     setIsVideoEnabled(!isVideoEnabled)
     setParticipants(prev => 
@@ -49,147 +66,188 @@ export default function VideoMeeting() {
       )
     )
   }
+  const toggleFullscreen = () => setIsFullscreen(!isFullscreen)
+  const leaveMeeting = () => navigate('/')
 
-  const leaveMeeting = () => {
-    navigate('/')
+  const getAvatarColor = (name: string) => {
+    const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500']
+    const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
+    return colors[index]
   }
 
-  const remoteParticipants = participants.filter(p => p.id !== 'local')
-
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-gradient-to-br from-neutral via-neutral-focus to-neutral flex flex-col`}>
       {/* 顶部导航栏 */}
-      <header className="bg-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className={`navbar bg-neutral-content/10 backdrop-blur-xl text-neutral-content transition-all ${showControls ? 'translate-y-0' : '-translate-y-full'}`}>
+        <div className="flex-1">
           <button 
-            onClick={() => navigate('/')}
-            className="text-gray-300 hover:text-white"
-          >
-            <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
-            返回首页
-          </button>
-          <h1 className="text-xl font-bold text-white">视频会议</h1>
-          <span className="text-sm text-gray-400">房间: {roomId}</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-300">
-            <FontAwesomeIcon icon={faUsers} className="mr-1" />
-            参与者: {participants.length} 人
-          </div>
-          <button
-            onClick={toggleMute}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isMuted 
-                ? 'bg-red-600 text-white hover:bg-red-700' 
-                : 'bg-gray-700 text-white hover:bg-gray-600'
-            }`}
-          >
-            <FontAwesomeIcon icon={isMuted ? faMicrophoneSlash : faMicrophone} className="mr-2" />
-            {isMuted ? '已静音' : '未静音'}
-          </button>
-          <button
-            onClick={toggleVideo}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              !isVideoEnabled 
-                ? 'bg-red-600 text-white hover:bg-red-700' 
-                : 'bg-gray-700 text-white hover:bg-gray-600'
-            }`}
-          >
-            <FontAwesomeIcon icon={isVideoEnabled ? faVideo : faVideoSlash} className="mr-2" />
-            {isVideoEnabled ? '视频开启' : '视频关闭'}
-          </button>
-          <button
             onClick={leaveMeeting}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className="btn btn-ghost gap-2"
           >
-            <FontAwesomeIcon icon={faPhoneSlash} className="mr-2" />
-            离开会议
+            <ArrowLeft size={20} />
+            离开
           </button>
-        </div>
-      </header>
-
-      {/* 视频区域 */}
-      <div className="flex-1 p-4 overflow-auto">
-        <div className={`grid gap-4 ${
-          participants.length === 1 ? 'grid-cols-1' :
-          participants.length === 2 ? 'grid-cols-2' :
-          participants.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'
-        }`}>
-          {/* 本地视频 */}
-          <div className="relative bg-gray-800 rounded-lg overflow-hidden aspect-video">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm">
-              <FontAwesomeIcon icon={faUser} className="mr-1" />
-              {userName} (我)
+          <div className="flex items-center gap-3 ml-4">
+            <div className="badge badge-success gap-2 badge-lg">
+              <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+              会议进行中
             </div>
-            {!isVideoEnabled && (
-              <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-                <div className="text-center">
-                  <FontAwesomeIcon icon={faUser} className="text-6xl mb-2 text-gray-400" />
-                  <div className="text-white">{userName}</div>
-                </div>
-              </div>
-            )}
+            <div className="text-sm">
+              <span className="opacity-70">房间:</span> <span className="font-bold">{roomId}</span>
+            </div>
           </div>
-
-          {/* 远程视频 */}
-          {remoteParticipants.map((participant) => (
-            <div
-              key={participant.id}
-              className="relative bg-gray-800 rounded-lg overflow-hidden aspect-video"
-            >
-              <div className="w-full h-full bg-gray-700" />
-              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm">
-                <FontAwesomeIcon icon={faUser} className="mr-1" />
-                {participant.userName}
-              </div>
-              {!participant.videoEnabled && (
-                <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-                  <div className="text-center">
-                    <FontAwesomeIcon icon={faUser} className="text-6xl mb-2 text-gray-400" />
-                    <div className="text-white">{participant.userName}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+        </div>
+        <div className="flex-none gap-2">
+          <div className="badge badge-ghost badge-lg gap-2">
+            <Users size={20} />
+            {participants.length} 人
+          </div>
+          <button className="btn btn-ghost btn-sm gap-2">
+            <Monitor size={20} />
+            共享屏幕
+          </button>
+          <button onClick={toggleFullscreen} className="btn btn-ghost btn-sm gap-2">
+            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
         </div>
       </div>
 
-      {/* 控制栏 */}
-      <div className="bg-gray-800 px-6 py-4 flex items-center justify-center gap-4">
+      {/* 视频网格区域 */}
+      <div className="flex-1 p-4 overflow-auto">
+        <div className={`grid gap-4 h-full ${
+          participants.length === 1 ? 'grid-cols-1' :
+          participants.length === 2 ? 'grid-cols-2' :
+          participants.length <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3'
+        }`}>
+          {participants.map((participant, index) => {
+            const isLocal = participant.id === 'local'
+            const avatarColor = getAvatarColor(participant.userName)
+            
+            return (
+              <div
+                key={participant.id}
+                className="relative bg-neutral-focus rounded-2xl overflow-hidden shadow-2xl group"
+              >
+                {/* 视频或头像 */}
+                {participant.videoEnabled ? (
+            <video
+                    ref={isLocal ? localVideoRef : undefined}
+              autoPlay
+                    muted={isLocal}
+              playsInline
+              className="w-full h-full object-cover"
+            />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-neutral to-neutral-focus">
+                    <div className="text-center">
+                      <div className="avatar placeholder mb-4">
+                        <div className={`${avatarColor} text-white rounded-full w-32`}>
+                          <span className="text-5xl font-bold">
+                            {participant.userName[0].toUpperCase()}
+                          </span>
+                        </div>
+            </div>
+                      <p className="text-neutral-content text-xl font-bold">{participant.userName}</p>
+                </div>
+              </div>
+            )}
+
+                {/* 参与者信息叠加层 */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                {/* 底部信息栏 */}
+                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
+                  <div className="badge badge-neutral gap-2 shadow-lg">
+                    <User size={32} />
+                {participant.userName}
+                    {isLocal && <span className="text-xs">(我)</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    {!participant.audioEnabled && (
+                      <div className="badge badge-error gap-1">
+                        <MicOff size={12} />
+              </div>
+                    )}
+              {!participant.videoEnabled && (
+                      <div className="badge badge-warning gap-1">
+                        <VideoOff size={12} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 局部控制按钮 */}
+                {index === 0 && (
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button className="btn btn-sm btn-circle btn-ghost bg-black/30 backdrop-blur-sm">
+                      <Settings size={16} />
+                    </button>
+                </div>
+              )}
+            </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 底部控制栏 */}
+      <div className={`bg-neutral-content/10 backdrop-blur-xl p-6 transition-all ${showControls ? 'translate-y-0' : 'translate-y-full'}`}>
+        <div className="flex items-center justify-center gap-4">
+          {/* 静音控制 */}
+          <div className="tooltip tooltip-top" data-tip={isMuted ? "取消静音" : "静音"}>
         <button
           onClick={toggleMute}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+              className={`btn btn-circle btn-lg ${
             isMuted 
-              ? 'bg-red-600 text-white hover:bg-red-700' 
-              : 'bg-gray-700 text-white hover:bg-gray-600'
+                  ? 'btn-error hover:btn-error/80' 
+                  : 'bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white'
           }`}
         >
-          <FontAwesomeIcon icon={isMuted ? faMicrophoneSlash : faMicrophone} />
+              {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
         </button>
+          </div>
+
+          {/* 视频控制 */}
+          <div className="tooltip tooltip-top" data-tip={isVideoEnabled ? "关闭视频" : "开启视频"}>
         <button
           onClick={toggleVideo}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+              className={`btn btn-circle btn-lg ${
             !isVideoEnabled 
-              ? 'bg-red-600 text-white hover:bg-red-700' 
-              : 'bg-gray-700 text-white hover:bg-gray-600'
+                  ? 'btn-error hover:btn-error/80' 
+                  : 'bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white'
           }`}
         >
-          <FontAwesomeIcon icon={isVideoEnabled ? faVideo : faVideoSlash} />
+              {isVideoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
         </button>
+          </div>
+
+          {/* 挂断 */}
+          <div className="tooltip tooltip-top" data-tip="离开会议">
         <button
           onClick={leaveMeeting}
-          className="w-12 h-12 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors flex items-center justify-center"
+              className="btn btn-circle btn-lg btn-error hover:btn-error/80"
+            >
+              <PhoneOff size={24} />
+            </button>
+          </div>
+
+          {/* 共享屏幕 */}
+          <div className="tooltip tooltip-top" data-tip="共享屏幕">
+            <button
+              className="btn btn-circle btn-lg bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white"
         >
-          <FontAwesomeIcon icon={faPhoneSlash} />
+              <Monitor size={24} />
         </button>
+          </div>
+        </div>
+
+        {/* 会议时长 */}
+        <div className="text-center mt-4">
+          <div className="badge badge-ghost badge-lg text-neutral-content">
+            <Clock size={16} className="mr-2" />
+            00:15:42
+          </div>
+        </div>
       </div>
     </div>
   )
