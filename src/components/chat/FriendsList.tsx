@@ -27,9 +27,9 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
       id: friend.user_id,
       type: 'friend',
       name: friend.nickname,
-      avatar: friend.avatar,
+      avatar: friend.avatar_url,
       unreadCount: 0,
-      online: friend.online,
+      online: false, // Friend 类型中没有 online 属性，使用默认值
     })
   }
 
@@ -95,15 +95,12 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src={friend.avatar} />
+                        <AvatarImage src={friend.avatar_url} />
                         <AvatarFallback className="bg-gradient-to-br from-blue-400 to-purple-400 text-white">
                           {friend.nickname[0]?.toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      {/* 在线状态 */}
-                      {friend.online && (
-                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />
-                      )}
+                      {/* 在线状态 - Friend 类型暂不支持 online 属性，暂时隐藏 */}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -112,7 +109,7 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
                         </h3>
                       </div>
                       <p className="text-sm text-gray-500 truncate">
-                        {friend.bio || friend.user_id}
+                        {friend.signature || friend.user_id}
                       </p>
                     </div>
                   </div>

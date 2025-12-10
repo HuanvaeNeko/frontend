@@ -22,6 +22,7 @@ import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
 import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
+import { useProfileStore } from '../store/profileStore'
 import { useWSStore } from '../store/wsStore'
 import { useNavigate } from 'react-router-dom'
 import FriendList from '../components/chat/FriendList'
@@ -35,6 +36,7 @@ type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 export default function ChatPage() {
   const navigate = useNavigate()
   const { user, logout, accessToken } = useAuthStore()
+  const { profile, loadProfile } = useProfileStore()
   const { activeTab, setActiveTab, wsConnected } = useChatStore()
   const { loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
@@ -46,6 +48,9 @@ export default function ChatPage() {
   // 初始化加载数据
   useEffect(() => {
     if (user && accessToken) {
+      // 加载用户资料
+      loadProfile().catch(console.error)
+      
       // 连接 WebSocket
       connectWS(accessToken)
       
@@ -139,13 +144,13 @@ export default function ChatPage() {
       <header className="h-16 border-b bg-card flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
           <Avatar className="h-10 w-10">
-            <AvatarImage src={user?.avatar_url} />
+            <AvatarImage src={profile?.user_avatar_url || user?.avatar_url} />
             <AvatarFallback className="bg-primary text-primary-foreground">
-              {user?.nickname?.[0]?.toUpperCase() || 'U'}
+              {(profile?.user_nickname || user?.nickname)?.[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="font-semibold text-sm">{user?.nickname || user?.user_id}</span>
+            <span className="font-semibold text-sm">{profile?.user_nickname || user?.nickname || user?.user_id}</span>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-xs text-muted-foreground">

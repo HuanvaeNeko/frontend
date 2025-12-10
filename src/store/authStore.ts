@@ -70,8 +70,10 @@ export const useAuthStore = create<AuthStore>()(
             tokenExpiry: Date.now() + data.expires_in * 1000,
             user: {
               user_id: credentials.user_id,
-              nickname: '',
-              email: '',
+              nickname: data.nickname || '',
+              email: data.email || '',
+              avatar_url: data.avatar_url,
+              signature: data.signature,
             },
           })
           } catch (fetchError) {

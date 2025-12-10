@@ -29,6 +29,8 @@ export interface User {
   user_id: string
   nickname: string
   email: string
+  avatar_url?: string
+  signature?: string
 }
 
 export interface Device {
