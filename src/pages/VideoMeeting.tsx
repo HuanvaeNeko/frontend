@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   ArrowLeft, 
   Mic,
@@ -12,40 +12,77 @@ import {
   Monitor,
   Maximize,
   Minimize,
-  Settings,
-  Clock
+  Clock,
+  Copy,
+  Check
 } from 'lucide-react'
-import type { MeetingParticipant } from '../types'
+import { Button } from '@/components/ui/button'
+import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
+import { useAuthStore } from '../store/authStore'
 
-const mockParticipants: MeetingParticipant[] = [
-  { id: '1', userName: 'Alice', videoEnabled: true, audioEnabled: true },
-  { id: '2', userName: 'Bob', videoEnabled: true, audioEnabled: false },
-  { id: '3', userName: 'Charlie', videoEnabled: false, audioEnabled: true }
-]
+interface RemoteStream {
+  peerId: string
+  stream: MediaStream
+  participant: Participant
+}
 
 export default function VideoMeeting() {
   const navigate = useNavigate()
-  const [participants, setParticipants] = useState<MeetingParticipant[]>(mockParticipants)
+  const [searchParams] = useSearchParams()
+  const { accessToken } = useAuthStore()
+  
+  // 从 URL 获取房间信息
+  const roomId = searchParams.get('room') || ''
+  const password = searchParams.get('pwd') || ''
+  const displayName = searchParams.get('name') || '访客'
+  
+  // 状态
+  const [isConnected, setIsConnected] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([])
+  const [meetingDuration, setMeetingDuration] = useState(0)
+  
+  // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
-  const roomId = 'meeting-1'
-  const userName = `用户${Math.floor(Math.random() * 1000)}`
+  const localStreamRef = useRef<MediaStream | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({})
+  const iceServersRef = useRef<ICEServer[]>([])
+  const myIdRef = useRef<string>('')
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // 初始化
   useEffect(() => {
-    setParticipants(prev => [
-      { id: 'local', userName, videoEnabled: isVideoEnabled, audioEnabled: !isMuted },
-      ...prev
-    ])
+    if (!roomId) {
+      setError('房间号不能为空')
+      setIsConnecting(false)
+      return
+    }
 
-    // 自动隐藏控制栏
-    let timeout: ReturnType<typeof setTimeout>
+    initMeeting()
+
+    return () => {
+      cleanup()
+    }
+  }, [roomId])
+
+  // 自动隐藏控制栏
+  useEffect(() => {
     const resetTimer = () => {
       setShowControls(true)
-      clearTimeout(timeout)
-      timeout = setTimeout(() => setShowControls(false), 3000)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
     }
 
     window.addEventListener('mousemove', resetTimer)
@@ -53,202 +90,588 @@ export default function VideoMeeting() {
 
     return () => {
       window.removeEventListener('mousemove', resetTimer)
-      clearTimeout(timeout)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
     }
   }, [])
 
-  const toggleMute = () => setIsMuted(!isMuted)
-  const toggleVideo = () => {
-    setIsVideoEnabled(!isVideoEnabled)
-    setParticipants(prev => 
-      prev.map(p => 
-        p.id === 'local' ? { ...p, videoEnabled: !isVideoEnabled } : p
-      )
-    )
-  }
-  const toggleFullscreen = () => setIsFullscreen(!isFullscreen)
-  const leaveMeeting = () => navigate('/')
+  // 会议计时器
+  useEffect(() => {
+    if (!isConnected) return
+    
+    const timer = setInterval(() => {
+      setMeetingDuration(prev => prev + 1)
+    }, 1000)
 
+    return () => clearInterval(timer)
+  }, [isConnected])
+
+  // 初始化会议
+  const initMeeting = async () => {
+    try {
+      setIsConnecting(true)
+      setError(null)
+
+      // 1. 获取本地媒体流
+      await getLocalStream()
+
+      // 2. 加入房间获取 ICE 配置和 ws_token
+      let wsToken: string
+      
+      if (accessToken) {
+        // 创建者使用 access_token
+        wsToken = accessToken
+        const iceServers = await webrtcApi.getIceServers()
+        iceServersRef.current = iceServers
+      } else {
+        // 参与者需要先加入房间获取 ws_token
+        const joinResult = await webrtcApi.joinRoom(roomId, {
+          password,
+          display_name: displayName,
+        })
+        wsToken = joinResult.ws_token
+        iceServersRef.current = joinResult.ice_servers
+      }
+
+      // 3. 连接信令 WebSocket
+      connectSignaling(wsToken)
+
+    } catch (err) {
+      console.error('初始化会议失败:', err)
+      setError(err instanceof Error ? err.message : '初始化会议失败')
+      setIsConnecting(false)
+    }
+  }
+
+  // 获取本地媒体流
+  const getLocalStream = async () => {
+    try {
+      // 检测可用设备
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const hasVideo = devices.some(d => d.kind === 'videoinput')
+      const hasAudio = devices.some(d => d.kind === 'audioinput')
+
+      const constraints: MediaStreamConstraints = {}
+      if (hasVideo) constraints.video = true
+      if (hasAudio) constraints.audio = true
+
+      if (hasVideo || hasAudio) {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        localStreamRef.current = stream
+        
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream
+        }
+
+        setIsVideoEnabled(hasVideo)
+        setIsMuted(!hasAudio)
+      }
+    } catch (err) {
+      console.warn('获取媒体流失败, 进入观看模式:', err)
+      setIsVideoEnabled(false)
+      setIsMuted(true)
+    }
+  }
+
+  // 连接信令 WebSocket
+  const connectSignaling = (token: string) => {
+    const ws = webrtcApi.createSignalingConnection(roomId, token)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log('✅ 信令连接已建立')
+      setIsConnected(true)
+      setIsConnecting(false)
+    }
+
+    ws.onmessage = (event) => {
+      const message: WSMessage = JSON.parse(event.data)
+      handleSignalingMessage(message)
+    }
+
+    ws.onclose = () => {
+      setIsConnected(false)
+      console.log('🔌 信令连接已断开')
+    }
+
+    ws.onerror = () => {
+      setError('信令连接失败')
+      setIsConnecting(false)
+    }
+  }
+
+  // 处理信令消息
+  const handleSignalingMessage = async (message: WSMessage) => {
+    switch (message.type) {
+      case 'joined':
+        myIdRef.current = message.participant_id
+        setParticipants(message.participants)
+        // 向每个已存在的参与者发起连接
+        for (const p of message.participants) {
+          if (shouldInitiateOffer(myIdRef.current, p.id)) {
+            await createOffer(p.id)
+          }
+        }
+        break
+
+      case 'peer_joined':
+        setParticipants(prev => [...prev, message.participant])
+        // 根据 ID 比较规则决定谁发起 offer
+        if (shouldInitiateOffer(myIdRef.current, message.participant.id)) {
+          await createOffer(message.participant.id)
+        }
+        break
+
+      case 'peer_left':
+        setParticipants(prev => prev.filter(p => p.id !== message.participant_id))
+        closePeerConnection(message.participant_id)
+        break
+
+      case 'offer':
+        await handleOffer(message.from, message.sdp)
+        break
+
+      case 'answer':
+        await handleAnswer(message.from, message.sdp)
+        break
+
+      case 'candidate':
+        await handleCandidate(message.from, message.candidate)
+        break
+
+      case 'room_closed':
+        setError(`房间已关闭: ${message.reason}`)
+        cleanup()
+        break
+
+      case 'error':
+        console.error('服务器错误:', message.code, message.message)
+        break
+    }
+  }
+
+  // 决定谁发起 offer（ID 更小的一方发起）
+  const shouldInitiateOffer = (myId: string, peerId: string): boolean => {
+    return myId < peerId
+  }
+
+  // 创建 PeerConnection
+  const createPeerConnection = (peerId: string): RTCPeerConnection => {
+    const config: RTCConfiguration = {
+      iceServers: iceServersRef.current.map(server => ({
+        urls: server.urls,
+        username: server.username,
+        credential: server.credential,
+      })),
+    }
+
+    const pc = new RTCPeerConnection(config)
+
+    // 添加本地流
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!)
+      })
+    }
+
+    // ICE Candidate 事件
+    pc.onicecandidate = (event) => {
+      if (event.candidate && wsRef.current) {
+        webrtcApi.sendCandidate(wsRef.current, peerId, event.candidate.toJSON())
+      }
+    }
+
+    // 接收远程流
+    pc.ontrack = (event) => {
+      console.log('收到远程流:', peerId)
+      const participant = participants.find(p => p.id === peerId)
+      if (participant && event.streams[0]) {
+        setRemoteStreams(prev => {
+          const existing = prev.find(s => s.peerId === peerId)
+          if (existing) {
+            return prev.map(s => s.peerId === peerId ? { ...s, stream: event.streams[0] } : s)
+          }
+          return [...prev, { peerId, stream: event.streams[0], participant }]
+        })
+      }
+    }
+
+    // 连接状态变化
+    pc.onconnectionstatechange = () => {
+      console.log(`PeerConnection ${peerId} 状态:`, pc.connectionState)
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        closePeerConnection(peerId)
+      }
+    }
+
+    peerConnectionsRef.current[peerId] = pc
+    return pc
+  }
+
+  // 发起 Offer
+  const createOffer = async (peerId: string) => {
+    const pc = createPeerConnection(peerId)
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+
+    if (wsRef.current && offer.sdp) {
+      webrtcApi.sendOffer(wsRef.current, peerId, offer.sdp)
+    }
+  }
+
+  // 处理 Offer
+  const handleOffer = async (peerId: string, sdp: string) => {
+    const pc = createPeerConnection(peerId)
+    await pc.setRemoteDescription({ type: 'offer', sdp })
+
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    if (wsRef.current && answer.sdp) {
+      webrtcApi.sendAnswer(wsRef.current, peerId, answer.sdp)
+    }
+  }
+
+  // 处理 Answer
+  const handleAnswer = async (peerId: string, sdp: string) => {
+    const pc = peerConnectionsRef.current[peerId]
+    if (pc) {
+      await pc.setRemoteDescription({ type: 'answer', sdp })
+    }
+  }
+
+  // 处理 ICE Candidate
+  const handleCandidate = async (peerId: string, candidate: RTCIceCandidateInit) => {
+    const pc = peerConnectionsRef.current[peerId]
+    if (pc) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    }
+  }
+
+  // 关闭单个 PeerConnection
+  const closePeerConnection = (peerId: string) => {
+    const pc = peerConnectionsRef.current[peerId]
+    if (pc) {
+      pc.close()
+      delete peerConnectionsRef.current[peerId]
+    }
+    setRemoteStreams(prev => prev.filter(s => s.peerId !== peerId))
+  }
+
+  // 清理所有资源
+  const cleanup = () => {
+    // 关闭所有 PeerConnection
+    Object.keys(peerConnectionsRef.current).forEach(peerId => {
+      closePeerConnection(peerId)
+    })
+
+    // 关闭 WebSocket
+    if (wsRef.current) {
+      webrtcApi.leaveRoom(wsRef.current)
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
+    // 停止本地流
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop())
+      localStreamRef.current = null
+    }
+
+    // 停止屏幕共享流
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop())
+      screenStreamRef.current = null
+    }
+  }
+
+  // 切换静音
+  const toggleMute = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = isMuted
+      })
+    }
+    setIsMuted(!isMuted)
+  }
+
+  // 切换视频
+  const toggleVideo = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = !isVideoEnabled
+      })
+    }
+    setIsVideoEnabled(!isVideoEnabled)
+  }
+
+  // 切换屏幕共享
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      // 停止屏幕共享，恢复摄像头
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => track.stop())
+        screenStreamRef.current = null
+      }
+      
+      // 恢复摄像头轨道
+      if (localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0]
+        if (videoTrack) {
+          Object.values(peerConnectionsRef.current).forEach(pc => {
+            const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+            if (sender) {
+              sender.replaceTrack(videoTrack)
+            }
+          })
+        }
+      }
+      
+      setIsScreenSharing(false)
+    } else {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' } as MediaTrackConstraints,
+          audio: true,
+        })
+        
+        screenStreamRef.current = screenStream
+        const videoTrack = screenStream.getVideoTracks()[0]
+        
+        // 替换所有 PeerConnection 的视频轨道
+        Object.values(peerConnectionsRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+          if (sender) {
+            sender.replaceTrack(videoTrack)
+          }
+        })
+        
+        // 更新本地预览
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = screenStream
+        }
+        
+        // 监听停止共享
+        videoTrack.onended = () => {
+          toggleScreenShare()
+        }
+        
+        setIsScreenSharing(true)
+      } catch (err) {
+        console.error('屏幕共享失败:', err)
+      }
+    }
+  }
+
+  // 切换全屏
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }, [])
+
+  // 离开会议
+  const leaveMeeting = () => {
+    cleanup()
+    navigate('/chat')
+  }
+
+  // 复制分享链接
+  const copyShareLink = () => {
+    const shareLink = `${window.location.origin}/video?room=${roomId}&pwd=${password}`
+    navigator.clipboard.writeText(shareLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // 格式化时间
+  const formatDuration = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+
+  // 获取头像颜色
   const getAvatarColor = (name: string) => {
     const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500']
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
     return colors[index]
   }
 
-  return (
-    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-gradient-to-br from-neutral via-neutral-focus to-neutral flex flex-col`}>
-      {/* 顶部导航栏 */}
-      <div className={`navbar bg-neutral-content/10 backdrop-blur-xl text-neutral-content transition-all ${showControls ? 'translate-y-0' : '-translate-y-full'}`}>
-        <div className="flex-1">
-          <button 
-            onClick={leaveMeeting}
-            className="btn btn-ghost gap-2"
-          >
-            <ArrowLeft size={20} />
-            离开
-          </button>
-          <div className="flex items-center gap-3 ml-4">
-            <div className="badge badge-success gap-2 badge-lg">
-              <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-              会议进行中
-            </div>
-            <div className="text-sm">
-              <span className="opacity-70">房间:</span> <span className="font-bold">{roomId}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex-none gap-2">
-          <div className="badge badge-ghost badge-lg gap-2">
-            <Users size={20} />
-            {participants.length} 人
-          </div>
-          <button className="btn btn-ghost btn-sm gap-2">
-            <Monitor size={20} />
-            共享屏幕
-          </button>
-          <button onClick={toggleFullscreen} className="btn btn-ghost btn-sm gap-2">
-            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-          </button>
+  // 所有显示的视频流（本地 + 远程）
+  const allStreams = [
+    { id: 'local', isLocal: true, stream: localStreamRef.current, name: displayName },
+    ...remoteStreams.map(rs => ({ id: rs.peerId, isLocal: false, stream: rs.stream, name: rs.participant.name })),
+  ]
+
+  // 错误页面
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center text-white">
+          <h2 className="text-2xl font-bold mb-4">出错了</h2>
+          <p className="text-gray-400 mb-6">{error}</p>
+          <Button onClick={() => navigate('/chat')}>返回</Button>
         </div>
       </div>
+    )
+  }
+
+  // 连接中
+  if (isConnecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center text-white">
+          <div className="animate-spin w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4" />
+          <p>正在加入会议...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-gray-900 flex flex-col`}>
+      {/* 顶部导航栏 */}
+      <header className={`h-14 bg-black/50 backdrop-blur-xl flex items-center justify-between px-4 transition-all ${showControls ? 'translate-y-0' : '-translate-y-full'}`}>
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={leaveMeeting} className="text-white">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            离开
+          </Button>
+          <div className="flex items-center gap-2 text-white">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-sm">房间: {roomId}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={copyShareLink} className="text-white">
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            <span className="ml-2">{copied ? '已复制' : '复制链接'}</span>
+          </Button>
+          <div className="flex items-center gap-1 text-white text-sm">
+            <Users className="h-4 w-4" />
+            <span>{participants.length + 1}</span>
+          </div>
+          <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="text-white">
+            {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+          </Button>
+        </div>
+      </header>
 
       {/* 视频网格区域 */}
       <div className="flex-1 p-4 overflow-auto">
         <div className={`grid gap-4 h-full ${
-          participants.length === 1 ? 'grid-cols-1' :
-          participants.length === 2 ? 'grid-cols-2' :
-          participants.length <= 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-3'
+          allStreams.length === 1 ? 'grid-cols-1' :
+          allStreams.length === 2 ? 'grid-cols-2' :
+          allStreams.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'
         }`}>
-          {participants.map((participant, index) => {
-            const isLocal = participant.id === 'local'
-            const avatarColor = getAvatarColor(participant.userName)
+          {allStreams.map((item) => {
+            const avatarColor = getAvatarColor(item.name)
+            const hasVideo = item.stream && item.stream.getVideoTracks().length > 0 && item.stream.getVideoTracks()[0].enabled
             
             return (
               <div
-                key={participant.id}
-                className="relative bg-neutral-focus rounded-2xl overflow-hidden shadow-2xl group"
+                key={item.id}
+                className="relative bg-gray-800 rounded-2xl overflow-hidden shadow-2xl group min-h-[200px]"
               >
                 {/* 视频或头像 */}
-                {participant.videoEnabled ? (
-            <video
-                    ref={isLocal ? localVideoRef : undefined}
-              autoPlay
-                    muted={isLocal}
-              playsInline
-              className="w-full h-full object-cover"
-            />
+                {hasVideo ? (
+                  <video
+                    ref={item.isLocal ? localVideoRef : undefined}
+                    autoPlay
+                    muted={item.isLocal}
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-neutral to-neutral-focus">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-900">
                     <div className="text-center">
-                      <div className="avatar placeholder mb-4">
-                        <div className={`${avatarColor} text-white rounded-full w-32`}>
-                          <span className="text-5xl font-bold">
-                            {participant.userName[0].toUpperCase()}
-                          </span>
-                        </div>
-            </div>
-                      <p className="text-neutral-content text-xl font-bold">{participant.userName}</p>
-                </div>
-              </div>
-            )}
-
-                {/* 参与者信息叠加层 */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <div className={`${avatarColor} text-white rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4`}>
+                        <span className="text-4xl font-bold">
+                          {item.name[0]?.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-white text-lg font-medium">{item.name}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* 底部信息栏 */}
                 <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-                  <div className="badge badge-neutral gap-2 shadow-lg">
-                    <User size={32} />
-                {participant.userName}
-                    {isLocal && <span className="text-xs">(我)</span>}
+                  <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1 flex items-center gap-2 text-white text-sm">
+                    <User className="h-4 w-4" />
+                    {item.name}
+                    {item.isLocal && <span className="text-xs opacity-70">(我)</span>}
                   </div>
-                  <div className="flex gap-2">
-                    {!participant.audioEnabled && (
-                      <div className="badge badge-error gap-1">
-                        <MicOff size={12} />
-              </div>
+                  <div className="flex gap-1">
+                    {item.isLocal && isMuted && (
+                      <div className="bg-red-500 rounded-full p-1">
+                        <MicOff className="h-3 w-3 text-white" />
+                      </div>
                     )}
-              {!participant.videoEnabled && (
-                      <div className="badge badge-warning gap-1">
-                        <VideoOff size={12} />
+                    {item.isLocal && !isVideoEnabled && (
+                      <div className="bg-yellow-500 rounded-full p-1">
+                        <VideoOff className="h-3 w-3 text-white" />
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* 局部控制按钮 */}
-                {index === 0 && (
-                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="btn btn-sm btn-circle btn-ghost bg-black/30 backdrop-blur-sm">
-                      <Settings size={16} />
-                    </button>
-                </div>
-              )}
-            </div>
+              </div>
             )
           })}
         </div>
       </div>
 
       {/* 底部控制栏 */}
-      <div className={`bg-neutral-content/10 backdrop-blur-xl p-6 transition-all ${showControls ? 'translate-y-0' : 'translate-y-full'}`}>
-        <div className="flex items-center justify-center gap-4">
-          {/* 静音控制 */}
-          <div className="tooltip tooltip-top" data-tip={isMuted ? "取消静音" : "静音"}>
-        <button
+      <footer className={`h-24 bg-black/50 backdrop-blur-xl flex items-center justify-center gap-4 transition-all ${showControls ? 'translate-y-0' : 'translate-y-full'}`}>
+        <Button
+          variant={isMuted ? 'destructive' : 'secondary'}
+          size="lg"
+          className="rounded-full w-14 h-14"
           onClick={toggleMute}
-              className={`btn btn-circle btn-lg ${
-            isMuted 
-                  ? 'btn-error hover:btn-error/80' 
-                  : 'bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white'
-          }`}
         >
-              {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-        </button>
-          </div>
+          {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+        </Button>
 
-          {/* 视频控制 */}
-          <div className="tooltip tooltip-top" data-tip={isVideoEnabled ? "关闭视频" : "开启视频"}>
-        <button
+        <Button
+          variant={!isVideoEnabled ? 'destructive' : 'secondary'}
+          size="lg"
+          className="rounded-full w-14 h-14"
           onClick={toggleVideo}
-              className={`btn btn-circle btn-lg ${
-            !isVideoEnabled 
-                  ? 'btn-error hover:btn-error/80' 
-                  : 'bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white'
-          }`}
         >
-              {isVideoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
-        </button>
-          </div>
+          {isVideoEnabled ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
+        </Button>
 
-          {/* 挂断 */}
-          <div className="tooltip tooltip-top" data-tip="离开会议">
-        <button
+        <Button
+          variant="destructive"
+          size="lg"
+          className="rounded-full w-14 h-14"
           onClick={leaveMeeting}
-              className="btn btn-circle btn-lg btn-error hover:btn-error/80"
-            >
-              <PhoneOff size={24} />
-            </button>
-          </div>
-
-          {/* 共享屏幕 */}
-          <div className="tooltip tooltip-top" data-tip="共享屏幕">
-            <button
-              className="btn btn-circle btn-lg bg-neutral-content/20 hover:bg-neutral-content/30 border-0 text-white"
         >
-              <Monitor size={24} />
-        </button>
-          </div>
-        </div>
+          <PhoneOff className="h-6 w-6" />
+        </Button>
+
+        <Button
+          variant={isScreenSharing ? 'default' : 'secondary'}
+          size="lg"
+          className="rounded-full w-14 h-14"
+          onClick={toggleScreenShare}
+        >
+          <Monitor className="h-6 w-6" />
+        </Button>
 
         {/* 会议时长 */}
-        <div className="text-center mt-4">
-          <div className="badge badge-ghost badge-lg text-neutral-content">
-            <Clock size={16} className="mr-2" />
-            00:15:42
-          </div>
+        <div className="absolute right-4 flex items-center gap-2 text-white text-sm">
+          <Clock className="h-4 w-4" />
+          {formatDuration(meetingDuration)}
         </div>
-      </div>
+      </footer>
     </div>
   )
 }

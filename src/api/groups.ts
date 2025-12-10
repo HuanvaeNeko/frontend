@@ -186,7 +186,10 @@ export const groupsApi = {
     }
 
     const result = await response.json()
-    return result.data || []
+    console.log('📋 群聊列表响应:', result)
+    // 确保返回数组
+    const groups = result.data?.groups || result.data || result.groups || result || []
+    return Array.isArray(groups) ? groups : []
   },
 
   /**
@@ -374,7 +377,14 @@ export const groupsApi = {
     }
 
     const result = await response.json()
-    return result.data
+    console.log('👥 成员列表响应:', result)
+    // 确保返回正确格式
+    const data = result.data || result || {}
+    const members = data.members || []
+    return {
+      members: Array.isArray(members) ? members : [],
+      total: data.total || members.length || 0
+    }
   },
 
   /**
@@ -805,7 +815,10 @@ export const groupsApi = {
     }
 
     const result = await response.json()
-    return result.data?.notices || []
+    console.log('📋 公告列表响应:', result)
+    // 确保返回数组
+    const notices = result.data?.notices || result.data || result.notices || result || []
+    return Array.isArray(notices) ? notices : []
   },
 
   /**

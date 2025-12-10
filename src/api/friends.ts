@@ -119,7 +119,10 @@ export const friendsApi = {
     }
 
     const data = await response.json()
-    return data.friends || data || []
+    console.log('📱 好友列表响应:', data)
+    // 确保返回数组
+    const friends = data.friends || data || []
+    return Array.isArray(friends) ? friends : []
   },
 
   /**
@@ -245,7 +248,10 @@ export const friendsApi = {
     }
 
     const data = await response.json()
-    return data.requests || data || []
+    console.log('📤 已发送请求响应:', data)
+    // 确保返回数组
+    const requests = data.requests || data || []
+    return Array.isArray(requests) ? requests : []
   },
 
   /**
@@ -267,7 +273,10 @@ export const friendsApi = {
     }
 
     const data = await response.json()
-    return data.requests || data || []
+    console.log('📬 待处理请求响应:', data)
+    // 确保返回数组
+    const requests = data.requests || data || []
+    return Array.isArray(requests) ? requests : []
   },
 
   /**
