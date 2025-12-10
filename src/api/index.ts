@@ -51,8 +51,31 @@ export type {
   UploadRequestPayload,
   UploadRequestResponse,
   UploadDirectResponse,
+  ConfirmUploadResponse,
+  PartUrlResponse,
   PresignedUrlResponse,
   FileItem,
   FileListResponse,
 } from './storage'
+
+// WebRTC API
+export { webrtcApi } from './webrtc'
+export type {
+  ICEServer,
+  ICEServersResponse,
+  CreateRoomRequest,
+  CreateRoomResponse,
+  JoinRoomRequest,
+  JoinRoomResponse,
+  Participant,
+  WSJoinedMessage,
+  WSPeerJoinedMessage,
+  WSPeerLeftMessage,
+  WSOfferMessage,
+  WSAnswerMessage,
+  WSCandidateMessage,
+  WSRoomClosedMessage,
+  WSErrorMessage,
+  WSMessage,
+} from './webrtc'
 

@@ -18,7 +18,7 @@ export const getApiBaseUrl = (): string => {
   }
 
   // 开发环境默认地址
-  return 'http://192.168.9.11:8080'
+  return 'http://192.168.9.11'
 }
 
 /**

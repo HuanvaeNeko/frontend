@@ -32,12 +32,12 @@ export default function Home() {
   }
 
   const features = [
-    { icon: Bot, title: 'AI 聊天', description: '与智能助手进行对话', path: '/ai-chat', color: 'blue' },
-    { icon: MessageCircle, title: '群聊', description: '实时群组协作交流', path: '/group-chat', color: 'purple' },
-    { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting', color: 'red' },
-    { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends', color: 'green' },
-    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', path: '/profile', color: 'orange' },
-    { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings', color: 'cyan' },
+    { icon: Bot, title: 'AI 聊天', description: '与智能助手进行对话', path: '/ai-chat', bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
+    { icon: MessageCircle, title: '群聊', description: '实时群组协作交流', path: '/group-chat', bgColor: 'bg-purple-100', iconColor: 'text-purple-600' },
+    { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting', bgColor: 'bg-red-100', iconColor: 'text-red-600' },
+    { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends', bgColor: 'bg-green-100', iconColor: 'text-green-600' },
+    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', path: '/profile', bgColor: 'bg-orange-100', iconColor: 'text-orange-600' },
+    { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings', bgColor: 'bg-cyan-100', iconColor: 'text-cyan-600' },
   ]
 
   return (
@@ -121,8 +121,8 @@ export default function Home() {
                 onClick={() => navigate(feature.path)}
               >
               <CardHeader>
-                <div className={`w-16 h-16 rounded-2xl bg-${feature.color}-100 flex items-center justify-center mb-4`}>
-                  <feature.icon size={32} className={`text-${feature.color}-600`} />
+                <div className={`w-16 h-16 rounded-2xl ${feature.bgColor} flex items-center justify-center mb-4`}>
+                  <feature.icon size={32} className={feature.iconColor} />
                 </div>
                 <CardTitle>{feature.title}</CardTitle>
                 <CardDescription>{feature.description}</CardDescription>

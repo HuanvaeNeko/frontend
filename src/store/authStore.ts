@@ -18,7 +18,7 @@ export const useAuthStore = create<AuthStore>()(
       login: async (credentials: LoginRequest) => {
         try {
           const requestBody = {
-            user_id: credentials.user_id,  // 使用下划线，不是连字符
+            user_id: credentials.user_id,
             password: credentials.password,
             device_info: credentials.device_info || navigator.userAgent,
             mac_address: credentials.mac_address || 'unknown',
@@ -27,15 +27,23 @@ export const useAuthStore = create<AuthStore>()(
           console.log('🔐 登录请求 URL:', `${AUTH_BASE_URL}/login`)
           console.log('🔐 登录请求数据:', { ...requestBody, password: '***' })
 
-          const response = await fetch(`${AUTH_BASE_URL}/login`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-          })
+          // 添加超时控制
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时
 
-          console.log('🔐 登录响应状态:', response.status, response.statusText)
+          try {
+            const response = await fetch(`${AUTH_BASE_URL}/login`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+              signal: controller.signal,
+            })
+
+            clearTimeout(timeoutId)
+
+            console.log('🔐 登录响应状态:', response.status, response.statusText)
 
           if (!response.ok) {
             const errorText = await response.text()
@@ -66,6 +74,13 @@ export const useAuthStore = create<AuthStore>()(
               email: '',
             },
           })
+          } catch (fetchError) {
+            clearTimeout(timeoutId)
+            if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+              throw new Error('请求超时，请检查网络连接或后端服务是否正常')
+            }
+            throw fetchError
+          }
         } catch (error) {
           console.error('❌ 登录错误:', error)
           throw error
@@ -75,7 +90,7 @@ export const useAuthStore = create<AuthStore>()(
       register: async (data: RegisterRequest) => {
         try {
           const requestBody = {
-            user_id: data.user_id,  // 使用下划线，不是连字符
+            user_id: data.user_id,
             nickname: data.nickname,
             email: data.email,
             password: data.password,
@@ -84,15 +99,23 @@ export const useAuthStore = create<AuthStore>()(
           console.log('📝 注册请求 URL:', `${AUTH_BASE_URL}/register`)
           console.log('📝 注册请求数据:', { ...requestBody, password: '***' })
 
-          const response = await fetch(`${AUTH_BASE_URL}/register`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-          })
+          // 添加超时控制
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000)
 
-          console.log('📝 注册响应状态:', response.status, response.statusText)
+          try {
+            const response = await fetch(`${AUTH_BASE_URL}/register`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+              signal: controller.signal,
+            })
+
+            clearTimeout(timeoutId)
+
+            console.log('📝 注册响应状态:', response.status, response.statusText)
 
           if (!response.ok) {
             const errorText = await response.text()
@@ -116,6 +139,13 @@ export const useAuthStore = create<AuthStore>()(
             user_id: data.user_id,
             password: data.password,
           })
+          } catch (fetchError) {
+            clearTimeout(timeoutId)
+            if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+              throw new Error('请求超时，请检查网络连接或后端服务是否正常')
+            }
+            throw fetchError
+          }
         } catch (error) {
           console.error('❌ 注册错误:', error)
           throw error

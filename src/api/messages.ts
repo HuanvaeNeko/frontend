@@ -128,11 +128,12 @@ export const messagesApi = {
 
   /**
    * 获取消息列表
-   * GET /api/messages?friend_id=xxx&before_uuid=xxx&limit=50
+   * GET /api/messages?friend_id=xxx&before_time=xxx&limit=50
+   * 使用 before_time 时间戳分页（性能优化）
    */
   getMessages: async (
     friendId: string,
-    beforeUuid?: string,
+    beforeTime?: string,
     limit: number = 50
   ): Promise<GetMessagesResponse> => {
     console.log('📥 获取消息列表:', friendId)
@@ -142,8 +143,8 @@ export const messagesApi = {
       limit: limit.toString(),
     })
     
-    if (beforeUuid) {
-      params.set('before_uuid', beforeUuid)
+    if (beforeTime) {
+      params.set('before_time', beforeTime)
     }
 
     const response = await fetchWithAuth(`${MESSAGES_BASE_URL}?${params}`, {
@@ -214,6 +215,7 @@ export const messagesApi = {
 
   /**
    * 加载更多历史消息（分页）
+   * 使用时间戳分页，性能更优
    */
   loadMoreMessages: async (
     friendId: string,
@@ -224,8 +226,8 @@ export const messagesApi = {
       return messagesApi.getMessages(friendId, undefined, limit)
     }
 
-    const oldestUuid = messages[messages.length - 1].message_uuid
-    return messagesApi.getMessages(friendId, oldestUuid, limit)
+    const oldestTime = messages[messages.length - 1].send_time
+    return messagesApi.getMessages(friendId, oldestTime, limit)
   },
 }
 

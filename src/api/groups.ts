@@ -190,6 +190,27 @@ export const groupsApi = {
   },
 
   /**
+   * 搜索群聊
+   * GET /api/groups/search?query=xxx
+   */
+  searchGroups: async (query: string): Promise<Group[]> => {
+    console.log('🔍 搜索群聊:', query)
+    const params = new URLSearchParams({ query })
+    
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/search?${params}`, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '搜索群聊失败' }))
+      throw new Error(error.error || '搜索群聊失败')
+    }
+
+    const result = await response.json()
+    return result.data || []
+  },
+
+  /**
    * 获取群聊详情
    * GET /api/groups/{group_id}
    */
@@ -229,6 +250,71 @@ export const groupsApi = {
     }
 
     console.log('✅ 群聊信息更新成功')
+  },
+
+  /**
+   * 上传群头像
+   * POST /api/groups/{group_id}/avatar
+   * 请求格式: multipart/form-data
+   * 支持格式: jpg, jpeg, png, gif, webp
+   * 大小限制: 最大 10MB
+   */
+  uploadGroupAvatar: async (groupId: string, file: File): Promise<{ avatar_url: string }> => {
+    console.log('📸 上传群头像:', groupId, file.name)
+    
+    // 验证文件大小
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxSize) {
+      throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
+    }
+    
+    // 验证文件类型
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
+    }
+    
+    const formData = new FormData()
+    formData.append('avatar', file)
+
+    const authStore = useAuthStore.getState()
+    const accessToken = authStore.accessToken
+
+    const response = await fetch(`${GROUPS_BASE_URL}/${groupId}/avatar`, {
+      method: 'POST',
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '上传群头像失败' }))
+      throw new Error(error.error || '上传群头像失败')
+    }
+
+    const result = await response.json()
+    console.log('✅ 群头像上传成功:', result.data.avatar_url)
+    return result.data
+  },
+
+  /**
+   * 修改我的群内昵称
+   * PUT /api/groups/{group_id}/nickname
+   */
+  updateGroupNickname: async (groupId: string, nickname: string | null): Promise<void> => {
+    console.log('✏️ 修改群内昵称:', groupId, nickname)
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/nickname`, {
+      method: 'PUT',
+      body: JSON.stringify({ nickname }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '修改群内昵称失败' }))
+      throw new Error(error.error || '修改群内昵称失败')
+    }
+
+    console.log('✅ 群内昵称修改成功')
   },
 
   /**

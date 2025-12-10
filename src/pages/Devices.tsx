@@ -3,6 +3,7 @@ import { ArrowLeft, Laptop, Smartphone, Monitor, Clock, MapPin } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
+
 export default function Devices() {
   const navigate = useNavigate()
 

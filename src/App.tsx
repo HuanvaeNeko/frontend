@@ -2,9 +2,11 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import ProtectedRoute from './components/ProtectedRoute'
+import { Toaster } from './components/ui/toaster'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ChatPage from './pages/ChatPage'
 import AiChat from './pages/AiChat'
 import GroupChat from './pages/GroupChat'
 import VideoMeeting from './pages/VideoMeeting'
@@ -28,83 +30,94 @@ function App() {
   }, [checkTokenExpiry, refreshAccessToken, refreshToken])
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/ai-chat"
-        element={
-          <ProtectedRoute>
-            <AiChat />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/group-chat"
-        element={
-          <ProtectedRoute>
-            <GroupChat />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/video-meeting"
-        element={
-          <ProtectedRoute>
-            <VideoMeeting />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <Settings />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/devices"
-        element={
-          <ProtectedRoute>
-            <Devices />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/friends"
-        element={
-          <ProtectedRoute>
-            <Friends />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <Profile />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/home"
-        element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <ChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <ChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai-chat"
+          element={
+            <ProtectedRoute>
+              <AiChat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/group-chat"
+          element={
+            <ProtectedRoute>
+              <GroupChat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/video-meeting"
+          element={
+            <ProtectedRoute>
+              <VideoMeeting />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/devices"
+          element={
+            <ProtectedRoute>
+              <Devices />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/friends"
+          element={
+            <ProtectedRoute>
+              <Friends />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <Toaster />
+    </>
   )
 }
 

@@ -83,13 +83,12 @@ export interface UploadRequestPayload {
 }
 
 export interface UploadRequestResponse {
-  mode: 'one_time_token' | 'presigned_url'
+  mode: 'multipart'
   preview_support: 'inline_preview' | 'download_only'
-  upload_token: string | null
-  upload_url: string | null
-  expires_in: number | null
-  presigned_url: string | null
   multipart_upload_id: string | null
+  expires_in: number | null
+  chunk_size: number | null
+  total_chunks: number | null
   file_key: string
   max_file_size: number
   instant_upload: boolean
@@ -108,6 +107,23 @@ export interface UploadDirectResponse {
   // 好友文件上传时返回
   message_uuid?: string
   message_send_time?: string
+}
+
+export interface ConfirmUploadResponse {
+  file_url: string
+  file_key: string
+  file_size: number
+  content_type: string
+  preview_support: string
+  // 好友文件上传时返回
+  message_uuid?: string
+  message_send_time?: string
+}
+
+export interface PartUrlResponse {
+  part_url: string
+  part_number: number
+  expires_in: number
 }
 
 export interface PresignedUrlResponse {
@@ -148,17 +164,21 @@ const SAMPLE_SIZE = 10 * 1024 * 1024 // 10MB
  * 计算文件的采样 SHA-256 哈希
  * - 小文件 (< 30MB): 完整哈希
  * - 大文件 (>= 30MB): 采样哈希（元信息 + 开头/中间/结尾各10MB）
+ * 
+ * 注意: 只包含文件大小和内容,不包含文件名等元信息,确保相同内容产生相同哈希
  */
 export async function calculateFileHash(file: File): Promise<string> {
-  // 文件元信息
-  const metadata = `${file.name}|${file.size}|${file.lastModified}|${file.type}`
-  const metadataBuffer = new TextEncoder().encode(metadata)
+  // 只包含文件大小信息,不包含文件名等元信息
+  const sizeBuffer = new TextEncoder().encode(`|size:${file.size}|`)
   
-  let dataToHash: ArrayBuffer | Uint8Array
+  let dataToHash: Uint8Array
   
   if (file.size <= SAMPLE_SIZE * 3) {
     // 小文件：计算完整哈希
-    dataToHash = await file.arrayBuffer()
+    const fileBuffer = new Uint8Array(await file.arrayBuffer())
+    dataToHash = new Uint8Array(sizeBuffer.length + fileBuffer.length)
+    dataToHash.set(sizeBuffer, 0)
+    dataToHash.set(fileBuffer, sizeBuffer.length)
   } else {
     // 大文件：采样哈希策略
     const chunks: Uint8Array[] = []
@@ -177,25 +197,24 @@ export async function calculateFileHash(file: File): Promise<string> {
     chunks.push(new Uint8Array(await endBlob.arrayBuffer()))
     
     // 合并所有数据
-    const totalLength = metadataBuffer.length + chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const combinedData = new Uint8Array(totalLength)
+    const totalLength = sizeBuffer.length + chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    dataToHash = new Uint8Array(totalLength)
     let offset = 0
     
-    combinedData.set(metadataBuffer, offset)
-    offset += metadataBuffer.length
+    dataToHash.set(sizeBuffer, offset)
+    offset += sizeBuffer.length
     
     for (const chunk of chunks) {
-      combinedData.set(chunk, offset)
+      dataToHash.set(chunk, offset)
       offset += chunk.length
     }
-    
-    dataToHash = combinedData
   }
   
-  // 计算 SHA-256 哈希 - 确保类型正确
-  const bufferToHash = dataToHash instanceof Uint8Array 
-    ? dataToHash.buffer.slice(dataToHash.byteOffset, dataToHash.byteOffset + dataToHash.byteLength) as ArrayBuffer
-    : dataToHash as ArrayBuffer
+  // 计算 SHA-256 哈希
+  const bufferToHash = dataToHash.buffer.slice(
+    dataToHash.byteOffset, 
+    dataToHash.byteOffset + dataToHash.byteLength
+  ) as ArrayBuffer
   const hashBuffer = await crypto.subtle.digest('SHA-256', bufferToHash)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
@@ -254,39 +273,140 @@ export const storageApi = {
   },
 
   /**
-   * 直接上传文件
-   * POST /api/storage/upload/direct?token={token}
+   * 获取分片上传 URL
+   * GET /api/storage/multipart/part_url?file_key=xxx&upload_id=xxx&part_number=1
    */
-  uploadDirect: async (uploadUrl: string, file: File): Promise<UploadDirectResponse> => {
-    console.log('📤 上传文件:', file.name)
-    
-    const formData = new FormData()
-    formData.append('file', file)
+  getPartUrl: async (
+    fileKey: string,
+    uploadId: string,
+    partNumber: number
+  ): Promise<PartUrlResponse> => {
+    const params = new URLSearchParams({
+      file_key: fileKey,
+      upload_id: uploadId,
+      part_number: partNumber.toString(),
+    })
 
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
+    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/multipart/part_url?${params}`, {
+      method: 'GET',
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '上传文件失败' }))
-      throw new Error(error.error || '上传文件失败')
+      const error = await response.json().catch(() => ({ error: '获取分片URL失败' }))
+      throw new Error(error.error || '获取分片URL失败')
+    }
+
+    return await response.json()
+  },
+
+  /**
+   * 上传单个分片
+   */
+  uploadChunk: async (url: string, chunk: Blob): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+        } else {
+          reject(new Error(`分片上传失败: HTTP ${xhr.status}`))
+        }
+      }
+      
+      xhr.onerror = () => reject(new Error('网络错误'))
+      
+      xhr.open('PUT', url)
+      xhr.send(chunk)
+    })
+  },
+
+  /**
+   * 分片上传文件（带进度回调）
+   */
+  uploadWithMultipart: async (
+    file: File,
+    uploadInfo: UploadRequestResponse,
+    onProgress?: (progress: {
+      percent: number
+      loaded: number
+      total: number
+      currentChunk: number
+      totalChunks: number
+    }) => void
+  ): Promise<void> => {
+    const chunkSize = uploadInfo.chunk_size || (30 * 1024 * 1024) // 默认30MB
+    const totalChunks = uploadInfo.total_chunks || Math.ceil(file.size / chunkSize)
+    
+    let totalUploaded = 0
+    
+    for (let i = 0; i < totalChunks; i++) {
+      // 1. 获取分片预签名URL
+      const { part_url } = await storageApi.getPartUrl(
+        uploadInfo.file_key,
+        uploadInfo.multipart_upload_id!,
+        i + 1
+      )
+      
+      // 2. 切割分片
+      const start = i * chunkSize
+      const end = Math.min(start + chunkSize, file.size)
+      const chunk = file.slice(start, end)
+      
+      // 3. 上传分片
+      await storageApi.uploadChunk(part_url, chunk)
+      
+      // 4. 更新进度
+      totalUploaded += chunk.size
+      if (onProgress) {
+        onProgress({
+          percent: (totalUploaded / file.size) * 100,
+          loaded: totalUploaded,
+          total: file.size,
+          currentChunk: i + 1,
+          totalChunks,
+        })
+      }
+    }
+  },
+
+  /**
+   * 确认上传完成（预签名上传专用）
+   * POST /api/storage/upload/confirm
+   */
+  confirmUpload: async (fileKey: string): Promise<ConfirmUploadResponse> => {
+    console.log('✅ 确认上传完成:', fileKey)
+    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/upload/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ file_key: fileKey }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '确认上传失败' }))
+      throw new Error(error.error || '确认上传失败')
     }
 
     const data = await response.json()
-    console.log('✅ 文件上传成功:', data.file_url)
+    console.log('✅ 上传确认成功')
     return data
   },
 
   /**
-   * 完整的文件上传流程
-   * 包含哈希计算、秒传检测、上传
+   * 完整的文件上传流程（分片上传 + confirm确认）
+   * 包含哈希计算、秒传检测、分片上传、确认
    */
   uploadFile: async (
     file: File,
     fileType: FileType,
     storageLocation: StorageLocation,
-    relatedId?: string
+    relatedId?: string,
+    onProgress?: (progress: {
+      percent: number
+      loaded: number
+      total: number
+      currentChunk: number
+      totalChunks: number
+    }) => void
   ): Promise<{ fileUrl: string; isInstant: boolean; messageUuid?: string }> => {
     console.log('🔄 开始上传流程:', file.name)
     
@@ -316,17 +436,20 @@ export const storageApi = {
       }
     }
     
-    // 4. 上传文件
-    if (uploadInfo.mode === 'one_time_token' && uploadInfo.upload_url) {
-      const result = await storageApi.uploadDirect(uploadInfo.upload_url, file)
-      return {
-        fileUrl: result.file_url,
-        isInstant: false,
-        messageUuid: result.message_uuid,
-      }
-    }
+    // 4. 分片上传
+    console.log(`📤 开始分片上传: ${uploadInfo.total_chunks} 个分片`)
+    await storageApi.uploadWithMultipart(file, uploadInfo, onProgress)
     
-    throw new Error('不支持的上传模式')
+    // 5. 确认上传完成
+    console.log('✅ 确认上传...')
+    const confirmResult = await storageApi.confirmUpload(uploadInfo.file_key)
+    
+    console.log('✅ 上传成功!')
+    return {
+      fileUrl: confirmResult.file_url,
+      isInstant: false,
+      messageUuid: confirmResult.message_uuid,
+    }
   },
 
   /**
