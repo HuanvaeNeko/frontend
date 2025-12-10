@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Video, Phone, Users, Link as LinkIcon, Copy, Loader2 } from 'lucide-react'
+import { Video, Phone, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,18 +36,18 @@ export default function WebRTCPanel() {
     setCreating(true)
     try {
       const response = await webrtcApi.createRoom({
-        room_name: roomName || undefined,
+        name: roomName || undefined,
         password: roomPassword || undefined,
         max_participants: maxParticipants,
-        duration_minutes: durationMinutes,
+        expires_minutes: durationMinutes,
       })
 
-      const shareLink = `${window.location.origin}/video?room=${response.room_id}&pwd=${roomPassword}`
+      const shareLink = `${window.location.origin}/video?room=${response.room_id}&pwd=${roomPassword || ''}`
       
       setCurrentRoom({
         roomId: response.room_id,
         password: roomPassword || '无',
-        shareLink,
+        shareLink: shareLink,
       })
 
       toast({
@@ -80,9 +80,9 @@ export default function WebRTCPanel() {
 
     setJoining(true)
     try {
-      const response = await webrtcApi.joinRoom(joinRoomId, {
-        password: joinPassword || undefined,
-        nickname: joinNickname || undefined,
+      await webrtcApi.joinRoom(joinRoomId, {
+        password: joinPassword || '',
+        display_name: joinNickname || 'Anonymous',
       })
 
       toast({
@@ -91,7 +91,7 @@ export default function WebRTCPanel() {
       })
       
       setShowJoinDialog(false)
-      // TODO: 跳转到视频通话页面，使用 response.ws_token
+      // TODO: 跳转到视频通话页面
     } catch (error) {
       toast({
         title: '加入失败',

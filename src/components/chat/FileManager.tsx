@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Upload, File, Image as ImageIcon, Video as VideoIcon, Loader2 } from 'lucide-react'
+import { Upload, File, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 

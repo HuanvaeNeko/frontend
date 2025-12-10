@@ -3,8 +3,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useFriendsStore } from '@/store/friendsStore'
 import { useChatStore } from '@/store/chatStore'
-import { formatDistanceToNow } from 'date-fns'
-import { zhCN } from 'date-fns/locale'
 
 interface FriendsListProps {
   searchQuery: string
@@ -14,7 +12,7 @@ type SubTab = 'list' | 'requests' | 'sent'
 
 export default function FriendsList({ searchQuery }: FriendsListProps) {
   const [subTab, setSubTab] = useState<SubTab>('list')
-  const { friends, friendRequests } = useFriendsStore()
+  const { friends, pendingRequests } = useFriendsStore()
   const { setSelectedConversation } = useChatStore()
 
   const filteredFriends = friends.filter((friend) =>
@@ -56,9 +54,9 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
           }`}
         >
           新朋友
-          {friendRequests.length > 0 && (
+          {pendingRequests.length > 0 && (
             <span className="absolute top-2 right-1/4 bg-red-500 text-white text-xs rounded-full h-5 min-w-[20px] flex items-center justify-center px-1">
-              {friendRequests.length}
+              {pendingRequests.length}
             </span>
           )}
         </button>
@@ -123,14 +121,14 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
       {/* 新朋友请求 */}
       {subTab === 'requests' && (
         <div className="flex-1 overflow-y-auto">
-          {friendRequests.length === 0 ? (
+          {pendingRequests.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-gray-400">
               <p className="text-sm">暂无好友请求</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {friendRequests.map((request) => (
-                <div key={request.user_id} className="p-4">
+              {pendingRequests.map((request) => (
+                <div key={request.applicant_user_id} className="p-4">
                   <div className="flex items-start gap-3">
                     <Avatar className="h-12 w-12">
                       <AvatarFallback className="bg-gradient-to-br from-green-400 to-blue-400 text-white">
@@ -139,7 +137,7 @@ export default function FriendsList({ searchQuery }: FriendsListProps) {
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-800">{request.nickname}</h3>
-                      <p className="text-sm text-gray-500 mb-2">{request.message || '请求添加你为好友'}</p>
+                      <p className="text-sm text-gray-500 mb-2">{request.reason || '请求添加你为好友'}</p>
                       <div className="flex gap-2">
                         <Button size="sm" className="flex-1">
                           同意

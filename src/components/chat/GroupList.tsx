@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Users, Plus, Loader2, Hash } from 'lucide-react'
+import { useState } from 'react'
+import { Users, Plus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
@@ -30,8 +30,11 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const [joinMode, setJoinMode] = useState<'open' | 'approval_required' | 'invite_only'>('open')
   const [submitting, setSubmitting] = useState(false)
 
+  // 确保 myGroups 是数组
+  const groupsArray = Array.isArray(myGroups) ? myGroups : []
+
   // 筛选群聊
-  const filteredGroups = myGroups.filter((group) =>
+  const filteredGroups = groupsArray.filter((group) =>
     group.group_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     group.group_id.toLowerCase().includes(searchQuery.toLowerCase())
   )

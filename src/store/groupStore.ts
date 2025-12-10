@@ -23,7 +23,7 @@ interface GroupState {
   loadGroupMembers: (groupId: string) => Promise<void>
   loadGroupNotices: (groupId: string) => Promise<void>
   selectGroup: (group: MyGroup | null) => void
-  createGroup: (name: string, description?: string, joinMode?: string) => Promise<Group>
+  createGroup: (name: string, description?: string, joinMode?: string) => Promise<{ group_id: string; group_name: string; created_at: string }>
   searchGroups: (query: string) => Promise<Group[]>
   updateGroup: (groupId: string, updates: Partial<Group>) => Promise<void>
   clearError: () => void
@@ -42,7 +42,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     try {
       const response = await groupsApi.getMyGroups()
       set({ 
-        myGroups: response.groups,
+        myGroups: response,
         isLoading: false 
       })
     } catch (error) {
@@ -55,9 +55,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   loadGroupMembers: async (groupId: string) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await groupsApi.getGroupMembers(groupId)
+      const data = await groupsApi.getMembers(groupId)
       set({ 
-        currentGroupMembers: response.members,
+        currentGroupMembers: data.members,
         isLoading: false 
       })
     } catch (error) {
@@ -72,7 +72,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     try {
       const response = await groupsApi.getNotices(groupId)
       set({ 
-        currentGroupNotices: response.notices,
+        currentGroupNotices: response,
         isLoading: false 
       })
     } catch (error) {
@@ -134,7 +134,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       await groupsApi.updateGroup(groupId, {
         group_name: updates.group_name,
         group_description: updates.group_description,
-        join_mode: updates.join_mode
+        group_avatar_url: updates.group_avatar_url,
       })
       // 重新加载群列表
       await get().loadMyGroups()

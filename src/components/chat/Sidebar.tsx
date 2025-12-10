@@ -34,7 +34,7 @@ export default function Sidebar() {
         <DropdownMenu.Trigger asChild>
           <button className="relative group mb-4">
             <Avatar className="h-12 w-12 border-2 border-white/20 group-hover:border-white/40 transition-all cursor-pointer">
-              <AvatarImage src={user?.avatar} />
+              <AvatarImage src={user?.avatar_url} />
               <AvatarFallback className="bg-white/20 text-white">
                 {user?.nickname?.[0]?.toUpperCase() || 'U'}
               </AvatarFallback>

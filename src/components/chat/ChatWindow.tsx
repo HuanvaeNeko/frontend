@@ -120,18 +120,43 @@ export default function ChatWindow() {
 
     try {
       if (selectedConversation.type === 'friend') {
-        const message = await messagesApi.sendMessage({
+        const response = await messagesApi.sendMessage({
           receiver_id: selectedConversation.id,
           message_content: content,
           message_type: 'text',
         })
+        // 构造完整的 Message 对象
+        const message: Message = {
+          message_uuid: response.message_uuid,
+          sender_id: user?.user_id || '',
+          receiver_id: selectedConversation.id,
+          message_content: content,
+          message_type: 'text',
+          file_uuid: null,
+          file_url: null,
+          file_size: null,
+          send_time: response.send_time,
+        }
         addMessage(message)
       } else if (selectedConversation.type === 'group') {
-        const message = await groupMessagesApi.sendMessage(selectedConversation.id, {
+        const response = await groupMessagesApi.sendMessage({
+          group_id: selectedConversation.id,
           message_content: content,
           message_type: 'text',
         })
-        addMessage(message as unknown as Message)
+        // 构造完整的 GroupMessage 对象
+        const message: Message = {
+          message_uuid: response.message_uuid,
+          sender_id: user?.user_id || '',
+          receiver_id: selectedConversation.id,
+          message_content: content,
+          message_type: 'text',
+          file_uuid: null,
+          file_url: null,
+          file_size: null,
+          send_time: response.send_time,
+        }
+        addMessage(message)
       }
     } catch (error) {
       console.error('发送消息失败:', error)

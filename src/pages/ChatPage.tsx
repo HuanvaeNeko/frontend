@@ -11,13 +11,11 @@ import {
   Search,
   Plus,
   Settings,
-  LogOut,
-  Phone
+  LogOut
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
 import { useGroupStore } from '../store/groupStore'
@@ -37,7 +35,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { user, logout, accessToken } = useAuthStore()
   const { profile, loadProfile } = useProfileStore()
-  const { activeTab, setActiveTab, wsConnected } = useChatStore()
+  const { activeTab, setActiveTab } = useChatStore()
   const { loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
   const { connect: connectWS, disconnect: disconnectWS, connected } = useWSStore()
@@ -73,9 +71,7 @@ export default function ChatPage() {
     // 处理新消息
     wsStore.registerHandler('new_message', (data: unknown) => {
       console.log('收到新消息:', data)
-      const { addMessage, updateConversation } = useChatStore.getState()
       // TODO: 解析消息并添加到聊天窗口
-      // addMessage(data as Message)
     })
 
     // 处理好友请求
@@ -242,7 +238,10 @@ export default function ChatPage() {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <FriendList subTab={subTab} searchQuery={searchQuery} />
+                  <FriendList 
+                    subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} 
+                    searchQuery={searchQuery} 
+                  />
                 </motion.div>
               )}
               
@@ -254,7 +253,10 @@ export default function ChatPage() {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <GroupList subTab={subTab} searchQuery={searchQuery} />
+                  <GroupList 
+                    subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} 
+                    searchQuery={searchQuery} 
+                  />
                 </motion.div>
               )}
               
@@ -266,7 +268,9 @@ export default function ChatPage() {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <FileManager subTab={subTab} />
+                  <FileManager 
+                    subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} 
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

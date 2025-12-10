@@ -7,10 +7,12 @@ export type ToastProps = {
   description?: string
   variant?: 'default' | 'destructive'
   action?: ToastActionElement
+  onOpenChange?: (open: boolean) => void
 }
 
 type Toast = ToastProps & {
   id: string
+  open?: boolean
 }
 
 const TOAST_LIMIT = 5

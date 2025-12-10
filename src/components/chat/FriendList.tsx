@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { UserPlus, Check, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -32,8 +32,13 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // 确保 friends 是数组
+  const friendsArray = Array.isArray(friends) ? friends : []
+  const pendingArray = Array.isArray(pendingRequests) ? pendingRequests : []
+  const sentArray = Array.isArray(sentRequests) ? sentRequests : []
+
   // 筛选好友
-  const filteredFriends = friends.filter((friend) =>
+  const filteredFriends = friendsArray.filter((friend) =>
     friend.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
     friend.user_id.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -239,12 +244,12 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           <div className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : pendingRequests.length === 0 ? (
+        ) : pendingArray.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <p className="text-sm">暂无新的好友请求</p>
           </div>
         ) : (
-          pendingRequests.map((request) => (
+          pendingArray.map((request) => (
             <div
               key={request.applicant_user_id}
               className="p-4 border-b hover:bg-accent transition-colors"
@@ -305,12 +310,12 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           <div className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : sentRequests.length === 0 ? (
+        ) : sentArray.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <p className="text-sm">暂无已发送的请求</p>
           </div>
         ) : (
-          sentRequests.map((request) => (
+          sentArray.map((request) => (
             <div
               key={request.target_user_id}
               className="p-4 border-b"
