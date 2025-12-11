@@ -445,9 +445,9 @@ export const storageApi = {
     const confirmResult = await storageApi.confirmUpload(uploadInfo.file_key)
     
     console.log('✅ 上传成功!')
-    return {
+      return {
       fileUrl: confirmResult.file_url,
-      isInstant: false,
+        isInstant: false,
       messageUuid: confirmResult.message_uuid,
     }
   },

@@ -24,11 +24,9 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
       
-      # 2. 安装 pnpm
+      # 2. 安装 pnpm（从 package.json 的 packageManager 自动读取版本）
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
       
       # 3. 设置 Node.js 环境（集成 pnpm 缓存）
       - name: 设置 Node.js

@@ -31,11 +31,11 @@ function App() {
 
   return (
     <>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route
-          path="/"
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/"
           element={
             <ProtectedRoute>
               <ChatPage />
@@ -52,70 +52,70 @@ function App() {
         />
         <Route
           path="/home"
-          element={
-            <ProtectedRoute>
-              <Home />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/ai-chat"
-          element={
-            <ProtectedRoute>
-              <AiChat />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/group-chat"
-          element={
-            <ProtectedRoute>
-              <GroupChat />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/video-meeting"
-          element={
-            <ProtectedRoute>
-              <VideoMeeting />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/devices"
-          element={
-            <ProtectedRoute>
-              <Devices />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/friends"
-          element={
-            <ProtectedRoute>
-              <Friends />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        element={
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ai-chat"
+        element={
+          <ProtectedRoute>
+            <AiChat />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/group-chat"
+        element={
+          <ProtectedRoute>
+            <GroupChat />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/video-meeting"
+        element={
+          <ProtectedRoute>
+            <VideoMeeting />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/devices"
+        element={
+          <ProtectedRoute>
+            <Devices />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <ProtectedRoute>
+            <Friends />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
       <Toaster />
     </>
   )
