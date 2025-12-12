@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -11,7 +11,7 @@ import { useChatStore } from '../../store/chatStore'
 import { useToast } from '@/hooks/use-toast'
 
 // 列表项动画配置
-const listItemVariants = {
+const listItemVariants: Variants = {
   hidden: { opacity: 0, x: -20 },
   visible: (i: number) => ({
     opacity: 1,
@@ -19,7 +19,7 @@ const listItemVariants = {
     transition: {
       delay: i * 0.05,
       duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
+      ease: [0.25, 0.1, 0.25, 1] as const,
     },
   }),
   exit: {
@@ -30,13 +30,13 @@ const listItemVariants = {
 }
 
 // 弹窗动画
-const dialogVariants = {
+const dialogVariants: Variants = {
   hidden: { opacity: 0, scale: 0.95, y: 10 },
   visible: {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: 'spring', stiffness: 300, damping: 25 },
+    transition: { type: 'spring' as const, stiffness: 300, damping: 25 },
   },
   exit: {
     opacity: 0,
@@ -47,12 +47,12 @@ const dialogVariants = {
 }
 
 // 空状态动画
-const emptyStateVariants = {
+const emptyStateVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, ease: 'easeOut' },
+    transition: { duration: 0.5, ease: 'easeOut' as const },
   },
 }
 
@@ -73,7 +73,6 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     rejectFriendRequest,
     removeFriend,
     isOnline,
-    onlineStatus,
   } = useFriendsStore()
   
   const { setSelectedConversation, selectedConversation } = useChatStore()

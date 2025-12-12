@@ -81,6 +81,7 @@ export default function ChatPage() {
     return () => {
       disconnectWS()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accessToken])
 
   // 注册 WebSocket 消息处理器
@@ -147,6 +148,11 @@ export default function ChatPage() {
     }) => {
       console.log('收到群消息:', data)
       
+      // 跳过系统消息（系统消息仅用于通知，不显示在消息列表）
+      if (data.message_type === 'system') {
+        return
+      }
+      
       // 如果当前正在查看该群，添加消息到列表
       const selectedConv = chatStore.selectedConversation
       if (selectedConv?.type === 'group' && selectedConv.id === data.group_id) {
@@ -155,7 +161,7 @@ export default function ChatPage() {
           sender_id: data.sender_id,
           receiver_id: data.group_id,
           message_content: data.message_content,
-          message_type: data.message_type,
+          message_type: data.message_type as 'text' | 'image' | 'video' | 'file',
           file_uuid: data.file_uuid,
           file_url: data.file_url,
           file_size: data.file_size,
@@ -295,8 +301,8 @@ export default function ChatPage() {
     const unsubMemberLeft = wsStore.registerHandler('group_member_left', handleGroupMemberChange)
     const unsubFileUploaded = wsStore.registerHandler('file_uploaded', handleFileUploaded)
     const unsubGroupNotice = wsStore.registerHandler('group_notice', handleGroupNotice)
-    const unsubFriendshipAdded = wsStore.registerHandler('friendship_added', (data) => handleFriendshipChange(data, 'added'))
-    const unsubFriendshipRemoved = wsStore.registerHandler('friendship_removed', (data) => handleFriendshipChange(data, 'removed'))
+    const unsubFriendshipAdded = wsStore.registerHandler('friendship_added', (data) => handleFriendshipChange(data as { friend_user_id: string; friend_nickname: string }, 'added'))
+    const unsubFriendshipRemoved = wsStore.registerHandler('friendship_removed', (data) => handleFriendshipChange(data as { friend_user_id: string; friend_nickname: string }, 'removed'))
     const unsubTyping = wsStore.registerHandler('typing', handleTypingStatus)
     const unsubOnlineStatus = wsStore.registerHandler('online_status', handleOnlineStatus)
 
@@ -316,6 +322,7 @@ export default function ChatPage() {
       unsubTyping()
       unsubOnlineStatus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.user_id])
 
   const handleLogout = async () => {

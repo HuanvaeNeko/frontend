@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft,
   Send,
@@ -29,47 +28,6 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { groupMessagesApi, type GroupMessage } from '../api/groupMessages'
-
-// 消息动画
-const messageVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-}
-
-// 成员列表动画
-const memberListVariants = {
-  hidden: { opacity: 0, x: 50 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.3 },
-  },
-  exit: {
-    opacity: 0,
-    x: 50,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 成员项动画
-const memberItemVariants = {
-  hidden: { opacity: 0, x: 10 },
-  visible: (i: number) => ({
-    opacity: 1,
-    x: 0,
-    transition: {
-      delay: i * 0.03,
-      duration: 0.25,
-    },
-  }),
-}
 import { groupsApi, type GroupMember, type GroupNotice } from '../api/groups'
 import { storageApi, type FileType } from '../api/storage'
 import { useToast } from '../hooks/use-toast'
@@ -124,6 +82,7 @@ export default function GroupChat() {
       loadMembers()
       loadNotices()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, currentGroup])
 
   // 自动滚动到底部

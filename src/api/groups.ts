@@ -132,7 +132,9 @@ export interface JoinRequest {
   request_id: string
   user_id: string
   user_nickname: string
+  user_avatar_url?: string
   message: string | null
+  reason?: string | null
   created_at: string
 }
 

@@ -199,7 +199,7 @@ export const apiClient = {
     return fetchWithAuth(url, { ...options, method: 'GET' })
   },
 
-  post: async (url: string, data?: any, options?: RequestInit) => {
+  post: async (url: string, data?: unknown, options?: RequestInit) => {
     return fetchWithAuth(url, {
       ...options,
       method: 'POST',
@@ -207,7 +207,7 @@ export const apiClient = {
     })
   },
 
-  put: async (url: string, data?: any, options?: RequestInit) => {
+  put: async (url: string, data?: unknown, options?: RequestInit) => {
     return fetchWithAuth(url, {
       ...options,
       method: 'PUT',

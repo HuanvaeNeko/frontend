@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageSquare } from 'lucide-react'
+import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -12,67 +11,6 @@ import GroupManagement from './GroupManagement'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../hooks/use-toast'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-
-// 消息动画
-const messageVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: {
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.9,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 头部动画
-const headerVariants = {
-  hidden: { opacity: 0, y: -20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3 },
-  },
-}
-
-// 输入区域动画
-const inputAreaVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3, delay: 0.1 },
-  },
-}
-
-// 发送按钮动画
-const sendButtonVariants = {
-  idle: { scale: 1 },
-  hover: { scale: 1.1 },
-  tap: { scale: 0.9 },
-}
-
-// 弹窗动画
-const dialogVariants = {
-  hidden: { opacity: 0, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: { type: 'spring', stiffness: 300, damping: 25 },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    transition: { duration: 0.2 },
-  },
-}
 
 export default function ChatWindow() {
   const { toast } = useToast()
@@ -110,6 +48,7 @@ export default function ChatWindow() {
     }
 
     loadMessages()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation])
 
   // 自动滚动到底部

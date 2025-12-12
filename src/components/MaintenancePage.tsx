@@ -25,31 +25,29 @@ interface MaintenancePageProps {
 }
 
 // 服务器图标动画 - 呼吸效果
-const serverPulseVariants = {
-  animate: {
-    scale: [1, 1.05, 1],
-    opacity: [0.8, 1, 0.8],
-    transition: {
-      duration: 2,
-      repeat: Infinity,
-      ease: 'easeInOut',
-    },
-  },
+const serverPulseAnimation = {
+  scale: [1, 1.05, 1],
+  opacity: [0.8, 1, 0.8],
+}
+
+const serverPulseTransition = {
+  duration: 2,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
 }
 
 // 信号波动画
-const signalWaveVariants = {
-  animate: (i: number) => ({
-    scale: [1, 2.5],
-    opacity: [0.6, 0],
-    transition: {
-      duration: 2,
-      repeat: Infinity,
-      delay: i * 0.4,
-      ease: 'easeOut',
-    },
-  }),
-}
+const getSignalWaveAnimation = () => ({
+  scale: [1, 2.5],
+  opacity: [0.6, 0],
+})
+
+const getSignalWaveTransition = (i: number) => ({
+  duration: 2,
+  repeat: Infinity,
+  delay: i * 0.4,
+  ease: 'easeOut' as const,
+})
 
 // 错误图标摇晃动画
 const shakeVariants = {
@@ -102,15 +100,14 @@ const detailItemVariants = {
 }
 
 // 网络状态动画
-const wifiPulseVariants = {
-  animate: {
-    opacity: [0.5, 1, 0.5],
-    transition: {
-      duration: 1.5,
-      repeat: Infinity,
-      ease: 'easeInOut',
-    },
-  },
+const wifiPulseAnimation = {
+  opacity: [0.5, 1, 0.5],
+}
+
+const wifiPulseTransition = {
+  duration: 1.5,
+  repeat: Infinity,
+  ease: 'easeInOut' as const,
 }
 
 export default function MaintenancePage({ error, onRetry, isRetrying }: MaintenancePageProps) {
@@ -171,9 +168,8 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
                 <motion.div
                   key={i}
                   className="absolute w-24 h-24 border-2 border-orange-300 rounded-full"
-                  variants={signalWaveVariants}
-                  animate="animate"
-                  custom={i}
+                  animate={getSignalWaveAnimation()}
+                  transition={getSignalWaveTransition(i)}
                 />
               ))}
             </div>
@@ -181,8 +177,8 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
             {/* 服务器图标 */}
             <motion.div
               className="w-24 h-24 mx-auto bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center relative shadow-lg"
-              variants={serverPulseVariants}
-              animate="animate"
+              animate={serverPulseAnimation}
+              transition={serverPulseTransition}
             >
               <Server className="h-12 w-12 text-orange-500" />
               
@@ -349,8 +345,8 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
         >
           <motion.div
             className="flex items-center justify-center gap-2 text-sm text-gray-500"
-            variants={wifiPulseVariants}
-            animate="animate"
+            animate={wifiPulseAnimation}
+            transition={wifiPulseTransition}
           >
             <Wifi className="h-4 w-4" />
             <span>请检查您的网络连接</span>

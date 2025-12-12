@@ -139,8 +139,9 @@ function App() {
 
   // 初始检查后端连接
   useEffect(() => {
-    checkBackendConnection()
-  }, [checkBackendConnection])
+    void checkBackendConnection()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   
   // 自动刷新 Token
   useEffect(() => {

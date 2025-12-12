@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Video, Phone, Copy, Loader2, Check } from 'lucide-react'
+import { Video, Phone, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,44 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
-
-// 卡片动画
-const cardVariants = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: i * 0.1,
-      duration: 0.5,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  }),
-}
-
-// 按钮悬停动画
-const buttonHoverVariants = {
-  rest: { scale: 1 },
-  hover: { scale: 1.02, transition: { duration: 0.2 } },
-  tap: { scale: 0.98 },
-}
-
-// 弹窗动画
-const dialogVariants = {
-  hidden: { opacity: 0, scale: 0.95, y: 10 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { type: 'spring', stiffness: 300, damping: 25 },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    y: 10,
-    transition: { duration: 0.2 },
-  },
-}
 
 export default function WebRTCPanel() {
   const navigate = useNavigate()

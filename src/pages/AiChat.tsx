@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, 
   Send, 
@@ -18,50 +17,6 @@ import { useApiConfigStore } from '../store/apiConfig'
 import { useAuthStore } from '../store/authStore'
 import { Button } from '@/components/ui/button'
 import { useToast } from '../hooks/use-toast'
-
-// 消息动画
-const messageVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: {
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-}
-
-// 头部动画
-const headerVariants = {
-  hidden: { opacity: 0, y: -20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3 },
-  },
-}
-
-// 发送按钮动画
-const sendButtonVariants = {
-  idle: { scale: 1 },
-  hover: { scale: 1.05 },
-  tap: { scale: 0.95 },
-}
-
-// 打字指示器动画
-const typingDotVariants = {
-  initial: { y: 0 },
-  animate: (i: number) => ({
-    y: [-3, 0, -3],
-    transition: {
-      duration: 0.6,
-      repeat: Infinity,
-      delay: i * 0.15,
-    },
-  }),
-}
 
 export default function AiChat() {
   const navigate = useNavigate()

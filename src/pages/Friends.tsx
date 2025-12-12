@@ -58,7 +58,7 @@ export default function Friends() {
       await sendFriendRequest(newFriendId.trim())
       alert('好友请求已发送')
       setNewFriendId('')
-    } catch (error) {
+    } catch {
       // 错误已在 store 中处理
     }
   }
@@ -67,7 +67,7 @@ export default function Friends() {
     try {
       await approveFriendRequest(applicantUserId)
       alert('已添加为好友')
-    } catch (error) {
+    } catch {
       // 错误已在 store 中处理
     }
   }
@@ -76,7 +76,7 @@ export default function Friends() {
     try {
       await rejectFriendRequest(applicantUserId)
       alert('已拒绝请求')
-    } catch (error) {
+    } catch {
       // 错误已在 store 中处理
     }
   }
@@ -86,7 +86,7 @@ export default function Friends() {
     try {
       await removeFriend(friendUserId)
       alert('已删除好友')
-    } catch (error) {
+    } catch {
       // 错误已在 store 中处理
     }
   }

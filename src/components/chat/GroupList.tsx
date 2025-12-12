@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users,
   Plus,
@@ -10,8 +9,7 @@ import {
   X,
   Crown,
   ChevronRight,
-  RefreshCw,
-  MessagesSquare
+  RefreshCw
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -21,52 +19,6 @@ import { useGroupStore } from '../../store/groupStore'
 import { useChatStore } from '../../store/chatStore'
 import { groupsApi, type GroupInvitation } from '../../api/groups'
 import { useToast } from '@/hooks/use-toast'
-
-// 列表项动画配置
-const listItemVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    x: 0,
-    transition: {
-      delay: i * 0.05,
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  }),
-  exit: {
-    opacity: 0,
-    x: 20,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 弹窗动画
-const dialogVariants = {
-  hidden: { opacity: 0, scale: 0.95, y: 10 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { type: 'spring', stiffness: 300, damping: 25 },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    y: 10,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 空状态动画
-const emptyStateVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: 'easeOut' },
-  },
-}
 
 interface GroupListProps {
   subTab: 'main' | 'invites' | 'join'

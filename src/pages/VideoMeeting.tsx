@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, 
   Mic,
@@ -20,68 +19,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
 import { useAuthStore } from '../store/authStore'
-
-// 视频容器动画
-const videoContainerVariants = {
-  hidden: { opacity: 0, scale: 0.9 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: {
-      duration: 0.4,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.9,
-    transition: { duration: 0.3 },
-  },
-}
-
-// 控制栏动画
-const controlBarVariants = {
-  hidden: { opacity: 0, y: 50 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      delay: 0.2,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-}
-
-// 按钮动画
-const controlButtonVariants = {
-  rest: { scale: 1 },
-  hover: { scale: 1.1 },
-  tap: { scale: 0.95 },
-}
-
-// 参与者网格动画
-const participantGridVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
-}
-
-const participantItemVariants = {
-  hidden: { opacity: 0, scale: 0.8 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: {
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  },
-}
 
 interface RemoteStream {
   peerId: string
@@ -140,6 +77,7 @@ export default function VideoMeeting() {
     return () => {
       cleanup()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId])
 
   // 自动隐藏控制栏

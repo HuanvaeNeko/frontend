@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Upload, 
   File, 
@@ -9,46 +8,11 @@ import {
   Loader2, 
   Download, 
   RefreshCw,
-  Eye,
-  FolderOpen
+  Eye
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { storageApi, FileItem, formatFileSize, FileType, StorageLocation } from '../../api/storage'
-
-// 文件项动画
-const fileItemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: i * 0.05,
-      duration: 0.3,
-      ease: [0.25, 0.1, 0.25, 1],
-    },
-  }),
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 上传区域动画
-const uploadAreaVariants = {
-  idle: { scale: 1, borderColor: 'rgba(0,0,0,0.1)' },
-  hover: { scale: 1.02, borderColor: 'rgba(59, 130, 246, 0.5)' },
-}
-
-// 进度条动画
-const progressVariants = {
-  initial: { width: 0 },
-  animate: (progress: number) => ({
-    width: `${progress}%`,
-    transition: { duration: 0.3 },
-  }),
-}
 
 interface FileManagerProps {
   subTab: 'main' | 'upload'
@@ -101,6 +65,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
     if (subTab === 'main') {
       loadFiles(true)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab])
 
   // 获取文件类型

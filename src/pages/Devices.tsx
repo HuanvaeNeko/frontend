@@ -53,6 +53,7 @@ export default function Devices() {
 
   useEffect(() => {
     loadDevices()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 移除设备

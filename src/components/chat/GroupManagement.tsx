@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Settings,
   Users,
@@ -17,51 +16,14 @@ import {
   Edit3,
   Plus,
   Loader2,
-  Camera
+  Camera,
+  X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import * as Dialog from '@radix-ui/react-dialog'
-
-// 标签页动画
-const tabContentVariants = {
-  hidden: { opacity: 0, x: 20 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] },
-  },
-  exit: {
-    opacity: 0,
-    x: -20,
-    transition: { duration: 0.2 },
-  },
-}
-
-// 列表项动画
-const listItemVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: i * 0.03,
-      duration: 0.25,
-    },
-  }),
-}
-
-// 卡片动画
-const cardVariants = {
-  hidden: { opacity: 0, scale: 0.98 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: { duration: 0.3 },
-  },
-}
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import {
   groupsApi,
@@ -151,6 +113,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       loadInviteCodes()
       loadJoinRequests()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
 
   const loadGroupInfo = async () => {
@@ -160,7 +123,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setGroup(data)
       setNewGroupName(data.group_name)
       setNewDescription(data.group_description || '')
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '加载群信息失败', variant: 'destructive' })
     } finally {
       setLoading(false)
@@ -172,8 +135,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const { members } = await groupsApi.getMembers(groupId)
       setMembers(members)
-    } catch (error) {
-      console.error('加载成员失败:', error)
+    } catch (err) {
+      console.error('加载成员失败:', err)
     } finally {
       setLoadingMembers(false)
     }
@@ -184,8 +147,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const data = await groupsApi.getNotices(groupId)
       setNotices(data)
-    } catch (error) {
-      console.error('加载公告失败:', error)
+    } catch (err) {
+      console.error('加载公告失败:', err)
     } finally {
       setLoadingNotices(false)
     }
@@ -196,8 +159,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const data = await groupsApi.getInviteCodes(groupId)
       setInviteCodes(data)
-    } catch (error) {
-      console.error('加载邀请码失败:', error)
+    } catch (err) {
+      console.error('加载邀请码失败:', err)
     } finally {
       setLoadingCodes(false)
     }
@@ -208,8 +171,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const data = await groupsApi.getJoinRequests(groupId)
       setJoinRequests(data)
-    } catch (error) {
-      console.error('加载加入请求失败:', error)
+    } catch (err) {
+      console.error('加载加入请求失败:', err)
     } finally {
       setLoadingRequests(false)
     }
@@ -222,7 +185,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '成功', description: '已通过加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
       loadMembers()
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '操作失败', variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
@@ -235,7 +198,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.rejectJoinRequest(groupId, requestId)
       toast({ title: '已拒绝', description: '已拒绝加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '操作失败', variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
@@ -250,7 +213,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setGroup(prev => prev ? { ...prev, group_name: newGroupName.trim() } : null)
       setEditingName(false)
       toast({ title: '成功', description: '群名称已更新' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '更新群名称失败', variant: 'destructive' })
     }
   }
@@ -261,7 +224,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setGroup(prev => prev ? { ...prev, group_description: newDescription } : null)
       setEditingDescription(false)
       toast({ title: '成功', description: '群简介已更新' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '更新群简介失败', variant: 'destructive' })
     }
   }
@@ -275,8 +238,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       const result = await groupsApi.uploadGroupAvatar(groupId, file)
       setGroup(prev => prev ? { ...prev, group_avatar_url: result.avatar_url } : null)
       toast({ title: '成功', description: '群头像已更新' })
-    } catch (error) {
-      toast({ title: '错误', description: error instanceof Error ? error.message : '上传失败', variant: 'destructive' })
+    } catch (err) {
+      toast({ title: '错误', description: err instanceof Error ? err.message : '上传失败', variant: 'destructive' })
     } finally {
       setUploadingAvatar(false)
     }
@@ -287,7 +250,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.updateJoinMode(groupId, mode)
       setGroup(prev => prev ? { ...prev, join_mode: mode } : null)
       toast({ title: '成功', description: '入群模式已更新' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '更新失败', variant: 'destructive' })
     }
   }
@@ -302,7 +265,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '成功', description: '邀请已发送' })
       setShowInviteDialog(false)
       setInviteUserIds('')
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '邀请失败', variant: 'destructive' })
     } finally {
       setInviting(false)
@@ -316,7 +279,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.removeMember(groupId, userId)
       setMembers(prev => prev.filter(m => m.user_id !== userId))
       toast({ title: '成功', description: '成员已移除' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '移除失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -329,7 +292,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.setAdmin(groupId, userId)
       setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: 'admin' } : m))
       toast({ title: '成功', description: '已设为管理员' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '操作失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -342,7 +305,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.removeAdmin(groupId, userId)
       setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: 'member' } : m))
       toast({ title: '成功', description: '已取消管理员' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '操作失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -357,7 +320,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '成功', description: `已禁言 ${muteDuration} 分钟` })
       setShowMuteDialog(false)
       loadMembers()
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '禁言失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -370,7 +333,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.unmuteMember(groupId, userId)
       loadMembers()
       toast({ title: '成功', description: '已解除禁言' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '操作失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -384,7 +347,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.transferOwner(groupId, userId)
       toast({ title: '成功', description: '群主已转让' })
       loadMembers()
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '转让失败', variant: 'destructive' })
     } finally {
       setOperating(false)
@@ -407,7 +370,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setNoticeContent('')
       setNoticePinned(false)
       loadNotices()
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '发布失败', variant: 'destructive' })
     } finally {
       setCreatingNotice(false)
@@ -420,7 +383,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.deleteNotice(groupId, noticeId)
       setNotices(prev => prev.filter(n => n.id !== noticeId))
       toast({ title: '成功', description: '公告已删除' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '删除失败', variant: 'destructive' })
     }
   }
@@ -436,7 +399,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setInviteCodes(prev => [code, ...prev])
       toast({ title: '成功', description: `邀请码: ${code.code}` })
       setShowCodeDialog(false)
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '生成失败', variant: 'destructive' })
     } finally {
       setGeneratingCode(false)
@@ -448,7 +411,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.revokeInviteCode(groupId, codeId)
       setInviteCodes(prev => prev.filter(c => c.id !== codeId))
       toast({ title: '成功', description: '邀请码已撤销' })
-    } catch (error) {
+    } catch {
       toast({ title: '错误', description: '撤销失败', variant: 'destructive' })
     }
   }
