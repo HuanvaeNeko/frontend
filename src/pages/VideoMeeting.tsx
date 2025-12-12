@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, 
   Mic,
@@ -20,6 +21,68 @@ import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
 import { useAuthStore } from '../store/authStore'
 
+// 视频容器动画
+const videoContainerVariants = {
+  hidden: { opacity: 0, scale: 0.9 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.4,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.9,
+    transition: { duration: 0.3 },
+  },
+}
+
+// 控制栏动画
+const controlBarVariants = {
+  hidden: { opacity: 0, y: 50 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.4,
+      delay: 0.2,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+}
+
+// 按钮动画
+const controlButtonVariants = {
+  rest: { scale: 1 },
+  hover: { scale: 1.1 },
+  tap: { scale: 0.95 },
+}
+
+// 参与者网格动画
+const participantGridVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+}
+
+const participantItemVariants = {
+  hidden: { opacity: 0, scale: 0.8 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.3,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+}
+
 interface RemoteStream {
   peerId: string
   stream: MediaStream
@@ -29,12 +92,16 @@ interface RemoteStream {
 export default function VideoMeeting() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { accessToken } = useAuthStore()
+  const { roomId: urlRoomId } = useParams<{ roomId?: string }>()
+  const { accessToken, user } = useAuthStore()
   
-  // 从 URL 获取房间信息
-  const roomId = searchParams.get('room') || ''
+  // 从 URL 获取房间信息（支持路径参数和查询参数两种方式）
+  const roomId = urlRoomId || searchParams.get('room') || ''
   const password = searchParams.get('pwd') || ''
-  const displayName = searchParams.get('name') || '访客'
+  const displayName = searchParams.get('name') || user?.nickname || '访客'
+  // 从 URL 获取 token（创建者使用 access_token，参与者使用 ws_token）
+  const urlToken = searchParams.get('token') || ''
+  const isCreator = searchParams.get('creator') === 'true'
   
   // 状态
   const [isConnected, setIsConnected] = useState(false)
@@ -116,16 +183,40 @@ export default function VideoMeeting() {
       // 1. 获取本地媒体流
       await getLocalStream()
 
-      // 2. 加入房间获取 ICE 配置和 ws_token
+      // 2. 获取 ICE 配置和连接 token
       let wsToken: string
       
-      if (accessToken) {
-        // 创建者使用 access_token
+      if (urlToken) {
+        // 如果 URL 中已有 token（从 WebRTCPanel 传来），直接使用
+        wsToken = urlToken
+        
+        if (isCreator && accessToken) {
+          // 创建者：获取 ICE 服务器配置
+          const iceServers = await webrtcApi.getIceServers()
+          iceServersRef.current = iceServers
+        } else {
+          // 参与者：重新加入房间获取 ICE 配置（ws_token 可能不包含）
+          // 尝试使用空 ICE 配置，如果失败再加入
+          try {
+            const joinResult = await webrtcApi.joinRoom(roomId, {
+              password,
+              display_name: displayName,
+            })
+            iceServersRef.current = joinResult.ice_servers
+            // 更新 wsToken 为最新的
+            wsToken = joinResult.ws_token
+          } catch {
+            // 如果已经加入过，使用默认 ICE
+            iceServersRef.current = [{ urls: ['stun:stun.l.google.com:19302'] }]
+          }
+        }
+      } else if (accessToken) {
+        // 有登录状态但没有 URL token：创建者模式
         wsToken = accessToken
         const iceServers = await webrtcApi.getIceServers()
         iceServersRef.current = iceServers
       } else {
-        // 参与者需要先加入房间获取 ws_token
+        // 未登录且无 URL token：访客需要先加入房间
         const joinResult = await webrtcApi.joinRoom(roomId, {
           password,
           display_name: displayName,

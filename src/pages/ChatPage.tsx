@@ -22,7 +22,7 @@ import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { useProfileStore } from '../store/profileStore'
 import { useWSStore } from '../store/wsStore'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import FriendList from '../components/chat/FriendList'
 import GroupList from '../components/chat/GroupList'
 import ChatWindow from '../components/chat/ChatWindow'
@@ -33,15 +33,34 @@ type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 
 export default function ChatPage() {
   const navigate = useNavigate()
+  const { friendId } = useParams<{ friendId?: string }>()
   const { user, logout, accessToken } = useAuthStore()
   const { profile, loadProfile } = useProfileStore()
-  const { activeTab, setActiveTab } = useChatStore()
-  const { loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
+  const { activeTab, setActiveTab, setSelectedConversation } = useChatStore()
+  const { friends, loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
   const { connect: connectWS, disconnect: disconnectWS, connected } = useWSStore()
   
   const [subTab, setSubTab] = useState<SubTab>('main')
   const [searchQuery, setSearchQuery] = useState('')
+
+  // 处理 URL 中的 friendId 参数
+  useEffect(() => {
+    if (friendId && friends.length > 0) {
+      const friend = friends.find(f => f.user_id === friendId)
+      if (friend) {
+        // 设置选中的会话
+        setSelectedConversation({
+          id: friend.user_id,
+          type: 'friend',
+          name: friend.nickname,
+          avatar: friend.avatar_url,
+          unreadCount: 0,
+        })
+        setActiveTab('friends')
+      }
+    }
+  }, [friendId, friends, setSelectedConversation, setActiveTab])
 
   // 初始化加载数据
   useEffect(() => {
@@ -50,7 +69,7 @@ export default function ChatPage() {
       loadProfile().catch(console.error)
       
       // 连接 WebSocket
-      connectWS(accessToken)
+      connectWS()
       
       // 加载好友和群聊数据
       loadFriends().catch(console.error)
@@ -67,31 +86,237 @@ export default function ChatPage() {
   // 注册 WebSocket 消息处理器
   useEffect(() => {
     const wsStore = useWSStore.getState()
+    const chatStore = useChatStore.getState()
     
-    // 处理新消息
-    wsStore.registerHandler('new_message', (data: unknown) => {
-      console.log('收到新消息:', data)
-      // TODO: 解析消息并添加到聊天窗口
-    })
+    // 处理私聊消息
+    const handlePrivateMessage = (data: {
+      message_uuid: string
+      sender_id: string
+      sender_nickname: string
+      sender_avatar_url: string
+      receiver_id: string
+      message_content: string
+      message_type: 'text' | 'image' | 'video' | 'file'
+      file_uuid: string | null
+      file_url: string | null
+      file_size: number | null
+      send_time: string
+    }) => {
+      console.log('收到私聊消息:', data)
+      
+      // 如果当前正在与发送者聊天，添加消息到列表
+      const selectedConv = chatStore.selectedConversation
+      if (selectedConv?.type === 'friend' && 
+          (selectedConv.id === data.sender_id || selectedConv.id === data.receiver_id)) {
+        chatStore.addMessage({
+          message_uuid: data.message_uuid,
+          sender_id: data.sender_id,
+          receiver_id: data.receiver_id,
+          message_content: data.message_content,
+          message_type: data.message_type,
+          file_uuid: data.file_uuid,
+          file_url: data.file_url,
+          file_size: data.file_size,
+          send_time: data.send_time,
+        })
+      }
+      
+      // 更新会话列表中的最后消息
+      const conversationId = data.sender_id === user?.user_id ? data.receiver_id : data.sender_id
+      chatStore.updateConversation(conversationId, {
+        lastMessage: data.message_content,
+        lastTime: data.send_time,
+        unreadCount: selectedConv?.id === conversationId ? 0 : 1,
+      })
+    }
+
+    // 处理群消息
+    const handleGroupMessage = (data: {
+      message_uuid: string
+      group_id: string
+      sender_id: string
+      sender_nickname: string
+      sender_avatar_url: string
+      message_content: string
+      message_type: 'text' | 'image' | 'video' | 'file' | 'system'
+      file_uuid: string | null
+      file_url: string | null
+      file_size: number | null
+      reply_to: string | null
+      send_time: string
+    }) => {
+      console.log('收到群消息:', data)
+      
+      // 如果当前正在查看该群，添加消息到列表
+      const selectedConv = chatStore.selectedConversation
+      if (selectedConv?.type === 'group' && selectedConv.id === data.group_id) {
+        chatStore.addMessage({
+          message_uuid: data.message_uuid,
+          sender_id: data.sender_id,
+          receiver_id: data.group_id,
+          message_content: data.message_content,
+          message_type: data.message_type,
+          file_uuid: data.file_uuid,
+          file_url: data.file_url,
+          file_size: data.file_size,
+          send_time: data.send_time,
+        })
+      }
+      
+      // 更新群会话的最后消息
+      chatStore.updateConversation(data.group_id, {
+        lastMessage: data.message_content,
+        lastTime: data.send_time,
+        unreadCount: selectedConv?.id === data.group_id ? 0 : 1,
+      })
+    }
+
+    // 处理消息撤回
+    const handleMessageRecalled = (data: {
+      message_uuid: string
+      conversation_type: 'private' | 'group'
+      conversation_id: string
+    }) => {
+      console.log('消息被撤回:', data)
+      // 从消息列表中移除该消息
+      chatStore.setMessages(
+        chatStore.messages.filter(m => m.message_uuid !== data.message_uuid)
+      )
+    }
 
     // 处理好友请求
-    wsStore.registerHandler('friend_request', (data: unknown) => {
-      console.log('收到好友请求:', data)
+    const handleFriendRequest = () => {
+      console.log('收到好友请求')
       loadPendingRequests().catch(console.error)
-    })
+    }
+
+    // 处理好友请求结果
+    const handleFriendRequestResult = (data: {
+      target_user_id: string
+      result: 'approved' | 'rejected'
+    }) => {
+      console.log('好友请求结果:', data)
+      if (data.result === 'approved') {
+        loadFriends().catch(console.error)
+      }
+      loadSentRequests().catch(console.error)
+    }
 
     // 处理群邀请
-    wsStore.registerHandler('group_invite', (data: unknown) => {
-      console.log('收到群邀请:', data)
+    const handleGroupInvite = () => {
+      console.log('收到群邀请')
       loadMyGroups().catch(console.error)
-    })
+    }
+
+    // 处理群成员变化
+    const handleGroupMemberChange = () => {
+      console.log('群成员变化')
+      loadMyGroups().catch(console.error)
+    }
+
+    // 处理文件上传完成通知（秒传或上传完成后自动发送的消息）
+    const handleFileUploaded = (data: {
+      file_uuid: string
+      file_url: string
+      conversation_type: 'private' | 'group'
+      conversation_id: string
+      message_uuid: string
+      message_send_time: string
+    }) => {
+      console.log('文件上传完成:', data)
+      // 刷新当前会话的消息列表以显示新的文件消息
+      const selectedConv = chatStore.selectedConversation
+      if (selectedConv?.id === data.conversation_id) {
+        // 重新加载消息
+        // 这里可以选择添加消息或刷新整个列表
+      }
+    }
+
+    // 处理群公告
+    const handleGroupNotice = (data: {
+      group_id: string
+      notice_id: string
+      title: string
+      content: string
+      publisher_nickname: string
+      is_pinned: boolean
+      published_at: string
+    }) => {
+      console.log('收到群公告:', data)
+      // 如果当前正在查看该群，可以显示公告通知
+      const selectedConv = chatStore.selectedConversation
+      if (selectedConv?.type === 'group' && selectedConv.id === data.group_id) {
+        // 可以在这里触发公告弹窗或添加系统消息
+      }
+    }
+
+    // 处理好友关系变化
+    const handleFriendshipChange = (data: {
+      friend_user_id: string
+      friend_nickname: string
+    }, type: 'added' | 'removed') => {
+      console.log('好友关系变化:', type, data)
+      loadFriends().catch(console.error)
+    }
+
+    // 处理正在输入状态
+    const handleTypingStatus = (data: {
+      user_id: string
+      conversation_type: 'private' | 'group'
+      conversation_id: string
+      is_typing: boolean
+    }) => {
+      chatStore.setTypingStatus({
+        conversationId: data.conversation_id,
+        conversationType: data.conversation_type,
+        userId: data.user_id,
+        isTyping: data.is_typing,
+        timestamp: Date.now(),
+      })
+    }
+
+    // 处理在线状态
+    const handleOnlineStatus = (data: {
+      user_id: string
+      status: 'online' | 'offline'
+    }) => {
+      console.log('在线状态变化:', data)
+      const friendsStore = useFriendsStore.getState()
+      friendsStore.setOnlineStatus(data.user_id, data.status === 'online')
+    }
+
+    const unsubPrivateMessage = wsStore.registerHandler('private_message', handlePrivateMessage)
+    const unsubGroupMessage = wsStore.registerHandler('group_message', handleGroupMessage)
+    const unsubMessageRecalled = wsStore.registerHandler('message_recalled', handleMessageRecalled)
+    const unsubFriendRequest = wsStore.registerHandler('friend_request', handleFriendRequest)
+    const unsubFriendResult = wsStore.registerHandler('friend_request_result', handleFriendRequestResult)
+    const unsubGroupInvite = wsStore.registerHandler('group_invitation', handleGroupInvite)
+    const unsubMemberJoined = wsStore.registerHandler('group_member_joined', handleGroupMemberChange)
+    const unsubMemberLeft = wsStore.registerHandler('group_member_left', handleGroupMemberChange)
+    const unsubFileUploaded = wsStore.registerHandler('file_uploaded', handleFileUploaded)
+    const unsubGroupNotice = wsStore.registerHandler('group_notice', handleGroupNotice)
+    const unsubFriendshipAdded = wsStore.registerHandler('friendship_added', (data) => handleFriendshipChange(data, 'added'))
+    const unsubFriendshipRemoved = wsStore.registerHandler('friendship_removed', (data) => handleFriendshipChange(data, 'removed'))
+    const unsubTyping = wsStore.registerHandler('typing', handleTypingStatus)
+    const unsubOnlineStatus = wsStore.registerHandler('online_status', handleOnlineStatus)
 
     return () => {
-      wsStore.unregisterHandler('new_message')
-      wsStore.unregisterHandler('friend_request')
-      wsStore.unregisterHandler('group_invite')
+      unsubPrivateMessage()
+      unsubGroupMessage()
+      unsubMessageRecalled()
+      unsubFriendRequest()
+      unsubFriendResult()
+      unsubGroupInvite()
+      unsubMemberJoined()
+      unsubMemberLeft()
+      unsubFileUploaded()
+      unsubGroupNotice()
+      unsubFriendshipAdded()
+      unsubFriendshipRemoved()
+      unsubTyping()
+      unsubOnlineStatus()
     }
-  }, [])
+  }, [user?.user_id])
 
   const handleLogout = async () => {
     try {

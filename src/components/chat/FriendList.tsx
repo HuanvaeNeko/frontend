@@ -1,12 +1,60 @@
 import { useState } from 'react'
-import { UserPlus, Check, X, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useFriendsStore } from '../../store/friendsStore'
 import { useChatStore } from '../../store/chatStore'
 import { useToast } from '@/hooks/use-toast'
+
+// 列表项动画配置
+const listItemVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: (i: number) => ({
+    opacity: 1,
+    x: 0,
+    transition: {
+      delay: i * 0.05,
+      duration: 0.3,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  }),
+  exit: {
+    opacity: 0,
+    x: 20,
+    transition: { duration: 0.2 },
+  },
+}
+
+// 弹窗动画
+const dialogVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: 10 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 300, damping: 25 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: 10,
+    transition: { duration: 0.2 },
+  },
+}
+
+// 空状态动画
+const emptyStateVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: 'easeOut' },
+  },
+}
 
 interface FriendListProps {
   subTab: 'main' | 'new' | 'sent'
@@ -23,6 +71,9 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     sendFriendRequest,
     approveFriendRequest,
     rejectFriendRequest,
+    removeFriend,
+    isOnline,
+    onlineStatus,
   } = useFriendsStore()
   
   const { setSelectedConversation, selectedConversation } = useChatStore()
@@ -31,6 +82,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   const [targetUserId, setTargetUserId] = useState('')
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [deletingFriend, setDeletingFriend] = useState<string | null>(null)
 
   // 确保 friends 是数组
   const friendsArray = Array.isArray(friends) ? friends : []
@@ -109,6 +161,34 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     }
   }
 
+  // 删除好友
+  const handleDeleteFriend = async (friendUserId: string, nickname: string) => {
+    if (!confirm(`确定要删除好友 ${nickname} 吗？删除后将无法互相发送消息。`)) {
+      return
+    }
+    
+    setDeletingFriend(friendUserId)
+    try {
+      await removeFriend(friendUserId)
+      toast({
+        title: '已删除',
+        description: `${nickname} 已从好友列表移除`,
+      })
+      // 如果当前正在查看被删除的好友的会话，清空选中
+      if (selectedConversation?.id === friendUserId) {
+        setSelectedConversation(null)
+      }
+    } catch (error) {
+      toast({
+        title: '删除失败',
+        description: error instanceof Error ? error.message : '操作失败',
+        variant: 'destructive',
+      })
+    } finally {
+      setDeletingFriend(null)
+    }
+  }
+
   // 选择好友开始聊天
   const handleSelectFriend = (friend: typeof friends[0]) => {
     setSelectedConversation({
@@ -143,40 +223,113 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filteredFriends.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+            <motion.div
+              className="flex flex-col items-center justify-center h-32 text-muted-foreground"
+              variants={emptyStateVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <Users className="h-12 w-12 mb-2 opacity-30" />
               <p className="text-sm">暂无好友</p>
               {searchQuery && <p className="text-xs mt-1">试试其他搜索条件</p>}
-            </div>
+            </motion.div>
           ) : (
-            filteredFriends.map((friend) => (
-              <button
+            <AnimatePresence mode="popLayout">
+            {filteredFriends.map((friend, index) => (
+              <motion.div
                 key={friend.user_id}
                 className={`w-full p-4 flex items-center gap-3 hover:bg-accent transition-colors ${
                   selectedConversation?.id === friend.user_id ? 'bg-accent' : ''
                 }`}
-                onClick={() => handleSelectFriend(friend)}
+                variants={listItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                custom={index}
+                whileHover={{ backgroundColor: 'rgba(0,0,0,0.04)' }}
+                layout
               >
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={friend.avatar_url} />
-                  <AvatarFallback>
-                    {friend.nickname[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 text-left min-w-0">
-                  <div className="font-medium truncate">{friend.nickname}</div>
-                  <div className="text-sm text-muted-foreground truncate">
-                    {friend.signature || friend.user_id}
+                <button
+                  className="flex items-center gap-3 flex-1 min-w-0"
+                  onClick={() => handleSelectFriend(friend)}
+                >
+                  <div className="relative">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={friend.avatar_url} />
+                      <AvatarFallback>
+                        {friend.nickname[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    {/* 在线状态指示器 */}
+                    <span 
+                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                        isOnline(friend.user_id) ? 'bg-green-500' : 'bg-gray-400'
+                      }`}
+                      title={isOnline(friend.user_id) ? '在线' : '离线'}
+                    />
                   </div>
-                </div>
-              </button>
-            ))
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{friend.nickname}</span>
+                      {isOnline(friend.user_id) && (
+                        <span className="text-xs text-green-600">在线</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-muted-foreground truncate">
+                      {friend.signature || friend.user_id}
+                    </div>
+                  </div>
+                </button>
+                
+                {/* 操作菜单 */}
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content
+                      className="min-w-32 bg-white rounded-md shadow-lg border p-1 z-50"
+                      align="end"
+                    >
+                      <DropdownMenu.Item
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded cursor-pointer outline-none"
+                        onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
+                        disabled={deletingFriend === friend.user_id}
+                      >
+                        {deletingFriend === friend.user_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        删除好友
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </motion.div>
+            ))}
+            </AnimatePresence>
           )}
         </div>
 
         {/* 添加好友对话框 */}
+        <AnimatePresence>
         {showAddDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-card rounded-lg p-6 w-96 max-w-[90vw]">
+          <motion.div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-card rounded-lg p-6 w-96 max-w-[90vw] shadow-2xl"
+              variants={dialogVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
               <h3 className="text-lg font-semibold mb-4">添加好友</h3>
               
               <div className="space-y-4">
@@ -229,9 +382,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   )}
                 </Button>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     )
   }

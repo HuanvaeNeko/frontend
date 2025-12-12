@@ -1,14 +1,57 @@
 import { useState } from 'react'
-import { Video, Phone, Copy, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Video, Phone, Copy, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
+import { useAuthStore } from '../../store/authStore'
+
+// 卡片动画
+const cardVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.1,
+      duration: 0.5,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  }),
+}
+
+// 按钮悬停动画
+const buttonHoverVariants = {
+  rest: { scale: 1 },
+  hover: { scale: 1.02, transition: { duration: 0.2 } },
+  tap: { scale: 0.98 },
+}
+
+// 弹窗动画
+const dialogVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: 10 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 300, damping: 25 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: 10,
+    transition: { duration: 0.2 },
+  },
+}
 
 export default function WebRTCPanel() {
+  const navigate = useNavigate()
   const { toast } = useToast()
+  const { accessToken } = useAuthStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showJoinDialog, setShowJoinDialog] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -42,7 +85,7 @@ export default function WebRTCPanel() {
         expires_minutes: durationMinutes,
       })
 
-      const shareLink = `${window.location.origin}/video?room=${response.room_id}&pwd=${roomPassword || ''}`
+      const shareLink = `${window.location.origin}/video-meeting?room=${response.room_id}&pwd=${roomPassword || ''}`
       
       setCurrentRoom({
         roomId: response.room_id,
@@ -52,11 +95,21 @@ export default function WebRTCPanel() {
 
       toast({
         title: '成功',
-        description: '房间创建成功！',
+        description: '房间创建成功！正在跳转...',
       })
       
       setShowCreateDialog(false)
-      // TODO: 跳转到视频通话页面
+      
+      // 跳转到视频通话页面，携带房间信息（创建者使用自己的 access_token）
+      const params = new URLSearchParams({
+        room: response.room_id,
+        token: accessToken || '',
+        creator: 'true',
+      })
+      if (roomPassword) {
+        params.set('pwd', roomPassword)
+      }
+      navigate(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '创建失败',
@@ -80,18 +133,27 @@ export default function WebRTCPanel() {
 
     setJoining(true)
     try {
-      await webrtcApi.joinRoom(joinRoomId, {
+      const response = await webrtcApi.joinRoom(joinRoomId, {
         password: joinPassword || '',
         display_name: joinNickname || 'Anonymous',
       })
 
       toast({
         title: '成功',
-        description: '已加入房间！',
+        description: '已加入房间！正在跳转...',
       })
       
       setShowJoinDialog(false)
-      // TODO: 跳转到视频通话页面
+      
+      // 跳转到视频通话页面
+      const params = new URLSearchParams({
+        room: joinRoomId,
+        token: response.ws_token || '',
+      })
+      if (joinNickname) {
+        params.set('name', joinNickname)
+      }
+      navigate(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '加入失败',

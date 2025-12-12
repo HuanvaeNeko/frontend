@@ -5,6 +5,7 @@ interface FriendsState {
   friends: Friend[]
   pendingRequests: PendingRequest[]  // 待处理的请求（别人发给我的）
   sentRequests: SentRequest[]        // 已发送的请求（我发给别人的）
+  onlineStatus: Map<string, boolean> // 好友在线状态
   isLoading: boolean
   error: string | null
 
@@ -16,6 +17,8 @@ interface FriendsState {
   approveFriendRequest: (applicantUserId: string, approvedReason?: string) => Promise<void>
   rejectFriendRequest: (applicantUserId: string, rejectReason?: string) => Promise<void>
   removeFriend: (friendUserId: string, removeReason?: string) => Promise<void>
+  setOnlineStatus: (userId: string, isOnline: boolean) => void
+  isOnline: (userId: string) => boolean
   clearError: () => void
 }
 
@@ -23,6 +26,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   friends: [],
   pendingRequests: [],
   sentRequests: [],
+  onlineStatus: new Map(),
   isLoading: false,
   error: null,
 
@@ -117,6 +121,16 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ error: errorMessage, isLoading: false })
       throw error
     }
+  },
+
+  setOnlineStatus: (userId: string, isOnline: boolean) => {
+    const onlineStatus = new Map(get().onlineStatus)
+    onlineStatus.set(userId, isOnline)
+    set({ onlineStatus })
+  },
+
+  isOnline: (userId: string) => {
+    return get().onlineStatus.get(userId) || false
   },
 
   clearError: () => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -7,9 +8,71 @@ import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
 import { groupMessagesApi, type GroupMessage } from '../../api/groupMessages'
 import { storageApi, type FileType, type StorageLocation } from '../../api/storage'
+import GroupManagement from './GroupManagement'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../hooks/use-toast'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+
+// 消息动画
+const messageVariants = {
+  hidden: { opacity: 0, y: 20, scale: 0.95 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.3,
+      ease: [0.25, 0.1, 0.25, 1],
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.9,
+    transition: { duration: 0.2 },
+  },
+}
+
+// 头部动画
+const headerVariants = {
+  hidden: { opacity: 0, y: -20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3 },
+  },
+}
+
+// 输入区域动画
+const inputAreaVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, delay: 0.1 },
+  },
+}
+
+// 发送按钮动画
+const sendButtonVariants = {
+  idle: { scale: 1 },
+  hover: { scale: 1.1 },
+  tap: { scale: 0.9 },
+}
+
+// 弹窗动画
+const dialogVariants = {
+  hidden: { opacity: 0, scale: 0.95 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: { type: 'spring', stiffness: 300, damping: 25 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    transition: { duration: 0.2 },
+  },
+}
 
 export default function ChatWindow() {
   const { toast } = useToast()
@@ -22,13 +85,19 @@ export default function ChatWindow() {
     prependMessages,
     messageInput,
     setMessageInput,
+    getTypingUsers,
+    typingUsers, // 订阅以触发重新渲染
   } = useChatStore()
+  
+  // 为了触发组件重新渲染，需要引用 typingUsers
+  void typingUsers
 
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [showGroupManagement, setShowGroupManagement] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -258,22 +327,25 @@ export default function ChatWindow() {
         }
       )
 
-      // 如果是秒传，消息已经由后端自动发送
-      if (uploadResult.isInstant && uploadResult.messageUuid) {
+      // 如果是好友/群聊文件，消息已经由后端 confirm 时自动发送
+      if (uploadResult.messageUuid) {
         // 重新加载消息以获取新消息
         await loadMessages()
         toast({
           title: '发送成功',
-          description: '文件秒传成功',
+          description: uploadResult.isInstant ? '文件秒传成功' : '文件发送成功',
         })
       } else {
-        // 发送文件消息
+        // 个人文件上传后需要手动发送消息（带 file_uuid）
+        // 从 fileUrl 提取 file_uuid
+        const fileUuid = uploadResult.fileUrl.split('/').pop() || ''
+        
         if (selectedConversation.type === 'friend') {
           const response = await messagesApi.sendMessage({
             receiver_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_url: uploadResult.fileUrl,
+            file_uuid: fileUuid, // 推荐使用 file_uuid
             file_size: file.size,
           })
           // 添加到本地消息列表
@@ -283,7 +355,7 @@ export default function ChatWindow() {
             receiver_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_uuid: null,
+            file_uuid: fileUuid,
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             send_time: response.send_time,
@@ -294,7 +366,7 @@ export default function ChatWindow() {
             group_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_url: uploadResult.fileUrl,
+            file_uuid: fileUuid, // 推荐使用 file_uuid
             file_size: file.size,
           })
           // 添加到本地消息列表
@@ -304,7 +376,7 @@ export default function ChatWindow() {
             receiver_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_uuid: null,
+            file_uuid: fileUuid,
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             send_time: response.send_time,
@@ -382,6 +454,59 @@ export default function ChatWindow() {
     return (now - messageTime) <= 2 * 60 * 1000
   }
 
+  // 处理文件预览/下载（使用预签名URL）
+  const handleFilePreview = async (message: Message) => {
+    try {
+      // 优先使用 file_uuid 获取预签名URL
+      if (message.file_uuid) {
+        const presignedUrl = selectedConversation?.type === 'friend'
+          ? await storageApi.getFriendFilePresignedUrl(message.file_uuid, 'preview')
+          : await storageApi.getPresignedUrl(message.file_uuid, 'preview')
+        window.open(presignedUrl, '_blank')
+      } else if (message.file_url) {
+        // 兼容旧消息，直接使用 file_url
+        window.open(message.file_url, '_blank')
+      }
+    } catch (error) {
+      toast({
+        title: '预览失败',
+        description: error instanceof Error ? error.message : '无法预览文件',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  // 处理文件下载（使用预签名URL）
+  const handleFileDownload = async (message: Message) => {
+    try {
+      let downloadUrl: string
+      
+      if (message.file_uuid) {
+        downloadUrl = selectedConversation?.type === 'friend'
+          ? await storageApi.getFriendFilePresignedUrl(message.file_uuid, 'download')
+          : await storageApi.getPresignedUrl(message.file_uuid, 'download')
+      } else if (message.file_url) {
+        downloadUrl = message.file_url
+      } else {
+        throw new Error('文件不可用')
+      }
+      
+      // 创建下载链接
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = message.message_content || 'download'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (error) {
+      toast({
+        title: '下载失败',
+        description: error instanceof Error ? error.message : '无法下载文件',
+        variant: 'destructive',
+      })
+    }
+  }
+
   // 渲染消息内容
   const renderMessageContent = (message: Message) => {
     switch (message.message_type) {
@@ -394,13 +519,18 @@ export default function ChatWindow() {
       case 'image':
         return (
           <div className="space-y-2">
-            {message.file_url ? (
-              <img
-                src={message.file_url}
-                alt="图片"
-                className="max-w-xs rounded-lg cursor-pointer hover:opacity-90"
-                onClick={() => window.open(message.file_url!, '_blank')}
-              />
+            {(message.file_url || message.file_uuid) ? (
+              <div 
+                className="cursor-pointer hover:opacity-90"
+                onClick={() => handleFilePreview(message)}
+              >
+                <img
+                  src={message.file_url || `${window.location.origin}/api/storage/file/${message.file_uuid}`}
+                  alt="图片"
+                  className="max-w-xs rounded-lg"
+                  loading="lazy"
+                />
+              </div>
             ) : (
               <div className="flex items-center gap-2 text-sm">
                 <ImageIcon className="h-4 w-4" />
@@ -412,11 +542,15 @@ export default function ChatWindow() {
       case 'video':
         return (
           <div className="space-y-2">
-            {message.file_url ? (
+            {(message.file_url || message.file_uuid) ? (
               <video
-                src={message.file_url}
+                src={message.file_url || undefined}
                 controls
                 className="max-w-xs rounded-lg"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleFilePreview(message)
+                }}
               />
             ) : (
               <div className="flex items-center gap-2 text-sm">
@@ -440,12 +574,12 @@ export default function ChatWindow() {
                 </p>
               )}
             </div>
-            {message.file_url && (
+            {(message.file_url || message.file_uuid) && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="shrink-0"
-                onClick={() => window.open(message.file_url!, '_blank')}
+                onClick={() => handleFileDownload(message)}
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -497,9 +631,21 @@ export default function ChatWindow() {
           </div>
         </div>
 
-        <Button variant="ghost" size="icon">
-          <MoreVertical className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {selectedConversation.type === 'group' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowGroupManagement(true)}
+              title="群管理"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="h-5 w-5" />
+          </Button>
+        </div>
       </header>
 
       {/* 消息列表 */}
@@ -613,6 +759,30 @@ export default function ChatWindow() {
               )
             })}
             <div ref={messagesEndRef} />
+            
+            {/* 正在输入状态显示 */}
+            {selectedConversation && (() => {
+              const typingList = getTypingUsers(selectedConversation.id)
+              if (typingList.length === 0) return null
+              
+              return (
+                <div className="px-4 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                  <div className="flex space-x-1">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span>
+                    {selectedConversation.type === 'friend' 
+                      ? '对方正在输入...'
+                      : typingList.length === 1 
+                        ? '有人正在输入...'
+                        : `${typingList.length} 人正在输入...`
+                    }
+                  </span>
+                </div>
+              )
+            })()}
           </>
         )}
       </div>
@@ -704,6 +874,30 @@ export default function ChatWindow() {
           </Button>
         </div>
       </div>
+
+      {/* 群管理弹窗 */}
+      {showGroupManagement && selectedConversation?.type === 'group' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-lg w-[90vw] max-w-2xl h-[80vh] max-h-[700px] shadow-xl flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold">群管理</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowGroupManagement(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <GroupManagement
+                groupId={selectedConversation.id}
+                onClose={() => setShowGroupManagement(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
