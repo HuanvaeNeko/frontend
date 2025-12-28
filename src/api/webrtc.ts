@@ -80,9 +80,17 @@ export interface ICEServersResponse {
 
 export interface CreateRoomRequest {
   name?: string
+  display_name?: string
+  avatar_url?: string
   password?: string
   max_participants?: number
-  expires_minutes?: number
+}
+
+export interface UserInfo {
+  user_id: string | null
+  nickname: string
+  avatar_url: string | null
+  is_authenticated: boolean
 }
 
 export interface CreateRoomResponse {
@@ -92,13 +100,17 @@ export interface CreateRoomResponse {
     password: string
     name?: string
     max_participants: number
-    expires_at: string
+    participant_id: string
+    ws_token: string
+    token_expires_at: string
+    user_info: UserInfo
   }
 }
 
 export interface JoinRoomRequest {
   password: string
   display_name: string
+  avatar_url?: string
 }
 
 export interface JoinRoomResponse {
@@ -109,6 +121,7 @@ export interface JoinRoomResponse {
     room_name?: string
     ice_servers: ICEServer[]
     token_expires_at: string
+    user_info: UserInfo
   }
 }
 
@@ -116,6 +129,7 @@ export interface Participant {
   id: string
   name: string
   is_creator: boolean
+  user_info: UserInfo
 }
 
 // WebSocket 消息类型
@@ -192,8 +206,8 @@ export const webrtcApi = {
     }
     
     const url = params.toString() 
-      ? `${WEBRTC_BASE_URL}/ice-servers?${params}` 
-      : `${WEBRTC_BASE_URL}/ice-servers`
+      ? `${WEBRTC_BASE_URL}/ice_servers?${params}` 
+      : `${WEBRTC_BASE_URL}/ice_servers`
 
     const response = await fetchWithAuth(url, {
       method: 'GET',
@@ -212,6 +226,9 @@ export const webrtcApi = {
   /**
    * 创建房间（需登录）
    * POST /api/webrtc/rooms
+   * 
+   * 返回房间信息和创建者专用的 ws_token
+   * 房间无固定过期时间，只有空置后才自动清理
    */
   createRoom: async (request: CreateRoomRequest = {}): Promise<CreateRoomResponse['data']> => {
     console.log('🏠 创建 WebRTC 房间:', request.name)

@@ -120,8 +120,14 @@ export default function Devices() {
   }
 
   // 格式化时间
-  const formatTime = (timeString: string) => {
+  const formatTime = (timeString: string | null | undefined) => {
+    if (!timeString) return '未知'
+    
     const date = new Date(timeString)
+    
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) return '未知'
+    
     const now = new Date()
     const diff = now.getTime() - date.getTime()
     

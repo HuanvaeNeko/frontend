@@ -101,6 +101,8 @@ export default function ChatPage() {
       file_uuid: string | null
       file_url: string | null
       file_size: number | null
+      file_hash: string | null
+      seq: number
       send_time: string
     }) => {
       console.log('收到私聊消息:', data)
@@ -118,17 +120,20 @@ export default function ChatPage() {
           file_uuid: data.file_uuid,
           file_url: data.file_url,
           file_size: data.file_size,
+          file_hash: data.file_hash,
+          seq: data.seq,
           send_time: data.send_time,
         })
       }
       
-      // 更新会话列表中的最后消息
+      // 更新会话列表中的最后消息和 lastSeq
       const conversationId = data.sender_id === user?.user_id ? data.receiver_id : data.sender_id
       chatStore.updateConversation(conversationId, {
         lastMessage: data.message_content,
         lastTime: data.send_time,
         unreadCount: selectedConv?.id === conversationId ? 0 : 1,
       })
+      chatStore.updateLastSeq(conversationId, data.seq)
     }
 
     // 处理群消息
@@ -143,6 +148,8 @@ export default function ChatPage() {
       file_uuid: string | null
       file_url: string | null
       file_size: number | null
+      file_hash: string | null
+      seq: number
       reply_to: string | null
       send_time: string
     }) => {
@@ -165,16 +172,19 @@ export default function ChatPage() {
           file_uuid: data.file_uuid,
           file_url: data.file_url,
           file_size: data.file_size,
+          file_hash: data.file_hash,
+          seq: data.seq,
           send_time: data.send_time,
         })
       }
       
-      // 更新群会话的最后消息
+      // 更新群会话的最后消息和 lastSeq
       chatStore.updateConversation(data.group_id, {
         lastMessage: data.message_content,
         lastTime: data.send_time,
         unreadCount: selectedConv?.id === data.group_id ? 0 : 1,
       })
+      chatStore.updateLastSeq(data.group_id, data.seq)
     }
 
     // 处理消息撤回

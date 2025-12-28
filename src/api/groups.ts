@@ -328,7 +328,7 @@ export const groupsApi = {
    */
   updateJoinMode: async (groupId: string, joinMode: JoinMode): Promise<void> => {
     console.log('🔒 修改入群模式:', groupId, joinMode)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/join-mode`, {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/join_mode`, {
       method: 'PUT',
       body: JSON.stringify({ join_mode: joinMode }),
     })
@@ -567,7 +567,7 @@ export const groupsApi = {
     expires_in_hours?: number
   }): Promise<InviteCode> => {
     console.log('🔗 生成邀请码:', groupId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite-codes`, {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes`, {
       method: 'POST',
       body: JSON.stringify(options || {}),
     })
@@ -588,7 +588,7 @@ export const groupsApi = {
    */
   getInviteCodes: async (groupId: string): Promise<InviteCode[]> => {
     console.log('📋 获取邀请码列表:', groupId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite-codes`, {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes`, {
       method: 'GET',
     })
 
@@ -607,7 +607,7 @@ export const groupsApi = {
    */
   revokeInviteCode: async (groupId: string, codeId: string): Promise<void> => {
     console.log('🗑️ 撤销邀请码:', groupId, codeId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite-codes/${codeId}`, {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes/${codeId}`, {
       method: 'DELETE',
     })
 
@@ -625,7 +625,7 @@ export const groupsApi = {
    */
   joinByCode: async (code: string): Promise<void> => {
     console.log('🔗 通过邀请码入群:', code)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/join-by-code`, {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/join_by_code`, {
       method: 'POST',
       body: JSON.stringify({ code }),
     })

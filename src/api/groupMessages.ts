@@ -1,7 +1,7 @@
 import { getApiBaseUrl } from '../utils/apiConfig'
 import { useAuthStore } from '../store/authStore'
 
-const GROUP_MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/group-messages`
+const GROUP_MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/group_messages`
 
 // 获取认证头
 const getAuthHeaders = (): HeadersInit => {
@@ -76,6 +76,8 @@ export interface GroupMessage {
   file_uuid: string | null
   file_url: string | null
   file_size: number | null
+  file_hash: string | null
+  seq: number
   reply_to: string | null
   send_time: string
   is_recalled: boolean
@@ -94,6 +96,7 @@ export interface SendGroupMessageRequest {
 export interface SendGroupMessageResponse {
   message_uuid: string
   send_time: string
+  seq: number
 }
 
 export interface GetGroupMessagesResponse {

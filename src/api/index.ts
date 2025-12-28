@@ -17,7 +17,18 @@ export type { Friend, FriendRequest, PendingRequest, SentRequest } from './frien
 
 // 私聊消息 API
 export { messagesApi } from './messages'
-export type { Message, MessageType, SendMessageRequest, SendMessageResponse, GetMessagesResponse } from './messages'
+export type {
+  Message,
+  MessageType,
+  SendMessageRequest,
+  SendMessageResponse,
+  GetMessagesResponse,
+  ConversationType,
+  SyncConversationRequest,
+  SyncMessagesRequest,
+  SyncConversationResponse,
+  SyncMessagesResponse,
+} from './messages'
 
 // 群聊管理 API
 export { groupsApi } from './groups'
@@ -68,6 +79,7 @@ export type {
   JoinRoomRequest,
   JoinRoomResponse,
   Participant,
+  UserInfo,
   WSJoinedMessage,
   WSPeerJoinedMessage,
   WSPeerLeftMessage,

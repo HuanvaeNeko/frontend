@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useWSStore, type WSPrivateMessage, type WSGroupMessage, type WSMessageRecalled } from '../store/wsStore'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
@@ -16,13 +16,17 @@ import type { Message } from '../api/messages'
  * - 处理消息撤回
  * - 处理好友请求通知
  * - 处理群邀请通知
+ * - 应用启动时自动同步增量消息
  */
 export function useRealtimeMessages() {
   const { accessToken } = useAuthStore()
   const { connect, disconnect, connected, registerHandler } = useWSStore()
-  const { selectedConversation, addMessage, setMessages, messages } = useChatStore()
+  const { selectedConversation, addMessage, setMessages, messages, syncMessages, conversations } = useChatStore()
   const { loadPendingRequests } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
+  
+  // 标记是否已执行过初始同步
+  const hasSyncedRef = useRef(false)
 
   // 自动连接
   useEffect(() => {
@@ -34,6 +38,17 @@ export function useRealtimeMessages() {
       // 组件卸载时不断开连接，让应用全局保持连接
     }
   }, [accessToken, connect, connected])
+  
+  // 连接成功后自动同步消息
+  useEffect(() => {
+    if (connected && conversations.length > 0 && !hasSyncedRef.current) {
+      hasSyncedRef.current = true
+      console.log('🔄 应用启动，开始同步消息...')
+      syncMessages().catch(error => {
+        console.error('消息同步失败:', error)
+      })
+    }
+  }, [connected, conversations.length, syncMessages])
 
   // 处理新私聊消息
   const handlePrivateMessage = useCallback((data: WSPrivateMessage['data']) => {
@@ -49,6 +64,8 @@ export function useRealtimeMessages() {
       file_uuid: data.file_uuid,
       file_url: data.file_url,
       file_size: data.file_size,
+      file_hash: data.file_hash,
+      seq: data.seq,
       send_time: data.send_time,
     }
 
@@ -80,6 +97,8 @@ export function useRealtimeMessages() {
         file_uuid: data.file_uuid,
         file_url: data.file_url,
         file_size: data.file_size,
+        file_hash: data.file_hash,
+        seq: data.seq,
         send_time: data.send_time,
       }
       addMessage(message)

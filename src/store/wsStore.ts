@@ -16,6 +16,8 @@ export interface WSPrivateMessage {
     file_uuid: string | null
     file_url: string | null
     file_size: number | null
+    file_hash: string | null
+    seq: number
     send_time: string
   }
 }
@@ -33,6 +35,8 @@ export interface WSGroupMessage {
     file_uuid: string | null
     file_url: string | null
     file_size: number | null
+    file_hash: string | null
+    seq: number
     reply_to: string | null
     send_time: string
   }

@@ -74,6 +74,8 @@ export interface Message {
   file_uuid: string | null
   file_url: string | null
   file_size: number | null
+  file_hash: string | null
+  seq: number
   send_time: string
 }
 
@@ -89,11 +91,37 @@ export interface SendMessageRequest {
 export interface SendMessageResponse {
   message_uuid: string
   send_time: string
+  seq: number
 }
 
 export interface GetMessagesResponse {
   messages: Message[]
   has_more: boolean
+}
+
+// 消息同步类型
+export type ConversationType = 'friend' | 'group'
+
+export interface SyncConversationRequest {
+  conversation_id: string
+  conversation_type: ConversationType
+  last_seq: number
+}
+
+export interface SyncMessagesRequest {
+  conversations: SyncConversationRequest[]
+}
+
+export interface SyncConversationResponse {
+  conversation_id: string
+  conversation_type: ConversationType
+  messages: Message[]
+  latest_seq: number
+  has_more: boolean
+}
+
+export interface SyncMessagesResponse {
+  conversations: SyncConversationResponse[]
 }
 
 // ============================================
@@ -228,6 +256,38 @@ export const messagesApi = {
 
     const oldestTime = messages[messages.length - 1].send_time
     return messagesApi.getMessages(friendId, oldestTime, limit)
+  },
+
+  /**
+   * 批量增量同步消息
+   * POST /api/messages/sync
+   * 
+   * 客户端携带每个会话的 last_seq，服务器返回 seq > last_seq 的新消息
+   * 
+   * 限制:
+   * - 单次最多同步 50 个会话
+   * - 每个会话最多返回 100 条消息
+   * 
+   * @param conversations 需要同步的会话列表
+   */
+  syncMessages: async (conversations: SyncConversationRequest[]): Promise<SyncMessagesResponse> => {
+    console.log('🔄 同步消息:', conversations.length, '个会话')
+    const response = await fetchWithAuth(`${MESSAGES_BASE_URL}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({ conversations }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ 
+        message: `同步消息失败 (${response.status})` 
+      }))
+      console.error('同步消息失败:', error)
+      throw new Error(error.message || error.error || '同步消息失败')
+    }
+
+    const result = await response.json()
+    console.log('✅ 消息同步完成')
+    return result.data
   },
 }
 

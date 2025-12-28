@@ -98,6 +98,8 @@ export interface Message {
   file_uuid: string | null
   file_url: string | null
   file_size: number | null
+  file_hash: string | null
+  seq: number
   send_time: string
 }
 
@@ -166,6 +168,8 @@ export interface GroupMessage {
   file_uuid: string | null
   file_url: string | null
   file_size: number | null
+  file_hash: string | null
+  seq: number
   reply_to: string | null
   send_time: string
   is_recalled: boolean

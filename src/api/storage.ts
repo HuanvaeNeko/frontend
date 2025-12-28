@@ -143,6 +143,7 @@ export interface FileItem {
   preview_support: string
   created_at: string
   file_url: string
+  file_hash: string
 }
 
 export interface FileListResponse {
@@ -555,7 +556,7 @@ export const storageApi = {
     }
     
     console.log('🔗 获取好友文件预签名URL:', uuid)
-    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/friends-file/${uuid}/presigned-url`, {
+    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/friends_file/${uuid}/presigned_url`, {
       method: 'POST',
       body: JSON.stringify({ operation }),
     })
@@ -572,6 +573,37 @@ export const storageApi = {
       url: data.presigned_url,
       expiresAt: data.expires_at,
       cachedAt: new Date().toISOString(),
+    }
+    
+    return data.presigned_url
+  },
+
+  /**
+   * 获取好友文件扩展预签名 URL（超大文件）
+   * POST /api/storage/friends_file/{uuid}/presigned_url/extended
+   */
+  getFriendFileExtendedPresignedUrl: async (
+    uuid: string,
+    estimatedDownloadTimeSeconds: number
+  ): Promise<string> => {
+    console.log('🔗 获取好友文件扩展预签名URL:', uuid)
+    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/friends_file/${uuid}/presigned_url/extended`, {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'download',
+        estimated_download_time: estimatedDownloadTimeSeconds,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: '获取好友文件扩展预签名URL失败' }))
+      throw new Error(error.error || '获取好友文件扩展预签名URL失败')
+    }
+
+    const data: PresignedUrlResponse = await response.json()
+    
+    if (data.warning) {
+      console.warn('⚠️', data.warning)
     }
     
     return data.presigned_url

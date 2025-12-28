@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { Message } from '../types'
+import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '../api/messages'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 
@@ -12,6 +13,7 @@ export interface Conversation {
   lastTime?: string
   unreadCount: number
   online?: boolean
+  lastSeq?: number // 本地最后消息序列号，用于增量同步
 }
 
 // 正在输入状态
@@ -62,6 +64,11 @@ interface ChatState {
   setTypingStatus: (status: TypingStatus) => void
   clearTypingStatus: (conversationId: string, userId: string) => void
   getTypingUsers: (conversationId: string) => TypingStatus[]
+
+  // 消息同步
+  isSyncing: boolean
+  syncMessages: () => Promise<SyncConversationResponse[]>
+  updateLastSeq: (conversationId: string, seq: number) => void
 
   // 清空当前会话
   clearCurrentChat: () => void
@@ -157,6 +164,66 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return Array.from(typingUsers.values()).filter(
       s => s.conversationId === conversationId && s.isTyping
     )
+  },
+
+  // 消息同步
+  isSyncing: false,
+  
+  syncMessages: async () => {
+    const conversations = get().conversations
+    if (conversations.length === 0) {
+      return []
+    }
+
+    set({ isSyncing: true })
+    
+    try {
+      // 构建同步请求
+      const syncRequests: SyncConversationRequest[] = conversations.map(conv => ({
+        conversation_id: conv.type === 'friend' 
+          ? `conv-${conv.id}` // 好友会话使用 conv- 前缀
+          : conv.id,          // 群聊直接使用 group_id
+        conversation_type: conv.type === 'friend' ? 'friend' : 'group',
+        last_seq: conv.lastSeq || 0,
+      }))
+
+      // 调用同步 API
+      const result = await messagesApi.syncMessages(syncRequests)
+      
+      // 更新每个会话的 lastSeq
+      for (const conv of result.conversations) {
+        const originalId = conv.conversation_type === 'friend'
+          ? conv.conversation_id.replace(/^conv-/, '')
+          : conv.conversation_id
+        
+        get().updateLastSeq(originalId, conv.latest_seq)
+        
+        // 如果有新消息，更新未读计数
+        if (conv.messages.length > 0) {
+          get().updateConversation(originalId, {
+            unreadCount: (get().conversations.find(c => c.id === originalId)?.unreadCount || 0) + conv.messages.length,
+            lastMessage: conv.messages[conv.messages.length - 1]?.message_content,
+            lastTime: conv.messages[conv.messages.length - 1]?.send_time,
+          })
+        }
+      }
+
+      console.log('✅ 消息同步完成:', result.conversations.length, '个会话')
+      return result.conversations
+    } catch (error) {
+      console.error('消息同步失败:', error)
+      throw error
+    } finally {
+      set({ isSyncing: false })
+    }
+  },
+
+  updateLastSeq: (conversationId, seq) => {
+    set({
+      conversations: get().conversations.map(c =>
+        c.id === conversationId ? { ...c, lastSeq: seq } : c
+      ),
+    })
   },
 
   clearCurrentChat: () => {

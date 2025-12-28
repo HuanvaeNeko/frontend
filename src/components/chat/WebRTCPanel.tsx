@@ -43,7 +43,6 @@ export default function WebRTCPanel() {
         name: roomName || undefined,
         password: roomPassword || undefined,
         max_participants: maxParticipants,
-        expires_minutes: durationMinutes,
       })
 
       const shareLink = `${window.location.origin}/video-meeting?room=${response.room_id}&pwd=${roomPassword || ''}`

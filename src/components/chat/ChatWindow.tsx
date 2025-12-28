@@ -148,6 +148,8 @@ export default function ChatWindow() {
           file_uuid: null,
           file_url: null,
           file_size: null,
+          file_hash: null,
+          seq: response.seq,
           send_time: response.send_time,
         }
         addMessage(message)
@@ -167,6 +169,8 @@ export default function ChatWindow() {
           file_uuid: null,
           file_url: null,
           file_size: null,
+          file_hash: null,
+          seq: response.seq,
           send_time: response.send_time,
         }
         addMessage(message)
@@ -297,6 +301,8 @@ export default function ChatWindow() {
             file_uuid: fileUuid,
             file_url: uploadResult.fileUrl,
             file_size: file.size,
+            file_hash: null,
+            seq: response.seq,
             send_time: response.send_time,
           }
           addMessage(message)
@@ -318,6 +324,8 @@ export default function ChatWindow() {
             file_uuid: fileUuid,
             file_url: uploadResult.fileUrl,
             file_size: file.size,
+            file_hash: null,
+            seq: response.seq,
             send_time: response.send_time,
           }
           addMessage(message)
@@ -639,10 +647,10 @@ export default function ChatWindow() {
                     )}
                     <AvatarFallback>
                       {groupMessage
-                        ? groupMessage.sender_nickname[0]?.toUpperCase()
+                        ? (groupMessage.sender_nickname?.[0] || 'U').toUpperCase()
                         : isOwn
                         ? user?.nickname?.[0]?.toUpperCase() || 'U'
-                        : selectedConversation.name[0]?.toUpperCase()}
+                        : selectedConversation.name?.[0]?.toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
 
