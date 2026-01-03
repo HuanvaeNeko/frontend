@@ -48,8 +48,10 @@ public/sw.js.map
 public/workbox-*.js
 public/workbox-*.js.map
 
-# Vercel
+# Vercel / Cloudflare Pages
 .vercel
+.wrangler
+.dev.vars
 
 # Sentry
 .sentryclirc

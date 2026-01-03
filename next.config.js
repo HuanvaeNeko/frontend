@@ -1,27 +1,10 @@
-import withPWAInit from '@ducanh2912/next-pwa'
-
-const withPWA = withPWAInit({
-  dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
-  register: true,
-  skipWaiting: true,
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
-  workboxOptions: {
-    disableDevLogs: true,
-  },
-})
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 移除静态导出，使用标准 Next.js 构建
-  // 部署时可以使用 Vercel、Docker 或其他支持 Next.js 的平台
-  trailingSlash: true,
+  output: 'export', // 静态 HTML 导出
   images: {
     unoptimized: true,
   },
-  turbopack: {},
+  trailingSlash: true,
 }
 
-export default withPWA(nextConfig)
+export default nextConfig
