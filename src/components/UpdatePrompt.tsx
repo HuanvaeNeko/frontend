@@ -13,6 +13,7 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
   const [dismissed, setDismissed] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const updateCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const {
     needRefresh: [needRefresh],
@@ -37,12 +38,16 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
     },
   })
 
-  // 组件卸载时清理更新检查 interval
+  // 组件卸载时清理所有定时器
   useEffect(() => {
     return () => {
       if (updateCheckIntervalRef.current) {
         clearInterval(updateCheckIntervalRef.current)
         updateCheckIntervalRef.current = null
+      }
+      if (dismissTimeoutRef.current) {
+        clearTimeout(dismissTimeoutRef.current)
+        dismissTimeoutRef.current = null
       }
     }
   }, [])
@@ -59,10 +64,15 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
       clearInterval(timerRef.current)
       timerRef.current = null
     }
+    // 清理之前的 dismiss timeout（如果存在）
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current)
+    }
     // 30 秒后重新显示提示
-    setTimeout(() => {
+    dismissTimeoutRef.current = setTimeout(() => {
       setDismissed(false)
       setCountdown(initialSeconds) // 重置倒计时
+      dismissTimeoutRef.current = null
     }, 30000)
   }, [initialSeconds])
 

@@ -198,8 +198,9 @@ export default function ChatPage() {
     // 处理消息撤回
     const handleMessageRecalled = (data: {
       message_uuid: string
-      conversation_type: 'private' | 'group'
-      conversation_id: string
+      source_type: 'friend' | 'group'
+      source_id: string
+      recalled_by: string
     }) => {
       console.log('消息被撤回:', data)
       // 从消息列表中移除该消息

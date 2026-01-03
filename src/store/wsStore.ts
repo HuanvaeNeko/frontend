@@ -408,8 +408,16 @@ export const useWSStore = create<WSState>((set, get) => {
               handlers.forEach(handler => {
                 try {
                   // 根据消息类型传递不同的数据
-                  // 对于有 data 属性的消息，传递 data；否则传递整个消息对象
-                  const payload = 'data' in message ? message.data : message
+                  // 对于有 data 属性的消息，传递 data
+                  // 对于没有 data 属性的消息，传递除 type 外的所有字段
+                  let payload: unknown
+                  if ('data' in message) {
+                    payload = message.data
+                  } else {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { type: _type, ...rest } = message
+                    payload = rest
+                  }
                   handler(payload)
                 } catch (error) {
                   console.error(`消息处理器错误 (${message.type}):`, error)
