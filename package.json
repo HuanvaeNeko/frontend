@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack --port 5173",
     "build": "next build --webpack",
     "start": "next start --port 5173",
-    "lint": "next lint",
+    "lint": "next lint --dir .",
     "export": "next build"
   },
   "dependencies": {
@@ -35,6 +35,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.0.3",

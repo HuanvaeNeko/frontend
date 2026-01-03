@@ -1,6 +1,5 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import { Home, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -11,19 +10,10 @@ export default function NotFound() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center px-4"
-      >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: 'spring' }}
-          className="text-9xl font-black gradient-text mb-4"
-        >
+      <div className="text-center px-4 animate-fadeIn">
+        <div className="text-9xl font-black gradient-text mb-4">
           404
-        </motion.div>
+        </div>
         
         <h1 className="text-2xl font-bold text-gray-800 mb-2">
           页面未找到
@@ -48,8 +38,7 @@ export default function NotFound() {
             </Button>
           </Link>
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }
-

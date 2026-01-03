@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Toaster } from '@/components/ui/toaster'
-import { UpdatePrompt } from '@/components/UpdatePrompt'
 import '@/styles/globals.css'
+import ClientProviders from './providers'
 
 export const metadata: Metadata = {
   title: 'Huanvae Chat - AI聊天、群聊与视频会议',
@@ -27,11 +26,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" data-theme="light">
       <body>
-        {children}
-        <Toaster />
-        <UpdatePrompt autoUpdateDelay={3000} />
+        <ClientProviders>
+          {children}
+        </ClientProviders>
       </body>
     </html>
   )
 }
-

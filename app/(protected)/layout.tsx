@@ -1,8 +1,10 @@
 'use client'
 
 import { Suspense } from 'react'
-import ProtectedRoute from '@/components/ProtectedRoute'
-import LoadingAnimation from '@/components/LoadingAnimation'
+import dynamic from 'next/dynamic'
+import SimpleLoading from '@/components/SimpleLoading'
+
+const ProtectedRoute = dynamic(() => import('@/components/ProtectedRoute'), { ssr: false })
 
 export default function ProtectedLayout({
   children,
@@ -11,10 +13,9 @@ export default function ProtectedLayout({
 }) {
   return (
     <ProtectedRoute>
-      <Suspense fallback={<LoadingAnimation />}>
+      <Suspense fallback={<SimpleLoading />}>
         {children}
       </Suspense>
     </ProtectedRoute>
   )
 }
-
