@@ -71,22 +71,38 @@ export const fetchWithAuth = async (
   })
 
   // 如果 Token 过期，尝试刷新后重试一次
-  if (response.status === 401 && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetchWithTimeout(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
+  if (response.status === 401) {
+    if (authStore.refreshToken) {
+      try {
+        await authStore.refreshAccessToken()
+        const newHeaders = getAuthHeaders()
+        response = await fetchWithTimeout(url, {
+          ...options,
+          headers: {
+            ...newHeaders,
+            ...options.headers,
+          },
+        })
+        
+        // 如果刷新后仍然 401，说明 refresh token 也无效
+        if (response.status === 401) {
+          console.error('Token refresh succeeded but request still failed')
+          authStore.clearAuth()
+          window.location.href = '/login'
+          throw new Error('登录已过期，请重新登录')
+        }
+      } catch (error) {
+        console.error('Token refresh failed, redirecting to login')
+        authStore.clearAuth()
+        window.location.href = '/login'
+        throw new Error('登录已过期，请重新登录')
+      }
+    } else {
+      // 没有 refresh token，直接跳转登录
+      console.error('No refresh token, redirecting to login')
       authStore.clearAuth()
       window.location.href = '/login'
-      throw error
+      throw new Error('登录已过期，请重新登录')
     }
   }
 

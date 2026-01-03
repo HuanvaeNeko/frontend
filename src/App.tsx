@@ -179,13 +179,18 @@ function App() {
         
         {/* 受保护的路由 */}
         <Route element={<ProtectedLayout />}>
-          {/* 聊天相关 */}
-          <Route path="/" element={<ChatPage />} />
+          {/* 主聊天页面 - 支持 tab 和会话 ID */}
+          <Route path="/" element={<Navigate to="/chat" replace />} />
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:friendId" element={<ChatPage />} />
+          <Route path="/chat/friends" element={<ChatPage />} />
+          <Route path="/chat/friends/:friendId" element={<ChatPage />} />
+          <Route path="/chat/groups" element={<ChatPage />} />
+          <Route path="/chat/groups/:groupId" element={<ChatPage />} />
+          <Route path="/chat/files" element={<ChatPage />} />
+          <Route path="/chat/webrtc" element={<ChatPage />} />
           
-          {/* 群聊 */}
-          <Route path="/group-chat" element={<GroupChat />} />
+          {/* 兼容旧路由 - 重定向到新路由 */}
+          <Route path="/group-chat" element={<Navigate to="/chat/groups" replace />} />
           <Route path="/group-chat/:groupId" element={<GroupChat />} />
           
           {/* AI 聊天 */}
