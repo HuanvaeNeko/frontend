@@ -91,3 +91,10 @@ export type {
   WSMessage,
 } from './webrtc'
 
+// 诊断日志 API
+export { diagnosticApi } from './diagnostic'
+export type {
+  FriendPermissionReportRequest,
+  DiagnosticReportResponse,
+} from './diagnostic'
+

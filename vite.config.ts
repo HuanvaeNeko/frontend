@@ -11,8 +11,8 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      registerType: 'prompt', // 使用 prompt 模式，配合 UpdatePrompt 组件
+      injectRegister: false, // 禁用自动注册，由 useRegisterSW 处理
       manifest: {
         name: 'HuanVae Chat',
         short_name: 'HuanVae',

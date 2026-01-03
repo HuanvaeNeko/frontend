@@ -77,6 +77,8 @@ export interface GroupMessage {
   file_url: string | null
   file_size: number | null
   file_hash: string | null
+  image_width: number | null
+  image_height: number | null
   seq: number
   reply_to: string | null
   send_time: string

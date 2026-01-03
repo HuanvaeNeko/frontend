@@ -102,6 +102,8 @@ export default function ChatPage() {
       file_url: string | null
       file_size: number | null
       file_hash: string | null
+      image_width: number | null
+      image_height: number | null
       seq: number
       send_time: string
     }) => {
@@ -121,6 +123,8 @@ export default function ChatPage() {
           file_url: data.file_url,
           file_size: data.file_size,
           file_hash: data.file_hash,
+          image_width: data.image_width,
+          image_height: data.image_height,
           seq: data.seq,
           send_time: data.send_time,
         })
@@ -149,6 +153,8 @@ export default function ChatPage() {
       file_url: string | null
       file_size: number | null
       file_hash: string | null
+      image_width: number | null
+      image_height: number | null
       seq: number
       reply_to: string | null
       send_time: string
@@ -173,6 +179,8 @@ export default function ChatPage() {
           file_url: data.file_url,
           file_size: data.file_size,
           file_hash: data.file_hash,
+          image_width: data.image_width,
+          image_height: data.image_height,
           seq: data.seq,
           send_time: data.send_time,
         })

@@ -149,6 +149,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          image_width: null,
+          image_height: null,
           seq: response.seq,
           send_time: response.send_time,
         }
@@ -170,6 +172,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          image_width: null,
+          image_height: null,
           seq: response.seq,
           send_time: response.send_time,
         }
@@ -302,6 +306,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            image_width: null,
+            image_height: null,
             seq: response.seq,
             send_time: response.send_time,
           }
@@ -325,6 +331,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            image_width: null,
+            image_height: null,
             seq: response.seq,
             send_time: response.send_time,
           }

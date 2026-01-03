@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, Suspense, lazy } from 'react'
 import { useAuthStore } from './store/authStore'
 import ProtectedRoute from './components/ProtectedRoute'
 import { Toaster } from './components/ui/toaster'
+import { UpdatePrompt } from './components/UpdatePrompt'
 import LoadingAnimation from './components/LoadingAnimation'
 import MaintenancePage from './components/MaintenancePage'
 import { getApiBaseUrl } from './utils/apiConfig'
@@ -294,6 +295,7 @@ function App() {
         </Routes>
       </Suspense>
       <Toaster />
+      <UpdatePrompt autoUpdateDelay={3000} />
     </>
   )
 }
