@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { Video, Phone, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +12,7 @@ import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
 
 export default function WebRTCPanel() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const { accessToken } = useAuthStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -69,7 +71,7 @@ export default function WebRTCPanel() {
       if (roomPassword) {
         params.set('pwd', roomPassword)
       }
-      navigate(`/video-meeting?${params.toString()}`)
+      router.push(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '创建失败',
@@ -113,7 +115,7 @@ export default function WebRTCPanel() {
       if (joinNickname) {
         params.set('name', joinNickname)
       }
-      navigate(`/video-meeting?${params.toString()}`)
+      router.push(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '加入失败',
@@ -256,156 +258,179 @@ export default function WebRTCPanel() {
 
       {/* 创建房间对话框 */}
       {showCreateDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-lg p-6 w-96 max-w-[90vw]">
-            <h3 className="text-lg font-semibold mb-4">创建视频房间</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="roomName">房间名称（可选）</Label>
-                <Input
-                  id="roomName"
-                  placeholder="我的房间"
-                  value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
-                />
-              </div>
+        <>
+          <div 
+            className="fixed inset-0 bg-black/60 z-[100]" 
+            onClick={() => setShowCreateDialog(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
+            <div 
+              className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold mb-4 text-foreground">创建视频房间</h3>
               
-              <div>
-                <Label htmlFor="roomPassword">房间密码（可选）</Label>
-                <Input
-                  id="roomPassword"
-                  type="password"
-                  placeholder="不填自动生成"
-                  value={roomPassword}
-                  onChange={(e) => setRoomPassword(e.target.value)}
-                />
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="roomName" className="text-sm font-medium text-foreground">房间名称（可选）</Label>
+                  <Input
+                    id="roomName"
+                    placeholder="我的房间"
+                    value={roomName}
+                    onChange={(e) => setRoomName(e.target.value)}
+                    className="mt-1.5"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="roomPassword" className="text-sm font-medium text-foreground">房间密码（可选）</Label>
+                  <Input
+                    id="roomPassword"
+                    type="password"
+                    placeholder="不填自动生成"
+                    value={roomPassword}
+                    onChange={(e) => setRoomPassword(e.target.value)}
+                    className="mt-1.5"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="maxParticipants" className="text-sm font-medium text-foreground">最大人数</Label>
+                  <select
+                    id="maxParticipants"
+                    className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={maxParticipants}
+                    onChange={(e) => setMaxParticipants(Number(e.target.value))}
+                  >
+                    <option value={2}>2人</option>
+                    <option value={5}>5人</option>
+                    <option value={10}>10人</option>
+                    <option value={20}>20人</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="duration" className="text-sm font-medium text-foreground">有效期</Label>
+                  <select
+                    id="duration"
+                    className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                  >
+                    <option value={30}>30分钟</option>
+                    <option value={60}>1小时</option>
+                    <option value={120}>2小时</option>
+                    <option value={360}>6小时</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <Label htmlFor="maxParticipants">最大人数</Label>
-                <select
-                  id="maxParticipants"
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                  value={maxParticipants}
-                  onChange={(e) => setMaxParticipants(Number(e.target.value))}
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowCreateDialog(false)}
+                  disabled={creating}
                 >
-                  <option value={2}>2人</option>
-                  <option value={5}>5人</option>
-                  <option value={10}>10人</option>
-                  <option value={20}>20人</option>
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="duration">有效期</Label>
-                <select
-                  id="duration"
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                  取消
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleCreateRoom}
+                  disabled={creating}
                 >
-                  <option value={30}>30分钟</option>
-                  <option value={60}>1小时</option>
-                  <option value={120}>2小时</option>
-                  <option value={360}>6小时</option>
-                </select>
+                  {creating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      创建中...
+                    </>
+                  ) : (
+                    '创建房间'
+                  )}
+                </Button>
               </div>
-            </div>
-
-            <div className="flex gap-2 mt-6">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowCreateDialog(false)}
-                disabled={creating}
-              >
-                取消
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleCreateRoom}
-                disabled={creating}
-              >
-                {creating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    创建中...
-                  </>
-                ) : (
-                  '创建房间'
-                )}
-              </Button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* 加入房间对话框 */}
       {showJoinDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-lg p-6 w-96 max-w-[90vw]">
-            <h3 className="text-lg font-semibold mb-4">加入视频房间</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="joinRoomId">房间号</Label>
-                <Input
-                  id="joinRoomId"
-                  placeholder="输入房间号"
-                  value={joinRoomId}
-                  onChange={(e) => setJoinRoomId(e.target.value)}
-                />
-              </div>
+        <>
+          <div 
+            className="fixed inset-0 bg-black/60 z-[100]" 
+            onClick={() => setShowJoinDialog(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
+            <div 
+              className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold mb-4 text-foreground">加入视频房间</h3>
               
-              <div>
-                <Label htmlFor="joinPassword">密码</Label>
-                <Input
-                  id="joinPassword"
-                  type="password"
-                  placeholder="如有密码请输入"
-                  value={joinPassword}
-                  onChange={(e) => setJoinPassword(e.target.value)}
-                />
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="joinRoomId" className="text-sm font-medium text-foreground">房间号</Label>
+                  <Input
+                    id="joinRoomId"
+                    placeholder="输入房间号"
+                    value={joinRoomId}
+                    onChange={(e) => setJoinRoomId(e.target.value)}
+                    className="mt-1.5"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="joinPassword" className="text-sm font-medium text-foreground">密码</Label>
+                  <Input
+                    id="joinPassword"
+                    type="password"
+                    placeholder="如有密码请输入"
+                    value={joinPassword}
+                    onChange={(e) => setJoinPassword(e.target.value)}
+                    className="mt-1.5"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="joinNickname" className="text-sm font-medium text-foreground">您的昵称</Label>
+                  <Input
+                    id="joinNickname"
+                    placeholder="可选"
+                    value={joinNickname}
+                    onChange={(e) => setJoinNickname(e.target.value)}
+                    className="mt-1.5"
+                  />
+                </div>
               </div>
 
-              <div>
-                <Label htmlFor="joinNickname">您的昵称</Label>
-                <Input
-                  id="joinNickname"
-                  placeholder="可选"
-                  value={joinNickname}
-                  onChange={(e) => setJoinNickname(e.target.value)}
-                />
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowJoinDialog(false)}
+                  disabled={joining}
+                >
+                  取消
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleJoinRoom}
+                  disabled={joining}
+                >
+                  {joining ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      加入中...
+                    </>
+                  ) : (
+                    '加入房间'
+                  )}
+                </Button>
               </div>
-            </div>
-
-            <div className="flex gap-2 mt-6">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowJoinDialog(false)}
-                disabled={joining}
-              >
-                取消
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleJoinRoom}
-                disabled={joining}
-              >
-                {joining ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    加入中...
-                  </>
-                ) : (
-                  '加入房间'
-                )}
-              </Button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )

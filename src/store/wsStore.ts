@@ -2,108 +2,184 @@ import { create } from 'zustand'
 import { getApiBaseUrl } from '../utils/apiConfig'
 import { useAuthStore } from './authStore'
 
-// WebSocket 消息类型定义
-export interface WSPrivateMessage {
-  type: 'private_message'
-  data: {
-    message_uuid: string
-    sender_id: string
-    sender_nickname: string
-    sender_avatar_url: string
-    receiver_id: string
-    message_content: string
-    message_type: 'text' | 'image' | 'video' | 'file'
-    file_uuid: string | null
-    file_url: string | null
-    file_size: number | null
-    file_hash: string | null
-    seq: number
-    send_time: string
-  }
+// =============================================
+// WebSocket 消息类型定义（匹配后端文档）
+// =============================================
+
+// 新消息通知（好友/群聊统一格式）
+export interface WSNewMessage {
+  type: 'new_message'
+  source_type: 'friend' | 'group'
+  source_id: string
+  message_uuid: string
+  sender_id: string
+  sender_nickname: string
+  sender_avatar_url: string
+  content: string
+  message_type: 'text' | 'image' | 'video' | 'file' | 'system'
+  seq: number
+  timestamp: string
+  file_uuid?: string
+  file_url?: string
+  file_size?: number
+  file_hash?: string
+  image_width?: number
+  image_height?: number
 }
 
-export interface WSGroupMessage {
-  type: 'group_message'
-  data: {
-    message_uuid: string
-    group_id: string
-    sender_id: string
-    sender_nickname: string
-    sender_avatar_url: string
-    message_content: string
-    message_type: 'text' | 'image' | 'video' | 'file' | 'system'
-    file_uuid: string | null
-    file_url: string | null
-    file_size: number | null
-    file_hash: string | null
-    seq: number
-    reply_to: string | null
-    send_time: string
-  }
-}
-
+// 消息撤回通知
 export interface WSMessageRecalled {
   type: 'message_recalled'
-  data: {
-    message_uuid: string
-    conversation_type: 'private' | 'group'
-    conversation_id: string
-  }
+  source_type: 'friend' | 'group'
+  source_id: string
+  message_uuid: string
+  recalled_by: string
 }
 
-export interface WSFriendRequest {
-  type: 'friend_request'
-  data: {
-    applicant_user_id: string
-    nickname: string
-    avatar_url: string
-    reason: string
-    request_time: string
-  }
+// 系统通知（好友/群聊系统事件）
+export interface WSSystemNotification {
+  type: 'system_notification'
+  notification_type:
+    | 'friend_request'
+    | 'friend_request_approved'
+    | 'friend_request_rejected'
+    | 'friend_deleted'
+    | 'group_invite'
+    | 'group_join_request'
+    | 'group_join_approved'
+    | 'group_removed'
+    | 'group_disbanded'
+    | 'group_notice_updated'
+    | 'owner_transferred'
+    | 'admin_set'
+    | 'admin_removed'
+    | 'member_muted'
+    | 'member_unmuted'
+  data: Record<string, unknown>
 }
 
-export interface WSFriendRequestResult {
-  type: 'friend_request_result'
-  data: {
-    target_user_id: string
-    result: 'approved' | 'rejected'
-  }
+// 好友请求通知数据
+export interface FriendRequestData {
+  from_user_id: string
+  from_nickname: string
+  message: string
+  request_id: string
 }
 
-export interface WSGroupInvitation {
-  type: 'group_invitation'
-  data: {
-    invitation_id: string
-    group_id: string
-    group_name: string
-    group_avatar_url: string
-    inviter_id: string
-    inviter_nickname: string
-  }
+// 好友请求通过通知数据
+export interface FriendRequestApprovedData {
+  friend_id: string
+  friend_nickname: string
+  friend_avatar_url: string
+  add_time: string
 }
 
-export interface WSGroupMemberChange {
-  type: 'group_member_joined' | 'group_member_left' | 'group_member_removed'
-  data: {
-    group_id: string
-    user_id: string
-    user_nickname: string
-  }
+// 好友请求拒绝通知数据
+export interface FriendRequestRejectedData {
+  user_id: string
+  user_nickname: string
+  reason?: string
 }
 
-export interface WSGroupNotice {
-  type: 'group_notice'
-  data: {
-    group_id: string
-    notice_id: string
-    title: string
-    content: string
-    publisher_nickname: string
-    is_pinned: boolean
-    published_at: string
-  }
+// 好友删除通知数据
+export interface FriendDeletedData {
+  friend_id: string
+  friend_nickname: string
+  deleted_at: string
 }
 
+// 群邀请通知数据
+export interface GroupInviteData {
+  group_id: string
+  group_name: string
+  inviter_id: string
+  inviter_nickname: string
+  message?: string
+  request_id: string
+}
+
+// 入群申请通知数据
+export interface GroupJoinRequestData {
+  group_id: string
+  group_name: string
+  user_id: string
+  user_nickname: string
+  message?: string
+  request_id: string
+}
+
+// 入群申请通过通知数据
+export interface GroupJoinApprovedData {
+  group_id: string
+  group_name: string
+  group_avatar_url: string
+  role: string
+  approved_by: string
+}
+
+// 被移出群聊通知数据
+export interface GroupRemovedData {
+  group_id: string
+  group_name: string
+  removed_by: string
+  reason?: string
+}
+
+// 群解散通知数据
+export interface GroupDisbandedData {
+  group_id: string
+  group_name: string
+  disbanded_by: string
+}
+
+// 群公告更新通知数据
+export interface GroupNoticeUpdatedData {
+  group_id: string
+  group_name: string
+  notice_id: string
+  title: string
+  content_preview: string
+  publisher_id: string
+  publisher_nickname: string
+}
+
+// 群主转让通知数据
+export interface OwnerTransferredData {
+  group_id: string
+  group_name: string
+  old_owner_id: string
+  old_owner_nickname: string
+  new_owner_id: string
+  new_owner_nickname: string
+  transferred_at: string
+}
+
+// 管理员设置/取消通知数据
+export interface AdminChangeData {
+  group_id: string
+  group_name: string
+  target_user_id: string
+  target_nickname: string
+  operator_id: string
+  operator_nickname: string
+  set_at?: string
+  removed_at?: string
+}
+
+// 禁言/解禁通知数据
+export interface MuteChangeData {
+  group_id: string
+  group_name: string
+  target_user_id: string
+  target_nickname: string
+  operator_id: string
+  operator_nickname: string
+  mute_until?: string
+  muted_at?: string
+  unmuted_at?: string
+}
+
+// 在线状态通知
 export interface WSOnlineStatus {
   type: 'online_status'
   data: {
@@ -112,6 +188,7 @@ export interface WSOnlineStatus {
   }
 }
 
+// 正在输入状态
 export interface WSTypingStatus {
   type: 'typing'
   data: {
@@ -135,29 +212,66 @@ export interface WSFileUploaded {
   }
 }
 
-// 好友关系变化通知
-export interface WSFriendshipChange {
-  type: 'friendship_added' | 'friendship_removed'
+// =============================================
+// 兼容旧格式的类型别名（逐步迁移）
+// =============================================
+
+// 私聊消息（兼容旧格式，实际使用 WSNewMessage）
+export interface WSPrivateMessage {
+  type: 'private_message'
   data: {
-    friend_user_id: string
-    friend_nickname: string
+    message_uuid: string
+    sender_id: string
+    sender_nickname: string
+    sender_avatar_url: string
+    receiver_id: string
+    message_content: string
+    message_type: 'text' | 'image' | 'video' | 'file'
+    file_uuid: string | null
+    file_url: string | null
+    file_size: number | null
+    file_hash: string | null
+    image_width: number | null
+    image_height: number | null
+    seq: number
+    send_time: string
   }
 }
 
+// 群聊消息（兼容旧格式，实际使用 WSNewMessage）
+export interface WSGroupMessage {
+  type: 'group_message'
+  data: {
+    message_uuid: string
+    group_id: string
+    sender_id: string
+    sender_nickname: string
+    sender_avatar_url: string
+    message_content: string
+    message_type: 'text' | 'image' | 'video' | 'file' | 'system'
+    file_uuid: string | null
+    file_url: string | null
+    file_size: number | null
+    file_hash: string | null
+    image_width: number | null
+    image_height: number | null
+    seq: number
+    reply_to: string | null
+    send_time: string
+  }
+}
+
+// 所有 WebSocket 消息类型联合
 export type WSMessage =
+  | WSNewMessage
+  | WSMessageRecalled
+  | WSSystemNotification
+  | WSOnlineStatus
+  | WSTypingStatus
+  | WSFileUploaded
   | WSPrivateMessage
   | WSGroupMessage
-  | WSMessageRecalled
-  | WSFriendRequest
-  | WSFriendRequestResult
-  | WSGroupInvitation
-  | WSGroupMemberChange
-  | WSGroupNotice
-  | WSOnlineStatus
-  | WSFileUploaded
-  | WSFriendshipChange
-  | WSTypingStatus
-  | { type: string; data: unknown }
+  | { type: string; data?: unknown; [key: string]: unknown }
 
 type MessageHandler<T = unknown> = (data: T) => void
 
@@ -293,7 +407,18 @@ export const useWSStore = create<WSState>((set, get) => {
             if (handlers) {
               handlers.forEach(handler => {
                 try {
-                  handler(message.data)
+                  // 根据消息类型传递不同的数据
+                  // 对于有 data 属性的消息，传递 data
+                  // 对于没有 data 属性的消息，传递除 type 外的所有字段
+                  let payload: unknown
+                  if ('data' in message) {
+                    payload = message.data
+                  } else {
+                     
+                    const { type: _type, ...rest } = message
+                    payload = rest
+                  }
+                  handler(payload)
                 } catch (error) {
                   console.error(`消息处理器错误 (${message.type}):`, error)
                 }

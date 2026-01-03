@@ -1,6 +1,6 @@
 # API 快速参考
 
-快速查阅 HuanVae Chat API 的常用端点和示例。
+快速查阅 Huanvae Chat API 的常用端点和示例。
 
 > 📚 **完整文档**: 详见 [API_CONFIG.md](./API_CONFIG.md)  
 > 🔗 **后端文档**: [Huanvae-Chat-Rust/接口调取文档](https://github.com/HuanvaeNeko/Huanvae-Chat-Rust/tree/main/%E6%8E%A5%E5%8F%A3%E8%B0%83%E5%8F%96%E6%96%87%E6%A1%A3)
@@ -457,5 +457,5 @@ await fetch('https://api.huanvae.cn/api/profile', {
 ---
 
 **最后更新**: 2024-01-25  
-**维护者**: HuanVae Chat Team
+**维护者**: Huanvae Chat Team
 

@@ -80,6 +80,8 @@ export interface UploadRequestPayload {
   file_hash?: string
   force_upload?: boolean
   estimated_upload_time?: number
+  image_width?: number
+  image_height?: number
 }
 
 export interface UploadRequestResponse {

@@ -1,4 +1,4 @@
-# 🚀 HuanVae Chat 前端开发路线图
+# 🚀 Huanvae Chat 前端开发路线图
 
 参考线上测试版: https://web.huanvae.cn/
 

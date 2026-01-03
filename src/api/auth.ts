@@ -173,7 +173,8 @@ export const authApi = {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch devices')
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || errorData.message || '获取设备列表失败')
     }
 
     return response.json()

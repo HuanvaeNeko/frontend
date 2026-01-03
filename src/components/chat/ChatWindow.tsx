@@ -149,6 +149,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          image_width: null,
+          image_height: null,
           seq: response.seq,
           send_time: response.send_time,
         }
@@ -170,6 +172,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          image_width: null,
+          image_height: null,
           seq: response.seq,
           send_time: response.send_time,
         }
@@ -302,6 +306,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            image_width: null,
+            image_height: null,
             seq: response.seq,
             send_time: response.send_time,
           }
@@ -325,6 +331,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            image_width: null,
+            image_height: null,
             seq: response.seq,
             send_time: response.send_time,
           }
@@ -552,7 +560,7 @@ export default function ChatWindow() {
       <div className="h-full flex items-center justify-center text-muted-foreground">
         <div className="text-center">
           <div className="text-6xl mb-4">💬</div>
-          <h3 className="text-lg font-semibold mb-2">HuanVae Chat</h3>
+          <h3 className="text-lg font-semibold mb-2">Huanvae Chat</h3>
           <p className="text-sm">选择一个会话开始聊天</p>
         </div>
       </div>

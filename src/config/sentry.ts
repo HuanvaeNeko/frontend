@@ -1,19 +1,19 @@
-import * as Sentry from '@sentry/react'
+import * as Sentry from '@sentry/nextjs'
 
 /**
  * Sentry 错误监控配置
  */
 export const initSentry = () => {
   // 只在生产环境启用 Sentry
-  if (import.meta.env.PROD) {
+  if (process.env.NODE_ENV === 'production') {
     Sentry.init({
-      dsn: import.meta.env.VITE_SENTRY_DSN || '',
+      dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || '',
       
       // 设置环境
-      environment: import.meta.env.MODE,
+      environment: process.env.NODE_ENV,
       
       // 设置发布版本
-      release: `huanvae-frontend@${import.meta.env.VITE_APP_VERSION || '1.0.0'}`,
+      release: `huanvae-frontend@${process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'}`,
       
       // 性能监控
       integrations: [
@@ -66,7 +66,7 @@ export const initSentry = () => {
  * 捕获错误
  */
 export const captureError = (error: Error, context?: Record<string, unknown>) => {
-  if (import.meta.env.PROD) {
+  if (process.env.NODE_ENV === 'production') {
     Sentry.captureException(error, {
       extra: context,
     })
@@ -79,7 +79,7 @@ export const captureError = (error: Error, context?: Record<string, unknown>) =>
  * 捕获消息
  */
 export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'info') => {
-  if (import.meta.env.PROD) {
+  if (process.env.NODE_ENV === 'production') {
     Sentry.captureMessage(message, level)
   } else {
     console.log(`[${level}]`, message)
@@ -90,7 +90,7 @@ export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'i
  * 设置用户信息
  */
 export const setUser = (user: { id?: string; email?: string; username?: string } | null) => {
-  if (import.meta.env.PROD) {
+  if (process.env.NODE_ENV === 'production') {
     Sentry.setUser(user)
   }
 }
@@ -99,8 +99,7 @@ export const setUser = (user: { id?: string; email?: string; username?: string }
  * 添加面包屑
  */
 export const addBreadcrumb = (breadcrumb: Sentry.Breadcrumb) => {
-  if (import.meta.env.PROD) {
+  if (process.env.NODE_ENV === 'production') {
     Sentry.addBreadcrumb(breadcrumb)
   }
 }
-

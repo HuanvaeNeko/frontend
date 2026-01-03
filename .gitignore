@@ -1,10 +1,6 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-dist
+# Next.js build output
+.next
+out
 
 # Node dependencies
 node_modules
@@ -23,9 +19,9 @@ lerna-debug.log*
 Thumbs.db
 
 # IDE
-.history
-.idea
-.vscode
+.history/
+.idea/
+.vscode/
 *.swp
 *.swo
 *~
@@ -34,13 +30,31 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # TypeScript
 *.tsbuildinfo
+next-env.d.ts
 
 # Testing
 coverage
 .nyc_output
+
+# PWA
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+
+# Vercel / Cloudflare Pages
+.vercel
+.wrangler
+.dev.vars
+
+# Sentry
+.sentryclirc
 
 # Misc
 *.pem

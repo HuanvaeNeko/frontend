@@ -316,73 +316,87 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
         {/* 添加好友对话框 */}
         <AnimatePresence>
         {showAddDialog && (
-          <motion.div
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+          <>
+            {/* 遮罩层 */}
             <motion.div
-              className="bg-card rounded-lg p-6 w-96 max-w-[90vw] shadow-2xl"
-              variants={dialogVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
+              className="fixed inset-0 bg-black/60 z-[100]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddDialog(false)}
+            />
+            {/* 对话框 */}
+            <motion.div
+              className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
-              <h3 className="text-lg font-semibold mb-4">添加好友</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="userId">用户ID</Label>
-                  <Input
-                    id="userId"
-                    placeholder="输入用户ID"
-                    value={targetUserId}
-                    onChange={(e) => setTargetUserId(e.target.value)}
-                  />
-                </div>
+              <motion.div
+                className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
+                variants={dialogVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-semibold mb-4 text-foreground">添加好友</h3>
                 
-                <div>
-                  <Label htmlFor="reason">验证消息（可选）</Label>
-                  <Input
-                    id="reason"
-                    placeholder="我是..."
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="userId" className="text-sm font-medium text-foreground">用户ID</Label>
+                    <Input
+                      id="userId"
+                      placeholder="输入用户ID"
+                      value={targetUserId}
+                      onChange={(e) => setTargetUserId(e.target.value)}
+                      className="mt-1.5"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="reason" className="text-sm font-medium text-foreground">验证消息（可选）</Label>
+                    <Input
+                      id="reason"
+                      placeholder="我是..."
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      className="mt-1.5"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowAddDialog(false)
-                    setTargetUserId('')
-                    setReason('')
-                  }}
-                  disabled={submitting}
-                >
-                  取消
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleSendRequest}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      发送中...
-                    </>
-                  ) : (
-                    '发送请求'
-                  )}
-                </Button>
-              </div>
+                <div className="flex gap-3 mt-6">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowAddDialog(false)
+                      setTargetUserId('')
+                      setReason('')
+                    }}
+                    disabled={submitting}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleSendRequest}
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        发送中...
+                      </>
+                    ) : (
+                      '发送请求'
+                    )}
+                  </Button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </>
         )}
         </AnimatePresence>
       </div>

@@ -358,79 +358,92 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
         {/* 创建群聊对话框 */}
         {showCreateDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-card rounded-lg p-6 w-96 max-w-[90vw] shadow-xl">
-              <h3 className="text-lg font-semibold mb-4">创建群聊</h3>
+          <>
+            {/* 遮罩层 */}
+            <div 
+              className="fixed inset-0 bg-black/60 z-[100]" 
+              onClick={() => setShowCreateDialog(false)}
+            />
+            {/* 对话框 */}
+            <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
+              <div 
+                className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-semibold mb-4 text-foreground">创建群聊</h3>
 
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="groupName">群名称 *</Label>
-                  <Input
-                    id="groupName"
-                    placeholder="输入群名称"
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    maxLength={30}
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="groupName" className="text-sm font-medium text-foreground">群名称 *</Label>
+                    <Input
+                      id="groupName"
+                      placeholder="输入群名称"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      maxLength={30}
+                      className="mt-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="groupDescription" className="text-sm font-medium text-foreground">群描述（可选）</Label>
+                    <Input
+                      id="groupDescription"
+                      placeholder="简单介绍一下这个群..."
+                      value={groupDescription}
+                      onChange={(e) => setGroupDescription(e.target.value)}
+                      maxLength={200}
+                      className="mt-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="joinMode" className="text-sm font-medium text-foreground">加群方式</Label>
+                    <select
+                      id="joinMode"
+                      className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={joinMode}
+                      onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
+                    >
+                      <option value="open">开放加入 - 任何人可直接加入</option>
+                      <option value="approval_required">需要审批 - 需管理员同意</option>
+                      <option value="invite_only">仅邀请 - 只能通过邀请加入</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="groupDescription">群描述（可选）</Label>
-                  <Input
-                    id="groupDescription"
-                    placeholder="简单介绍一下这个群..."
-                    value={groupDescription}
-                    onChange={(e) => setGroupDescription(e.target.value)}
-                    maxLength={200}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="joinMode">加群方式</Label>
-                  <select
-                    id="joinMode"
-                    className="w-full px-3 py-2 border rounded-md bg-background"
-                    value={joinMode}
-                    onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
+                <div className="flex gap-3 mt-6">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowCreateDialog(false)
+                      setGroupName('')
+                      setGroupDescription('')
+                      setJoinMode('open')
+                    }}
+                    disabled={submitting}
                   >
-                    <option value="open">开放加入 - 任何人可直接加入</option>
-                    <option value="approval_required">需要审批 - 需管理员同意</option>
-                    <option value="invite_only">仅邀请 - 只能通过邀请加入</option>
-                  </select>
+                    取消
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleCreateGroup}
+                    disabled={submitting || !groupName.trim()}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        创建中...
+                      </>
+                    ) : (
+                      '创建'
+                    )}
+                  </Button>
                 </div>
-              </div>
-
-              <div className="flex gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowCreateDialog(false)
-                    setGroupName('')
-                    setGroupDescription('')
-                    setJoinMode('open')
-                  }}
-                  disabled={submitting}
-                >
-                  取消
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleCreateGroup}
-                  disabled={submitting || !groupName.trim()}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      创建中...
-                    </>
-                  ) : (
-                    '创建'
-                  )}
-                </Button>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     )
