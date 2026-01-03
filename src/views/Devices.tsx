@@ -146,36 +146,50 @@ export default function Devices() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-6 py-8 max-w-4xl">
-        <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.push('/')} className="gap-2">
-            <ArrowLeft size={18} />返回首页
-          </Button>
-        </div>
+    <div className="devices-page">
+      {/* 背景装饰球 */}
+      <div className="devices-bg-orb orb-1"></div>
+      <div className="devices-bg-orb orb-2"></div>
+      <div className="devices-bg-orb orb-3"></div>
+      
+      <div className="devices-container">
+        <motion.div 
+          className="mb-6"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <button 
+            onClick={() => router.push('/chat')}
+            className="back-button"
+          >
+            <ArrowLeft size={18} />
+            返回首页
+          </button>
+        </motion.div>
 
         <motion.div
           variants={fadeInVariants}
           initial="hidden"
           animate="visible"
-          className="mb-8 flex items-center justify-between"
+          className="page-header"
         >
-          <div className="flex items-center gap-4">
-            <Laptop size={32} className="text-blue-500" />
+          <div className="header-left">
+            <div className="header-icon">
+              <Laptop size={24} />
+            </div>
             <div>
-              <h1 className="text-4xl font-bold">设备管理</h1>
-              <p className="text-muted-foreground">管理您的登录设备</p>
+              <h1>设备管理</h1>
+              <p>管理您的登录设备</p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
+          <button 
             onClick={loadDevices}
             disabled={loading}
-            className="gap-2"
+            className="refresh-button"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             刷新
-          </Button>
+          </button>
         </motion.div>
 
         {loading ? (
@@ -284,7 +298,7 @@ export default function Devices() {
           </motion.div>
         )}
 
-        <Card className="mt-6">
+        <Card className="mt-6 glass-card">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-yellow-500 mt-0.5" />
@@ -299,6 +313,151 @@ export default function Devices() {
           </CardContent>
         </Card>
       </div>
+
+      <style>{`
+        .devices-page {
+          min-height: 100vh;
+          position: relative;
+          overflow-x: hidden;
+          background: linear-gradient(
+            135deg,
+            #e0f2fe 0%,
+            #f0f9ff 25%,
+            #ffffff 50%,
+            #f5f3ff 75%,
+            #ede9fe 100%
+          );
+        }
+
+        .devices-bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.5;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .devices-bg-orb.orb-1 {
+          width: 400px;
+          height: 400px;
+          background: linear-gradient(135deg, #93c5fd, #60a5fa);
+          top: -100px;
+          right: -100px;
+        }
+
+        .devices-bg-orb.orb-2 {
+          width: 300px;
+          height: 300px;
+          background: linear-gradient(135deg, #c4b5fd, #a78bfa);
+          bottom: -80px;
+          left: 10%;
+        }
+
+        .devices-bg-orb.orb-3 {
+          width: 200px;
+          height: 200px;
+          background: linear-gradient(135deg, #a5b4fc, #818cf8);
+          top: 50%;
+          left: -50px;
+        }
+
+        .devices-container {
+          position: relative;
+          z-index: 1;
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 32px 24px;
+        }
+
+        .back-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          background: rgba(255, 255, 255, 0.6);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(147, 197, 253, 0.3);
+          border-radius: 12px;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .back-button:hover {
+          background: rgba(255, 255, 255, 0.9);
+          transform: translateX(-4px);
+        }
+
+        .page-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 32px;
+        }
+
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .header-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .page-header h1 {
+          font-size: 28px;
+          font-weight: 700;
+          color: #1e3a5f;
+          margin: 0;
+        }
+
+        .page-header p {
+          font-size: 14px;
+          color: #64748b;
+          margin: 4px 0 0 0;
+        }
+
+        .refresh-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          background: rgba(255, 255, 255, 0.6);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(147, 197, 253, 0.3);
+          border-radius: 12px;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .refresh-button:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.9);
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+
+        .refresh-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .glass-card {
+          background: rgba(255, 255, 255, 0.7) !important;
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(147, 197, 253, 0.3) !important;
+        }
+      `}</style>
     </div>
   )
 }

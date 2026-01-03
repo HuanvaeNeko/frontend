@@ -2,11 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Video, Phone, Copy, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Video, Phone, Copy, Loader2, Users, Shield, Globe, Lock } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
@@ -62,7 +59,6 @@ export default function WebRTCPanel() {
       
       setShowCreateDialog(false)
       
-      // 跳转到视频通话页面，携带房间信息（创建者使用自己的 access_token）
       const params = new URLSearchParams({
         room: response.room_id,
         token: accessToken || '',
@@ -107,7 +103,6 @@ export default function WebRTCPanel() {
       
       setShowJoinDialog(false)
       
-      // 跳转到视频通话页面
       const params = new URLSearchParams({
         room: joinRoomId,
         token: response.ws_token || '',
@@ -136,302 +131,448 @@ export default function WebRTCPanel() {
     })
   }
 
+  const features = [
+    { icon: Users, text: '无需登录即可加入房间', color: 'text-green-500' },
+    { icon: Globe, text: '自动分配最优 TURN 服务器', color: 'text-blue-500' },
+    { icon: Video, text: '支持多人视频通话', color: 'text-purple-500' },
+    { icon: Shield, text: '端到端加密传输', color: 'text-orange-500' },
+  ]
+
   return (
     <div className="h-full overflow-y-auto p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* 功能介绍 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5" />
-              WebRTC 视频通话
-            </CardTitle>
-            <CardDescription>
-              创建房间后，分享房间号和密码给朋友，即可开始视频通话
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-start gap-2 text-sm">
-              <span className="text-green-600">✅</span>
-              <span>无需登录即可加入房间</span>
+        <motion.div
+          className="p-6 rounded-2xl"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.4) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(147, 197, 253, 0.3)',
+          }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div 
+              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}
+            >
+              <Video className="h-6 w-6 text-white" />
             </div>
-            <div className="flex items-start gap-2 text-sm">
-              <span className="text-green-600">✅</span>
-              <span>自动分配最优 TURN 服务器</span>
+            <div>
+              <h2 className="text-xl font-bold text-slate-700">WebRTC 视频通话</h2>
+              <p className="text-sm text-slate-500">创建房间后，分享房间号和密码给朋友，即可开始视频通话</p>
             </div>
-            <div className="flex items-start gap-2 text-sm">
-              <span className="text-green-600">✅</span>
-              <span>支持多人视频通话</span>
-            </div>
-            <div className="flex items-start gap-2 text-sm">
-              <span className="text-green-600">✅</span>
-              <span>端到端加密传输</span>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {features.map((feature, index) => (
+              <motion.div
+                key={index}
+                className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: 'rgba(255, 255, 255, 0.5)' }}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.1 }}
+              >
+                <feature.icon className={`h-5 w-5 ${feature.color}`} />
+                <span className="text-sm text-slate-600">{feature.text}</span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
 
         {/* 操作按钮 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Button
-            size="lg"
-            className="h-32 text-lg gap-2"
+          <motion.button
+            className="h-32 rounded-2xl flex flex-col items-center justify-center gap-3 text-white"
+            style={{
+              background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+              boxShadow: '0 10px 40px rgba(139, 92, 246, 0.3)',
+            }}
             onClick={() => setShowCreateDialog(true)}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            whileHover={{ 
+              scale: 1.02,
+              boxShadow: '0 15px 50px rgba(139, 92, 246, 0.4)',
+            }}
+            whileTap={{ scale: 0.98 }}
           >
-            <Video className="h-6 w-6" />
-            创建房间
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="h-32 text-lg gap-2"
+            <Video className="h-8 w-8" />
+            <span className="text-lg font-semibold">创建房间</span>
+          </motion.button>
+          
+          <motion.button
+            className="h-32 rounded-2xl flex flex-col items-center justify-center gap-3"
+            style={{
+              background: 'rgba(255, 255, 255, 0.7)',
+              border: '2px solid rgba(139, 92, 246, 0.3)',
+              color: '#7c3aed',
+            }}
             onClick={() => setShowJoinDialog(true)}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            whileHover={{ 
+              scale: 1.02,
+              borderColor: 'rgba(139, 92, 246, 0.6)',
+              background: 'rgba(255, 255, 255, 0.9)',
+            }}
+            whileTap={{ scale: 0.98 }}
           >
-            <Phone className="h-6 w-6" />
-            加入房间
-          </Button>
+            <Phone className="h-8 w-8" />
+            <span className="text-lg font-semibold">加入房间</span>
+          </motion.button>
         </div>
 
         {/* 当前房间信息 */}
-        {currentRoom && (
-          <Card>
-            <CardHeader>
-              <CardTitle>当前房间</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">房间号:</span>
-                <div className="flex items-center gap-2">
-                  <code className="text-sm bg-muted px-2 py-1 rounded">
-                    {currentRoom.roomId}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => copyToClipboard(currentRoom.roomId, '房间号')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+        <AnimatePresence>
+          {currentRoom && (
+            <motion.div
+              className="p-6 rounded-2xl"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.4) 100%)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <h3 className="text-lg font-semibold text-slate-700 mb-4">当前房间</h3>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+                  <span className="text-sm font-medium text-slate-600">房间号:</span>
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-mono px-2 py-1 rounded-lg" style={{ background: 'rgba(255, 255, 255, 0.6)' }}>
+                      {currentRoom.roomId}
+                    </code>
+                    <motion.button
+                      className="p-2 rounded-lg"
+                      style={{ background: 'rgba(255, 255, 255, 0.6)' }}
+                      onClick={() => copyToClipboard(currentRoom.roomId, '房间号')}
+                      whileHover={{ background: 'rgba(139, 92, 246, 0.2)' }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Copy className="h-4 w-4 text-violet-500" />
+                    </motion.button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">密码:</span>
-                <div className="flex items-center gap-2">
-                  <code className="text-sm bg-muted px-2 py-1 rounded">
-                    {currentRoom.password}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => copyToClipboard(currentRoom.password, '密码')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+                  <span className="text-sm font-medium text-slate-600">密码:</span>
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-mono px-2 py-1 rounded-lg" style={{ background: 'rgba(255, 255, 255, 0.6)' }}>
+                      {currentRoom.password}
+                    </code>
+                    <motion.button
+                      className="p-2 rounded-lg"
+                      style={{ background: 'rgba(255, 255, 255, 0.6)' }}
+                      onClick={() => copyToClipboard(currentRoom.password, '密码')}
+                      whileHover={{ background: 'rgba(139, 92, 246, 0.2)' }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Copy className="h-4 w-4 text-violet-500" />
+                    </motion.button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">分享链接:</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => copyToClipboard(currentRoom.shareLink, '分享链接')}
+                <motion.button
+                  className="w-full py-3 rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                  }}
+                  onClick={() => copyToClipboard(
+                    `房间号: ${currentRoom.roomId}\n密码: ${currentRoom.password}\n链接: ${currentRoom.shareLink}`,
+                    '全部信息'
+                  )}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  <Copy className="h-4 w-4 mr-2" />
-                  复制链接
-                </Button>
+                  <Copy className="h-4 w-4" />
+                  复制全部信息
+                </motion.button>
               </div>
-
-              <Button
-                className="w-full"
-                onClick={() => copyToClipboard(
-                  `房间号: ${currentRoom.roomId}\n密码: ${currentRoom.password}\n链接: ${currentRoom.shareLink}`,
-                  '全部信息'
-                )}
-              >
-                复制全部信息
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* 创建房间对话框 */}
-      {showCreateDialog && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black/60 z-[100]" 
-            onClick={() => setShowCreateDialog(false)}
-          />
-          <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
-            <div 
-              className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
-              onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {showCreateDialog && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-[100]"
+              style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCreateDialog(false)}
+            />
+            <motion.div
+              className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
-              <h3 className="text-lg font-semibold mb-4 text-foreground">创建视频房间</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="roomName" className="text-sm font-medium text-foreground">房间名称（可选）</Label>
-                  <Input
-                    id="roomName"
-                    placeholder="我的房间"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    className="mt-1.5"
-                  />
-                </div>
+              <motion.div
+                className="w-[400px] max-w-full pointer-events-auto"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
+                  backdropFilter: 'blur(20px) saturate(180%)',
+                  borderRadius: '24px',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.25)',
+                  padding: '24px',
+                }}
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-semibold mb-6 text-slate-700">创建视频房间</h3>
                 
-                <div>
-                  <Label htmlFor="roomPassword" className="text-sm font-medium text-foreground">房间密码（可选）</Label>
-                  <Input
-                    id="roomPassword"
-                    type="password"
-                    placeholder="不填自动生成"
-                    value={roomPassword}
-                    onChange={(e) => setRoomPassword(e.target.value)}
-                    className="mt-1.5"
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">房间名称（可选）</label>
+                    <input
+                      type="text"
+                      placeholder="我的房间"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                      }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">
+                      <Lock className="h-3 w-3 inline mr-1" />
+                      房间密码（可选）
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="不填自动生成"
+                      value={roomPassword}
+                      onChange={(e) => setRoomPassword(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">最大人数</label>
+                      <select
+                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none cursor-pointer"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.6)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                        }}
+                        value={maxParticipants}
+                        onChange={(e) => setMaxParticipants(Number(e.target.value))}
+                      >
+                        <option value={2}>2人</option>
+                        <option value={5}>5人</option>
+                        <option value={10}>10人</option>
+                        <option value={20}>20人</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">有效期</label>
+                      <select
+                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none cursor-pointer"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.6)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                        }}
+                        value={durationMinutes}
+                        onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                      >
+                        <option value={30}>30分钟</option>
+                        <option value={60}>1小时</option>
+                        <option value={120}>2小时</option>
+                        <option value={360}>6小时</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="maxParticipants" className="text-sm font-medium text-foreground">最大人数</Label>
-                  <select
-                    id="maxParticipants"
-                    className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={maxParticipants}
-                    onChange={(e) => setMaxParticipants(Number(e.target.value))}
+                <div className="flex gap-3 mt-6">
+                  <motion.button
+                    className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.6)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                    }}
+                    onClick={() => setShowCreateDialog(false)}
+                    disabled={creating}
+                    whileHover={{ background: 'rgba(139, 92, 246, 0.1)' }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    <option value={2}>2人</option>
-                    <option value={5}>5人</option>
-                    <option value={10}>10人</option>
-                    <option value={20}>20人</option>
-                  </select>
-                </div>
-
-                <div>
-                  <Label htmlFor="duration" className="text-sm font-medium text-foreground">有效期</Label>
-                  <select
-                    id="duration"
-                    className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                    取消
+                  </motion.button>
+                  <motion.button
+                    className="flex-1 py-3 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                      boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+                    }}
+                    onClick={handleCreateRoom}
+                    disabled={creating}
+                    whileHover={{ boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)' }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    <option value={30}>30分钟</option>
-                    <option value={60}>1小时</option>
-                    <option value={120}>2小时</option>
-                    <option value={360}>6小时</option>
-                  </select>
+                    {creating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        创建中...
+                      </>
+                    ) : (
+                      '创建房间'
+                    )}
+                  </motion.button>
                 </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowCreateDialog(false)}
-                  disabled={creating}
-                >
-                  取消
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleCreateRoom}
-                  disabled={creating}
-                >
-                  {creating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      创建中...
-                    </>
-                  ) : (
-                    '创建房间'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* 加入房间对话框 */}
-      {showJoinDialog && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black/60 z-[100]" 
-            onClick={() => setShowJoinDialog(false)}
-          />
-          <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
-            <div 
-              className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
-              onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {showJoinDialog && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-[100]"
+              style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowJoinDialog(false)}
+            />
+            <motion.div
+              className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
-              <h3 className="text-lg font-semibold mb-4 text-foreground">加入视频房间</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="joinRoomId" className="text-sm font-medium text-foreground">房间号</Label>
-                  <Input
-                    id="joinRoomId"
-                    placeholder="输入房间号"
-                    value={joinRoomId}
-                    onChange={(e) => setJoinRoomId(e.target.value)}
-                    className="mt-1.5"
-                  />
-                </div>
+              <motion.div
+                className="w-[400px] max-w-full pointer-events-auto"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
+                  backdropFilter: 'blur(20px) saturate(180%)',
+                  borderRadius: '24px',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.25)',
+                  padding: '24px',
+                }}
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-semibold mb-6 text-slate-700">加入视频房间</h3>
                 
-                <div>
-                  <Label htmlFor="joinPassword" className="text-sm font-medium text-foreground">密码</Label>
-                  <Input
-                    id="joinPassword"
-                    type="password"
-                    placeholder="如有密码请输入"
-                    value={joinPassword}
-                    onChange={(e) => setJoinPassword(e.target.value)}
-                    className="mt-1.5"
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">房间号 *</label>
+                    <input
+                      type="text"
+                      placeholder="输入房间号"
+                      value={joinRoomId}
+                      onChange={(e) => setJoinRoomId(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                      }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">密码</label>
+                    <input
+                      type="password"
+                      placeholder="如有密码请输入"
+                      value={joinPassword}
+                      onChange={(e) => setJoinPassword(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-600 mb-1.5 block">您的昵称</label>
+                    <input
+                      type="text"
+                      placeholder="可选"
+                      value={joinNickname}
+                      onChange={(e) => setJoinNickname(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                      }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="joinNickname" className="text-sm font-medium text-foreground">您的昵称</Label>
-                  <Input
-                    id="joinNickname"
-                    placeholder="可选"
-                    value={joinNickname}
-                    onChange={(e) => setJoinNickname(e.target.value)}
-                    className="mt-1.5"
-                  />
+                <div className="flex gap-3 mt-6">
+                  <motion.button
+                    className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.6)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                    }}
+                    onClick={() => setShowJoinDialog(false)}
+                    disabled={joining}
+                    whileHover={{ background: 'rgba(139, 92, 246, 0.1)' }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    取消
+                  </motion.button>
+                  <motion.button
+                    className="flex-1 py-3 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                    style={{
+                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                      boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+                    }}
+                    onClick={handleJoinRoom}
+                    disabled={joining}
+                    whileHover={{ boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)' }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {joining ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        加入中...
+                      </>
+                    ) : (
+                      '加入房间'
+                    )}
+                  </motion.button>
                 </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowJoinDialog(false)}
-                  disabled={joining}
-                >
-                  取消
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleJoinRoom}
-                  disabled={joining}
-                >
-                  {joining ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      加入中...
-                    </>
-                  ) : (
-                    '加入房间'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

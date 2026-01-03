@@ -5,21 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
-import { Bot, ArrowRight, Check, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Separator } from '@/components/ui/separator'
-import { 
-  slideLeftVariants, 
-  slideRightVariants, 
-  staggerContainer,
-  staggerItem,
-  scaleInVariants,
-  pulseVariants,
-  DURATION 
-} from '../utils/motionAnimations'
+import { ArrowRight, Check, Loader2, User, Lock, Mail, Smile } from 'lucide-react'
 
 export default function Register() {
   const router = useRouter()
@@ -84,226 +70,224 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* 左侧 - 品牌展示区 */}
-      <motion.div
-        variants={slideLeftVariants}
-        initial="hidden"
-        animate="visible"
-        transition={{ duration: DURATION.slow }}
-        className="hidden lg:flex lg:w-1/2 gradient-bg-purple p-12 relative overflow-hidden"
-      >
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 right-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
-        </div>
-        
-        <div className="relative z-10 flex flex-col justify-center text-white">
-          <motion.div 
-            variants={pulseVariants}
-            animate="animate"
-            className="mb-8"
-          >
-            <Bot size={96} strokeWidth={1.5} />
-          </motion.div>
-          <h1 className="text-6xl font-black mb-6 leading-tight">
-            开始你的<br/>智能之旅
-          </h1>
-          <p className="text-xl font-light mb-8">
-            加入 Huanvae Chat，体验全新的智能通讯方式
-          </p>
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-            className="space-y-3"
-          >
-            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={20} />
-              </div>
-              <span>永久免费使用</span>
-            </motion.div>
-            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={20} />
-              </div>
-              <span>AI 智能助手</span>
-            </motion.div>
-            <motion.div variants={staggerItem} className="flex items-center gap-3 text-lg">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                <Check size={20} />
-              </div>
-              <span>安全加密通讯</span>
-            </motion.div>
-          </motion.div>
-        </div>
-      </motion.div>
+    <div className="app-container">
+      {/* 浮动装饰圆球 */}
+      <div className="floating-orb orb-1" />
+      <div className="floating-orb orb-2" />
+      <div className="floating-orb orb-3" />
+      <div className="floating-orb orb-4" />
+      <div className="floating-orb orb-5" />
 
-      {/* 右侧 - 注册表单区 */}
+      {/* 毛玻璃注册卡片 */}
       <motion.div
-        variants={slideRightVariants}
-        initial="hidden"
-        animate="visible"
-        transition={{ duration: DURATION.slow }}
-        className="flex-1 flex items-center justify-center p-8 bg-gray-50"
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ 
+          opacity: 1, 
+          y: 0, 
+          scale: 1,
+          x: shouldShake ? [-2, 2, -2, 2, 0] : 0
+        }}
+        transition={{ 
+          duration: 0.6, 
+          ease: [0.4, 0, 0.2, 1],
+          x: { duration: 0.4 }
+        }}
+        className="glass-card max-w-[460px]"
+        style={{ maxHeight: '90vh', overflowY: 'auto' }}
       >
-        <motion.div
-          variants={scaleInVariants}
-          initial="hidden"
-          animate={shouldShake ? "shake" : "visible"}
-          transition={{ delay: 0.4, duration: DURATION.slow }}
-          className="w-full max-w-md"
+        {/* Logo */}
+        <motion.div 
+          className="text-center mb-6"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
         >
-          <div className="lg:hidden text-center mb-8">
-            <Bot size={64} strokeWidth={1.5} className="text-purple-500 mb-4 mx-auto" />
-            <h1 className="text-4xl font-black gradient-text">Huanvae Chat</h1>
-          </div>
+          <img 
+            src="/logo.svg" 
+            alt="Huanvae Chat" 
+            className="w-16 h-16 mx-auto mb-3 drop-shadow-lg"
+          />
+          <h1 className="login-title text-2xl">创建账号</h1>
+          <p className="login-subtitle text-sm">加入 Huanvae Chat</p>
+        </motion.div>
 
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2">创建账号</h2>
-            <p className="text-muted-foreground">填写信息，开始您的智能体验</p>
-          </div>
+        {/* 错误提示 */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm"
+          >
+            {error}
+          </motion.div>
+        )}
 
-          {error && (
-            <Alert variant="destructive" className="mb-6 animate-shake">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="user_id">用户ID</Label>
-              <Input
-                id="user_id"
+        {/* 注册表单 */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="form-group !mb-4">
+            <label className="form-label text-xs">用户 ID</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <input
+                type="text"
                 required
                 minLength={3}
                 value={formData.user_id}
                 onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 placeholder="至少3个字符"
-                className="h-12"
+                className="glass-input pl-11 py-3 text-sm"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="nickname">昵称</Label>
-              <Input
-                id="nickname"
+          <div className="form-group !mb-4">
+            <label className="form-label text-xs">昵称</label>
+            <div className="relative">
+              <Smile className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <input
+                type="text"
                 required
                 value={formData.nickname}
                 onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
                 placeholder="您的昵称"
-                className="h-12"
+                className="glass-input pl-11 py-3 text-sm"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">邮箱</Label>
-              <Input
-                id="email"
+          <div className="form-group !mb-4">
+            <label className="form-label text-xs">邮箱</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <input
                 type="email"
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="your@email.com"
-                className="h-12"
+                className="glass-input pl-11 py-3 text-sm"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
+          <div className="form-group !mb-4">
+            <label className="form-label text-xs">密码</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <input
                 type="password"
                 required
                 minLength={8}
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="至少8位，包含字母和数字"
-                className="h-12"
+                className="glass-input pl-11 py-3 text-sm"
               />
-              {formData.password && (
-                <div className="mt-2 p-3 bg-gray-100 rounded-lg space-y-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>密码强度</span>
-                    <span>{strengthScore === 3 ? '强' : strengthScore === 2 ? '中' : '弱'}</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all ${
-                        strengthScore === 3 ? 'bg-green-500' : 
-                        strengthScore === 2 ? 'bg-yellow-500' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${(strengthScore / 3) * 100}%` }}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.length ? 'text-green-600' : 'text-gray-400'}`}>
-                      <Check size={14} />至少8个字符
-                    </div>
-                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasLetter ? 'text-green-600' : 'text-gray-400'}`}>
-                      <Check size={14} />包含字母
-                    </div>
-                    <div className={`text-xs flex items-center gap-2 ${passwordStrength.hasNumber ? 'text-green-600' : 'text-gray-400'}`}>
-                      <Check size={14} />包含数字
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
+            {formData.password && (
+              <div className="mt-2 p-3 bg-white/30 rounded-lg space-y-2">
+                <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+                  <span>密码强度</span>
+                  <span className={
+                    strengthScore === 3 ? 'text-green-600' : 
+                    strengthScore === 2 ? 'text-yellow-600' : 'text-red-500'
+                  }>
+                    {strengthScore === 3 ? '强' : strengthScore === 2 ? '中' : '弱'}
+                  </span>
+                </div>
+                <div className="h-1 bg-white/50 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all ${
+                      strengthScore === 3 ? 'bg-green-500' : 
+                      strengthScore === 2 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${(strengthScore / 3) * 100}%` }}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className={`flex items-center gap-1 ${passwordStrength.length ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                    <Check size={10} />8+字符
+                  </span>
+                  <span className={`flex items-center gap-1 ${passwordStrength.hasLetter ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                    <Check size={10} />字母
+                  </span>
+                  <span className={`flex items-center gap-1 ${passwordStrength.hasNumber ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                    <Check size={10} />数字
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">确认密码</Label>
-              <Input
-                id="confirmPassword"
+          <div className="form-group !mb-4">
+            <label className="form-label text-xs">确认密码</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <input
                 type="password"
                 required
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                 placeholder="再次输入密码"
-                className="h-12"
+                className="glass-input pl-11 py-3 text-sm"
               />
-              {formData.confirmPassword && (
-                <div className={`text-xs flex items-center gap-2 ${passwordMatch ? 'text-green-600' : 'text-red-600'}`}>
-                  <Check size={14} />
-                  {passwordMatch ? '密码匹配' : '密码不匹配'}
-                </div>
-              )}
             </div>
+            {formData.confirmPassword && (
+              <div className={`text-xs flex items-center gap-1 mt-2 ${passwordMatch ? 'text-green-600' : 'text-red-500'}`}>
+                <Check size={12} />
+                {passwordMatch ? '密码匹配' : '密码不匹配'}
+              </div>
+            )}
+          </div>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 text-base font-semibold"
-            >
+          <motion.button
+            type="submit"
+            disabled={loading}
+            className="glass-button !mt-6 !py-3"
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
+          >
+            <span className="flex items-center justify-center gap-2 text-sm">
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   注册中...
                 </>
               ) : (
                 <>
                   创建账号
-                  <ArrowRight className="ml-2 h-5 w-5" />
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
-            </Button>
-          </form>
+            </span>
+          </motion.button>
+        </form>
 
-          <div className="my-8">
-            <Separator className="my-4" />
-            <p className="text-center text-sm text-muted-foreground">或</p>
-          </div>
+        {/* 分隔线 */}
+        <div className="flex items-center gap-4 my-6">
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--blue-alpha-medium)] to-transparent" />
+          <span className="text-[var(--color-text-light)] text-xs">或</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--blue-alpha-medium)] to-transparent" />
+        </div>
 
-          <div className="text-center">
-            <p className="text-muted-foreground mb-4">已有账号？</p>
-            <Link href="/login">
-              <Button variant="outline" className="w-full h-12 font-semibold">
-                立即登录
-              </Button>
-            </Link>
-          </div>
-        </motion.div>
+        {/* 登录链接 */}
+        <div className="text-center">
+          <p className="text-[var(--color-text-muted)] text-xs mb-2">
+            已有账号？
+          </p>
+          <Link href="/login">
+            <motion.button
+              type="button"
+              className="w-full py-2.5 px-6 rounded-xl font-medium text-sm text-[var(--color-blue-500)] 
+                         bg-[var(--blue-alpha-subtle)] border border-[var(--blue-alpha-medium)]
+                         hover:bg-[var(--blue-alpha-medium)] transition-all duration-300"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              立即登录
+            </motion.button>
+          </Link>
+        </div>
       </motion.div>
     </div>
   )

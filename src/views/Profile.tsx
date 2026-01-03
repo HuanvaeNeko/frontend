@@ -15,7 +15,6 @@ import { useAuthStore } from '../store/authStore'
 import { profileApi } from '../api/profile'
 import { useToast } from '../hooks/use-toast'
 import { 
-  fadeInVariants, 
   slideLeftVariants, 
   slideRightVariants, 
   scaleInVariants,
@@ -165,29 +164,38 @@ export default function Profile() {
   const displayName = profile?.user_nickname || user?.nickname || '用户'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-6 py-8 max-w-4xl">
-        <div className="mb-6">
-          <Button 
-            variant="ghost" 
-            onClick={() => router.push('/')}
-            className="gap-2"
+    <div className="profile-page">
+      {/* 背景装饰球 */}
+      <div className="profile-bg-orb orb-1"></div>
+      <div className="profile-bg-orb orb-2"></div>
+      <div className="profile-bg-orb orb-3"></div>
+      
+      <div className="profile-container">
+        <motion.div 
+          className="back-button-wrapper"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <button 
+            onClick={() => router.push('/chat')}
+            className="back-button"
           >
             <ArrowLeft size={18} />
             返回首页
-          </Button>
-        </div>
+          </button>
+        </motion.div>
 
         <motion.div
-          variants={fadeInVariants}
-          initial="hidden"
-          animate="visible"
-          className="mb-8 flex items-center gap-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="page-header"
         >
-          <UserIcon size={32} className="text-primary" />
+          <div className="header-icon">
+            <UserIcon size={24} />
+          </div>
           <div>
-            <h1 className="text-4xl font-bold">个人资料</h1>
-            <p className="text-muted-foreground">管理您的个人信息</p>
+            <h1>个人资料</h1>
+            <p>管理您的个人信息</p>
           </div>
         </motion.div>
 
@@ -456,6 +464,118 @@ export default function Profile() {
         </Card>
         </motion.div>
       </div>
+
+      <style>{`
+        .profile-page {
+          min-height: 100vh;
+          position: relative;
+          overflow-x: hidden;
+          background: linear-gradient(
+            135deg,
+            #e0f2fe 0%,
+            #f0f9ff 25%,
+            #ffffff 50%,
+            #f5f3ff 75%,
+            #ede9fe 100%
+          );
+        }
+
+        .profile-bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.5;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .profile-bg-orb.orb-1 {
+          width: 400px;
+          height: 400px;
+          background: linear-gradient(135deg, #93c5fd, #60a5fa);
+          top: -100px;
+          right: -100px;
+        }
+
+        .profile-bg-orb.orb-2 {
+          width: 300px;
+          height: 300px;
+          background: linear-gradient(135deg, #c4b5fd, #a78bfa);
+          bottom: -80px;
+          left: 10%;
+        }
+
+        .profile-bg-orb.orb-3 {
+          width: 200px;
+          height: 200px;
+          background: linear-gradient(135deg, #a5b4fc, #818cf8);
+          top: 50%;
+          left: -50px;
+        }
+
+        .profile-container {
+          position: relative;
+          z-index: 1;
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 32px 24px;
+        }
+
+        .back-button-wrapper {
+          margin-bottom: 24px;
+        }
+
+        .back-button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 16px;
+          background: rgba(255, 255, 255, 0.6);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(147, 197, 253, 0.3);
+          border-radius: 12px;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .back-button:hover {
+          background: rgba(255, 255, 255, 0.9);
+          transform: translateX(-4px);
+        }
+
+        .page-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 32px;
+        }
+
+        .header-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .page-header h1 {
+          font-size: 28px;
+          font-weight: 700;
+          color: #1e3a5f;
+          margin: 0;
+        }
+
+        .page-header p {
+          font-size: 14px;
+          color: #64748b;
+          margin: 4px 0 0 0;
+        }
+      `}</style>
     </div>
   )
 }
