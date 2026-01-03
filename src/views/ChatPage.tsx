@@ -24,7 +24,7 @@ import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { useProfileStore } from '../store/profileStore'
 import { useWSStore } from '../store/wsStore'
-import { useRouter, useParams, usePathname } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { TabType } from '../store/chatStore'
 import FriendList from '../components/chat/FriendList'
 import GroupList from '../components/chat/GroupList'
@@ -79,9 +79,10 @@ function loadStateFromStorage(): { tab: TabType; conversationId?: string; conver
 export default function ChatPage() {
   const router = useRouter()
   const pathname = usePathname()
-  const params = useParams<{ friendId?: string; groupId?: string }>()
-  const friendId = params?.friendId
-  const groupId = params?.groupId
+  const searchParams = useSearchParams()
+  // 使用查询参数：/chat/friends?id=xxx 或 /chat/groups?id=xxx
+  const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
+  const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
   const { user, logout, accessToken } = useAuthStore()
   const { profile, loadProfile } = useProfileStore()
   const { activeTab, setActiveTab, setSelectedConversation, selectedConversation } = useChatStore()
@@ -177,7 +178,7 @@ export default function ChatPage() {
     }
   }, [isInitialized, friendId, groupId, friends, myGroups, selectedConversation, setSelectedConversation])
 
-  // 当 tab 或选中会话变化时，更新 URL 和 localStorage
+  // 当 tab 或选中会话变化时，更新 localStorage（不再自动更新 URL）
   useEffect(() => {
     if (!isInitialized) return
 
@@ -187,28 +188,7 @@ export default function ChatPage() {
       selectedConversation?.id,
       selectedConversation?.type
     )
-
-    // 构建新的 URL
-    let newPath = '/chat'
-    if (activeTab === 'friends') {
-      newPath = selectedConversation?.type === 'friend' && selectedConversation.id
-        ? `/chat/friends/${selectedConversation.id}`
-        : '/chat/friends'
-    } else if (activeTab === 'groups') {
-      newPath = selectedConversation?.type === 'group' && selectedConversation.id
-        ? `/chat/groups/${selectedConversation.id}`
-        : '/chat/groups'
-    } else if (activeTab === 'files') {
-      newPath = '/chat/files'
-    } else if (activeTab === 'webrtc') {
-      newPath = '/chat/webrtc'
-    }
-
-    // 只在路径不同时更新（避免无限循环）
-    if (pathname !== newPath) {
-      router.replace(newPath)
-    }
-  }, [activeTab, selectedConversation, isInitialized, pathname, router])
+  }, [activeTab, selectedConversation, isInitialized])
 
   // 初始化加载数据
   useEffect(() => {

@@ -1,6 +1,14 @@
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function GroupChatRedirect() {
-  redirect('/chat/groups')
+  const router = useRouter()
+  
+  useEffect(() => {
+    router.replace('/chat/groups')
+  }, [router])
+  
+  return null
 }
-
