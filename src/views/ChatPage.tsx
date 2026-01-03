@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
@@ -493,7 +495,7 @@ export default function ChatPage() {
   const handleLogout = async () => {
     try {
       await logout()
-      navigate('/login')
+      router.push('/login')
     } catch (error) {
       console.error('登出失败:', error)
     }
@@ -554,7 +556,7 @@ export default function ChatPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
             <Settings className="h-5 w-5" />
           </Button>
           <Button variant="ghost" size="icon" onClick={handleLogout}>

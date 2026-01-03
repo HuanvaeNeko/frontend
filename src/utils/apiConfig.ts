@@ -5,8 +5,15 @@
  */
 export const getApiBaseUrl = (): string => {
   // 如果设置了环境变量，优先使用
-  if (import.meta.env.VITE_AUTH_API_URL) {
-    return import.meta.env.VITE_AUTH_API_URL
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL
+  }
+
+  // 在服务端渲染时，使用默认值
+  if (typeof window === 'undefined') {
+    return process.env.NODE_ENV === 'production' 
+      ? 'https://api.huanvae.cn' 
+      : 'http://192.168.9.11'
   }
 
   // 根据当前域名判断环境

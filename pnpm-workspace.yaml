@@ -4,3 +4,8 @@ packages:
 ignoredBuiltDependencies:
   - '@parcel/watcher'
   - esbuild
+
+onlyBuiltDependencies:
+  - '@sentry/cli'
+  - sharp
+  - unrs-resolver

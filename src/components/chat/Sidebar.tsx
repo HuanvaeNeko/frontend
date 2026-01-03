@@ -1,3 +1,5 @@
+'use client'
+
 import { Users, MessagesSquare, FolderOpen, Video, Settings, User, LogOut } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
@@ -5,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useChatStore, TabType } from '@/store/chatStore'
 import { useAuthStore } from '@/store/authStore'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 
 // 标签动画配置
 const tabVariants = {
@@ -55,12 +57,12 @@ const onlineIndicatorVariants = {
 export default function Sidebar() {
   const { activeTab, setActiveTab, totalUnreadCount, wsConnected } = useChatStore()
   const { user, logout } = useAuthStore()
-  const navigate = useNavigate()
+  const router = useRouter()
 
   const handleLogout = async () => {
     try {
       await logout()
-      navigate('/login')
+      router.push('/login')
     } catch (error) {
       console.error('登出失败:', error)
     }
@@ -121,10 +123,10 @@ export default function Sidebar() {
                 <div className="font-semibold">{user?.nickname || user?.user_id}</div>
                 <div className="text-xs text-gray-500">{user?.email}</div>
               </div>
-              <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => navigate('/profile')}>
+              <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => router.push('/profile')}>
                 <User size={16} />个人资料
               </DropdownMenu.Item>
-              <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => navigate('/settings')}>
+              <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => router.push('/settings')}>
                 <Settings size={16} />设置
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
@@ -215,7 +217,7 @@ export default function Sidebar() {
           variant="ghost"
           size="icon"
           className="w-14 h-14 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all"
-          onClick={() => navigate('/settings')}
+          onClick={() => router.push('/settings')}
         >
           <motion.div
             whileHover={{ rotate: 90 }}

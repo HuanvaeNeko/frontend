@@ -1,5 +1,6 @@
+'use client'
+
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useRegisterSW } from 'virtual:pwa-register/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, X } from 'lucide-react'
 
@@ -11,35 +12,55 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
   const initialSeconds = Math.ceil(autoUpdateDelay / 1000)
   const [countdown, setCountdown] = useState<number>(initialSeconds)
   const [dismissed, setDismissed] = useState(false)
+  const [needRefresh, setNeedRefresh] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const updateCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null)
 
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegisteredSW(swUrl, registration) {
-      console.log('✅ SW 已注册:', swUrl)
-      
-      // 定期检查更新（每 60 秒）
-      if (registration) {
-        // 清理可能存在的旧 interval
+  // 注册 Service Worker
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return
+    }
+
+    const registerSW = async () => {
+      try {
+        const registration = await navigator.serviceWorker.register('/sw.js')
+        registrationRef.current = registration
+        console.log('✅ SW 已注册')
+
+        // 检查是否有等待中的更新
+        if (registration.waiting) {
+          setNeedRefresh(true)
+        }
+
+        // 监听更新
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setNeedRefresh(true)
+              }
+            })
+          }
+        })
+
+        // 定期检查更新（每 60 秒）
         if (updateCheckIntervalRef.current) {
           clearInterval(updateCheckIntervalRef.current)
         }
         updateCheckIntervalRef.current = setInterval(() => {
           registration.update()
         }, 60 * 1000)
+      } catch (error) {
+        console.error('❌ SW 注册失败:', error)
       }
-    },
-    onRegisterError(error) {
-      console.error('❌ SW 注册失败:', error)
-    },
-  })
+    }
 
-  // 组件卸载时清理所有定时器
-  useEffect(() => {
+    registerSW()
+
     return () => {
       if (updateCheckIntervalRef.current) {
         clearInterval(updateCheckIntervalRef.current)
@@ -54,8 +75,11 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
 
   // 处理更新
   const handleUpdate = useCallback(() => {
-    updateServiceWorker(true)
-  }, [updateServiceWorker])
+    if (registrationRef.current?.waiting) {
+      registrationRef.current.waiting.postMessage({ type: 'SKIP_WAITING' })
+    }
+    window.location.reload()
+  }, [])
 
   // 取消更新
   const handleDismiss = useCallback(() => {
@@ -71,7 +95,7 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
     // 30 秒后重新显示提示
     dismissTimeoutRef.current = setTimeout(() => {
       setDismissed(false)
-      setCountdown(initialSeconds) // 重置倒计时
+      setCountdown(initialSeconds)
       dismissTimeoutRef.current = null
     }, 30000)
   }, [initialSeconds])
@@ -194,3 +218,4 @@ export function UpdatePrompt({ autoUpdateDelay = 3000 }: UpdatePromptProps) {
   )
 }
 
+export default UpdatePrompt

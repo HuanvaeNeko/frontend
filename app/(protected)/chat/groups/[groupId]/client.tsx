@@ -2,7 +2,7 @@
 
 import ChatPage from '@/views/ChatPage'
 
-export default function ChatFiles() {
+export default function ChatPageClient() {
   return <ChatPage />
 }
 

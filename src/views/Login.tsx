@@ -1,5 +1,8 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
 import { Bot, ArrowRight, Star, Loader2 } from 'lucide-react'
@@ -19,7 +22,7 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Login() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const login = useAuthStore((state) => state.login)
   
   const [formData, setFormData] = useState({
@@ -37,7 +40,7 @@ export default function Login() {
 
     try {
       await login(formData)
-      navigate('/')
+      router.push('/')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '登录失败，请检查用户名和密码'
       setError(errorMsg)
@@ -191,7 +194,7 @@ export default function Login() {
             <p className="text-muted-foreground mb-4">
               还没有账号？
             </p>
-            <Link to="/register">
+            <Link href="/register">
               <Button variant="outline" className="w-full h-12 font-semibold">
                 立即注册
               </Button>

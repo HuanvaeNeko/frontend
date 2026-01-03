@@ -1,8 +1,9 @@
-'use client'
+import ChatPageClient from './client'
 
-import ChatPage from '@/pages/ChatPage'
-
-export default function ChatGroup() {
-  return <ChatPage />
+export function generateStaticParams() {
+  return []
 }
 
+export default function ChatGroupPage() {
+  return <ChatPageClient />
+}

@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, 
   Send, 
@@ -19,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '../hooks/use-toast'
 
 export default function AiChat() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const { accessToken } = useAuthStore()
   const apiConfigStore = useApiConfigStore()
@@ -204,7 +206,7 @@ export default function AiChat() {
             <Button 
               variant="ghost"
               size="icon"
-              onClick={() => navigate('/')}
+              onClick={() => router.push('/')}
             >
               <ArrowLeft size={20} />
             </Button>

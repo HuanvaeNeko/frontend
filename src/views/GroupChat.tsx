@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useRouter, useParams } from 'next/navigation'
 import {
   ArrowLeft,
   Send,
@@ -33,7 +35,7 @@ import { storageApi, type FileType } from '../api/storage'
 import { useToast } from '../hooks/use-toast'
 
 export default function GroupChat() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { groupId } = useParams<{ groupId?: string }>()
   const { toast } = useToast()
   const { myGroups, loadMyGroups } = useGroupStore()
@@ -369,7 +371,7 @@ export default function GroupChat() {
     try {
       await groupsApi.leaveGroup(groupId)
       toast({ title: '成功', description: '已退出群聊' })
-      navigate('/chat')
+      router.push('/chat')
     } catch (error) {
       toast({
         title: '退出失败',
@@ -484,7 +486,7 @@ export default function GroupChat() {
           <Users className="h-16 w-16 mx-auto text-gray-400 mb-4" />
           <h2 className="text-xl font-semibold mb-2">请选择一个群聊</h2>
           <p className="text-muted-foreground mb-4">从侧边栏选择一个群聊开始对话</p>
-          <Button onClick={() => navigate('/chat')}>返回聊天</Button>
+          <Button onClick={() => router.push('/chat')}>返回聊天</Button>
         </div>
       </div>
     )
@@ -498,7 +500,7 @@ export default function GroupChat() {
           <Users className="h-16 w-16 mx-auto text-gray-400 mb-4" />
           <h2 className="text-xl font-semibold mb-2">群聊不存在</h2>
           <p className="text-muted-foreground mb-4">该群聊可能已被解散或您已退出</p>
-          <Button onClick={() => navigate('/chat')}>返回聊天</Button>
+          <Button onClick={() => router.push('/chat')}>返回聊天</Button>
         </div>
       </div>
     )
@@ -509,7 +511,7 @@ export default function GroupChat() {
       {/* 顶部导航 */}
       <header className="h-16 bg-white border-b flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
+          <Button variant="ghost" size="icon" onClick={() => router.push('/chat')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <Avatar className="h-10 w-10">

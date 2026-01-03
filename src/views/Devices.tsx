@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Laptop, Smartphone, Monitor, Clock, MapPin, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -24,7 +26,7 @@ interface Device {
 }
 
 export default function Devices() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const { clearAuth } = useAuthStore()
   
@@ -69,7 +71,7 @@ export default function Devices() {
           description: '当前设备已被移除，请重新登录',
         })
         clearAuth()
-        navigate('/login')
+        router.push('/login')
       } else {
         toast({
           title: '成功',
@@ -147,7 +149,7 @@ export default function Devices() {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-6 py-8 max-w-4xl">
         <div className="mb-6">
-          <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+          <Button variant="ghost" onClick={() => router.push('/')} className="gap-2">
             <ArrowLeft size={18} />返回首页
           </Button>
         </div>

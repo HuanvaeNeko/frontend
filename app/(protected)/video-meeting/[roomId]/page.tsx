@@ -1,8 +1,9 @@
-'use client'
+import VideoMeetingClient from './client'
 
-import VideoMeetingPage from '@/pages/VideoMeeting'
-
-export default function VideoMeetingRoom() {
-  return <VideoMeetingPage />
+export function generateStaticParams() {
+  return []
 }
 
+export default function VideoMeetingRoomPage() {
+  return <VideoMeetingClient />
+}

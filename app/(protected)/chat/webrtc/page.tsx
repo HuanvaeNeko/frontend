@@ -1,6 +1,6 @@
 'use client'
 
-import ChatPage from '@/pages/ChatPage'
+import ChatPage from '@/views/ChatPage'
 
 export default function ChatWebRTC() {
   return <ChatPage />

@@ -1,5 +1,7 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { Video, Phone, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +12,7 @@ import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
 
 export default function WebRTCPanel() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const { accessToken } = useAuthStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -69,7 +71,7 @@ export default function WebRTCPanel() {
       if (roomPassword) {
         params.set('pwd', roomPassword)
       }
-      navigate(`/video-meeting?${params.toString()}`)
+      router.push(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '创建失败',
@@ -113,7 +115,7 @@ export default function WebRTCPanel() {
       if (joinNickname) {
         params.set('name', joinNickname)
       }
-      navigate(`/video-meeting?${params.toString()}`)
+      router.push(`/video-meeting?${params.toString()}`)
     } catch (error) {
       toast({
         title: '加入失败',

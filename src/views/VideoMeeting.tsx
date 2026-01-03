@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { 
   ArrowLeft, 
   Mic,
@@ -27,9 +29,10 @@ interface RemoteStream {
 }
 
 export default function VideoMeeting() {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const { roomId: urlRoomId } = useParams<{ roomId?: string }>()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const params = useParams<{ roomId?: string }>()
+  const urlRoomId = params?.roomId
   const { accessToken, user } = useAuthStore()
   
   // 从 URL 获取房间信息（支持路径参数和查询参数两种方式）
@@ -507,7 +510,7 @@ export default function VideoMeeting() {
   // 离开会议
   const leaveMeeting = () => {
     cleanup()
-    navigate('/chat')
+    router.push('/chat')
   }
 
   // 复制分享链接
@@ -546,7 +549,7 @@ export default function VideoMeeting() {
         <div className="text-center text-white">
           <h2 className="text-2xl font-bold mb-4">出错了</h2>
           <p className="text-gray-400 mb-6">{error}</p>
-          <Button onClick={() => navigate('/chat')}>返回</Button>
+          <Button onClick={() => router.push('/chat')}>返回</Button>
         </div>
       </div>
     )

@@ -1,5 +1,8 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
 import { Bot, ArrowRight, Check, Loader2 } from 'lucide-react'
@@ -19,7 +22,7 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Register() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const register = useAuthStore((state) => state.register)
   
   const [formData, setFormData] = useState({
@@ -69,7 +72,7 @@ export default function Register() {
         email: formData.email,
         password: formData.password,
       })
-      navigate('/')
+      router.push('/')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '注册失败，请稍后重试'
       setError(errorMsg)
@@ -294,7 +297,7 @@ export default function Register() {
 
           <div className="text-center">
             <p className="text-muted-foreground mb-4">已有账号？</p>
-            <Link to="/login">
+            <Link href="/login">
               <Button variant="outline" className="w-full h-12 font-semibold">
                 立即登录
               </Button>

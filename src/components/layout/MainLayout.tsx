@@ -1,4 +1,6 @@
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+'use client'
+
+import { useRouter, usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { 
   MessageSquare, 
@@ -38,9 +40,13 @@ const settingsNavItems: NavItem[] = [
   { path: '/settings', label: '设置', icon: Settings },
 ]
 
-export default function MainLayout() {
-  const navigate = useNavigate()
-  const location = useLocation()
+interface MainLayoutProps {
+  children: React.ReactNode
+}
+
+export default function MainLayout({ children }: MainLayoutProps) {
+  const router = useRouter()
+  const pathname = usePathname()
   const { user, clearAuth } = useAuthStore()
   const { profile } = useProfileStore()
 
@@ -49,19 +55,19 @@ export default function MainLayout() {
 
   const handleLogout = () => {
     clearAuth()
-    navigate('/login')
+    router.push('/login')
   }
 
   const isActive = (path: string) => {
     if (path === '/') {
-      return location.pathname === '/' || location.pathname === '/chat'
+      return pathname === '/' || pathname === '/chat'
     }
-    return location.pathname.startsWith(path)
+    return pathname?.startsWith(path) ?? false
   }
 
   // 获取面包屑
   const getBreadcrumbs = () => {
-    const pathSegments = location.pathname.split('/').filter(Boolean)
+    const pathSegments = pathname?.split('/').filter(Boolean) || []
     const breadcrumbs: { label: string; path: string }[] = [
       { label: '首页', path: '/' }
     ]
@@ -106,7 +112,7 @@ export default function MainLayout() {
         <div className="p-4 border-b">
           <div 
             className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors"
-            onClick={() => navigate('/profile')}
+            onClick={() => router.push('/profile')}
           >
             <Avatar className="h-10 w-10">
               <AvatarImage src={avatarUrl} alt={displayName} />
@@ -134,7 +140,7 @@ export default function MainLayout() {
                 'w-full justify-start gap-3',
                 isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15'
               )}
-              onClick={() => navigate(item.path)}
+              onClick={() => router.push(item.path)}
             >
               <item.icon size={18} />
               {item.label}
@@ -152,7 +158,7 @@ export default function MainLayout() {
                 'w-full justify-start gap-3',
                 isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15'
               )}
-              onClick={() => navigate(item.path)}
+              onClick={() => router.push(item.path)}
             >
               <item.icon size={18} />
               {item.label}
@@ -188,7 +194,7 @@ export default function MainLayout() {
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 gap-1"
-                    onClick={() => navigate(crumb.path)}
+                    onClick={() => router.push(crumb.path)}
                   >
                     <Home size={14} />
                     {crumb.label}
@@ -200,7 +206,7 @@ export default function MainLayout() {
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
-                    onClick={() => navigate(crumb.path)}
+                    onClick={() => router.push(crumb.path)}
                   >
                     {crumb.label}
                   </Button>
@@ -212,7 +218,7 @@ export default function MainLayout() {
 
         {/* 页面内容 */}
         <main>
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

@@ -1,10 +1,13 @@
-import { useNavigate } from 'react-router-dom'
+'use client'
+
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Home, ArrowLeft, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export default function NotFound() {
-  const navigate = useNavigate()
+  const router = useRouter()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-6">
@@ -72,14 +75,14 @@ export default function NotFound() {
         >
           <Button
             variant="outline"
-            onClick={() => navigate(-1)}
+            onClick={() => router.back()}
             className="gap-2"
           >
             <ArrowLeft size={18} />
             返回上页
           </Button>
           <Button
-            onClick={() => navigate('/')}
+            onClick={() => router.push('/')}
             className="gap-2"
           >
             <Home size={18} />

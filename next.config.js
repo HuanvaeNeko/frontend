@@ -20,14 +20,7 @@ const nextConfig = {
   images: {
     unoptimized: true, // 静态导出需要禁用图片优化
   },
-  // 忽略构建时的 ESLint 错误（可选）
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
-  // 忽略构建时的 TypeScript 错误（可选）
-  typescript: {
-    ignoreBuildErrors: false,
-  },
+  turbopack: {}, // 允许 PWA 插件的 webpack 配置
 }
 
 export default withPWA(nextConfig)

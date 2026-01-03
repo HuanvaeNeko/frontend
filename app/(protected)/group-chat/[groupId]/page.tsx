@@ -1,8 +1,9 @@
-'use client'
+import GroupChatClient from './client'
 
-import GroupChatPage from '@/pages/GroupChat'
-
-export default function GroupChat() {
-  return <GroupChatPage />
+export function generateStaticParams() {
+  return []
 }
 
+export default function GroupChatPage() {
+  return <GroupChatClient />
+}

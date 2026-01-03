@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+'use client'
+
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Bot, MessageCircle, Video, Settings, LogOut, User, Laptop, Users, IdCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -15,13 +17,13 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Home() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { user, logout, isAuthenticated } = useAuthStore()
 
   const handleLogout = async () => {
     try {
       await logout()
-      navigate('/login')
+      router.push('/login')
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -64,10 +66,10 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/devices')}>
+              <Button variant="ghost" size="icon" onClick={() => router.push('/devices')}>
                 <Laptop size={18} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+              <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
                 <Settings size={18} />
               </Button>
               <DropdownMenu.Root>
@@ -78,10 +80,10 @@ export default function Home() {
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Portal>
                   <DropdownMenu.Content className="min-w-[200px] bg-white rounded-md shadow-lg border p-1" sideOffset={5}>
-                    <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => navigate('/profile')}>
+                    <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => router.push('/profile')}>
                       <IdCard size={16} />个人资料
                     </DropdownMenu.Item>
-                    <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => navigate('/friends')}>
+                    <DropdownMenu.Item className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none" onSelect={() => router.push('/friends')}>
                       <Users size={16} />好友管理
                     </DropdownMenu.Item>
                     <DropdownMenu.Separator className="h-px bg-gray-200 my-1" />
@@ -118,7 +120,7 @@ export default function Home() {
             <motion.div key={index} variants={cardItem}>
               <Card 
                 className="cursor-pointer hover:shadow-xl transition-all" 
-                onClick={() => navigate(feature.path)}
+                onClick={() => router.push(feature.path)}
               >
               <CardHeader>
                 <div className={`w-16 h-16 rounded-2xl ${feature.bgColor} flex items-center justify-center mb-4`}>
@@ -143,13 +145,13 @@ export default function Home() {
             <CardTitle>快速操作</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-4">
-            <Button onClick={() => navigate('/ai-chat')} className="gap-2">
+            <Button onClick={() => router.push('/ai-chat')} className="gap-2">
               <Bot size={18} />新建 AI 对话
             </Button>
-            <Button variant="outline" onClick={() => navigate('/group-chat')} className="gap-2">
+            <Button variant="outline" onClick={() => router.push('/group-chat')} className="gap-2">
               <MessageCircle size={18} />加入群聊
             </Button>
-            <Button variant="outline" onClick={() => navigate('/video-meeting')} className="gap-2">
+            <Button variant="outline" onClick={() => router.push('/video-meeting')} className="gap-2">
               <Video size={18} />开始会议
             </Button>
           </CardContent>

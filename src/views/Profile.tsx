@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, User as UserIcon, Camera, Loader2, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,7 +22,7 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Profile() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const { profile, isLoading, loadProfile, updateProfile } = useProfileStore()
   const { user } = useAuthStore()
@@ -168,7 +170,7 @@ export default function Profile() {
         <div className="mb-6">
           <Button 
             variant="ghost" 
-            onClick={() => navigate('/')}
+            onClick={() => router.push('/')}
             className="gap-2"
           >
             <ArrowLeft size={18} />

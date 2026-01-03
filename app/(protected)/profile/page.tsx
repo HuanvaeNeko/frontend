@@ -1,6 +1,6 @@
 'use client'
 
-import ProfilePage from '@/pages/Profile'
+import ProfilePage from '@/views/Profile'
 
 export default function Profile() {
   return <ProfilePage />

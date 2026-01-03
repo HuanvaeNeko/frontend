@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+'use client'
+
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Settings as SettingsIcon, Wand2, Globe, Shield, Palette, Bell, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -15,7 +17,7 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Settings() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { toast } = useToast()
   const settings = useSettingsStore()
   const apiConfig = useApiConfigStore()
@@ -44,7 +46,7 @@ export default function Settings() {
         <div className="mb-6">
           <Button 
             variant="ghost" 
-            onClick={() => navigate('/')}
+            onClick={() => router.push('/')}
             className="gap-2"
           >
             <ArrowLeft size={18} />

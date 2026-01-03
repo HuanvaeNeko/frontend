@@ -1,5 +1,7 @@
+'use client'
+
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Users, UserPlus, UserMinus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +19,7 @@ import {
 } from '../utils/motionAnimations'
 
 export default function Friends() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { 
     friends, 
     pendingRequests, 
@@ -100,7 +102,7 @@ export default function Friends() {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-6 py-8 max-w-4xl">
         <div className="mb-6">
-          <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+          <Button variant="ghost" onClick={() => router.push('/')} className="gap-2">
             <ArrowLeft size={18} />返回首页
           </Button>
         </div>

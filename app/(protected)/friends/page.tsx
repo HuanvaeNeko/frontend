@@ -1,6 +1,6 @@
 'use client'
 
-import FriendsPage from '@/pages/Friends'
+import FriendsPage from '@/views/Friends'
 
 export default function Friends() {
   return <FriendsPage />
