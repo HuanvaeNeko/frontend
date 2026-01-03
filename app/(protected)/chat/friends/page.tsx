@@ -1,8 +1,9 @@
 'use client'
 
-import ChatPage from '@/views/ChatPage'
+import dynamic from 'next/dynamic'
+
+const ChatPage = dynamic(() => import('@/views/ChatPage'), { ssr: false })
 
 export default function ChatFriends() {
   return <ChatPage />
 }
-

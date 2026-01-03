@@ -15,13 +15,13 @@ const withPWA = withPWAInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export', // 静态导出
+  // 移除静态导出，使用标准 Next.js 构建
+  // 部署时可以使用 Vercel、Docker 或其他支持 Next.js 的平台
   trailingSlash: true,
   images: {
-    unoptimized: true, // 静态导出需要禁用图片优化
+    unoptimized: true,
   },
-  turbopack: {}, // 允许 PWA 插件的 webpack 配置
+  turbopack: {},
 }
 
 export default withPWA(nextConfig)
-

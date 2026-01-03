@@ -1,8 +1,9 @@
 'use client'
 
-import AiChatPage from '@/views/AiChat'
+import dynamic from 'next/dynamic'
+
+const AiChatPage = dynamic(() => import('@/views/AiChat'), { ssr: false })
 
 export default function AiChat() {
   return <AiChatPage />
 }
-

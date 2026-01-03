@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev --turbopack --port 5173",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start --port 5173",
     "lint": "next lint",
     "export": "next build"
