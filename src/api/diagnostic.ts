@@ -60,7 +60,7 @@ export const diagnosticApi = {
     }
 
     const response = await apiClient.post(
-      '/api/diagnostic/report/friend-permission',
+      '/api/diagnostic/report/friend_permission',
       payload
     )
 

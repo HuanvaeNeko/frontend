@@ -1,6 +1,6 @@
 # API 配置文档
 
-本文档详细说明 HuanVae Chat 前端项目的 API 配置和使用方法。
+本文档详细说明 Huanvae Chat 前端项目的 API 配置和使用方法。
 
 ## 📡 API 基础信息
 
@@ -797,6 +797,6 @@ async function apiRequest(url: string, options: RequestInit) {
 
 ## 👨‍💻 维护者
 
-HuanVae Chat Team - 欢伪
+Huanvae Chat Team - 欢伪
 
 如有问题或建议，欢迎在 GitHub 提交 Issue。

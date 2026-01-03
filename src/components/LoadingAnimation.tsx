@@ -18,7 +18,7 @@ export default function LoadingAnimation() {
 
         {/* 品牌名称 */}
         <h1 className="text-4xl font-black mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-          HuanVae Chat
+          Huanvae Chat
         </h1>
 
         {/* 加载点 */}

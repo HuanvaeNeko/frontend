@@ -1,4 +1,4 @@
-# HuanVae Chat - 即时通讯前端应用
+# Huanvae Chat - 即时通讯前端应用
 
 > 基于 React + TypeScript + Vite 开发的现代化即时通讯应用
 

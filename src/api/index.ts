@@ -1,5 +1,5 @@
 /**
- * HuanVae Chat API 模块索引
+ * Huanvae Chat API 模块索引
  * 
  * 本文件导出所有 API 模块，方便统一导入
  */

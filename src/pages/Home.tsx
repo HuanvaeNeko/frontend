@@ -104,7 +104,7 @@ export default function Home() {
           transition={{ delay: 0.2 }}
           className="mb-12"
         >
-          <h1 className="text-5xl font-black gradient-text mb-2">HuanVae Chat</h1>
+          <h1 className="text-5xl font-black gradient-text mb-2">Huanvae Chat</h1>
           <p className="text-xl text-muted-foreground">欢迎回来,{user?.nickname || '用户'}!开始您的智能通讯之旅</p>
         </motion.div>
 
@@ -157,7 +157,7 @@ export default function Home() {
         </motion.div>
 
         <div className="mt-12 text-center text-sm text-muted-foreground">
-          <p>HuanVae Chat - 智能通讯平台 v1.0.0</p>
+          <p>Huanvae Chat - 智能通讯平台 v1.0.0</p>
         </div>
       </div>
     </div>

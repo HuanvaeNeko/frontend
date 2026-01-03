@@ -107,7 +107,7 @@ export default function Register() {
             开始你的<br/>智能之旅
           </h1>
           <p className="text-xl font-light mb-8">
-            加入 HuanVae Chat，体验全新的智能通讯方式
+            加入 Huanvae Chat，体验全新的智能通讯方式
           </p>
           <motion.div
             variants={staggerContainer}
@@ -154,7 +154,7 @@ export default function Register() {
         >
           <div className="lg:hidden text-center mb-8">
             <Bot size={64} strokeWidth={1.5} className="text-purple-500 mb-4 mx-auto" />
-            <h1 className="text-4xl font-black gradient-text">HuanVae Chat</h1>
+            <h1 className="text-4xl font-black gradient-text">Huanvae Chat</h1>
           </div>
 
           <div className="mb-8">

@@ -1,6 +1,6 @@
-# 📚 HuanVae Chat 文档索引
+# 📚 Huanvae Chat 文档索引
 
-欢迎查阅 HuanVae Chat 前端项目的文档。
+欢迎查阅 Huanvae Chat 前端项目的文档。
 
 ## 📖 文档列表
 

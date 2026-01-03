@@ -69,7 +69,7 @@ export default function Login() {
             <Bot size={96} strokeWidth={1.5} />
           </motion.div>
           <h1 className="text-6xl font-black mb-6 leading-tight">
-            HuanVae<br/>Chat
+            Huanvae<br/>Chat
           </h1>
           <motion.div
             variants={staggerContainer}
@@ -116,7 +116,7 @@ export default function Login() {
           <div className="lg:hidden text-center mb-8">
             <Bot size={64} strokeWidth={1.5} className="text-primary mb-4 mx-auto" />
             <h1 className="text-4xl font-black gradient-text">
-              HuanVae Chat
+              Huanvae Chat
             </h1>
           </div>
 

@@ -112,7 +112,7 @@ export function useRealtimeMessages() {
   }, [selectedConversation, addMessage])
 
   // 处理消息撤回
-  const handleMessageRecalled = useCallback((data: WSMessageRecalled['data']) => {
+  const handleMessageRecalled = useCallback((data: Omit<WSMessageRecalled, 'type'>) => {
     console.log('🔙 消息已撤回:', data)
 
     // 从当前消息列表中移除
@@ -153,7 +153,7 @@ export function useRealtimeMessages() {
 
     unsubscribers.push(registerHandler<WSPrivateMessage['data']>('private_message', handlePrivateMessage))
     unsubscribers.push(registerHandler<WSGroupMessage['data']>('group_message', handleGroupMessage))
-    unsubscribers.push(registerHandler<WSMessageRecalled['data']>('message_recalled', handleMessageRecalled))
+    unsubscribers.push(registerHandler<Omit<WSMessageRecalled, 'type'>>('message_recalled', handleMessageRecalled))
     unsubscribers.push(registerHandler('friend_request', handleFriendRequest))
     unsubscribers.push(registerHandler('friend_request_result', handleFriendRequestResult))
     unsubscribers.push(registerHandler('group_invitation', handleGroupInvitation))
