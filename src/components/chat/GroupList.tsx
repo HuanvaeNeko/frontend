@@ -1,4 +1,7 @@
+'use client'
+
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
   Users,
   Plus,
@@ -8,17 +11,60 @@ import {
   Check,
   X,
   Crown,
-  ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Mail
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useGroupStore } from '../../store/groupStore'
 import { useChatStore } from '../../store/chatStore'
 import { groupsApi, type GroupInvitation } from '../../api/groups'
 import { useToast } from '@/hooks/use-toast'
+
+// 列表项动画配置
+const listItemVariants: Variants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: (i: number) => ({
+    opacity: 1,
+    x: 0,
+    transition: {
+      delay: i * 0.05,
+      duration: 0.3,
+      ease: [0.25, 0.1, 0.25, 1] as const,
+    },
+  }),
+  exit: {
+    opacity: 0,
+    x: 20,
+    transition: { duration: 0.2 },
+  },
+}
+
+// 弹窗动画
+const dialogVariants: Variants = {
+  hidden: { opacity: 0, scale: 0.95, y: 10 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: 'spring' as const, stiffness: 300, damping: 25 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: 10,
+    transition: { duration: 0.2 },
+  },
+}
+
+// 空状态动画
+const emptyStateVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: 'easeOut' as const },
+  },
+}
 
 interface GroupListProps {
   subTab: 'main' | 'invites' | 'join'
@@ -286,165 +332,270 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     return (
       <div className="flex flex-col h-full">
         {/* 创建群聊按钮 */}
-        <div className="p-4 border-b flex gap-2">
-          <Button
-            className="flex-1 gap-2"
+        <div className="p-3 flex gap-2">
+          <motion.button
+            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium text-white"
+            style={{
+              background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+            }}
             onClick={() => setShowCreateDialog(true)}
+            whileHover={{ 
+              scale: 1.02,
+              boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
+            }}
+            whileTap={{ scale: 0.98 }}
           >
             <Plus className="h-4 w-4" />
             创建群聊
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
+          </motion.button>
+          <motion.button
+            className="w-12 h-12 flex items-center justify-center rounded-xl"
+            style={{
+              background: 'rgba(255, 255, 255, 0.6)',
+              border: '1px solid rgba(147, 197, 253, 0.3)',
+            }}
             onClick={() => loadMyGroups()}
             disabled={isLoading}
+            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+            whileTap={{ scale: 0.95 }}
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
+            <RefreshCw className={`h-4 w-4 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
+          </motion.button>
         </div>
 
         {/* 群聊列表 */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-2">
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
             </div>
           ) : filteredGroups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-              <Users className="h-8 w-8 mb-2 opacity-50" />
-              <p className="text-sm">暂无群聊</p>
-              {searchQuery && <p className="text-xs mt-1">试试其他搜索条件</p>}
-            </div>
-          ) : (
-            filteredGroups.map((group) => (
-              <button
-                key={group.group_id}
-                className={`w-full p-4 flex items-center gap-3 hover:bg-accent transition-colors ${
-                  selectedConversation?.id === group.group_id ? 'bg-accent' : ''
-                }`}
-                onClick={() => handleSelectGroup(group)}
+            <motion.div
+              className="flex flex-col items-center justify-center h-32"
+              variants={emptyStateVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
+                style={{ background: 'rgba(167, 139, 250, 0.2)' }}
               >
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={group.group_avatar_url} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                    {group.group_name[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 text-left min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{group.group_name}</span>
-                    {group.role === 'owner' && <Crown className="h-3 w-3 text-yellow-500" />}
-                    {(group.unread_count ?? 0) > 0 && (
-                      <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
-                        {group.unread_count}
+                <Users className="h-8 w-8 text-violet-400" />
+              </div>
+              <p className="text-sm text-slate-500">暂无群聊</p>
+              {searchQuery && <p className="text-xs text-slate-400 mt-1">试试其他搜索条件</p>}
+            </motion.div>
+          ) : (
+            <AnimatePresence mode="popLayout">
+              {filteredGroups.map((group, index) => (
+                <motion.button
+                  key={group.group_id}
+                  className="conversation-item w-full"
+                  variants={listItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  custom={index}
+                  layout
+                  onClick={() => handleSelectGroup(group)}
+                  style={{
+                    background: selectedConversation?.id === group.group_id 
+                      ? 'linear-gradient(135deg, rgba(167, 139, 250, 0.25) 0%, rgba(167, 139, 250, 0.15) 100%)'
+                      : 'transparent',
+                  }}
+                >
+                  <div className="conv-avatar">
+                    <Avatar className="h-full w-full">
+                      <AvatarImage src={group.group_avatar_url} />
+                      <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                        {group.group_name[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="conv-info">
+                    <div className="conv-header">
+                      <span className="conv-name">
+                        {group.role === 'owner' && <Crown className="h-3 w-3 text-yellow-500 mr-1 inline" />}
+                        {group.group_name}
                       </span>
-                    )}
-                  </div>
-                  <div className="text-sm text-muted-foreground truncate">
-                    {group.last_message_content || group.group_description || `${group.member_count || 0} 名成员`}
-                  </div>
-                  {group.last_message_time && (
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(group.last_message_time).toLocaleString()}
+                      {group.last_message_time && (
+                        <span className="conv-time">
+                          {new Date(group.last_message_time).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ))
+                    <div className="conv-footer">
+                      <span className="conv-preview">
+                        {group.last_message_content || group.group_description || `${group.member_count || 0} 名成员`}
+                      </span>
+                      {(group.unread_count ?? 0) > 0 && (
+                        <span className="conv-unread visible">
+                          {group.unread_count}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.button>
+              ))}
+            </AnimatePresence>
           )}
         </div>
 
         {/* 创建群聊对话框 */}
-        {showCreateDialog && (
-          <>
-            {/* 遮罩层 */}
-            <div 
-              className="fixed inset-0 bg-black/60 z-[100]" 
-              onClick={() => setShowCreateDialog(false)}
-            />
-            {/* 对话框 */}
-            <div className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none">
-              <div 
-                className="bg-white dark:bg-zinc-900 rounded-xl p-6 w-[400px] max-w-[90vw] shadow-2xl pointer-events-auto border border-border"
-                onClick={(e) => e.stopPropagation()}
+        <AnimatePresence>
+          {showCreateDialog && (
+            <>
+              {/* 遮罩层 */}
+              <motion.div
+                className="fixed inset-0 z-[100]"
+                style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowCreateDialog(false)}
+              />
+              {/* 对话框 */}
+              <motion.div
+                className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
               >
-                <h3 className="text-lg font-semibold mb-4 text-foreground">创建群聊</h3>
+                <motion.div
+                  className="w-[400px] max-w-full pointer-events-auto"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
+                    backdropFilter: 'blur(20px) saturate(180%)',
+                    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(167, 139, 250, 0.3)',
+                    boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.25)',
+                    padding: '24px',
+                  }}
+                  variants={dialogVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-xl font-semibold mb-6 text-slate-700">创建群聊</h3>
 
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="groupName" className="text-sm font-medium text-foreground">群名称 *</Label>
-                    <Input
-                      id="groupName"
-                      placeholder="输入群名称"
-                      value={groupName}
-                      onChange={(e) => setGroupName(e.target.value)}
-                      maxLength={30}
-                      className="mt-1.5"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">群名称 *</label>
+                      <input
+                        type="text"
+                        placeholder="输入群名称"
+                        value={groupName}
+                        onChange={(e) => setGroupName(e.target.value)}
+                        maxLength={30}
+                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.6)',
+                          border: '1px solid rgba(167, 139, 250, 0.3)',
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'
+                          e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1)'
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = 'rgba(167, 139, 250, 0.3)'
+                          e.target.style.boxShadow = 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">群描述（可选）</label>
+                      <input
+                        type="text"
+                        placeholder="简单介绍一下这个群..."
+                        value={groupDescription}
+                        onChange={(e) => setGroupDescription(e.target.value)}
+                        maxLength={200}
+                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.6)',
+                          border: '1px solid rgba(167, 139, 250, 0.3)',
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'
+                          e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1)'
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = 'rgba(167, 139, 250, 0.3)'
+                          e.target.style.boxShadow = 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">加群方式</label>
+                      <select
+                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all cursor-pointer"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.6)',
+                          border: '1px solid rgba(167, 139, 250, 0.3)',
+                        }}
+                        value={joinMode}
+                        onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
+                      >
+                        <option value="open">开放加入 - 任何人可直接加入</option>
+                        <option value="approval_required">需要审批 - 需管理员同意</option>
+                        <option value="invite_only">仅邀请 - 只能通过邀请加入</option>
+                      </select>
+                    </div>
                   </div>
 
-                  <div>
-                    <Label htmlFor="groupDescription" className="text-sm font-medium text-foreground">群描述（可选）</Label>
-                    <Input
-                      id="groupDescription"
-                      placeholder="简单介绍一下这个群..."
-                      value={groupDescription}
-                      onChange={(e) => setGroupDescription(e.target.value)}
-                      maxLength={200}
-                      className="mt-1.5"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="joinMode" className="text-sm font-medium text-foreground">加群方式</Label>
-                    <select
-                      id="joinMode"
-                      className="w-full mt-1.5 px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      value={joinMode}
-                      onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
+                  <div className="flex gap-3 mt-6">
+                    <motion.button
+                      className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(167, 139, 250, 0.3)',
+                      }}
+                      onClick={() => {
+                        setShowCreateDialog(false)
+                        setGroupName('')
+                        setGroupDescription('')
+                        setJoinMode('open')
+                      }}
+                      disabled={submitting}
+                      whileHover={{ background: 'rgba(167, 139, 250, 0.2)' }}
+                      whileTap={{ scale: 0.98 }}
                     >
-                      <option value="open">开放加入 - 任何人可直接加入</option>
-                      <option value="approval_required">需要审批 - 需管理员同意</option>
-                      <option value="invite_only">仅邀请 - 只能通过邀请加入</option>
-                    </select>
+                      取消
+                    </motion.button>
+                    <motion.button
+                      className="flex-1 py-3 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                      style={{
+                        background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                        boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+                        opacity: (!groupName.trim() || submitting) ? 0.6 : 1,
+                      }}
+                      onClick={handleCreateGroup}
+                      disabled={submitting || !groupName.trim()}
+                      whileHover={groupName.trim() && !submitting ? { 
+                        boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
+                      } : {}}
+                      whileTap={groupName.trim() && !submitting ? { scale: 0.98 } : {}}
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          创建中...
+                        </>
+                      ) : (
+                        '创建'
+                      )}
+                    </motion.button>
                   </div>
-                </div>
-
-                <div className="flex gap-3 mt-6">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setShowCreateDialog(false)
-                      setGroupName('')
-                      setGroupDescription('')
-                      setJoinMode('open')
-                    }}
-                    disabled={submitting}
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={handleCreateGroup}
-                    disabled={submitting || !groupName.trim()}
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        创建中...
-                      </>
-                    ) : (
-                      '创建'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+                </motion.div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -454,61 +605,109 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     return (
       <div className="flex flex-col h-full p-4 space-y-6">
         {/* 通过邀请码加入 */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
+        <div 
+          className="p-4 rounded-xl space-y-3"
+          style={{
+            background: 'rgba(255, 255, 255, 0.5)',
+            border: '1px solid rgba(147, 197, 253, 0.2)',
+          }}
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
             <Link className="h-4 w-4" />
             通过邀请码加入
           </div>
           <div className="flex gap-2">
-            <Input
+            <input
+              type="text"
               placeholder="输入邀请码"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-              className="font-mono"
+              className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 font-mono outline-none transition-all"
+              style={{
+                background: 'rgba(255, 255, 255, 0.6)',
+                border: '1px solid rgba(147, 197, 253, 0.3)',
+              }}
               maxLength={10}
             />
-            <Button onClick={handleJoinByCode} disabled={joiningByCode || !inviteCode.trim()}>
+            <motion.button
+              className="px-5 py-2.5 rounded-xl font-medium text-white"
+              style={{
+                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                opacity: (joiningByCode || !inviteCode.trim()) ? 0.6 : 1,
+              }}
+              onClick={handleJoinByCode}
+              disabled={joiningByCode || !inviteCode.trim()}
+              whileHover={inviteCode.trim() && !joiningByCode ? { scale: 1.02 } : {}}
+              whileTap={inviteCode.trim() && !joiningByCode ? { scale: 0.98 } : {}}
+            >
               {joiningByCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '加入'}
-            </Button>
+            </motion.button>
           </div>
         </div>
 
-        <div className="border-t" />
-
         {/* 搜索群聊 */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
+        <div 
+          className="p-4 rounded-xl space-y-3"
+          style={{
+            background: 'rgba(255, 255, 255, 0.5)',
+            border: '1px solid rgba(147, 197, 253, 0.2)',
+          }}
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
             <Search className="h-4 w-4" />
             搜索群聊
           </div>
           <div className="flex gap-2">
-            <Input
+            <input
+              type="text"
               placeholder="输入群ID"
               value={searchGroupId}
               onChange={(e) => setSearchGroupId(e.target.value)}
+              className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
+              style={{
+                background: 'rgba(255, 255, 255, 0.6)',
+                border: '1px solid rgba(147, 197, 253, 0.3)',
+              }}
             />
-            <Button
-              variant="outline"
+            <motion.button
+              className="px-5 py-2.5 rounded-xl font-medium text-slate-600"
+              style={{
+                background: 'rgba(255, 255, 255, 0.6)',
+                border: '1px solid rgba(147, 197, 253, 0.3)',
+                opacity: (searchingGroup || !searchGroupId.trim()) ? 0.6 : 1,
+              }}
               onClick={handleSearchGroup}
               disabled={searchingGroup || !searchGroupId.trim()}
+              whileHover={searchGroupId.trim() && !searchingGroup ? { background: 'rgba(147, 197, 253, 0.2)' } : {}}
+              whileTap={searchGroupId.trim() && !searchingGroup ? { scale: 0.98 } : {}}
             >
               {searchingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : '搜索'}
-            </Button>
+            </motion.button>
           </div>
 
           {/* 搜索结果 */}
           {searchResult && (
-            <div className="border rounded-lg p-4 space-y-3">
+            <motion.div
+              className="p-4 rounded-xl space-y-3"
+              style={{
+                background: 'rgba(147, 197, 253, 0.1)',
+                border: '1px solid rgba(147, 197, 253, 0.3)',
+              }}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
               <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={searchResult.group_avatar_url} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                    {searchResult.group_name[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="conv-avatar">
+                  <Avatar className="h-full w-full">
+                    <AvatarImage src={searchResult.group_avatar_url} />
+                    <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                      {searchResult.group_name[0]?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
                 <div className="flex-1">
-                  <div className="font-medium">{searchResult.group_name}</div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="font-medium text-slate-700">{searchResult.group_name}</div>
+                  <div className="text-sm text-slate-500">
                     {searchResult.member_count ?? 0} 成员 · {getJoinModeText(searchResult.join_mode || 'approval_required')}
                   </div>
                 </div>
@@ -516,33 +715,49 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
               {(searchResult.join_mode || 'approval_required') !== 'open' && (
                 <div>
-                  <Label>申请理由</Label>
-                  <Input
+                  <label className="text-sm text-slate-500 mb-1 block">申请理由</label>
+                  <input
+                    type="text"
                     placeholder="说明加群原因（可选）"
                     value={applyReason}
                     onChange={(e) => setApplyReason(e.target.value)}
-                    className="mt-1"
+                    className="w-full px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.6)',
+                      border: '1px solid rgba(147, 197, 253, 0.3)',
+                    }}
                     maxLength={100}
                   />
                 </div>
               )}
 
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
+                <motion.button
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-slate-600"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.6)',
+                    border: '1px solid rgba(147, 197, 253, 0.3)',
+                  }}
                   onClick={() => {
                     setSearchResult(null)
                     setSearchGroupId('')
                     setApplyReason('')
                   }}
+                  whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   取消
-                </Button>
-                <Button
-                  className="flex-1"
+                </motion.button>
+                <motion.button
+                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                    opacity: applying ? 0.6 : 1,
+                  }}
                   onClick={handleApplyJoin}
                   disabled={applying}
+                  whileHover={!applying ? { scale: 1.02 } : {}}
+                  whileTap={!applying ? { scale: 0.98 } : {}}
                 >
                   {applying ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -551,9 +766,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   ) : (
                     '申请加入'
                   )}
-                </Button>
+                </motion.button>
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
       </div>
@@ -564,71 +779,106 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   if (subTab === 'invites') {
     return (
       <div className="flex-1 overflow-y-auto">
-        <div className="p-4 border-b flex items-center justify-between">
-          <span className="font-medium">群邀请</span>
-          <Button
-            variant="ghost"
-            size="icon"
+        <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: 'rgba(147, 197, 253, 0.2)' }}>
+          <span className="font-medium text-slate-700">群邀请</span>
+          <motion.button
+            className="w-8 h-8 flex items-center justify-center rounded-lg"
+            style={{ background: 'rgba(255, 255, 255, 0.6)' }}
             onClick={loadInvitations}
             disabled={loadingInvites}
+            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+            whileTap={{ scale: 0.95 }}
           >
-            <RefreshCw className={`h-4 w-4 ${loadingInvites ? 'animate-spin' : ''}`} />
-          </Button>
+            <RefreshCw className={`h-4 w-4 text-slate-500 ${loadingInvites ? 'animate-spin' : ''}`} />
+          </motion.button>
         </div>
 
         {loadingInvites ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
           </div>
         ) : invitations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-            <Users className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">暂无群邀请</p>
-          </div>
-        ) : (
-          invitations.map((invitation) => (
-            <div
-              key={invitation.request_id}
-              className="p-4 border-b flex items-center gap-3"
+          <motion.div
+            className="flex flex-col items-center justify-center h-32"
+            variants={emptyStateVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            <div 
+              className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
+              style={{ background: 'rgba(167, 139, 250, 0.2)' }}
             >
-              <Avatar className="h-12 w-12">
-                <AvatarImage src={invitation.group_avatar_url} />
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                  {invitation.group_name[0]?.toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{invitation.group_name}</div>
-                <div className="text-sm text-muted-foreground">
-                  {invitation.inviter_nickname} 邀请你加入
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(invitation.created_at).toLocaleDateString()}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => handleAcceptInvite(invitation.request_id)}
-                  disabled={processingInvite === invitation.request_id}
-                >
-                  {processingInvite === invitation.request_id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDeclineInvite(invitation.request_id)}
-                  disabled={processingInvite === invitation.request_id}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+              <Mail className="h-8 w-8 text-violet-400" />
             </div>
-          ))
+            <p className="text-sm text-slate-500">暂无群邀请</p>
+          </motion.div>
+        ) : (
+          <div className="px-2 py-2">
+            <AnimatePresence mode="popLayout">
+              {invitations.map((invitation, index) => (
+                <motion.div
+                  key={invitation.request_id}
+                  className="p-4 mb-2 rounded-xl flex items-center gap-3"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.5)',
+                    border: '1px solid rgba(167, 139, 250, 0.2)',
+                  }}
+                  variants={listItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  custom={index}
+                >
+                  <div className="conv-avatar">
+                    <Avatar className="h-full w-full">
+                      <AvatarImage src={invitation.group_avatar_url} />
+                      <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                        {invitation.group_name[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-700 truncate">{invitation.group_name}</div>
+                    <div className="text-sm text-slate-500">
+                      {invitation.inviter_nickname} 邀请你加入
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {new Date(invitation.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <motion.button
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white"
+                      style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
+                      onClick={() => handleAcceptInvite(invitation.request_id)}
+                      disabled={processingInvite === invitation.request_id}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      {processingInvite === invitation.request_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </motion.button>
+                    <motion.button
+                      className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.6)',
+                        border: '1px solid rgba(147, 197, 253, 0.3)',
+                      }}
+                      onClick={() => handleDeclineInvite(invitation.request_id)}
+                      disabled={processingInvite === invitation.request_id}
+                      whileHover={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <X className="h-4 w-4" />
+                    </motion.button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         )}
       </div>
     )

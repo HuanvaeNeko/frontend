@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, 
   Send, 
@@ -12,12 +13,13 @@ import {
   Trash,
   Download,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  X
 } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { useApiConfigStore } from '../store/apiConfig'
 import { useAuthStore } from '../store/authStore'
-import { Button } from '@/components/ui/button'
 import { useToast } from '../hooks/use-toast'
 
 export default function AiChat() {
@@ -36,6 +38,7 @@ export default function AiChat() {
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -197,296 +200,915 @@ export default function AiChat() {
     })
   }
 
+  const quickPrompts = [
+    { label: '介绍自己', text: '你好，请介绍一下自己' },
+    { label: '功能说明', text: '你能帮我做什么？' },
+    { label: '话题推荐', text: '推荐一些有趣的话题' },
+    { label: '写代码', text: '帮我写一段代码' },
+  ]
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
+    <div className="ai-chat-app">
+      {/* 背景装饰球 */}
+      <div className="ai-bg-orb orb-1"></div>
+      <div className="ai-bg-orb orb-2"></div>
+      <div className="ai-bg-orb orb-3"></div>
+
       {/* 顶部导航栏 */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200 shadow-sm sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/')}
+      <header className="ai-chat-header">
+        <div className="header-left">
+          <button 
+            className="back-btn"
+            onClick={() => router.push('/chat')}
             >
               <ArrowLeft size={20} />
-            </Button>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                <Bot size={24} className="text-white" />
-              </div>
-              <div>
-                <h1 className="font-bold text-lg">AI 聊天助手</h1>
-                <p className="text-xs text-green-600 flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  在线
-                </p>
-              </div>
-            </div>
+          </button>
+          <div className="ai-avatar">
+            <Bot size={24} />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportChat}
-              className="gap-2"
-            >
-              <Download size={18} />
-              导出
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearChat}
-              className="gap-2"
-            >
-              <Trash size={18} />
-              清空
-            </Button>
-            <label htmlFor="settings-modal">
-              <Button variant="ghost" size="sm" className="gap-2" asChild>
-                <span>
-                  <Settings size={18} />
-                  设置
+          <div className="ai-info">
+            <h1>AI 聊天助手</h1>
+            <span className="online-status">
+              <span className="status-dot"></span>
+              在线
                 </span>
-              </Button>
-            </label>
           </div>
         </div>
+        <div className="header-actions">
+          <button className="action-btn" onClick={exportChat} title="导出聊天">
+            <Download size={18} />
+            <span>导出</span>
+          </button>
+          <button className="action-btn" onClick={clearChat} title="清空聊天">
+            <Trash size={18} />
+            <span>清空</span>
+          </button>
+          <button className="action-btn" onClick={() => setShowSettings(true)} title="设置">
+            <Settings size={18} />
+            <span>设置</span>
+          </button>
       </div>
+      </header>
 
       {/* 错误提示 */}
+      <AnimatePresence>
       {error && (
-        <div className="max-w-4xl mx-auto w-full px-4 py-2">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-sm text-red-600">
+          <motion.div 
+            className="ai-error-banner"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
             <AlertCircle size={16} />
-            {error}
-            <button 
-              onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-600"
-            >
-              ✕
+            <span>{error}</span>
+            <button onClick={() => setError(null)}>
+              <X size={14} />
             </button>
-          </div>
-        </div>
+          </motion.div>
       )}
+      </AnimatePresence>
 
       {/* 聊天消息区域 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
+      <main className="ai-chat-messages">
+        <AnimatePresence>
           {messages.map((message, index) => (
-            <div
+            <motion.div
               key={index}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`message-row ${message.role}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
             >
-              <div className={`flex gap-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${
-                  message.role === 'user' 
-                    ? 'bg-gradient-to-br from-blue-500 to-purple-500' 
-                    : 'bg-gradient-to-br from-primary to-purple-600'
-                }`}>
+              <div className={`message-avatar ${message.role}`}>
                   {message.role === 'user' ? (
-                    <User size={20} className="text-white" />
+                  <User size={18} />
                   ) : (
-                    <Bot size={24} className="text-white" />
+                  <Sparkles size={18} />
                   )}
                 </div>
-                <div>
-                  <div className={`flex items-center gap-2 mb-1 ${message.role === 'user' ? 'justify-end' : ''}`}>
+              <div className="message-content">
+                <div className="message-meta">
                     {message.role === 'assistant' && (
-                      <Wand2 size={12} className="text-primary" />
+                    <Wand2 size={12} className="ai-icon" />
                     )}
-                    <span className="text-sm font-medium">
+                  <span className="sender-name">
                       {message.role === 'user' ? '我' : 'AI 助手'}
                     </span>
-                    <time className="text-xs text-gray-400">{formatTime(message.timestamp)}</time>
+                  <time>{formatTime(message.timestamp)}</time>
                   </div>
-                  <div className={`rounded-2xl px-4 py-3 shadow-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-white border border-gray-200'
-                  }`}>
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  </div>
+                <div className={`message-bubble ${message.role}`}>
+                  <div className="message-text">{message.content}</div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
+        </AnimatePresence>
           
+        {/* 加载状态 */}
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="flex gap-3 max-w-[80%]">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center animate-pulse">
-                  <Bot size={24} className="text-white" />
+          <motion.div 
+            className="message-row assistant"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="message-avatar assistant">
+              <Sparkles size={18} className="animate-pulse" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Wand2 size={12} className="text-primary" />
-                    <span className="text-sm font-medium">AI 助手</span>
+            <div className="message-content">
+              <div className="message-meta">
+                <Wand2 size={12} className="ai-icon" />
+                <span className="sender-name">AI 助手</span>
                   </div>
-                  <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-                    <div className="flex items-center gap-2">
+              <div className="message-bubble assistant loading">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-gray-500">AI 正在思考...</span>
-                      <button 
-                        onClick={cancelRequest}
-                        className="text-xs text-red-500 hover:text-red-600 ml-2"
-                      >
+                <span>思考中...</span>
+                <button onClick={cancelRequest} className="cancel-btn">
                         取消
                       </button>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
+          </motion.div>
           )}
           <div ref={messagesEndRef} />
-        </div>
-      </div>
+      </main>
 
       {/* 输入区域 */}
-      <div className="bg-white/80 backdrop-blur-xl border-t border-gray-200 p-4">
-        <div className="max-w-4xl mx-auto">
+      <footer className="ai-chat-input">
           <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }}>
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
+          <div className="input-container">
                 <input
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   placeholder="输入您的问题..."
-                  className="w-full px-4 py-3 pr-20 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                   disabled={isLoading}
                   maxLength={2000}
                 />
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  {inputMessage.length}/2000
+            <span className="char-count">{inputMessage.length}/2000</span>
                 </div>
-              </div>
-              <Button
+          <button
                 type="submit"
                 disabled={!inputMessage.trim() || isLoading}
-                className="px-6 gap-2"
+            className="send-btn"
               >
                 {isLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <>
                     <Send size={18} />
-                    发送
-                  </>
                 )}
-              </Button>
-            </div>
+            <span>发送</span>
+          </button>
           </form>
           
           {/* 快捷提示 */}
-          <div className="mt-3 flex flex-wrap gap-2">
+        <div className="quick-prompts">
+          {quickPrompts.map((prompt, index) => (
             <button 
-              onClick={() => setInputMessage('你好，请介绍一下自己')}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+              key={index}
+              onClick={() => setInputMessage(prompt.text)}
               disabled={isLoading}
+              className="prompt-btn"
             >
-              介绍自己
+              {prompt.label}
             </button>
-            <button 
-              onClick={() => setInputMessage('你能帮我做什么？')}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-              disabled={isLoading}
-            >
-              功能说明
-            </button>
-            <button 
-              onClick={() => setInputMessage('推荐一些有趣的话题')}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-              disabled={isLoading}
-            >
-              话题推荐
-            </button>
-            <button 
-              onClick={() => setInputMessage('帮我写一段代码')}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-              disabled={isLoading}
-            >
-              写代码
-            </button>
-          </div>
+          ))}
         </div>
-      </div>
+      </footer>
 
-      {/* API 设置模态框 */}
-      <input type="checkbox" id="settings-modal" className="modal-toggle hidden" />
-      <div className="modal hidden peer-checked:flex fixed inset-0 z-50 items-center justify-center bg-black/50" id="modal-backdrop">
-        <label htmlFor="settings-modal" className="absolute inset-0"></label>
-        <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 relative z-10 shadow-xl">
-          <h3 className="font-bold text-xl mb-6 flex items-center gap-2">
-            <Settings size={20} className="text-primary" />
-            API 配置
-          </h3>
-          
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="font-medium">使用自定义 API</label>
-                <p className="text-xs text-gray-500">启用后可配置自己的 AI 服务</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={apiConfigStore.useCustomApi}
-                  onChange={(e) => apiConfigStore.setApiConfig({ useCustomApi: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-              </label>
-            </div>
-
-            <div className="border-t pt-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">AI API URL</label>
-                <input
-                  type="text"
-                  value={apiConfigStore.aiApiUrl}
-                  onChange={(e) => apiConfigStore.setApiConfig({ aiApiUrl: e.target.value })}
-                  placeholder="http://localhost:8080/api/chat"
-                  disabled={!apiConfigStore.useCustomApi}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100 disabled:text-gray-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">AI API Key</label>
-                <input
-                  type="password"
-                  value={apiConfigStore.aiApiKey}
-                  onChange={(e) => apiConfigStore.setApiConfig({ aiApiKey: e.target.value })}
-                  placeholder="输入 API Key（可选）"
-                  disabled={!apiConfigStore.useCustomApi}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100 disabled:text-gray-400"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex gap-3">
-            <button
-              onClick={() => apiConfigStore.resetToDefault()}
-              className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 transition-colors"
+      {/* API 设置对话框 */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            className="settings-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowSettings(false)}
+          >
+            <motion.div 
+              className="settings-dialog"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              重置
-            </button>
-            <label 
-              htmlFor="settings-modal" 
-              className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-center cursor-pointer"
-            >
-              完成
-            </label>
-          </div>
-        </div>
-      </div>
+              <div className="dialog-header">
+                <div className="dialog-title">
+                  <Settings size={20} className="text-blue-500" />
+                  <span>API 配置</span>
+                </div>
+                <button onClick={() => setShowSettings(false)} className="close-btn">
+                  <X size={18} />
+                </button>
+              </div>
+              
+              <div className="settings-content">
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-label">使用自定义 API</span>
+                    <span className="setting-desc">启用后可配置自己的 AI 服务</span>
+                  </div>
+                  <label className="switch">
+                    <input
+                      type="checkbox"
+                      checked={apiConfigStore.useCustomApi}
+                      onChange={(e) => apiConfigStore.setApiConfig({ useCustomApi: e.target.checked })}
+                    />
+                    <span className="slider"></span>
+                  </label>
+                </div>
+
+                <div className="setting-divider"></div>
+
+                <div className="setting-field">
+                  <label>AI API URL</label>
+                  <input
+                    type="text"
+                    value={apiConfigStore.aiApiUrl}
+                    onChange={(e) => apiConfigStore.setApiConfig({ aiApiUrl: e.target.value })}
+                    placeholder="http://localhost:8080/api/chat"
+                    disabled={!apiConfigStore.useCustomApi}
+                  />
+                </div>
+
+                <div className="setting-field">
+                  <label>AI API Key</label>
+                  <input
+                    type="password"
+                    value={apiConfigStore.aiApiKey}
+                    onChange={(e) => apiConfigStore.setApiConfig({ aiApiKey: e.target.value })}
+                    placeholder="输入 API Key（可选）"
+                    disabled={!apiConfigStore.useCustomApi}
+                  />
+                </div>
+              </div>
+
+              <div className="settings-actions">
+                <button
+                  onClick={() => apiConfigStore.resetToDefault()}
+                  className="reset-btn"
+                >
+                  重置
+                </button>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="confirm-btn"
+                >
+                  完成
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <style>{`
-        .modal-toggle:checked ~ .modal {
-          display: flex !important;
+        .ai-chat-app {
+          width: 100%;
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          overflow: hidden;
+          background: linear-gradient(
+            135deg,
+            #e0f2fe 0%,
+            #f0f9ff 25%,
+            #ffffff 50%,
+            #f5f3ff 75%,
+            #ede9fe 100%
+          );
+        }
+
+        .ai-bg-orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.5;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .ai-bg-orb.orb-1 {
+          width: 400px;
+          height: 400px;
+          background: linear-gradient(135deg, #93c5fd, #60a5fa);
+          top: -100px;
+          right: -100px;
+          animation: float-slow 20s ease-in-out infinite;
+        }
+
+        .ai-bg-orb.orb-2 {
+          width: 300px;
+          height: 300px;
+          background: linear-gradient(135deg, #c4b5fd, #a78bfa);
+          bottom: -80px;
+          left: 10%;
+          animation: float-slow 25s ease-in-out infinite reverse;
+        }
+
+        .ai-bg-orb.orb-3 {
+          width: 200px;
+          height: 200px;
+          background: linear-gradient(135deg, #a5b4fc, #818cf8);
+          top: 40%;
+          left: -50px;
+          animation: float-slow 18s ease-in-out infinite;
+        }
+
+        @keyframes float-slow {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(30px, -30px) scale(1.05); }
+        }
+
+        /* 顶部导航 */
+        .ai-chat-header {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 20px;
+          background: rgba(255, 255, 255, 0.7);
+          backdrop-filter: blur(20px) saturate(180%);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          border-bottom: 1px solid rgba(147, 197, 253, 0.3);
+        }
+
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .back-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.6);
+          border: 1px solid rgba(147, 197, 253, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          color: #475569;
+        }
+
+        .back-btn:hover {
+          background: rgba(255, 255, 255, 0.9);
+          transform: translateX(-2px);
+        }
+
+        .ai-avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .ai-info h1 {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1e3a5f;
+          margin: 0;
+        }
+
+        .online-status {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          color: #10b981;
+        }
+
+        .status-dot {
+          width: 6px;
+          height: 6px;
+          background: #10b981;
+          border-radius: 50%;
+        }
+
+        .header-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .action-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 12px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(147, 197, 253, 0.3);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-size: 13px;
+          color: #475569;
+        }
+
+        .action-btn:hover {
+          background: rgba(255, 255, 255, 0.9);
+          border-color: rgba(59, 130, 246, 0.5);
+          color: #3b82f6;
+        }
+
+        .action-btn span {
+          display: none;
+        }
+
+        @media (min-width: 640px) {
+          .action-btn span {
+            display: inline;
+          }
+        }
+
+        /* 错误提示 */
+        .ai-error-banner {
+          position: sticky;
+          top: 65px;
+          z-index: 40;
+          margin: 12px 20px;
+          padding: 12px 16px;
+          background: rgba(254, 202, 202, 0.9);
+          backdrop-filter: blur(10px);
+          border: 1px solid #fca5a5;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: #dc2626;
+          font-size: 14px;
+        }
+
+        .ai-error-banner button {
+          margin-left: auto;
+          padding: 4px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #dc2626;
+          opacity: 0.7;
+        }
+
+        .ai-error-banner button:hover {
+          opacity: 1;
+        }
+
+        /* 消息区域 */
+        .ai-chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 20px;
+          padding-top: 80px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          z-index: 1;
+        }
+
+        .message-row {
+          display: flex;
+          gap: 12px;
+          max-width: 85%;
+        }
+
+        .message-row.user {
+          flex-direction: row-reverse;
+          margin-left: auto;
+        }
+
+        .message-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .message-avatar.user {
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          color: white;
+        }
+
+        .message-avatar.assistant {
+          background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+          color: white;
+        }
+
+        .message-content {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .message-meta {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: #64748b;
+        }
+
+        .message-row.user .message-meta {
+          justify-content: flex-end;
+        }
+
+        .ai-icon {
+          color: #8b5cf6;
+        }
+
+        .sender-name {
+          font-weight: 500;
+          color: #475569;
+        }
+
+        .message-bubble {
+          padding: 14px 18px;
+          border-radius: 18px;
+          max-width: 100%;
+          box-shadow: 0 2px 8px rgba(147, 197, 253, 0.1);
+        }
+
+        .message-bubble.user {
+          background: linear-gradient(135deg, #3b82f6, #2563eb);
+          color: white;
+          border-bottom-right-radius: 6px;
+          box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .message-bubble.assistant {
+          background: rgba(255, 255, 255, 0.88);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1.5px solid rgba(255, 255, 255, 0.9);
+          border-bottom-left-radius: 6px;
+          color: #1e3a5f;
+          box-shadow: 0 2px 12px rgba(147, 197, 253, 0.12);
+        }
+
+        .message-bubble.loading {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #64748b;
+        }
+
+        .cancel-btn {
+          margin-left: 8px;
+          font-size: 12px;
+          color: #ef4444;
+          background: none;
+          border: none;
+          cursor: pointer;
+        }
+
+        .cancel-btn:hover {
+          text-decoration: underline;
+        }
+
+        .message-text {
+          white-space: pre-wrap;
+          line-height: 1.5;
+        }
+
+        /* 输入区域 */
+        .ai-chat-input {
+          position: sticky;
+          bottom: 0;
+          z-index: 50;
+          padding: 20px 24px 24px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.75) 100%);
+          backdrop-filter: blur(24px) saturate(180%);
+          -webkit-backdrop-filter: blur(24px) saturate(180%);
+          border-top: 1px solid rgba(147, 197, 253, 0.2);
+          box-shadow: 0 -4px 20px rgba(147, 197, 253, 0.08);
+        }
+
+        .ai-chat-input form {
+          display: flex;
+          gap: 12px;
+          max-width: 800px;
+          margin: 0 auto;
+        }
+
+        .input-container {
+          flex: 1;
+          position: relative;
+        }
+
+        .input-container input {
+          width: 100%;
+          padding: 14px 80px 14px 16px;
+          border-radius: 14px;
+          border: 1px solid rgba(147, 197, 253, 0.4);
+          background: rgba(255, 255, 255, 0.7);
+          font-size: 15px;
+          outline: none;
+          transition: all 0.2s ease;
+        }
+
+        .input-container input:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+          background: white;
+        }
+
+        .input-container input:disabled {
+          background: rgba(241, 245, 249, 0.8);
+          cursor: not-allowed;
+        }
+
+        .char-count {
+          position: absolute;
+          right: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 12px;
+          color: #94a3b8;
+        }
+
+        .send-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 24px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 15px;
+          font-weight: 500;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .send-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+        }
+
+        .send-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .quick-prompts {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 14px;
+          max-width: 800px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .prompt-btn {
+          padding: 10px 18px;
+          border-radius: 22px;
+          background: rgba(255, 255, 255, 0.75);
+          border: 1.5px solid rgba(147, 197, 253, 0.35);
+          font-size: 13px;
+          font-weight: 500;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 2px 8px rgba(147, 197, 253, 0.1);
+        }
+
+        .prompt-btn:hover:not(:disabled) {
+          background: white;
+          border-color: #3b82f6;
+          color: #3b82f6;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .prompt-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        /* 设置对话框 */
+        .settings-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          padding: 20px;
+        }
+
+        .settings-dialog {
+          width: 100%;
+          max-width: 480px;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          border-radius: 20px;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+          overflow: hidden;
+        }
+
+        .dialog-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 24px;
+          border-bottom: 1px solid rgba(147, 197, 253, 0.3);
+        }
+
+        .dialog-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 18px;
+          font-weight: 600;
+          color: #1e3a5f;
+        }
+
+        .close-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: rgba(241, 245, 249, 0.8);
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: #64748b;
+          transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+          background: #f1f5f9;
+          color: #1e3a5f;
+        }
+
+        .settings-content {
+          padding: 20px 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        /* Switch 样式 */
+        .switch {
+          position: relative;
+          display: inline-block;
+          width: 44px;
+          height: 24px;
+        }
+
+        .switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: #cbd5e1;
+          transition: 0.3s;
+          border-radius: 24px;
+        }
+
+        .slider:before {
+          position: absolute;
+          content: "";
+          height: 18px;
+          width: 18px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: 0.3s;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .switch input:checked + .slider {
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+        }
+
+        .switch input:checked + .slider:before {
+          transform: translateX(20px);
+        }
+
+        .setting-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 0;
+        }
+
+        .setting-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .setting-label {
+          font-weight: 500;
+          color: #1e3a5f;
+        }
+
+        .setting-desc {
+          font-size: 12px;
+          color: #64748b;
+        }
+
+        .setting-divider {
+          height: 1px;
+          background: rgba(147, 197, 253, 0.3);
+        }
+
+        .setting-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .setting-field label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #475569;
+        }
+
+        .setting-field input {
+          padding: 10px 14px;
+          border-radius: 10px;
+          border: 1px solid rgba(147, 197, 253, 0.4);
+          background: rgba(255, 255, 255, 0.8);
+          font-size: 14px;
+          outline: none;
+          transition: all 0.2s ease;
+        }
+
+        .setting-field input:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .setting-field input:disabled {
+          background: #f1f5f9;
+          color: #94a3b8;
+        }
+
+        .settings-actions {
+          display: flex;
+          gap: 12px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(147, 197, 253, 0.3);
+        }
+
+        .reset-btn {
+          flex: 1;
+          padding: 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(147, 197, 253, 0.4);
+          background: white;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .reset-btn:hover {
+          background: #f8fafc;
+        }
+
+        .confirm-btn {
+          flex: 1;
+          padding: 12px;
+          border-radius: 12px;
+          border: none;
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          color: white;
+          cursor: pointer;
+          font-weight: 500;
+          transition: all 0.2s ease;
+        }
+
+        .confirm-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
       `}</style>
     </div>

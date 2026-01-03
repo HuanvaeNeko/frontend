@@ -22,6 +22,7 @@ export default tseslint.config(
       ".history/**",
       "node_modules/**",
       "public/**",
+      "out/**",
       "*.config.*",
     ],
   }

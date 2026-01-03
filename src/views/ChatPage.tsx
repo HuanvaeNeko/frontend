@@ -13,11 +13,9 @@ import {
   Search,
   Plus,
   Settings,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
 import { useGroupStore } from '../store/groupStore'
@@ -106,7 +104,6 @@ export default function ChatPage() {
       const savedState = loadStateFromStorage()
       if (savedState && !isInitialized) {
         setActiveTab(savedState.tab)
-        // 稍后处理会话恢复
       }
     }
     setIsInitialized(true)
@@ -146,7 +143,7 @@ export default function ChatPage() {
     }
   }, [groupId, myGroups, setSelectedConversation, setActiveTab])
 
-  // 从 localStorage 恢复会话（仅在首次加载且 URL 无指定时）
+  // 从 localStorage 恢复会话
   useEffect(() => {
     if (!isInitialized || friendId || groupId) return
     
@@ -178,11 +175,9 @@ export default function ChatPage() {
     }
   }, [isInitialized, friendId, groupId, friends, myGroups, selectedConversation, setSelectedConversation])
 
-  // 当 tab 或选中会话变化时，更新 localStorage（不再自动更新 URL）
+  // 当 tab 或选中会话变化时，更新 localStorage
   useEffect(() => {
     if (!isInitialized) return
-
-    // 保存到 localStorage
     saveStateToStorage(
       activeTab,
       selectedConversation?.id,
@@ -193,13 +188,8 @@ export default function ChatPage() {
   // 初始化加载数据
   useEffect(() => {
     if (user && accessToken) {
-      // 加载用户资料
       loadProfile().catch(console.error)
-      
-      // 连接 WebSocket
       connectWS()
-      
-      // 加载好友和群聊数据
       loadFriends().catch(console.error)
       loadPendingRequests().catch(console.error)
       loadSentRequests().catch(console.error)
@@ -217,223 +207,91 @@ export default function ChatPage() {
     const wsStore = useWSStore.getState()
     const chatStore = useChatStore.getState()
     
-    // 处理私聊消息
     const handlePrivateMessage = (data: {
-      message_uuid: string
-      sender_id: string
-      sender_nickname: string
-      sender_avatar_url: string
-      receiver_id: string
-      message_content: string
-      message_type: 'text' | 'image' | 'video' | 'file'
-      file_uuid: string | null
-      file_url: string | null
-      file_size: number | null
-      file_hash: string | null
-      image_width: number | null
-      image_height: number | null
-      seq: number
-      send_time: string
+      message_uuid: string; sender_id: string; sender_nickname: string; sender_avatar_url: string
+      receiver_id: string; message_content: string; message_type: 'text' | 'image' | 'video' | 'file'
+      file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      image_width: number | null; image_height: number | null; seq: number; send_time: string
     }) => {
-      console.log('收到私聊消息:', data)
-      
-      // 如果当前正在与发送者聊天，添加消息到列表
       const selectedConv = chatStore.selectedConversation
       if (selectedConv?.type === 'friend' && 
           (selectedConv.id === data.sender_id || selectedConv.id === data.receiver_id)) {
         chatStore.addMessage({
-          message_uuid: data.message_uuid,
-          sender_id: data.sender_id,
-          receiver_id: data.receiver_id,
-          message_content: data.message_content,
-          message_type: data.message_type,
-          file_uuid: data.file_uuid,
-          file_url: data.file_url,
-          file_size: data.file_size,
-          file_hash: data.file_hash,
-          image_width: data.image_width,
-          image_height: data.image_height,
-          seq: data.seq,
-          send_time: data.send_time,
+          message_uuid: data.message_uuid, sender_id: data.sender_id, receiver_id: data.receiver_id,
+          message_content: data.message_content, message_type: data.message_type,
+          file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
+          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          seq: data.seq, send_time: data.send_time,
         })
       }
-      
-      // 更新会话列表中的最后消息和 lastSeq
       const conversationId = data.sender_id === user?.user_id ? data.receiver_id : data.sender_id
       chatStore.updateConversation(conversationId, {
-        lastMessage: data.message_content,
-        lastTime: data.send_time,
+        lastMessage: data.message_content, lastTime: data.send_time,
         unreadCount: selectedConv?.id === conversationId ? 0 : 1,
       })
       chatStore.updateLastSeq(conversationId, data.seq)
     }
 
-    // 处理群消息
     const handleGroupMessage = (data: {
-      message_uuid: string
-      group_id: string
-      sender_id: string
-      sender_nickname: string
-      sender_avatar_url: string
-      message_content: string
+      message_uuid: string; group_id: string; sender_id: string; sender_nickname: string
+      sender_avatar_url: string; message_content: string
       message_type: 'text' | 'image' | 'video' | 'file' | 'system'
-      file_uuid: string | null
-      file_url: string | null
-      file_size: number | null
-      file_hash: string | null
-      image_width: number | null
-      image_height: number | null
-      seq: number
-      reply_to: string | null
-      send_time: string
+      file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      image_width: number | null; image_height: number | null; seq: number
+      reply_to: string | null; send_time: string
     }) => {
-      console.log('收到群消息:', data)
-      
-      // 跳过系统消息（系统消息仅用于通知，不显示在消息列表）
-      if (data.message_type === 'system') {
-        return
-      }
-      
-      // 如果当前正在查看该群，添加消息到列表
+      if (data.message_type === 'system') return
       const selectedConv = chatStore.selectedConversation
       if (selectedConv?.type === 'group' && selectedConv.id === data.group_id) {
         chatStore.addMessage({
-          message_uuid: data.message_uuid,
-          sender_id: data.sender_id,
-          receiver_id: data.group_id,
+          message_uuid: data.message_uuid, sender_id: data.sender_id, receiver_id: data.group_id,
           message_content: data.message_content,
           message_type: data.message_type as 'text' | 'image' | 'video' | 'file',
-          file_uuid: data.file_uuid,
-          file_url: data.file_url,
-          file_size: data.file_size,
-          file_hash: data.file_hash,
-          image_width: data.image_width,
-          image_height: data.image_height,
-          seq: data.seq,
-          send_time: data.send_time,
+          file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
+          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          seq: data.seq, send_time: data.send_time,
         })
       }
-      
-      // 更新群会话的最后消息和 lastSeq
       chatStore.updateConversation(data.group_id, {
-        lastMessage: data.message_content,
-        lastTime: data.send_time,
+        lastMessage: data.message_content, lastTime: data.send_time,
         unreadCount: selectedConv?.id === data.group_id ? 0 : 1,
       })
       chatStore.updateLastSeq(data.group_id, data.seq)
     }
 
-    // 处理消息撤回
     const handleMessageRecalled = (data: {
-      message_uuid: string
-      source_type: 'friend' | 'group'
-      source_id: string
-      recalled_by: string
+      message_uuid: string; source_type: 'friend' | 'group'; source_id: string; recalled_by: string
     }) => {
-      console.log('消息被撤回:', data)
-      // 从消息列表中移除该消息
-      chatStore.setMessages(
-        chatStore.messages.filter(m => m.message_uuid !== data.message_uuid)
-      )
+      chatStore.setMessages(chatStore.messages.filter(m => m.message_uuid !== data.message_uuid))
     }
 
-    // 处理好友请求
-    const handleFriendRequest = () => {
-      console.log('收到好友请求')
-      loadPendingRequests().catch(console.error)
-    }
-
-    // 处理好友请求结果
-    const handleFriendRequestResult = (data: {
-      target_user_id: string
-      result: 'approved' | 'rejected'
-    }) => {
-      console.log('好友请求结果:', data)
-      if (data.result === 'approved') {
-        loadFriends().catch(console.error)
-      }
+    const handleFriendRequest = () => { loadPendingRequests().catch(console.error) }
+    const handleFriendRequestResult = (data: { target_user_id: string; result: 'approved' | 'rejected' }) => {
+      if (data.result === 'approved') loadFriends().catch(console.error)
       loadSentRequests().catch(console.error)
     }
-
-    // 处理群邀请
-    const handleGroupInvite = () => {
-      console.log('收到群邀请')
-      loadMyGroups().catch(console.error)
-    }
-
-    // 处理群成员变化
-    const handleGroupMemberChange = () => {
-      console.log('群成员变化')
-      loadMyGroups().catch(console.error)
-    }
-
-    // 处理文件上传完成通知（秒传或上传完成后自动发送的消息）
-    const handleFileUploaded = (data: {
-      file_uuid: string
-      file_url: string
-      conversation_type: 'private' | 'group'
-      conversation_id: string
-      message_uuid: string
-      message_send_time: string
-    }) => {
-      console.log('文件上传完成:', data)
-      // 刷新当前会话的消息列表以显示新的文件消息
-      const selectedConv = chatStore.selectedConversation
-      if (selectedConv?.id === data.conversation_id) {
-        // 重新加载消息
-        // 这里可以选择添加消息或刷新整个列表
-      }
-    }
-
-    // 处理群公告
-    const handleGroupNotice = (data: {
-      group_id: string
-      notice_id: string
-      title: string
-      content: string
-      publisher_nickname: string
-      is_pinned: boolean
-      published_at: string
-    }) => {
-      console.log('收到群公告:', data)
-      // 如果当前正在查看该群，可以显示公告通知
-      const selectedConv = chatStore.selectedConversation
-      if (selectedConv?.type === 'group' && selectedConv.id === data.group_id) {
-        // 可以在这里触发公告弹窗或添加系统消息
-      }
-    }
-
-    // 处理好友关系变化
-    const handleFriendshipChange = (data: {
-      friend_user_id: string
-      friend_nickname: string
-    }, type: 'added' | 'removed') => {
-      console.log('好友关系变化:', type, data)
+    const handleGroupInvite = () => { loadMyGroups().catch(console.error) }
+    const handleGroupMemberChange = () => { loadMyGroups().catch(console.error) }
+    const handleFileUploaded = (_data: {
+      file_uuid: string; file_url: string; conversation_type: 'private' | 'group'
+      conversation_id: string; message_uuid: string; message_send_time: string
+    }) => {}
+    const handleGroupNotice = (_data: {
+      group_id: string; notice_id: string; title: string; content: string
+      publisher_nickname: string; is_pinned: boolean; published_at: string
+    }) => {}
+    const handleFriendshipChange = (_data: { friend_user_id: string; friend_nickname: string }, _type: 'added' | 'removed') => {
       loadFriends().catch(console.error)
     }
-
-    // 处理正在输入状态
     const handleTypingStatus = (data: {
-      user_id: string
-      conversation_type: 'private' | 'group'
-      conversation_id: string
-      is_typing: boolean
+      user_id: string; conversation_type: 'private' | 'group'; conversation_id: string; is_typing: boolean
     }) => {
       chatStore.setTypingStatus({
-        conversationId: data.conversation_id,
-        conversationType: data.conversation_type,
-        userId: data.user_id,
-        isTyping: data.is_typing,
-        timestamp: Date.now(),
+        conversationId: data.conversation_id, conversationType: data.conversation_type,
+        userId: data.user_id, isTyping: data.is_typing, timestamp: Date.now(),
       })
     }
-
-    // 处理在线状态
-    const handleOnlineStatus = (data: {
-      user_id: string
-      status: 'online' | 'offline'
-    }) => {
-      console.log('在线状态变化:', data)
+    const handleOnlineStatus = (data: { user_id: string; status: 'online' | 'offline' }) => {
       const friendsStore = useFriendsStore.getState()
       friendsStore.setOnlineStatus(data.user_id, data.status === 'online')
     }
@@ -448,26 +306,16 @@ export default function ChatPage() {
     const unsubMemberLeft = wsStore.registerHandler('group_member_left', handleGroupMemberChange)
     const unsubFileUploaded = wsStore.registerHandler('file_uploaded', handleFileUploaded)
     const unsubGroupNotice = wsStore.registerHandler('group_notice', handleGroupNotice)
-    const unsubFriendshipAdded = wsStore.registerHandler('friendship_added', (data) => handleFriendshipChange(data as { friend_user_id: string; friend_nickname: string }, 'added'))
-    const unsubFriendshipRemoved = wsStore.registerHandler('friendship_removed', (data) => handleFriendshipChange(data as { friend_user_id: string; friend_nickname: string }, 'removed'))
+    const unsubFriendshipAdded = wsStore.registerHandler('friendship_added', (d) => handleFriendshipChange(d as { friend_user_id: string; friend_nickname: string }, 'added'))
+    const unsubFriendshipRemoved = wsStore.registerHandler('friendship_removed', (d) => handleFriendshipChange(d as { friend_user_id: string; friend_nickname: string }, 'removed'))
     const unsubTyping = wsStore.registerHandler('typing', handleTypingStatus)
     const unsubOnlineStatus = wsStore.registerHandler('online_status', handleOnlineStatus)
 
     return () => {
-      unsubPrivateMessage()
-      unsubGroupMessage()
-      unsubMessageRecalled()
-      unsubFriendRequest()
-      unsubFriendResult()
-      unsubGroupInvite()
-      unsubMemberJoined()
-      unsubMemberLeft()
-      unsubFileUploaded()
-      unsubGroupNotice()
-      unsubFriendshipAdded()
-      unsubFriendshipRemoved()
-      unsubTyping()
-      unsubOnlineStatus()
+      unsubPrivateMessage(); unsubGroupMessage(); unsubMessageRecalled(); unsubFriendRequest()
+      unsubFriendResult(); unsubGroupInvite(); unsubMemberJoined(); unsubMemberLeft()
+      unsubFileUploaded(); unsubGroupNotice(); unsubFriendshipAdded(); unsubFriendshipRemoved()
+      unsubTyping(); unsubOnlineStatus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.user_id])
@@ -481,7 +329,6 @@ export default function ChatPage() {
     }
   }
 
-  // 顶部标签配置
   const tabs = [
     { id: 'friends' as const, icon: MessageCircle, label: '好友' },
     { id: 'groups' as const, icon: Users, label: '群聊' },
@@ -489,7 +336,6 @@ export default function ChatPage() {
     { id: 'webrtc' as const, icon: Video, label: '视频' },
   ]
 
-  // 子标签配置
   const getSubTabs = () => {
     switch (activeTab) {
       case 'friends':
@@ -514,108 +360,132 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      {/* 顶部导航栏 */}
-      <header className="h-16 border-b bg-card flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={profile?.user_avatar_url || user?.avatar_url} />
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              {(profile?.user_nickname || user?.nickname)?.[0]?.toUpperCase() || 'U'}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col">
-            <span className="font-semibold text-sm">{profile?.user_nickname || user?.nickname || user?.user_id}</span>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-xs text-muted-foreground">
-                {connected ? '已连接' : '未连接'}
-              </span>
-            </div>
+    <div className="chat-app">
+      {/* 背景装饰球 */}
+      <div className="chat-bg-orb orb-1" />
+      <div className="chat-bg-orb orb-2" />
+      <div className="chat-bg-orb orb-3" />
+
+      {/* 左侧边栏 */}
+      <aside className="chat-sidebar">
+        {/* 用户头像 */}
+        <div className="sidebar-avatar">
+          <div className="avatar-wrapper" onClick={() => router.push('/profile')}>
+            {profile?.user_avatar_url || user?.avatar_url ? (
+              <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" />
+            ) : (
+              <User className="w-5 h-5 text-[#94a3b8]" />
+            )}
           </div>
+          {connected && <div className="online-indicator" />}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-            <Settings className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleLogout}>
-            <LogOut className="h-5 w-5" />
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左侧功能切换栏 */}
-        <aside className="w-20 border-r bg-card flex flex-col items-center py-4 gap-2 shrink-0">
+        {/* 导航按钮 */}
+        <nav className="sidebar-nav">
           {tabs.map((tab) => (
-            <Button
+            <motion.button
               key={tab.id}
-              variant={activeTab === tab.id ? 'default' : 'ghost'}
-              size="icon"
-              className={`w-14 h-14 rounded-2xl transition-all ${
-                activeTab === tab.id ? 'shadow-lg' : ''
-              }`}
-              onClick={() => {
+              className={`nav-btn ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => { 
                 setActiveTab(tab.id)
                 setSubTab('main')
+                // 更新 URL 路径
+                const pathMap: Record<TabType, string> = {
+                  friends: '/chat/friends',
+                  groups: '/chat/groups',
+                  files: '/chat/files',
+                  webrtc: '/chat/webrtc',
+                }
+                router.push(pathMap[tab.id])
               }}
               title={tab.label}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              <tab.icon className="h-6 w-6" />
-            </Button>
+              <tab.icon />
+            </motion.button>
           ))}
-        </aside>
+        </nav>
 
-        {/* 中间列表区域 */}
-        <div className="w-80 border-r bg-card flex flex-col shrink-0">
-          {/* 子标签导航 */}
+        {/* 底部按钮 */}
+        <div className="sidebar-bottom">
+          <motion.button
+            className="nav-btn"
+            onClick={() => router.push('/settings')}
+            title="设置"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Settings />
+          </motion.button>
+          <motion.button
+            className="nav-btn logout"
+            onClick={handleLogout}
+            title="退出"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <LogOut />
+          </motion.button>
+        </div>
+      </aside>
+
+      {/* 中间会话列表 */}
+      <div className="chat-list-container" style={{ width: 280 }}>
+        <div className="chat-list-panel">
+          {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
-            <div className="border-b">
-              <div className="flex">
+            <div className="chat-list-header" style={{ flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
+              {/* 子标签导航 */}
+              <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
                   <button
                     key={tab.id}
-                    className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                    className={`flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
                       subTab === tab.id
-                        ? 'text-primary border-b-2 border-primary'
-                        : 'text-muted-foreground hover:text-foreground'
+                        ? 'bg-[var(--blue-alpha-medium)] text-[var(--color-blue-600)]'
+                        : 'text-[var(--color-text-muted)] hover:bg-[var(--blue-alpha-subtle)]'
                     }`}
                     onClick={() => setSubTab(tab.id)}
                   >
-                    <tab.icon className="h-4 w-4" />
+                    <tab.icon className="w-3.5 h-3.5" />
                     {tab.label}
                   </button>
                 ))}
               </div>
+
+              {/* 搜索框 */}
+              {subTab === 'main' && (
+                <div className="search-box">
+                  <Search className="w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          {/* 搜索框 */}
-          {(activeTab !== 'webrtc' && subTab === 'main') && (
-            <div className="p-4 border-b">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
+          {/* WebRTC 头部 */}
+          {activeTab === 'webrtc' && (
+            <div className="chat-list-header">
+              <h2 className="font-semibold text-[var(--color-text-primary)]">视频会议</h2>
             </div>
           )}
 
           {/* 列表内容 */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="conversation-list">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
                   key="friends"
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.15 }}
                 >
                   <FriendList 
                     subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} 
@@ -627,10 +497,10 @@ export default function ChatPage() {
               {activeTab === 'groups' && (
                 <motion.div
                   key="groups"
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.15 }}
                 >
                   <GroupList 
                     subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} 
@@ -642,48 +512,61 @@ export default function ChatPage() {
               {activeTab === 'files' && (
                 <motion.div
                   key="files"
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.15 }}
                 >
                   <FileManager 
                     subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} 
                   />
                 </motion.div>
               )}
+
+              {activeTab === 'webrtc' && (
+                <motion.div
+                  key="webrtc-list"
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.15 }}
+                  className="p-4 text-center text-sm text-[var(--color-text-muted)]"
+                >
+                  请在右侧创建或加入视频房间
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
         </div>
+      </div>
 
-        {/* 右侧主内容区 */}
-        <main className="flex-1 flex flex-col bg-background">
-          <AnimatePresence mode="wait">
-            {activeTab === 'webrtc' ? (
-              <motion.div
-                key="webrtc"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="flex-1"
-              >
-                <WebRTCPanel />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="chat"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="flex-1"
-              >
-                <ChatWindow />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </main>
+      {/* 右侧聊天窗口 */}
+      <div className="chat-window">
+        <AnimatePresence mode="wait">
+          {activeTab === 'webrtc' ? (
+            <motion.div
+              key="webrtc"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              <WebRTCPanel />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              <ChatWindow />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

@@ -1,7 +1,8 @@
+'use client'
+
 import { useState, useEffect, useRef } from 'react'
-import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
@@ -24,10 +25,9 @@ export default function ChatWindow() {
     messageInput,
     setMessageInput,
     getTypingUsers,
-    typingUsers, // 订阅以触发重新渲染
+    typingUsers,
   } = useChatStore()
   
-  // 为了触发组件重新渲染，需要引用 typingUsers
   void typingUsers
 
   const [loading, setLoading] = useState(false)
@@ -40,18 +40,15 @@ export default function ChatWindow() {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 加载消息
   useEffect(() => {
     if (!selectedConversation) {
       setMessages([])
       return
     }
-
     loadMessages()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation])
 
-  // 自动滚动到底部
   useEffect(() => {
     scrollToBottom()
   }, [messages])
@@ -138,7 +135,6 @@ export default function ChatWindow() {
           message_content: content,
           message_type: 'text',
         })
-        // 构造完整的 Message 对象
         const message: Message = {
           message_uuid: response.message_uuid,
           sender_id: user?.user_id || '',
@@ -161,7 +157,6 @@ export default function ChatWindow() {
           message_content: content,
           message_type: 'text',
         })
-        // 构造完整的 GroupMessage 对象
         const message: Message = {
           message_uuid: response.message_uuid,
           sender_id: user?.user_id || '',
@@ -186,7 +181,6 @@ export default function ChatWindow() {
         description: error instanceof Error ? error.message : '发送消息失败',
         variant: 'destructive',
       })
-      // 恢复输入框内容
       setMessageInput(content)
     } finally {
       setSending(false)
@@ -200,11 +194,9 @@ export default function ChatWindow() {
     }
   }
 
-  // 处理文件选择
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // 检查文件大小（最大 100GB）
       if (file.size > 100 * 1024 * 1024 * 1024) {
         toast({
           title: '文件太大',
@@ -215,19 +207,16 @@ export default function ChatWindow() {
       }
       setSelectedFile(file)
     }
-    // 重置 input，允许重复选择同一文件
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
-  // 取消选择文件
   const handleCancelFile = () => {
     setSelectedFile(null)
     setUploadProgress(null)
   }
 
-  // 获取文件类型
   const getFileType = (file: File): { type: FileType; messageType: MessageType } => {
     const mimeType = file.type
     if (mimeType.startsWith('image/')) {
@@ -248,7 +237,6 @@ export default function ChatWindow() {
     }
   }
 
-  // 发送文件消息
   const handleSendFile = async () => {
     if (!selectedConversation || !selectedFile || sending) return
 
@@ -263,7 +251,6 @@ export default function ChatWindow() {
         ? 'friend_messages'
         : 'group_files'
 
-      // 上传文件
       const uploadResult = await storageApi.uploadFile(
         file,
         type,
@@ -274,17 +261,13 @@ export default function ChatWindow() {
         }
       )
 
-      // 如果是好友/群聊文件，消息已经由后端 confirm 时自动发送
       if (uploadResult.messageUuid) {
-        // 重新加载消息以获取新消息
         await loadMessages()
         toast({
           title: '发送成功',
           description: uploadResult.isInstant ? '文件秒传成功' : '文件发送成功',
         })
       } else {
-        // 个人文件上传后需要手动发送消息（带 file_uuid）
-        // 从 fileUrl 提取 file_uuid
         const fileUuid = uploadResult.fileUrl.split('/').pop() || ''
         
         if (selectedConversation.type === 'friend') {
@@ -292,10 +275,9 @@ export default function ChatWindow() {
             receiver_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_uuid: fileUuid, // 推荐使用 file_uuid
+            file_uuid: fileUuid,
             file_size: file.size,
           })
-          // 添加到本地消息列表
           const message: Message = {
             message_uuid: response.message_uuid,
             sender_id: user?.user_id || '',
@@ -317,10 +299,9 @@ export default function ChatWindow() {
             group_id: selectedConversation.id,
             message_content: file.name,
             message_type: messageType,
-            file_uuid: fileUuid, // 推荐使用 file_uuid
+            file_uuid: fileUuid,
             file_size: file.size,
           })
-          // 添加到本地消息列表
           const message: Message = {
             message_uuid: response.message_uuid,
             sender_id: user?.user_id || '',
@@ -356,7 +337,6 @@ export default function ChatWindow() {
     }
   }
 
-  // 删除消息
   const handleDeleteMessage = async (messageUuid: string) => {
     try {
       if (selectedConversation?.type === 'friend') {
@@ -364,7 +344,6 @@ export default function ChatWindow() {
       } else if (selectedConversation?.type === 'group') {
         await groupMessagesApi.deleteMessage(messageUuid)
       }
-      // 从本地消息列表中移除
       setMessages(messages.filter(m => m.message_uuid !== messageUuid))
       toast({
         title: '成功',
@@ -379,7 +358,6 @@ export default function ChatWindow() {
     }
   }
 
-  // 撤回消息
   const handleRecallMessage = async (messageUuid: string) => {
     try {
       if (selectedConversation?.type === 'friend') {
@@ -387,7 +365,6 @@ export default function ChatWindow() {
       } else if (selectedConversation?.type === 'group') {
         await groupMessagesApi.recallMessage(messageUuid)
       }
-      // 从本地消息列表中移除
       setMessages(messages.filter(m => m.message_uuid !== messageUuid))
       toast({
         title: '成功',
@@ -402,24 +379,20 @@ export default function ChatWindow() {
     }
   }
 
-  // 判断消息是否可以撤回（2分钟内）
   const canRecallMessage = (sendTime: string) => {
     const messageTime = new Date(sendTime).getTime()
     const now = Date.now()
     return (now - messageTime) <= 2 * 60 * 1000
   }
 
-  // 处理文件预览/下载（使用预签名URL）
   const handleFilePreview = async (message: Message) => {
     try {
-      // 优先使用 file_uuid 获取预签名URL
       if (message.file_uuid) {
         const presignedUrl = selectedConversation?.type === 'friend'
           ? await storageApi.getFriendFilePresignedUrl(message.file_uuid, 'preview')
           : await storageApi.getPresignedUrl(message.file_uuid, 'preview')
         window.open(presignedUrl, '_blank')
       } else if (message.file_url) {
-        // 兼容旧消息，直接使用 file_url
         window.open(message.file_url, '_blank')
       }
     } catch (error) {
@@ -431,7 +404,6 @@ export default function ChatWindow() {
     }
   }
 
-  // 处理文件下载（使用预签名URL）
   const handleFileDownload = async (message: Message) => {
     try {
       let downloadUrl: string
@@ -446,7 +418,6 @@ export default function ChatWindow() {
         throw new Error('文件不可用')
       }
       
-      // 创建下载链接
       const a = document.createElement('a')
       a.href = downloadUrl
       a.download = message.message_content || 'download'
@@ -462,27 +433,26 @@ export default function ChatWindow() {
     }
   }
 
-  // 渲染消息内容
-  const renderMessageContent = (message: Message) => {
+  const renderMessageContent = (message: Message, isOwn: boolean) => {
     switch (message.message_type) {
       case 'text':
         return (
-          <p className="whitespace-pre-wrap break-words">
+          <p className="whitespace-pre-wrap break-words text-sm">
             {message.message_content}
           </p>
         )
       case 'image':
         return (
-          <div className="space-y-2">
+          <div>
             {(message.file_url || message.file_uuid) ? (
               <div 
-                className="cursor-pointer hover:opacity-90"
+                className="cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={() => handleFilePreview(message)}
               >
                 <img
                   src={message.file_url || `${window.location.origin}/api/storage/file/${message.file_uuid}`}
                   alt="图片"
-                  className="max-w-xs rounded-lg"
+                  className="max-w-[240px] rounded-xl"
                   loading="lazy"
                 />
               </div>
@@ -496,12 +466,12 @@ export default function ChatWindow() {
         )
       case 'video':
         return (
-          <div className="space-y-2">
+          <div>
             {(message.file_url || message.file_uuid) ? (
               <video
                 src={message.file_url || undefined}
                 controls
-                className="max-w-xs rounded-lg"
+                className="max-w-[240px] rounded-xl"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleFilePreview(message)
@@ -517,27 +487,36 @@ export default function ChatWindow() {
         )
       case 'file':
         return (
-          <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
-            <FileText className="h-8 w-8 text-blue-500" />
+          <div 
+            className="flex items-center gap-3 p-3 rounded-xl min-w-[200px]"
+            style={{
+              background: isOwn ? 'rgba(255, 255, 255, 0.2)' : 'rgba(147, 197, 253, 0.15)',
+            }}
+          >
+            <div 
+              className="w-10 h-10 rounded-lg flex items-center justify-center"
+              style={{ background: isOwn ? 'rgba(255, 255, 255, 0.3)' : 'rgba(59, 130, 246, 0.2)' }}
+            >
+              <FileText className={`h-5 w-5 ${isOwn ? 'text-white' : 'text-blue-500'}`} />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
+              <p className={`text-sm font-medium truncate ${isOwn ? 'text-white' : 'text-slate-700'}`}>
                 {message.message_content || '文件'}
               </p>
               {message.file_size && (
-                <p className="text-xs text-muted-foreground">
+                <p className={`text-xs ${isOwn ? 'text-white/70' : 'text-slate-500'}`}>
                   {formatFileSize(message.file_size)}
                 </p>
               )}
             </div>
             {(message.file_url || message.file_uuid) && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
+              <motion.button
+                className={`p-2 rounded-lg ${isOwn ? 'hover:bg-white/20' : 'hover:bg-blue-100'}`}
                 onClick={() => handleFileDownload(message)}
+                whileTap={{ scale: 0.95 }}
               >
-                <Download className="h-4 w-4" />
-              </Button>
+                <Download className={`h-4 w-4 ${isOwn ? 'text-white' : 'text-blue-500'}`} />
+              </motion.button>
             )}
           </div>
         )
@@ -546,7 +525,6 @@ export default function ChatWindow() {
     }
   }
 
-  // 格式化文件大小
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -557,49 +535,77 @@ export default function ChatWindow() {
   // 未选择会话
   if (!selectedConversation) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
-        <div className="text-center">
-          <div className="text-6xl mb-4">💬</div>
-          <h3 className="text-lg font-semibold mb-2">Huanvae Chat</h3>
-          <p className="text-sm">选择一个会话开始聊天</p>
-        </div>
+      <div className="chat-content h-full flex items-center justify-center">
+        <motion.div 
+          className="text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <motion.div 
+            className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(147, 197, 253, 0.2)' }}
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <MessageCircle className="w-12 h-12 text-blue-400" />
+          </motion.div>
+          <h3 
+            className="text-2xl font-bold mb-2"
+            style={{
+              background: 'linear-gradient(135deg, #3b82f6, #0ea5e9)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            Huanvae Chat
+          </h3>
+          <p className="text-slate-500">选择一个会话开始聊天</p>
+        </motion.div>
       </div>
     )
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="chat-content h-full flex flex-col">
       {/* 聊天头部 */}
-      <header className="h-16 border-b bg-card flex items-center justify-between px-6 shrink-0">
+      <header className="chat-header">
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={selectedConversation.avatar} />
-            <AvatarFallback>
-              {selectedConversation.name[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <div className="font-semibold">{selectedConversation.name}</div>
-            <div className="text-xs text-muted-foreground">
+          <div className="conv-avatar">
+            <Avatar className="h-full w-full">
+              <AvatarImage src={selectedConversation.avatar} />
+              <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white">
+                {selectedConversation.name[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+          <div className="chat-header-info">
+            <h2>{selectedConversation.name}</h2>
+            <span className="text-xs text-slate-500">
               {selectedConversation.type === 'friend' ? '好友' : '群聊'}
-            </div>
+            </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1">
           {selectedConversation.type === 'group' && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <motion.button
+              className="chat-menu-btn"
               onClick={() => setShowGroupManagement(true)}
               title="群管理"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <Settings className="h-5 w-5" />
-            </Button>
+            </motion.button>
           )}
-          <Button variant="ghost" size="icon">
+          <motion.button 
+            className="chat-menu-btn"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
             <MoreVertical className="h-5 w-5" />
-          </Button>
+          </motion.button>
         </div>
       </header>
 
@@ -611,108 +617,148 @@ export default function ChatWindow() {
       >
         {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p className="text-sm">暂无消息，开始聊天吧！</p>
-          </div>
+          <motion.div 
+            className="flex items-center justify-center h-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <p className="text-sm text-slate-400">暂无消息，开始聊天吧！</p>
+          </motion.div>
         ) : (
           <>
             {hasMore && (
               <div className="text-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <motion.button
+                  className="px-4 py-2 rounded-xl text-sm text-slate-500"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.5)',
+                    border: '1px solid rgba(147, 197, 253, 0.2)',
+                  }}
                   onClick={loadMoreMessages}
                   disabled={loading}
+                  whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin inline" />
                       加载中...
                     </>
                   ) : (
                     '加载更多'
                   )}
-                </Button>
+                </motion.button>
               </div>
             )}
 
-            {messages.map((message) => {
-              const isOwn = message.sender_id === user?.user_id
-              const groupMessage = selectedConversation.type === 'group' ? (message as unknown as GroupMessage) : null
-              const canRecall = isOwn && canRecallMessage(message.send_time)
+            <AnimatePresence initial={false}>
+              {messages.map((message, index) => {
+                const isOwn = message.sender_id === user?.user_id
+                const groupMessage = selectedConversation.type === 'group' ? (message as unknown as GroupMessage) : null
+                const canRecall = isOwn && canRecallMessage(message.send_time)
 
-              return (
-                <div
-                  key={message.message_uuid}
-                  className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} group`}
-                >
-                  <Avatar className="h-10 w-10 shrink-0">
-                    {groupMessage && (
-                      <AvatarImage src={groupMessage.sender_avatar_url} />
-                    )}
-                    <AvatarFallback>
-                      {groupMessage
-                        ? (groupMessage.sender_nickname?.[0] || 'U').toUpperCase()
-                        : isOwn
-                        ? user?.nickname?.[0]?.toUpperCase() || 'U'
-                        : selectedConversation.name?.[0]?.toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className={`flex flex-col gap-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
-                    {groupMessage && !isOwn && (
-                      <span className="text-xs text-muted-foreground px-2">
-                        {groupMessage.sender_nickname}
-                      </span>
-                    )}
-
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger asChild>
-                        <div
-                          className={`rounded-2xl px-4 py-2 cursor-pointer hover:shadow-md transition-shadow ${
-                            isOwn
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
-                          }`}
-                        >
-                          {renderMessageContent(message)}
-                        </div>
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Portal>
-                        <DropdownMenu.Content 
-                          className="min-w-[120px] bg-white rounded-lg shadow-xl border p-1 z-50"
-                          sideOffset={5}
-                        >
-                          {canRecall && (
-                            <DropdownMenu.Item 
-                              className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none"
-                              onSelect={() => handleRecallMessage(message.message_uuid)}
-                            >
-                              <RotateCcw size={14} />
-                              撤回
-                            </DropdownMenu.Item>
+                return (
+                  <motion.div
+                    key={message.message_uuid}
+                    className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} group`}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.02 }}
+                  >
+                    <div className="shrink-0">
+                      <div className="w-10 h-10 rounded-xl overflow-hidden" style={{
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.5) 100%)',
+                        border: '1.5px solid rgba(255, 255, 255, 0.8)',
+                      }}>
+                        <Avatar className="h-full w-full">
+                          {groupMessage && (
+                            <AvatarImage src={groupMessage.sender_avatar_url} />
                           )}
-                          <DropdownMenu.Item 
-                            className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded outline-none text-red-600"
-                            onSelect={() => handleDeleteMessage(message.message_uuid)}
-                          >
-                            <Trash2 size={14} />
-                            删除
-                          </DropdownMenu.Item>
-                        </DropdownMenu.Content>
-                      </DropdownMenu.Portal>
-                    </DropdownMenu.Root>
+                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white text-sm">
+                            {groupMessage
+                              ? (groupMessage.sender_nickname?.[0] || 'U').toUpperCase()
+                              : isOwn
+                              ? user?.nickname?.[0]?.toUpperCase() || 'U'
+                              : selectedConversation.name?.[0]?.toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                    </div>
 
-                    <span className="text-xs text-muted-foreground px-2">
-                      {new Date(message.send_time).toLocaleTimeString()}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
+                    <div className={`flex flex-col gap-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
+                      {groupMessage && !isOwn && (
+                        <span className="text-xs text-slate-500 px-2">
+                          {groupMessage.sender_nickname}
+                        </span>
+                      )}
+
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger asChild>
+                          <motion.div
+                            className="rounded-2xl px-4 py-2.5 cursor-pointer"
+                            style={{
+                              background: isOwn
+                                ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
+                                : 'rgba(255, 255, 255, 0.7)',
+                              color: isOwn ? 'white' : '#1e3a5f',
+                              border: isOwn ? 'none' : '1px solid rgba(147, 197, 253, 0.3)',
+                              boxShadow: isOwn 
+                                ? '0 4px 15px rgba(59, 130, 246, 0.3)'
+                                : '0 2px 8px rgba(0, 0, 0, 0.05)',
+                            }}
+                            whileHover={{ 
+                              scale: 1.01,
+                              boxShadow: isOwn 
+                                ? '0 6px 20px rgba(59, 130, 246, 0.4)'
+                                : '0 4px 12px rgba(0, 0, 0, 0.1)',
+                            }}
+                            whileTap={{ scale: 0.99 }}
+                          >
+                            {renderMessageContent(message, isOwn)}
+                          </motion.div>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content 
+                            className="min-w-[120px] rounded-xl shadow-xl p-1 z-50"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.95)',
+                              backdropFilter: 'blur(20px)',
+                              border: '1px solid rgba(147, 197, 253, 0.3)',
+                            }}
+                            sideOffset={5}
+                          >
+                            {canRecall && (
+                              <DropdownMenu.Item 
+                                className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-lg outline-none text-slate-600 hover:bg-blue-50"
+                                onSelect={() => handleRecallMessage(message.message_uuid)}
+                              >
+                                <RotateCcw size={14} />
+                                撤回
+                              </DropdownMenu.Item>
+                            )}
+                            <DropdownMenu.Item 
+                              className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-lg outline-none text-red-500 hover:bg-red-50"
+                              onSelect={() => handleDeleteMessage(message.message_uuid)}
+                            >
+                              <Trash2 size={14} />
+                              删除
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
+
+                      <span className="text-xs text-slate-400 px-2">
+                        {new Date(message.send_time).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
+            
             <div ref={messagesEndRef} />
             
             {/* 正在输入状态显示 */}
@@ -721,13 +767,22 @@ export default function ChatWindow() {
               if (typingList.length === 0) return null
               
               return (
-                <div className="px-4 py-2 text-sm text-muted-foreground flex items-center gap-2">
+                <motion.div 
+                  className="px-4 py-2 flex items-center gap-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
                   <div className="flex space-x-1">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    {[0, 1, 2].map((i) => (
+                      <motion.span 
+                        key={i}
+                        className="w-2 h-2 bg-blue-400 rounded-full"
+                        animate={{ y: [-3, 0, -3] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                      />
+                    ))}
                   </div>
-                  <span>
+                  <span className="text-sm text-slate-500">
                     {selectedConversation.type === 'friend' 
                       ? '对方正在输入...'
                       : typingList.length === 1 
@@ -735,7 +790,7 @@ export default function ChatWindow() {
                         : `${typingList.length} 人正在输入...`
                     }
                   </span>
-                </div>
+                </motion.div>
               )
             })()}
           </>
@@ -743,49 +798,83 @@ export default function ChatWindow() {
       </div>
 
       {/* 输入框 */}
-      <div className="border-t bg-card p-4 shrink-0">
+      <div 
+        className="p-4 shrink-0"
+        style={{
+          borderTop: '1px solid rgba(147, 197, 253, 0.15)',
+          background: 'rgba(255, 255, 255, 0.3)',
+        }}
+      >
         {/* 选中文件预览 */}
-        {selectedFile && (
-          <div className="mb-3 p-3 bg-muted rounded-lg flex items-center gap-3">
-            {selectedFile.type.startsWith('image/') ? (
-              <ImageIcon className="h-8 w-8 text-blue-500" />
-            ) : selectedFile.type.startsWith('video/') ? (
-              <Video className="h-8 w-8 text-purple-500" />
-            ) : (
-              <FileText className="h-8 w-8 text-gray-500" />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatFileSize(selectedFile.size)}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCancelFile}
-              disabled={sending}
+        <AnimatePresence>
+          {selectedFile && (
+            <motion.div 
+              className="mb-3 p-3 rounded-xl flex items-center gap-3"
+              style={{
+                background: 'rgba(147, 197, 253, 0.15)',
+                border: '1px solid rgba(147, 197, 253, 0.3)',
+              }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
             >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+              <div 
+                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                style={{ background: 'rgba(59, 130, 246, 0.2)' }}
+              >
+                {selectedFile.type.startsWith('image/') ? (
+                  <ImageIcon className="h-5 w-5 text-blue-500" />
+                ) : selectedFile.type.startsWith('video/') ? (
+                  <Video className="h-5 w-5 text-purple-500" />
+                ) : (
+                  <FileText className="h-5 w-5 text-slate-500" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-700 truncate">{selectedFile.name}</p>
+                <p className="text-xs text-slate-500">
+                  {formatFileSize(selectedFile.size)}
+                </p>
+              </div>
+              <motion.button
+                className="p-2 rounded-lg hover:bg-red-50"
+                onClick={handleCancelFile}
+                disabled={sending}
+                whileTap={{ scale: 0.95 }}
+              >
+                <X className="h-4 w-4 text-red-500" />
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 上传进度 */}
-        {uploadProgress !== null && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              <span>上传中...</span>
-              <span>{uploadProgress.toFixed(1)}%</span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-200"
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <AnimatePresence>
+          {uploadProgress !== null && (
+            <motion.div 
+              className="mb-3"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+            >
+              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                <span>上传中...</span>
+                <span>{uploadProgress.toFixed(1)}%</span>
+              </div>
+              <div 
+                className="h-2 rounded-full overflow-hidden"
+                style={{ background: 'rgba(147, 197, 253, 0.2)' }}
+              >
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: 'linear-gradient(90deg, #3b82f6, #0ea5e9)' }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="flex items-end gap-2">
           {/* 隐藏的文件输入 */}
@@ -796,63 +885,134 @@ export default function ChatWindow() {
             onChange={handleFileSelect}
             accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
+          <motion.button
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500"
+            style={{
+              background: 'rgba(255, 255, 255, 0.6)',
+              border: '1px solid rgba(147, 197, 253, 0.3)',
+            }}
             onClick={() => fileInputRef.current?.click()}
             disabled={sending}
+            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+            whileTap={{ scale: 0.95 }}
           >
             <Paperclip className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="shrink-0">
+          </motion.button>
+          <motion.button 
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500"
+            style={{
+              background: 'rgba(255, 255, 255, 0.6)',
+              border: '1px solid rgba(147, 197, 253, 0.3)',
+            }}
+            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
+            whileTap={{ scale: 0.95 }}
+          >
             <Smile className="h-5 w-5" />
-          </Button>
-          <Input
+          </motion.button>
+          <input
+            type="text"
             placeholder="输入消息..."
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            className="flex-1"
             disabled={sending}
+            className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
+            style={{
+              background: 'rgba(255, 255, 255, 0.6)',
+              border: '1px solid rgba(147, 197, 253, 0.3)',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)'
+              e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'rgba(147, 197, 253, 0.3)'
+              e.target.style.boxShadow = 'none'
+            }}
           />
-          <Button
+          <motion.button
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
+            style={{
+              background: (!messageInput.trim() && !selectedFile) || sending
+                ? 'rgba(147, 197, 253, 0.5)'
+                : 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              boxShadow: (!messageInput.trim() && !selectedFile) || sending
+                ? 'none'
+                : '0 4px 15px rgba(59, 130, 246, 0.3)',
+            }}
             onClick={selectedFile ? handleSendFile : handleSendMessage}
             disabled={(!messageInput.trim() && !selectedFile) || sending}
-            className="shrink-0"
+            whileHover={(!messageInput.trim() && !selectedFile) || sending ? {} : { 
+              scale: 1.05,
+              boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)',
+            }}
+            whileTap={(!messageInput.trim() && !selectedFile) || sending ? {} : { scale: 0.95 }}
           >
             {sending ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Send className="h-5 w-5" />
             )}
-          </Button>
+          </motion.button>
         </div>
       </div>
 
       {/* 群管理弹窗 */}
-      {showGroupManagement && selectedConversation?.type === 'group' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-lg w-[90vw] max-w-2xl h-[80vh] max-h-[700px] shadow-xl flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 className="text-lg font-semibold">群管理</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowGroupManagement(false)}
+      <AnimatePresence>
+        {showGroupManagement && selectedConversation?.type === 'group' && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-50"
+              style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowGroupManagement(false)}
+            />
+            <motion.div 
+              className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div 
+                className="w-[90vw] max-w-2xl h-[80vh] max-h-[700px] shadow-xl flex flex-col pointer-events-auto"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%)',
+                  backdropFilter: 'blur(20px) saturate(180%)',
+                  borderRadius: '24px',
+                  border: '1px solid rgba(147, 197, 253, 0.3)',
+                }}
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
               >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <GroupManagement
-                groupId={selectedConversation.id}
-                onClose={() => setShowGroupManagement(false)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+                <div 
+                  className="flex items-center justify-between p-4"
+                  style={{ borderBottom: '1px solid rgba(147, 197, 253, 0.2)' }}
+                >
+                  <h2 className="text-lg font-semibold text-slate-700">群管理</h2>
+                  <motion.button
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500"
+                    style={{ background: 'rgba(147, 197, 253, 0.15)' }}
+                    onClick={() => setShowGroupManagement(false)}
+                    whileHover={{ background: 'rgba(147, 197, 253, 0.3)' }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <X className="h-5 w-5" />
+                  </motion.button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <GroupManagement
+                    groupId={selectedConversation.id}
+                    onClose={() => setShowGroupManagement(false)}
+                  />
+                </div>
+              </motion.div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
