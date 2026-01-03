@@ -414,7 +414,7 @@ export const useWSStore = create<WSState>((set, get) => {
                   if ('data' in message) {
                     payload = message.data
                   } else {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                     
                     const { type: _type, ...rest } = message
                     payload = rest
                   }

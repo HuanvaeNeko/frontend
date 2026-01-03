@@ -19,9 +19,9 @@ lerna-debug.log*
 Thumbs.db
 
 # IDE
-.history
-.idea
-.vscode
+.history/
+.idea/
+.vscode/
 *.swp
 *.swo
 *~

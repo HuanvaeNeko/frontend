@@ -91,7 +91,7 @@ export const fetchWithAuth = async (
           window.location.href = '/login'
           throw new Error('登录已过期，请重新登录')
         }
-      } catch (error) {
+      } catch {
         console.error('Token refresh failed, redirecting to login')
         authStore.clearAuth()
         window.location.href = '/login'

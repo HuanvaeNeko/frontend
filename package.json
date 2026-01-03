@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack --port 5173",
     "build": "next build --webpack",
     "start": "next start --port 5173",
-    "lint": "next lint --dir .",
+    "lint": "eslint .",
     "export": "next build"
   },
   "dependencies": {
