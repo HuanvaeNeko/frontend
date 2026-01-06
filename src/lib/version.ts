@@ -57,23 +57,36 @@ export async function getSWVersion(): Promise<string | null> {
   if (!('serviceWorker' in navigator)) return null
   
   try {
-    const registration = await navigator.serviceWorker.ready
+    // 检查是否有已激活的 SW，避免在注册前调用
+    const registration = await navigator.serviceWorker.getRegistration()
+    const activeWorker = registration?.active
+    if (!activeWorker) return null
+    
     return new Promise((resolve) => {
+      let resolved = false
       const messageChannel = new MessageChannel()
+      
+      // 超时处理
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          messageChannel.port1.close()
+          resolve(null)
+        }
+      }, 1000)
+      
       messageChannel.port1.onmessage = (event) => {
-        resolve(event.data?.version || null)
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeoutId)
+          resolve(event.data?.version || null)
+        }
       }
       
-      if (registration.active) {
-        registration.active.postMessage(
-          { type: 'GET_VERSION' },
-          [messageChannel.port2]
-        )
-        // 超时回退
-        setTimeout(() => resolve(null), 1000)
-      } else {
-        resolve(null)
-      }
+      activeWorker.postMessage(
+        { type: 'GET_VERSION' },
+        [messageChannel.port2]
+      )
     })
   } catch {
     return null
@@ -87,22 +100,34 @@ export async function clearSWCache(): Promise<boolean> {
   if (!('serviceWorker' in navigator)) return false
   
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await navigator.serviceWorker.getRegistration()
+    const activeWorker = registration?.active
+    if (!activeWorker) return false
+    
     return new Promise((resolve) => {
+      let resolved = false
       const messageChannel = new MessageChannel()
+      
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          messageChannel.port1.close()
+          resolve(false)
+        }
+      }, 3000)
+      
       messageChannel.port1.onmessage = (event) => {
-        resolve(event.data?.success || false)
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeoutId)
+          resolve(event.data?.success || false)
+        }
       }
       
-      if (registration.active) {
-        registration.active.postMessage(
-          { type: 'CLEAR_CACHE' },
-          [messageChannel.port2]
-        )
-        setTimeout(() => resolve(false), 3000)
-      } else {
-        resolve(false)
-      }
+      activeWorker.postMessage(
+        { type: 'CLEAR_CACHE' },
+        [messageChannel.port2]
+      )
     })
   } catch {
     return false

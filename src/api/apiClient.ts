@@ -6,6 +6,17 @@ const BASE_URL = getApiBaseUrl()
 // 请求超时时间（毫秒）
 const REQUEST_TIMEOUT = 30000
 
+/**
+ * 认证错误类
+ * 用于区分认证相关的错误和其他错误
+ */
+export class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AuthenticationError'
+  }
+}
+
 // 标记是否正在进行 Token 刷新（防止并发刷新）
 let isRefreshing = false
 let refreshPromise: Promise<boolean> | null = null
@@ -28,6 +39,11 @@ const AUTH_ERROR_MESSAGES = [
  * 判断是否是认证相关的错误
  */
 const isAuthError = (error: Error | string): boolean => {
+  // AuthenticationError 直接返回 true
+  if (error instanceof AuthenticationError) {
+    return true
+  }
+  
   const message = typeof error === 'string' ? error : error.message
   const lowerMessage = message.toLowerCase()
   return AUTH_ERROR_MESSAGES.some(keyword => lowerMessage.includes(keyword.toLowerCase()))
@@ -163,14 +179,22 @@ export const fetchWithAuth = async (
       })
       
       // 如果刷新后仍然 401，说明 refresh token 也无效
-      if (response.status === 401 && !skipAuthRedirect) {
+      if (response.status === 401) {
+        if (!skipAuthRedirect) {
+          silentRedirectToLogin()
+          return new Promise(() => {})
+        }
+        // skipAuthRedirect 为 true 时，抛出明确的认证错误
+        throw new AuthenticationError('Token 刷新后认证仍然失败')
+      }
+    } else {
+      if (!skipAuthRedirect) {
+        // 刷新失败，静默重定向
         silentRedirectToLogin()
         return new Promise(() => {})
       }
-    } else if (!skipAuthRedirect) {
-      // 刷新失败，静默重定向
-      silentRedirectToLogin()
-      return new Promise(() => {})
+      // skipAuthRedirect 为 true 时，抛出明确的认证错误
+      throw new AuthenticationError('Token 刷新失败，需要重新登录')
     }
   }
 

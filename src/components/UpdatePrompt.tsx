@@ -60,17 +60,37 @@ export function UpdatePrompt({
       return
     }
 
+    // 存储事件处理函数引用，以便清理
+    let updateFoundHandler: (() => void) | null = null
+    let stateChangeHandler: (() => void) | null = null
+    let installingWorker: ServiceWorker | null = null
+    let refreshing = false
+
+    const handleControllerChange = () => {
+      if (!refreshing) {
+        refreshing = true
+        window.location.reload()
+      }
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_ACTIVATED') {
+        console.log('SW 已激活:', event.data.version)
+      }
+    }
+
     const registerSW = async () => {
       try {
-        // 获取当前 SW 版本
-        const currentSWVersion = await getSWVersion()
-        setState(prev => ({ ...prev, currentVersion: currentSWVersion }))
-        
         const registration = await navigator.serviceWorker.register('/sw.js', {
           updateViaCache: 'none'
         })
         registrationRef.current = registration
         console.log('✅ Service Worker 注册成功')
+        
+        // 等待 SW 激活后再获取版本
+        await navigator.serviceWorker.ready
+        const currentSWVersion = await getSWVersion()
+        setState(prev => ({ ...prev, currentVersion: currentSWVersion }))
 
         // 检查是否有等待中的更新
         if (registration.waiting) {
@@ -82,11 +102,12 @@ export function UpdatePrompt({
           }))
         }
 
-        // 监听更新
-        registration.addEventListener('updatefound', () => {
+        // 监听更新 - 使用命名函数以便清理
+        updateFoundHandler = () => {
           const newWorker = registration.installing
           if (newWorker) {
-            newWorker.addEventListener('statechange', async () => {
+            installingWorker = newWorker
+            stateChangeHandler = () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 console.log('🔄 发现新版本')
                 setState(prev => ({ 
@@ -95,9 +116,11 @@ export function UpdatePrompt({
                   newVersion: APP_VERSION
                 }))
               }
-            })
+            }
+            newWorker.addEventListener('statechange', stateChangeHandler)
           }
-        })
+        }
+        registration.addEventListener('updatefound', updateFoundHandler)
 
         // 定期检查更新
         checkIntervalRef.current = setInterval(() => {
@@ -112,27 +135,24 @@ export function UpdatePrompt({
     registerSW()
 
     // 监听 SW 控制权变化
-    let refreshing = false
-    const handleControllerChange = () => {
-      if (!refreshing) {
-        refreshing = true
-        window.location.reload()
-      }
-    }
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
-
-    // 监听 SW 激活消息
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'SW_ACTIVATED') {
-        console.log('SW 已激活:', event.data.version)
-      }
-    }
     navigator.serviceWorker.addEventListener('message', handleMessage)
 
     return () => {
       clearAllTimers()
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
       navigator.serviceWorker.removeEventListener('message', handleMessage)
+      
+      // 清理 registration 事件监听器
+      const registration = registrationRef.current
+      if (registration && updateFoundHandler) {
+        registration.removeEventListener('updatefound', updateFoundHandler)
+      }
+      
+      // 清理 installing worker 事件监听器
+      if (installingWorker && stateChangeHandler) {
+        installingWorker.removeEventListener('statechange', stateChangeHandler)
+      }
     }
   }, [checkInterval, clearAllTimers])
 
