@@ -1,5 +1,5 @@
 import { useAuthStore } from '../store/authStore'
-import { getApiBaseUrl } from '../utils/apiConfig'
+import { getApiBaseUrl } from '../lib/apiConfig'
 
 const BASE_URL = getApiBaseUrl()
 

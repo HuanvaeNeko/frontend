@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiConfig'
+import { getApiBaseUrl } from '../lib/apiConfig'
 import { useAuthStore } from '../store/authStore'
 
 const FRIENDS_BASE_URL = `${getApiBaseUrl()}/api/friends`

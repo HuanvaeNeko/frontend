@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiConfig'
+import { getApiBaseUrl } from '../lib/apiConfig'
 import { useAuthStore } from '../store/authStore'
 
 const GROUP_MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/group_messages`

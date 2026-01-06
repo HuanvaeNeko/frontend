@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getApiBaseUrl } from '../utils/apiConfig'
+import { getApiBaseUrl } from '../lib/apiConfig'
 import { useAuthStore } from './authStore'
 
 // =============================================

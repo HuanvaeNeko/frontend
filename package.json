@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start --port 5173",
     "lint": "eslint .",
-    "preview": "npx wrangler pages dev out"
+    "preview": "npx wrangler pages dev out",
+    "sw:version": "node scripts/generate-sw-version.js"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

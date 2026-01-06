@@ -1,5 +1,10 @@
 /**
+ * API 配置工具
  * 根据环境自动判断 API 基础地址
+ */
+
+/**
+ * 获取 API 基础地址
  * 开发环境: http://192.168.9.11:8080
  * 生产环境: https://api.huanvae.cn
  */
@@ -34,3 +39,15 @@ export const getApiBaseUrl = (): string => {
 export const getAuthApiUrl = (): string => {
   return `${getApiBaseUrl()}/api/auth`
 }
+
+/**
+ * 获取 WebSocket 地址
+ */
+export const getWsUrl = (): string => {
+  const apiBaseUrl = getApiBaseUrl()
+  if (apiBaseUrl.startsWith('https://')) {
+    return apiBaseUrl.replace('https://', 'wss://').replace(':8080', ':3001')
+  }
+  return apiBaseUrl.replace('http://', 'ws://').replace(':8080', ':3001')
+}
+
