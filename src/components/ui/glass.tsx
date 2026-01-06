@@ -72,11 +72,11 @@ interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
 const GlassCard = React.forwardRef<HTMLDivElement, GlassCardProps>(
   ({ className, hover = true, animated = true, children, ...props }, ref) => {
     const baseStyles = cn(
-      'relative p-6 rounded-2xl',
+      'relative p-4 rounded-xl',
       'bg-gradient-to-br from-white/90 via-white/70 to-white/80',
       'backdrop-blur-xl border border-white/60',
-      'shadow-[0_8px_32px_rgba(59,130,246,0.12),0_0_60px_rgba(255,255,255,0.5),inset_0_2px_2px_rgba(255,255,255,0.8)]',
-      hover && 'transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.18),0_0_60px_rgba(255,255,255,0.6)]',
+      'shadow-[0_8px_32px_rgba(59,130,246,0.1),0_0_40px_rgba(255,255,255,0.4),inset_0_1px_1px_rgba(255,255,255,0.8)]',
+      hover && 'transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.15),0_0_50px_rgba(255,255,255,0.5)]',
       className
     )
 
@@ -117,9 +117,9 @@ interface GlassButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>
 const GlassButton = React.forwardRef<HTMLButtonElement, GlassButtonProps>(
   ({ className, variant = 'primary', size = 'md', loading, disabled, children, ...props }, ref) => {
     const sizeStyles = {
-      sm: 'px-4 py-2 text-sm',
-      md: 'px-6 py-3 text-base',
-      lg: 'px-8 py-4 text-lg',
+      sm: 'px-3 py-1.5 text-sm',
+      md: 'px-4 py-2 text-sm',
+      lg: 'px-6 py-3 text-base',
     }
 
     const variantStyles = {
@@ -206,12 +206,12 @@ const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
     return (
       <div
         className={cn(
-          'relative flex items-center gap-3 px-4 py-3',
-          'bg-white/60 rounded-xl border border-white/70',
+          'relative flex items-center gap-2 px-3 py-2',
+          'bg-white/60 rounded-lg border border-white/70',
           'backdrop-blur-lg transition-all duration-200',
           'shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_2px_rgba(255,255,255,0.9)]',
           'focus-within:border-blue-300/60 focus-within:bg-white/75',
-          'focus-within:shadow-[0_0_0_4px_rgba(59,130,246,0.1),0_4px_16px_rgba(59,130,246,0.1)]',
+          'focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.1),0_4px_16px_rgba(59,130,246,0.1)]',
           className
         )}
       >
@@ -219,7 +219,7 @@ const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
         <input
           ref={ref}
           className={cn(
-            'flex-1 bg-transparent outline-none text-gray-800',
+            'flex-1 bg-transparent outline-none text-sm text-gray-800',
             'placeholder:text-gray-400'
           )}
           {...props}
@@ -243,13 +243,13 @@ const GlassTextarea = React.forwardRef<HTMLTextAreaElement, GlassTextareaProps>(
       <textarea
         ref={ref}
         className={cn(
-          'w-full px-4 py-3 min-h-[100px]',
-          'bg-white/60 rounded-xl border border-white/70',
+          'w-full px-3 py-2 min-h-[80px]',
+          'bg-white/60 rounded-lg border border-white/70',
           'backdrop-blur-lg transition-all duration-200',
           'shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_2px_rgba(255,255,255,0.9)]',
           'focus:border-blue-300/60 focus:bg-white/75 focus:outline-none',
-          'focus:shadow-[0_0_0_4px_rgba(59,130,246,0.1),0_4px_16px_rgba(59,130,246,0.1)]',
-          'text-gray-800 placeholder:text-gray-400',
+          'focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1),0_4px_16px_rgba(59,130,246,0.1)]',
+          'text-sm text-gray-800 placeholder:text-gray-400',
           !resize && 'resize-none',
           className
         )}
@@ -351,14 +351,14 @@ const GlassPage = React.forwardRef<HTMLDivElement, GlassPageProps>(
       <div
         ref={ref}
         className={cn(
-          'min-h-screen w-full overflow-x-hidden',
+          'min-h-screen w-full overflow-x-hidden overflow-y-auto',
           'bg-gradient-to-br from-blue-50 via-white to-purple-50',
           className
         )}
         {...props}
       >
         {showOrbs && <BackgroundOrbs count={orbCount} />}
-        <div className="relative z-10">{children}</div>
+        <div className="relative z-10 pb-8">{children}</div>
       </div>
     )
   }

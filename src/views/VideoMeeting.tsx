@@ -428,10 +428,10 @@ export default function VideoMeeting() {
       </AnimatePresence>
 
       {/* 视频网格 */}
-      <div className="flex-1 p-4 overflow-auto relative z-10">
-        <div className={`grid gap-4 h-full ${
-          allStreams.length === 1 ? 'grid-cols-1 max-w-3xl mx-auto' :
-          allStreams.length === 2 ? 'grid-cols-2 max-w-5xl mx-auto' :
+      <div className="flex-1 p-3 overflow-auto relative z-10">
+        <div className={`grid gap-3 h-full ${
+          allStreams.length === 1 ? 'grid-cols-1 max-w-2xl mx-auto' :
+          allStreams.length === 2 ? 'grid-cols-2 max-w-4xl mx-auto' :
           allStreams.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'
         }`}>
           {allStreams.map((item, index) => {
@@ -442,17 +442,17 @@ export default function VideoMeeting() {
             return (
               <motion.div
                 key={item.id}
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.08 }}
                 onClick={() => setActiveVideoId(isActive ? null : item.id)}
-                className={`relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 min-h-[200px] ${
-                  isActive ? 'ring-2 ring-blue-500 shadow-lg shadow-blue-500/20' : ''
+                className={`relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300 min-h-[180px] ${
+                  isActive ? 'ring-2 ring-blue-500/70 shadow-lg shadow-blue-500/15' : ''
                 }`}
                 style={{
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
-                  backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                 }}
               >
                 {hasVideo ? (
@@ -464,39 +464,39 @@ export default function VideoMeeting() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/50 to-gray-900/50">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/40 to-gray-900/40">
                     <div className="text-center">
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 backdrop-blur-xl border border-white/10 flex items-center justify-center"
+                        className="w-16 h-16 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500/25 to-purple-500/25 backdrop-blur-xl border border-white/10 flex items-center justify-center"
                       >
-                        <span className="text-3xl font-bold text-white">
+                        <span className="text-2xl font-bold text-white/90">
                           {item.name[0]?.toUpperCase()}
                         </span>
                       </motion.div>
-                      <p className="text-white/80 font-medium">{item.name}</p>
+                      <p className="text-white/70 text-sm font-medium">{item.name}</p>
                     </div>
                   </div>
                 )}
 
                 {/* 底部信息 */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
+                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/50 to-transparent">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm">
-                      <User size={14} className="text-white/60" />
-                      <span className="text-white text-sm font-medium">{item.name}</span>
-                      {item.isLocal && <span className="text-xs text-blue-400">(我)</span>}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/30 backdrop-blur-sm">
+                      <User size={12} className="text-white/60" />
+                      <span className="text-white text-xs font-medium">{item.name}</span>
+                      {item.isLocal && <span className="text-[10px] text-blue-400">(我)</span>}
                     </div>
-                    <div className="flex gap-1.5">
+                    <div className="flex gap-1">
                       {item.isLocal && isMuted && (
-                        <div className="p-1.5 rounded-lg bg-red-500/80">
-                          <MicOff size={12} className="text-white" />
+                        <div className="p-1 rounded-md bg-red-500/70">
+                          <MicOff size={10} className="text-white" />
                         </div>
                       )}
                       {item.isLocal && !isVideoEnabled && (
-                        <div className="p-1.5 rounded-lg bg-yellow-500/80">
-                          <VideoOff size={12} className="text-white" />
+                        <div className="p-1 rounded-md bg-yellow-500/70">
+                          <VideoOff size={10} className="text-white" />
                         </div>
                       )}
                     </div>
@@ -520,75 +520,75 @@ export default function VideoMeeting() {
               background: 'linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 100%)',
             }}
           >
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-3">
               {/* 静音按钮 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={toggleMute}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
                   isMuted 
                     ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
-                    : 'bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20'
+                    : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
                 }`}
               >
-                {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+                {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
               </motion.button>
 
               {/* 视频按钮 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={toggleVideo}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
                   !isVideoEnabled 
                     ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/30' 
-                    : 'bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20'
+                    : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
                 }`}
               >
-                {isVideoEnabled ? <Video size={22} /> : <VideoOff size={22} />}
+                {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
               </motion.button>
 
               {/* 挂断按钮 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={leaveMeeting}
-                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-red-600 text-white flex items-center justify-center shadow-lg shadow-red-500/40"
+                className="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white flex items-center justify-center shadow-lg shadow-red-500/35"
               >
-                <PhoneOff size={26} />
+                <PhoneOff size={22} />
               </motion.button>
 
               {/* 屏幕共享 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={toggleScreenShare}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
                   isScreenSharing 
                     ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' 
-                    : 'bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20'
+                    : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
                 }`}
               >
-                <Monitor size={22} />
+                <Monitor size={20} />
               </motion.button>
 
               {/* 更多按钮 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 flex items-center justify-center"
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
+                className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20 flex items-center justify-center"
               >
-                <Settings size={22} />
+                <Settings size={20} />
               </motion.button>
 
               {/* 聊天按钮 */}
               <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 flex items-center justify-center"
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
+                className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20 flex items-center justify-center"
               >
-                <MessageSquare size={22} />
+                <MessageSquare size={20} />
               </motion.button>
             </div>
 

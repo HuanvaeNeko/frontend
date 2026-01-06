@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
+import { isAuthError } from '../api/apiClient'
 
 interface FriendsState {
   friends: Friend[]
@@ -22,6 +23,26 @@ interface FriendsState {
   clearError: () => void
 }
 
+/**
+ * 静默重定向到登录页面
+ */
+const silentRedirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
+
+/**
+ * 处理 API 错误，认证错误静默重定向
+ */
+const handleApiError = (error: unknown, defaultMessage: string): string | null => {
+  if (error instanceof Error && isAuthError(error)) {
+    silentRedirectToLogin()
+    return null // 返回 null 表示已静默处理
+  }
+  return error instanceof Error ? error.message : defaultMessage
+}
+
 export const useFriendsStore = create<FriendsState>((set, get) => ({
   friends: [],
   pendingRequests: [],
@@ -36,7 +57,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       const friends = await friendsApi.getFriendsList()
       set({ friends, isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '加载好友列表失败'
+      const errorMessage = handleApiError(error, '加载好友列表失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -48,7 +73,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       const pendingRequests = await friendsApi.getPendingRequests()
       set({ pendingRequests, isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '加载好友请求失败'
+      const errorMessage = handleApiError(error, '加载好友请求失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -60,7 +89,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       const sentRequests = await friendsApi.getSentRequests()
       set({ sentRequests, isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '加载已发送请求失败'
+      const errorMessage = handleApiError(error, '加载已发送请求失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -74,7 +107,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       await get().loadSentRequests()
       set({ isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '发送好友请求失败'
+      const errorMessage = handleApiError(error, '发送好友请求失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -89,7 +126,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       await get().loadPendingRequests()
       set({ isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '同意好友请求失败'
+      const errorMessage = handleApiError(error, '同意好友请求失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -103,7 +144,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       await get().loadPendingRequests()
       set({ isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '拒绝好友请求失败'
+      const errorMessage = handleApiError(error, '拒绝好友请求失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -117,7 +162,11 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       await get().loadFriends()
       set({ isLoading: false })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '删除好友失败'
+      const errorMessage = handleApiError(error, '删除好友失败')
+      if (errorMessage === null) {
+        set({ isLoading: false })
+        return
+      }
       set({ error: errorMessage, isLoading: false })
       throw error
     }

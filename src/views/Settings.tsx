@@ -2,8 +2,19 @@
 
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Settings as SettingsIcon, Wand2, Globe, Shield, Palette, Bell, RotateCcw } from 'lucide-react'
+import { 
+  ArrowLeft, 
+  Settings as SettingsIcon, 
+  Wand2, 
+  Globe, 
+  Shield, 
+  Palette, 
+  Bell, 
+  RotateCcw,
+  Sparkles
+} from 'lucide-react'
 import * as Switch from '@radix-ui/react-switch'
+import { GlassPage, GlassCard, GlassButton } from '@/components/ui/glass'
 import { useSettingsStore } from '../store/settingsStore'
 import { useApiConfigStore } from '../store/apiConfig'
 import { useToast } from '../hooks/use-toast'
@@ -12,9 +23,7 @@ const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
+    transition: { staggerChildren: 0.08 },
   },
 }
 
@@ -32,32 +41,25 @@ interface SettingsCardProps {
 
 function SettingsCard({ title, icon: Icon, iconColor, children }: SettingsCardProps) {
   return (
-    <motion.div
-      className="p-6 rounded-2xl"
-      style={{
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.55) 100%)',
-        backdropFilter: 'blur(24px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-        border: '1.5px solid rgba(255, 255, 255, 0.7)',
-        boxShadow: '0 4px 24px rgba(147, 197, 253, 0.12), 0 2px 8px rgba(59, 130, 246, 0.08)',
-      }}
-      variants={staggerItem}
-    >
-      <div className="flex items-center gap-3 mb-6">
-        <div 
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ 
-            background: `linear-gradient(135deg, ${iconColor}25 0%, ${iconColor}15 100%)`,
-            border: `1px solid ${iconColor}30`,
-          }}
-        >
-          <Icon className="h-5 w-5" style={{ color: iconColor }} />
+    <motion.div variants={staggerItem}>
+      <GlassCard>
+        <div className="flex items-center gap-2.5 mb-4">
+          <div 
+            className="w-9 h-9 rounded-lg flex items-center justify-center"
+            style={{ 
+              background: `linear-gradient(135deg, ${iconColor}20 0%, ${iconColor}10 100%)`,
+              border: `1px solid ${iconColor}25`,
+              boxShadow: `0 3px 10px ${iconColor}12`,
+            }}
+          >
+            <Icon className="h-4 w-4" style={{ color: iconColor }} />
+          </div>
+          <h3 className="text-base font-semibold text-gray-800">{title}</h3>
         </div>
-        <h3 className="text-lg font-semibold text-slate-700">{title}</h3>
-      </div>
-      <div className="space-y-5">
-        {children}
-      </div>
+        <div className="space-y-4">
+          {children}
+        </div>
+      </GlassCard>
     </motion.div>
   )
 }
@@ -72,9 +74,9 @@ function SettingRow({ label, description, children }: SettingRowProps) {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <div className="text-sm font-medium text-slate-700">{label}</div>
+        <div className="text-sm font-medium text-gray-700">{label}</div>
         {description && (
-          <div className="text-xs text-slate-500 mt-0.5">{description}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{description}</div>
         )}
       </div>
       {children}
@@ -91,21 +93,50 @@ interface CustomSwitchProps {
 function CustomSwitch({ checked, onCheckedChange, disabled }: CustomSwitchProps) {
   return (
     <Switch.Root
-      className="w-11 h-6 rounded-full relative outline-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-11 h-6 rounded-full relative outline-none cursor-pointer transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
       style={{
         background: checked 
           ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
           : 'rgba(148, 163, 184, 0.3)',
+        boxShadow: checked ? '0 2px 8px rgba(59, 130, 246, 0.25)' : 'inset 0 1px 2px rgba(0,0,0,0.08)',
       }}
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
     >
       <Switch.Thumb 
-        className="block w-5 h-5 bg-white rounded-full transition-transform duration-200 translate-x-0.5 will-change-transform data-[state=checked]:translate-x-[22px]"
-        style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+        className="block w-[18px] h-[18px] bg-white rounded-full transition-transform duration-300 translate-x-[3px] will-change-transform data-[state=checked]:translate-x-[23px]"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}
       />
     </Switch.Root>
+  )
+}
+
+interface CustomSelectProps {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+  disabled?: boolean
+}
+
+function CustomSelect({ value, onChange, options, disabled }: CustomSelectProps) {
+  return (
+    <select 
+      className="w-full px-3 py-2 rounded-lg text-sm text-gray-700 outline-none cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-blue-500/15 disabled:opacity-50 disabled:cursor-not-allowed"
+      style={{
+        background: 'rgba(255, 255, 255, 0.6)',
+        border: '1px solid rgba(255, 255, 255, 0.7)',
+        backdropFilter: 'blur(8px)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04), inset 0 1px 2px rgba(255,255,255,0.9)',
+      }}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+    >
+      {options.map(opt => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
   )
 }
 
@@ -116,92 +147,50 @@ export default function Settings() {
   const apiConfig = useApiConfigStore()
 
   const handleSave = () => {
-    toast({
-      title: '保存成功',
-      description: '设置已自动保存',
-    })
+    toast({ title: '保存成功', description: '设置已自动保存' })
   }
 
   const handleReset = () => {
     if (confirm('确定要重置所有设置吗？')) {
       settings.resetSettings()
       apiConfig.resetToDefault()
-      toast({
-        title: '已重置',
-        description: '所有设置已恢复默认值',
-      })
+      toast({ title: '已重置', description: '所有设置已恢复默认值' })
     }
   }
 
   return (
-    <div 
-      className="min-h-screen relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 25%, #ffffff 50%, #f0f9ff 75%, #e0f2fe 100%)',
-      }}
-    >
-      {/* 背景装饰 */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <motion.div
-          className="absolute top-20 right-[10%] w-80 h-80 rounded-full blur-3xl"
-          style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(14, 165, 233, 0.2))' }}
-          animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute bottom-20 left-[10%] w-96 h-96 rounded-full blur-3xl"
-          style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(167, 139, 250, 0.2))' }}
-          animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.4, 0.3] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-        />
-      </div>
-
-      <div className="relative z-10 container mx-auto px-6 py-8 max-w-5xl">
+    <GlassPage orbCount={4}>
+      <div className="container mx-auto px-4 py-6 max-w-4xl">
         {/* 返回按钮 */}
-        <motion.button
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-600 font-medium mb-8"
-          style={{
-            background: 'rgba(255, 255, 255, 0.6)',
-            border: '1px solid rgba(147, 197, 253, 0.3)',
-          }}
-          onClick={() => router.push('/chat')}
+        <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-          whileTap={{ scale: 0.98 }}
+          className="mb-6"
         >
-          <ArrowLeft size={18} />
-          返回首页
-        </motion.button>
+          <GlassButton variant="ghost" size="sm" onClick={() => router.push('/chat')}>
+            <ArrowLeft size={16} />
+            返回首页
+          </GlassButton>
+        </motion.div>
 
         {/* 标题 */}
         <motion.div
-          className="mb-8 flex items-center gap-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+          className="mb-6 flex items-center gap-3"
         >
-          <div 
-            className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: '0 8px 30px rgba(59, 130, 246, 0.3)',
-            }}
-          >
-            <SettingsIcon size={28} className="text-white" />
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+            <SettingsIcon size={22} className="text-white" />
           </div>
           <div>
-            <h1 
-              className="text-3xl font-bold"
-              style={{
-                background: 'linear-gradient(135deg, #1e3a5f, #3b82f6)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               设置中心
             </h1>
-            <p className="text-slate-500">配置您的应用偏好设置（自动保存）</p>
+            <p className="text-sm text-gray-500 flex items-center gap-1">
+              <Sparkles size={12} />
+              配置您的应用偏好（自动保存）
+            </p>
           </div>
         </motion.div>
 
@@ -209,7 +198,7 @@ export default function Settings() {
           variants={staggerContainer}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-5"
         >
           {/* AI 配置 */}
           <SettingsCard title="AI 配置" icon={Wand2} iconColor="#3b82f6">
@@ -221,22 +210,18 @@ export default function Settings() {
             </SettingRow>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">AI 模型</label>
-              <select 
-                className="w-full px-4 py-2.5 rounded-xl text-slate-700 outline-none cursor-pointer"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.6)',
-                  border: '1px solid rgba(147, 197, 253, 0.3)',
-                }}
+              <label className="text-sm font-medium text-gray-700">AI 模型</label>
+              <CustomSelect
                 value={settings.aiModel}
-                onChange={(e) => settings.setSetting('aiModel', e.target.value)}
+                onChange={(value) => settings.setSetting('aiModel', value)}
+                options={[
+                  { value: 'gpt-4', label: 'GPT-4' },
+                  { value: 'gpt-3.5', label: 'GPT-3.5' },
+                  { value: 'claude', label: 'Claude' },
+                  { value: 'custom', label: '自定义' },
+                ]}
                 disabled={!settings.aiEnabled}
-              >
-                <option value="gpt-4">GPT-4</option>
-                <option value="gpt-3.5">GPT-3.5</option>
-                <option value="claude">Claude</option>
-                <option value="custom">自定义</option>
-              </select>
+              />
             </div>
 
             <SettingRow label="自定义 API" description="使用自己的 AI 服务">
@@ -251,21 +236,17 @@ export default function Settings() {
           {/* 语言和地区 */}
           <SettingsCard title="语言和地区" icon={Globe} iconColor="#22c55e">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">界面语言</label>
-              <select 
-                className="w-full px-4 py-2.5 rounded-xl text-slate-700 outline-none cursor-pointer"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.6)',
-                  border: '1px solid rgba(147, 197, 253, 0.3)',
-                }}
+              <label className="text-sm font-medium text-gray-700">界面语言</label>
+              <CustomSelect
                 value={settings.language}
-                onChange={(e) => settings.setSetting('language', e.target.value)}
-              >
-                <option value="zh-CN">简体中文</option>
-                <option value="zh-TW">繁体中文</option>
-                <option value="en-US">English</option>
-                <option value="ja-JP">日本語</option>
-              </select>
+                onChange={(value) => settings.setSetting('language', value)}
+                options={[
+                  { value: 'zh-CN', label: '简体中文' },
+                  { value: 'zh-TW', label: '繁体中文' },
+                  { value: 'en-US', label: 'English' },
+                  { value: 'ja-JP', label: '日本語' },
+                ]}
+              />
             </div>
 
             <SettingRow label="24 小时制" description="使用 24 小时时间格式">
@@ -296,20 +277,16 @@ export default function Settings() {
           {/* 外观 */}
           <SettingsCard title="外观" icon={Palette} iconColor="#f97316">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">主题</label>
-              <select 
-                className="w-full px-4 py-2.5 rounded-xl text-slate-700 outline-none cursor-pointer"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.6)',
-                  border: '1px solid rgba(147, 197, 253, 0.3)',
-                }}
+              <label className="text-sm font-medium text-gray-700">主题</label>
+              <CustomSelect
                 value={settings.theme}
-                onChange={(e) => settings.setSetting('theme', e.target.value as 'light' | 'dark' | 'auto')}
-              >
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="auto">跟随系统</option>
-              </select>
+                onChange={(value) => settings.setSetting('theme', value as 'light' | 'dark' | 'auto')}
+                options={[
+                  { value: 'light', label: '浅色' },
+                  { value: 'dark', label: '深色' },
+                  { value: 'auto', label: '跟随系统' },
+                ]}
+              />
             </div>
 
             <SettingRow label="动画效果" description="启用界面动画">
@@ -346,33 +323,15 @@ export default function Settings() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <motion.button 
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-slate-600"
-            style={{
-              background: 'rgba(255, 255, 255, 0.6)',
-              border: '1px solid rgba(147, 197, 253, 0.3)',
-            }}
-            onClick={handleReset}
-            whileHover={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-            whileTap={{ scale: 0.98 }}
-          >
+          <GlassButton variant="danger" onClick={handleReset}>
             <RotateCcw size={16} />
             重置所有设置
-          </motion.button>
-          <motion.button 
-            className="px-6 py-2.5 rounded-xl font-medium text-white"
-            style={{
-              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)',
-            }}
-            onClick={handleSave}
-            whileHover={{ boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)' }}
-            whileTap={{ scale: 0.98 }}
-          >
+          </GlassButton>
+          <GlassButton onClick={handleSave}>
             保存设置
-          </motion.button>
+          </GlassButton>
         </motion.div>
       </div>
-    </div>
+    </GlassPage>
   )
 }
