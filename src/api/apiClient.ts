@@ -148,8 +148,8 @@ export const fetchWithAuth = async (
     const refreshed = await tryRefreshToken()
     if (!refreshed && !skipAuthRedirect) {
       silentRedirectToLogin()
-      // 返回一个永远不会 resolve 的 Promise，因为页面即将跳转
-      return new Promise(() => {})
+      // 抛出错误让调用者知道认证失败，而不是让 Promise 永久挂起
+      throw new AuthenticationError('Token 刷新失败，正在重定向到登录页面')
     }
   }
 
@@ -182,18 +182,16 @@ export const fetchWithAuth = async (
       if (response.status === 401) {
         if (!skipAuthRedirect) {
           silentRedirectToLogin()
-          return new Promise(() => {})
         }
-        // skipAuthRedirect 为 true 时，抛出明确的认证错误
+        // 无论是否跳过重定向，都抛出明确的认证错误
         throw new AuthenticationError('Token 刷新后认证仍然失败')
       }
     } else {
       if (!skipAuthRedirect) {
         // 刷新失败，静默重定向
         silentRedirectToLogin()
-        return new Promise(() => {})
       }
-      // skipAuthRedirect 为 true 时，抛出明确的认证错误
+      // 无论是否跳过重定向，都抛出明确的认证错误
       throw new AuthenticationError('Token 刷新失败，需要重新登录')
     }
   }

@@ -94,11 +94,22 @@ export function UpdatePrompt({
 
         // 检查是否有等待中的更新
         if (registration.waiting) {
-          const newVersion = await getSWVersion()
+          // 尝试从 manifest.json 获取新版本号（因为 getSWVersion 只能查询活跃的 SW）
+          let detectedVersion: string | null = null
+          try {
+            const manifestResponse = await fetch('/manifest.json', { cache: 'no-store' })
+            if (manifestResponse.ok) {
+              const manifest = await manifestResponse.json()
+              detectedVersion = manifest.version || null
+            }
+          } catch {
+            console.warn('无法从 manifest.json 获取版本')
+          }
+          
           setState(prev => ({ 
             ...prev, 
             needRefresh: true,
-            newVersion 
+            newVersion: detectedVersion || '新版本'
           }))
         }
 
@@ -107,13 +118,27 @@ export function UpdatePrompt({
           const newWorker = registration.installing
           if (newWorker) {
             installingWorker = newWorker
-            stateChangeHandler = () => {
+            stateChangeHandler = async () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 console.log('🔄 发现新版本')
+                
+                // 尝试从 manifest.json 获取新版本号
+                let detectedVersion: string | null = null
+                try {
+                  const manifestResponse = await fetch('/manifest.json', { cache: 'no-store' })
+                  if (manifestResponse.ok) {
+                    const manifest = await manifestResponse.json()
+                    detectedVersion = manifest.version || null
+                  }
+                } catch {
+                  console.warn('无法从 manifest.json 获取版本')
+                }
+                
                 setState(prev => ({ 
                   ...prev, 
                   needRefresh: true,
-                  newVersion: APP_VERSION
+                  // 优先使用从 manifest 获取的版本，否则显示通用提示
+                  newVersion: detectedVersion || '新版本'
                 }))
               }
             }
