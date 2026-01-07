@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, Smile, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
+import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
+import { EmojiPicker } from './EmojiPicker'
+import { MessageImage } from './MessageImage'
+import { MessageVideo } from './MessageVideo'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
@@ -118,7 +121,13 @@ export default function ChatWindow() {
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // 使用 requestAnimationFrame 确保在 DOM 完全更新后滚动
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
   }
 
   const handleSendMessage = async () => {
@@ -445,17 +454,12 @@ export default function ChatWindow() {
         return (
           <div>
             {(message.file_url || message.file_uuid) ? (
-              <div 
-                className="cursor-pointer hover:opacity-90 transition-opacity"
+              <MessageImage
+                fileUrl={message.file_url}
+                fileUuid={message.file_uuid}
+                isFriendMessage={selectedConversation?.type === 'friend'}
                 onClick={() => handleFilePreview(message)}
-              >
-                <img
-                  src={message.file_url || `${window.location.origin}/api/storage/file/${message.file_uuid}`}
-                  alt="图片"
-                  className="max-w-[240px] rounded-xl"
-                  loading="lazy"
-                />
-              </div>
+              />
             ) : (
               <div className="flex items-center gap-2 text-sm">
                 <ImageIcon className="h-4 w-4" />
@@ -468,14 +472,11 @@ export default function ChatWindow() {
         return (
           <div>
             {(message.file_url || message.file_uuid) ? (
-              <video
-                src={message.file_url || undefined}
-                controls
+              <MessageVideo
+                fileUrl={message.file_url}
+                fileUuid={message.file_uuid}
+                isFriendMessage={selectedConversation?.type === 'friend'}
                 className="max-w-[240px] rounded-xl"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleFilePreview(message)
-                }}
               />
             ) : (
               <div className="flex items-center gap-2 text-sm">
@@ -535,7 +536,7 @@ export default function ChatWindow() {
   // 未选择会话
   if (!selectedConversation) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full min-h-0 flex items-center justify-center overflow-hidden">
         <motion.div 
           className="text-center"
           initial={{ opacity: 0, y: 20 }}
@@ -567,9 +568,9 @@ export default function ChatWindow() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden">
       {/* 聊天头部 */}
-      <header className="px-6 py-4 min-h-[81px] border-b border-blue-200/15 bg-white/30 flex items-center justify-between">
+      <header className="px-6 py-4 min-h-[81px] shrink-0 border-b border-blue-200/15 bg-white/30 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-white/80 to-white/50 border-[1.5px] border-white/80 flex items-center justify-center shrink-0">
             <Avatar className="h-full w-full">
@@ -612,7 +613,7 @@ export default function ChatWindow() {
       {/* 消息列表 */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-4"
+        className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4"
         onScroll={handleScroll}
       >
         {loading && messages.length === 0 ? (
@@ -664,9 +665,9 @@ export default function ChatWindow() {
                   <motion.div
                     key={message.message_uuid}
                     className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} group`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.02 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
                   >
                     <div className="shrink-0">
                       <div className="w-10 h-10 rounded-xl overflow-hidden" style={{
@@ -898,17 +899,10 @@ export default function ChatWindow() {
           >
             <Paperclip className="h-5 w-5" />
           </motion.button>
-          <motion.button 
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500"
-            style={{
-              background: 'rgba(255, 255, 255, 0.6)',
-              border: '1px solid rgba(147, 197, 253, 0.3)',
-            }}
-            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Smile className="h-5 w-5" />
-          </motion.button>
+          <EmojiPicker 
+            onSelect={(emoji) => setMessageInput(prev => prev + emoji)}
+            disabled={sending}
+          />
           <input
             type="text"
             placeholder="输入消息..."

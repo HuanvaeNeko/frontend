@@ -34,6 +34,8 @@ import { groupsApi, type GroupMember, type GroupNotice } from '../api/groups'
 import { storageApi, type FileType } from '../api/storage'
 import { useToast } from '../hooks/use-toast'
 import { BackgroundOrbs } from '@/components/ui/glass'
+import { MessageImage } from '@/components/chat/MessageImage'
+import { MessageVideo } from '@/components/chat/MessageVideo'
 
 export default function GroupChat() {
   const router = useRouter()
@@ -141,7 +143,12 @@ export default function GroupChat() {
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
   }
 
   const sendMessage = async () => {
@@ -372,6 +379,61 @@ export default function GroupChat() {
     return '成员'
   }
 
+  /**
+   * 从 file_url 中提取 UUID
+   */
+  const extractUuidFromUrl = (url: string): string | null => {
+    const match = url.match(/\/(?:file|friends_file)\/([a-f0-9-]{36})(?:\/|$|\?)/i)
+    return match ? match[1] : null
+  }
+
+  /**
+   * 获取文件的预签名 URL
+   */
+  const getFilePresignedUrl = async (message: GroupMessage, operation: 'preview' | 'download' = 'preview'): Promise<string | null> => {
+    const uuid = message.file_uuid || (message.file_url ? extractUuidFromUrl(message.file_url) : null)
+    if (!uuid) return null
+    
+    try {
+      return await storageApi.getPresignedUrl(uuid, operation)
+    } catch (error) {
+      console.error('获取预签名 URL 失败:', error)
+      return null
+    }
+  }
+
+  /**
+   * 处理文件预览
+   */
+  const handleFilePreview = async (message: GroupMessage) => {
+    const presignedUrl = await getFilePresignedUrl(message, 'preview')
+    if (presignedUrl) {
+      window.open(presignedUrl, '_blank')
+    } else {
+      toast({
+        title: '预览失败',
+        description: '无法获取文件预览链接',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  /**
+   * 处理文件下载
+   */
+  const handleFileDownload = async (message: GroupMessage) => {
+    const presignedUrl = await getFilePresignedUrl(message, 'download')
+    if (presignedUrl) {
+      window.open(presignedUrl, '_blank')
+    } else {
+      toast({
+        title: '下载失败',
+        description: '无法获取文件下载链接',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const renderMessageContent = (message: GroupMessage) => {
     if (message.is_recalled) {
       return <p className="text-sm italic opacity-60">[消息已撤回]</p>
@@ -381,12 +443,13 @@ export default function GroupChat() {
       case 'text':
         return <p className="whitespace-pre-wrap break-words">{message.message_content}</p>
       case 'image':
-        return message.file_url ? (
-          <img
-            src={message.file_url}
-            alt="图片"
-            className="max-w-xs rounded-xl cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => window.open(message.file_url!, '_blank')}
+        return (message.file_url || message.file_uuid) ? (
+          <MessageImage
+            fileUrl={message.file_url}
+            fileUuid={message.file_uuid}
+            isFriendMessage={false}
+            className="max-w-xs rounded-xl"
+            onClick={() => handleFilePreview(message)}
           />
         ) : (
           <div className="flex items-center gap-2 text-sm opacity-70">
@@ -395,8 +458,12 @@ export default function GroupChat() {
           </div>
         )
       case 'video':
-        return message.file_url ? (
-          <video src={message.file_url} controls className="max-w-xs rounded-xl" />
+        return (message.file_url || message.file_uuid) ? (
+          <MessageVideo
+            fileUrl={message.file_url}
+            fileUuid={message.file_uuid}
+            className="max-w-xs rounded-xl"
+          />
         ) : (
           <div className="flex items-center gap-2 text-sm opacity-70">
             <Video className="h-4 w-4" />
@@ -413,10 +480,10 @@ export default function GroupChat() {
                 <p className="text-xs opacity-60">{formatFileSize(message.file_size)}</p>
               )}
             </div>
-            {message.file_url && (
+            {(message.file_url || message.file_uuid) && (
               <button
                 className="p-2 rounded-lg hover:bg-white/50 transition-colors"
-                onClick={() => window.open(message.file_url!, '_blank')}
+                onClick={() => handleFileDownload(message)}
               >
                 <Download className="h-4 w-4" />
               </button>
@@ -433,7 +500,7 @@ export default function GroupChat() {
   // 空状态渲染
   if (!groupId || (!currentGroup && !loading)) {
     return (
-      <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
+      <div className="h-full flex flex-col relative overflow-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
         <BackgroundOrbs count={3} />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -460,15 +527,11 @@ export default function GroupChat() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
+    <div className="h-full flex flex-col relative overflow-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
       <BackgroundOrbs count={3} />
 
       {/* 顶部导航 */}
-      <motion.header
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="relative z-10 flex items-center justify-between px-5 py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/20"
-      >
+      <header className="relative z-10 flex items-center justify-between px-5 py-3 shrink-0 bg-white/70 backdrop-blur-xl border-b border-blue-200/20">
         <div className="flex items-center gap-3">
           <motion.button 
             className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
@@ -534,12 +597,12 @@ export default function GroupChat() {
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
         </div>
-      </motion.header>
+      </header>
 
-      <div className="flex-1 flex overflow-hidden relative z-[1]">
+      <div className="flex-1 min-h-0 flex overflow-hidden relative z-[1]">
         {/* 消息区域 */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 flex flex-col gap-4" onScroll={handleScroll}>
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-5 flex flex-col gap-4" onScroll={handleScroll}>
             {loading && messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -586,8 +649,9 @@ export default function GroupChat() {
                     return (
                       <motion.div
                         key={message.message_uuid}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2 }}
                         className={`flex gap-2.5 max-w-[75%] ${isOwn ? 'flex-row-reverse ml-auto' : ''}`}
                       >
                         <Avatar className="w-9 h-9 shrink-0">
@@ -640,7 +704,7 @@ export default function GroupChat() {
           </div>
 
           {/* 输入区域 */}
-          <div className="px-5 py-4 bg-white/70 backdrop-blur-xl border-t border-blue-200/20">
+          <div className="px-5 py-4 shrink-0 bg-white/70 backdrop-blur-xl border-t border-blue-200/20">
             {selectedFile && (
               <div className="flex items-center gap-3 p-3 mb-3 bg-white/60 rounded-[14px] border border-blue-200/20">
                 {selectedFile.type.startsWith('image/') ? <ImageIcon size={24} className="text-blue-500" /> :
@@ -707,7 +771,7 @@ export default function GroupChat() {
               initial={{ x: 100, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 100, opacity: 0 }}
-              className="w-[300px] shrink-0 bg-white/70 backdrop-blur-xl border-l border-blue-200/20 flex flex-col max-md:absolute max-md:right-0 max-md:top-0 max-md:bottom-0 max-md:w-[280px] max-md:z-20"
+              className="w-[300px] shrink-0 h-full overflow-hidden bg-white/70 backdrop-blur-xl border-l border-blue-200/20 flex flex-col max-md:absolute max-md:right-0 max-md:top-0 max-md:bottom-0 max-md:w-[280px] max-md:z-20"
             >
               <div className="flex border-b border-blue-200/20">
                 {(['members', 'notices', 'settings'] as const).map((tab) => (
@@ -725,7 +789,7 @@ export default function GroupChat() {
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
                 {sidebarTab === 'members' && (
                   <div className="flex flex-col gap-2">
                     {isAdmin && (

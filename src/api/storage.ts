@@ -537,7 +537,7 @@ export const storageApi = {
 
   /**
    * 获取好友文件预签名 URL
-   * POST /api/storage/friends-file/{uuid}/presigned-url
+   * POST /api/storage/friends_file/{uuid}/presigned_url
    */
   getFriendFilePresignedUrl: async (
     uuid: string,

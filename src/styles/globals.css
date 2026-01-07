@@ -67,17 +67,23 @@
     --chart-5: 340 75% 55%;
   }
 
-  html {
+  html, body {
     height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
   }
 
   body {
-    min-height: 100%;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  #__next {
+    height: 100%;
   }
 }
 

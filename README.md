@@ -107,16 +107,19 @@ src/
 
 ### API 地址配置
 
-编辑 `src/utils/apiConfig.ts`:
+统一使用生产 API 地址，配置在 `src/lib/apiConfig.ts`:
 
 ```typescript
 export const getApiBaseUrl = (): string => {
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'  // 开发环境
+  // 如果设置了环境变量，优先使用
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL
   }
-  return 'https://api.huanvae.cn'   // 生产环境
+  return 'https://api.huanvae.cn'
 }
 ```
+
+可通过环境变量 `NEXT_PUBLIC_API_URL` 覆盖。
 
 ## 📚 文档
 
