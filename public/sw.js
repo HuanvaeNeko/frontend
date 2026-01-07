@@ -1,1 +1,394 @@
-if(!self.define){let e,s={};const c=(c,a)=>(c=new URL(c+".js",a).href,s[c]||new Promise(s=>{if("document"in self){const e=document.createElement("script");e.src=c,e.onload=s,document.head.appendChild(e)}else e=c,importScripts(c),s()}).then(()=>{let e=s[c];if(!e)throw new Error(`Module ${c} didn’t register its module`);return e}));self.define=(a,t)=>{const n=e||("document"in self?document.currentScript.src:"")||location.href;if(s[n])return;let i={};const r=e=>c(e,n),o={module:{uri:n},exports:i,require:r};s[n]=Promise.all(a.map(e=>o[e]||r(e))).then(e=>(t(...e),i))}}define(["./workbox-3c9d0171"],function(e){"use strict";importScripts(),self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"/_next/static/chunks/1085.884535600b2c090b.js",revision:"884535600b2c090b"},{url:"/_next/static/chunks/1113.932c8afbbe9aac13.js",revision:"932c8afbbe9aac13"},{url:"/_next/static/chunks/1310.4b883645632541fa.js",revision:"4b883645632541fa"},{url:"/_next/static/chunks/1900.3ac11b262580ed46.js",revision:"3ac11b262580ed46"},{url:"/_next/static/chunks/2073.fe5407f59370a823.js",revision:"fe5407f59370a823"},{url:"/_next/static/chunks/2203.0966a508ab1ddf27.js",revision:"0966a508ab1ddf27"},{url:"/_next/static/chunks/2213.b986b67c3a2dc82d.js",revision:"b986b67c3a2dc82d"},{url:"/_next/static/chunks/2247.998d03202eef8dd1.js",revision:"998d03202eef8dd1"},{url:"/_next/static/chunks/2352.e0cc727ffa54f3cd.js",revision:"e0cc727ffa54f3cd"},{url:"/_next/static/chunks/2502.562760f31f4519df.js",revision:"562760f31f4519df"},{url:"/_next/static/chunks/2658.a6f06346683c5f77.js",revision:"a6f06346683c5f77"},{url:"/_next/static/chunks/3233.7ebcf5affecc42fb.js",revision:"7ebcf5affecc42fb"},{url:"/_next/static/chunks/373-51277f4c50e9b139.js",revision:"51277f4c50e9b139"},{url:"/_next/static/chunks/3925.b944af47a3cdda31.js",revision:"b944af47a3cdda31"},{url:"/_next/static/chunks/3996.152523c2c863dc09.js",revision:"152523c2c863dc09"},{url:"/_next/static/chunks/4545.6c45c1c841cc4aa9.js",revision:"6c45c1c841cc4aa9"},{url:"/_next/static/chunks/4581.49e5a8494656249d.js",revision:"49e5a8494656249d"},{url:"/_next/static/chunks/4605.7ad4ce8db298b271.js",revision:"7ad4ce8db298b271"},{url:"/_next/static/chunks/539.1d49bc1a5c1951fc.js",revision:"1d49bc1a5c1951fc"},{url:"/_next/static/chunks/5814.6c3b2c844edb146f.js",revision:"6c3b2c844edb146f"},{url:"/_next/static/chunks/622.49308e22cc18c494.js",revision:"49308e22cc18c494"},{url:"/_next/static/chunks/6435.a6ee687baa596d87.js",revision:"a6ee687baa596d87"},{url:"/_next/static/chunks/6620.55e956e0b82d63cf.js",revision:"55e956e0b82d63cf"},{url:"/_next/static/chunks/6751.da0c6940886e19a7.js",revision:"da0c6940886e19a7"},{url:"/_next/static/chunks/7851-7571c4faa32efcf8.js",revision:"7571c4faa32efcf8"},{url:"/_next/static/chunks/7907.0633aa2bdba03840.js",revision:"0633aa2bdba03840"},{url:"/_next/static/chunks/8166-fba55d640f8b1994.js",revision:"fba55d640f8b1994"},{url:"/_next/static/chunks/820.f622b9be699f3d82.js",revision:"f622b9be699f3d82"},{url:"/_next/static/chunks/9065.f9686b1b270c6a52.js",revision:"f9686b1b270c6a52"},{url:"/_next/static/chunks/912.4d0a8c042bd6ad01.js",revision:"4d0a8c042bd6ad01"},{url:"/_next/static/chunks/9336.690b13d2ca926e52.js",revision:"690b13d2ca926e52"},{url:"/_next/static/chunks/9817.ed95507f8f1de771.js",revision:"ed95507f8f1de771"},{url:"/_next/static/chunks/app/(auth)/layout-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/app/(auth)/login/page-cfbe5d0ac51f0fe1.js",revision:"cfbe5d0ac51f0fe1"},{url:"/_next/static/chunks/app/(auth)/register/page-e7f32b661a304a11.js",revision:"e7f32b661a304a11"},{url:"/_next/static/chunks/app/(protected)/ai-chat/page-a4527b18f6d13285.js",revision:"a4527b18f6d13285"},{url:"/_next/static/chunks/app/(protected)/chat/files/page-6daa5eec56b38a63.js",revision:"6daa5eec56b38a63"},{url:"/_next/static/chunks/app/(protected)/chat/friends/%5BfriendId%5D/page-d8673953976bb031.js",revision:"d8673953976bb031"},{url:"/_next/static/chunks/app/(protected)/chat/friends/page-00fe7fd221a7f0d8.js",revision:"00fe7fd221a7f0d8"},{url:"/_next/static/chunks/app/(protected)/chat/groups/%5BgroupId%5D/page-a3c4b78ded385a78.js",revision:"a3c4b78ded385a78"},{url:"/_next/static/chunks/app/(protected)/chat/groups/page-dfcef27e843a97c0.js",revision:"dfcef27e843a97c0"},{url:"/_next/static/chunks/app/(protected)/chat/page-c4c1bf8f85185286.js",revision:"c4c1bf8f85185286"},{url:"/_next/static/chunks/app/(protected)/chat/webrtc/page-92e9881cc0a8e65f.js",revision:"92e9881cc0a8e65f"},{url:"/_next/static/chunks/app/(protected)/devices/page-a8ed2a4030f47133.js",revision:"a8ed2a4030f47133"},{url:"/_next/static/chunks/app/(protected)/friends/page-200d56d892eab762.js",revision:"200d56d892eab762"},{url:"/_next/static/chunks/app/(protected)/group-chat/%5BgroupId%5D/page-c5975e49d55c8504.js",revision:"c5975e49d55c8504"},{url:"/_next/static/chunks/app/(protected)/group-chat/page-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/app/(protected)/home/page-48f2eafe08d518fe.js",revision:"48f2eafe08d518fe"},{url:"/_next/static/chunks/app/(protected)/layout-c6a9a9127d2e0919.js",revision:"c6a9a9127d2e0919"},{url:"/_next/static/chunks/app/(protected)/profile/page-6c11431791531feb.js",revision:"6c11431791531feb"},{url:"/_next/static/chunks/app/(protected)/settings/page-904d57f5c9439f7a.js",revision:"904d57f5c9439f7a"},{url:"/_next/static/chunks/app/(protected)/video-meeting/%5BroomId%5D/page-f3a164699c699087.js",revision:"f3a164699c699087"},{url:"/_next/static/chunks/app/(protected)/video-meeting/page-0e2c363da945578e.js",revision:"0e2c363da945578e"},{url:"/_next/static/chunks/app/_global-error/page-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/app/_not-found/page-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/app/layout-bfdc4c3bdcbd806c.js",revision:"bfdc4c3bdcbd806c"},{url:"/_next/static/chunks/app/not-found-c2d7c6ee29b95481.js",revision:"c2d7c6ee29b95481"},{url:"/_next/static/chunks/app/page-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/dd0c4330-f49bb9fabd6e0e8a.js",revision:"f49bb9fabd6e0e8a"},{url:"/_next/static/chunks/framework-9031881f80fe3187.js",revision:"9031881f80fe3187"},{url:"/_next/static/chunks/main-59de85fe2e7aa26a.js",revision:"59de85fe2e7aa26a"},{url:"/_next/static/chunks/main-app-b490994734085d4a.js",revision:"b490994734085d4a"},{url:"/_next/static/chunks/next/dist/client/components/builtin/app-error-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/next/dist/client/components/builtin/forbidden-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/next/dist/client/components/builtin/global-error-f64329fce4510eea.js",revision:"f64329fce4510eea"},{url:"/_next/static/chunks/next/dist/client/components/builtin/unauthorized-e20f3ce4955a6e51.js",revision:"e20f3ce4955a6e51"},{url:"/_next/static/chunks/polyfills-42372ed130431b0a.js",revision:"846118c33b2c0e922d7b3a7676f81f6f"},{url:"/_next/static/chunks/webpack-f1c518dcd38c4d2c.js",revision:"f1c518dcd38c4d2c"},{url:"/_next/static/css/f9545c2e740a3942.css",revision:"f9545c2e740a3942"},{url:"/_next/static/wDALCiFw5g2K_hX1BEwKt/_buildManifest.js",revision:"2c12abcfdd3ac0e8289452113added8f"},{url:"/_next/static/wDALCiFw5g2K_hX1BEwKt/_ssgManifest.js",revision:"b6652df95db52feb4daf4eca35380933"},{url:"/favicon.ico",revision:"5c1028350a39fb9e5a9bfbe280326e28"},{url:"/logo.svg",revision:"a60492205dfc01c42aff8407fc962896"},{url:"/manifest.json",revision:"396727095f01b2cb35751ec2833d8643"},{url:"/robots.txt",revision:"243b03ecba82dde9612cd5163145a86d"},{url:"/swe-worker-5c72df51bb1f6ee0.js",revision:"76fdd3369f623a3edcf74ce2200bfdd0"}],{ignoreURLParametersMatching:[/^utm_/,/^fbclid$/]}),e.cleanupOutdatedCaches(),e.registerRoute("/",new e.NetworkFirst({cacheName:"start-url",plugins:[{cacheWillUpdate:async({response:e})=>e&&"opaqueredirect"===e.type?new Response(e.body,{status:200,statusText:"OK",headers:e.headers}):e}]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,new e.CacheFirst({cacheName:"google-fonts-webfonts",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:31536e3})]}),"GET"),e.registerRoute(/^https:\/\/fonts\.(?:googleapis)\.com\/.*/i,new e.StaleWhileRevalidate({cacheName:"google-fonts-stylesheets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,new e.StaleWhileRevalidate({cacheName:"static-font-assets",plugins:[new e.ExpirationPlugin({maxEntries:4,maxAgeSeconds:604800})]}),"GET"),e.registerRoute(/\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,new e.StaleWhileRevalidate({cacheName:"static-image-assets",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:2592e3})]}),"GET"),e.registerRoute(/\/_next\/static.+\.js$/i,new e.CacheFirst({cacheName:"next-static-js-assets",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/image\?url=.+$/i,new e.StaleWhileRevalidate({cacheName:"next-image",plugins:[new e.ExpirationPlugin({maxEntries:64,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp3|wav|ogg)$/i,new e.CacheFirst({cacheName:"static-audio-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:mp4|webm)$/i,new e.CacheFirst({cacheName:"static-video-assets",plugins:[new e.RangeRequestsPlugin,new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:js)$/i,new e.StaleWhileRevalidate({cacheName:"static-js-assets",plugins:[new e.ExpirationPlugin({maxEntries:48,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:css|less)$/i,new e.StaleWhileRevalidate({cacheName:"static-style-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\/_next\/data\/.+\/.+\.json$/i,new e.StaleWhileRevalidate({cacheName:"next-data",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(/\.(?:json|xml|csv)$/i,new e.NetworkFirst({cacheName:"static-data-assets",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({sameOrigin:e,url:{pathname:s}})=>!(!e||s.startsWith("/api/auth/callback")||!s.startsWith("/api/")),new e.NetworkFirst({cacheName:"apis",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:16,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({request:e,url:{pathname:s},sameOrigin:c})=>"1"===e.headers.get("RSC")&&"1"===e.headers.get("Next-Router-Prefetch")&&c&&!s.startsWith("/api/"),new e.NetworkFirst({cacheName:"pages-rsc-prefetch",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({request:e,url:{pathname:s},sameOrigin:c})=>"1"===e.headers.get("RSC")&&c&&!s.startsWith("/api/"),new e.NetworkFirst({cacheName:"pages-rsc",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({url:{pathname:e},sameOrigin:s})=>s&&!e.startsWith("/api/"),new e.NetworkFirst({cacheName:"pages",plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:86400})]}),"GET"),e.registerRoute(({sameOrigin:e})=>!e,new e.NetworkFirst({cacheName:"cross-origin",networkTimeoutSeconds:10,plugins:[new e.ExpirationPlugin({maxEntries:32,maxAgeSeconds:3600})]}),"GET"),self.__WB_DISABLE_DEV_LOGS=!0});
+/**
+ * Huanvae Chat - Service Worker
+ * 
+ * @version 1.0.0
+ * @description PWA 离线缓存、版本更新、推送通知
+ */
+
+// ============================================
+// 版本配置
+// ============================================
+const SW_VERSION = '1.0.1'
+const CACHE_PREFIX = 'huanvae-chat'
+const STATIC_CACHE = `${CACHE_PREFIX}-static-v${SW_VERSION}`
+const DYNAMIC_CACHE = `${CACHE_PREFIX}-dynamic-v${SW_VERSION}`
+const IMAGE_CACHE = `${CACHE_PREFIX}-images-v${SW_VERSION}`
+
+// 当前所有有效的缓存名称
+const VALID_CACHES = [STATIC_CACHE, DYNAMIC_CACHE, IMAGE_CACHE]
+
+// ============================================
+// 预缓存资源列表
+// ============================================
+const PRECACHE_ASSETS = [
+  '/',
+  '/chat/',
+  '/login/',
+  '/register/',
+  '/manifest.json',
+  '/logo.svg',
+  '/favicon.ico'
+]
+
+// 不缓存的路径
+const NO_CACHE_PATHS = [
+  '/api/',
+  '/_next/webpack-hmr',
+  '/sw.js'
+]
+
+// ============================================
+// 安装事件
+// ============================================
+self.addEventListener('install', (event) => {
+  console.log(`[SW ${SW_VERSION}] 安装中...`)
+  
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(STATIC_CACHE)
+      
+      // 逐个缓存资源，避免单个失败导致全部失败
+      const results = await Promise.allSettled(
+        PRECACHE_ASSETS.map(async (url) => {
+          try {
+            const response = await fetch(url, { cache: 'no-store' })
+            if (response.ok) {
+              await cache.put(url, response)
+              return { url, success: true }
+            }
+            return { url, success: false, reason: response.status }
+          } catch (error) {
+            return { url, success: false, reason: error.message }
+          }
+        })
+      )
+      
+      const succeeded = results.filter(r => r.status === 'fulfilled' && r.value.success).length
+      console.log(`[SW ${SW_VERSION}] 预缓存完成: ${succeeded}/${PRECACHE_ASSETS.length}`)
+      
+      // 立即激活新版本
+      await self.skipWaiting()
+      console.log(`[SW ${SW_VERSION}] 安装完成，准备激活`)
+    })()
+  )
+})
+
+// ============================================
+// 激活事件
+// ============================================
+self.addEventListener('activate', (event) => {
+  console.log(`[SW ${SW_VERSION}] 激活中...`)
+  
+  event.waitUntil(
+    (async () => {
+      // 清理旧版本缓存
+      const cacheNames = await caches.keys()
+      const deletions = await Promise.all(
+        cacheNames
+          .filter(name => name.startsWith(CACHE_PREFIX) && !VALID_CACHES.includes(name))
+          .map(async (name) => {
+            console.log(`[SW ${SW_VERSION}] 删除旧缓存: ${name}`)
+            return caches.delete(name)
+          })
+      )
+      
+      if (deletions.length > 0) {
+        console.log(`[SW ${SW_VERSION}] 已清理 ${deletions.length} 个旧缓存`)
+      }
+      
+      // 立即接管所有客户端
+      await self.clients.claim()
+      
+      // 通知所有客户端 SW 已更新
+      const clients = await self.clients.matchAll({ type: 'window' })
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'SW_ACTIVATED',
+          version: SW_VERSION
+        })
+      })
+      
+      console.log(`[SW ${SW_VERSION}] 激活完成，已接管 ${clients.length} 个客户端`)
+    })()
+  )
+})
+
+// ============================================
+// 请求拦截
+// ============================================
+self.addEventListener('fetch', (event) => {
+  const { request } = event
+  const url = new URL(request.url)
+  
+  // 跳过非 HTTP(S) 请求
+  if (!url.protocol.startsWith('http')) return
+  
+  // 跳过跨域请求
+  if (url.origin !== self.location.origin) return
+  
+  // 跳过不缓存的路径
+  if (NO_CACHE_PATHS.some(path => url.pathname.startsWith(path))) return
+  
+  // 跳过 WebSocket
+  if (request.headers.get('upgrade') === 'websocket') return
+  
+  // 跳过非 GET 请求（POST、PUT、DELETE 等不能被缓存）
+  if (request.method !== 'GET') return
+  
+  // 根据请求类型选择策略
+  if (request.mode === 'navigate') {
+    // HTML 页面：网络优先
+    event.respondWith(networkFirst(request, DYNAMIC_CACHE))
+  } else if (isImageRequest(request)) {
+    // 图片：缓存优先，长期缓存
+    event.respondWith(cacheFirst(request, IMAGE_CACHE))
+  } else if (isStaticAsset(url.pathname)) {
+    // JS/CSS 等静态资源：缓存优先
+    event.respondWith(cacheFirst(request, STATIC_CACHE))
+  } else {
+    // 其他请求：Stale-While-Revalidate
+    event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE))
+  }
+})
+
+// ============================================
+// 缓存策略
+// ============================================
+
+/**
+ * 网络优先策略
+ * 适用于需要最新数据的请求（如 HTML 页面）
+ */
+async function networkFirst(request, cacheName) {
+  try {
+    const response = await fetch(request)
+    
+    if (response.ok && response.type === 'basic') {
+      const cache = await caches.open(cacheName)
+      cache.put(request, response.clone())
+    }
+    
+    return response
+  } catch (error) {
+    console.log(`[SW] 网络请求失败，尝试缓存: ${request.url}`)
+    
+    const cached = await caches.match(request)
+    if (cached) return cached
+    
+    // 返回离线页面
+    const offlinePage = await caches.match('/')
+    if (offlinePage) return offlinePage
+    
+    return new Response('离线状态 - 请检查网络连接', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+  }
+}
+
+/**
+ * 缓存优先策略
+ * 适用于静态资源
+ */
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request)
+  if (cached) return cached
+  
+  try {
+    const response = await fetch(request)
+    
+    if (response.ok) {
+      const cache = await caches.open(cacheName)
+      cache.put(request, response.clone())
+    }
+    
+    return response
+  } catch (error) {
+    return new Response('资源不可用', { status: 503 })
+  }
+}
+
+/**
+ * Stale-While-Revalidate 策略
+ * 先返回缓存，同时后台更新
+ */
+async function staleWhileRevalidate(request, cacheName) {
+  const cached = await caches.match(request)
+  
+  const fetchPromise = (async () => {
+    try {
+      const response = await fetch(request)
+      
+      if (response.ok) {
+        const cache = await caches.open(cacheName)
+        cache.put(request, response.clone())
+      }
+      
+      return response
+    } catch (error) {
+      return cached || new Response('离线状态', { status: 503 })
+    }
+  })()
+  
+  return cached || fetchPromise
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+function isStaticAsset(pathname) {
+  return /\.(js|css|woff2?|ttf|eot|otf)$/i.test(pathname)
+}
+
+function isImageRequest(request) {
+  const accept = request.headers.get('accept') || ''
+  if (accept.includes('image/')) return true
+  
+  const url = new URL(request.url)
+  return /\.(png|jpe?g|gif|svg|ico|webp|avif)$/i.test(url.pathname)
+}
+
+// ============================================
+// 消息处理
+// ============================================
+self.addEventListener('message', (event) => {
+  const { type } = event.data || {}
+  
+  switch (type) {
+    case 'SKIP_WAITING':
+      console.log(`[SW ${SW_VERSION}] 收到 SKIP_WAITING，立即激活`)
+      self.skipWaiting()
+      break
+      
+    case 'GET_VERSION':
+      event.ports[0]?.postMessage({
+        version: SW_VERSION,
+        caches: VALID_CACHES
+      })
+      break
+      
+    case 'CLEAR_CACHE':
+      caches.keys()
+        .then(names => Promise.all(names.map(n => caches.delete(n))))
+        .then(() => {
+          console.log(`[SW ${SW_VERSION}] 已清除所有缓存`)
+          event.ports[0]?.postMessage({ success: true })
+        })
+        .catch(error => {
+          console.error(`[SW ${SW_VERSION}] 清除缓存失败:`, error)
+          event.ports[0]?.postMessage({ success: false, error: error.message })
+        })
+      break
+      
+    case 'GET_CACHE_SIZE':
+      getCacheSize().then(size => {
+        event.ports[0]?.postMessage({ size })
+      })
+      break
+      
+    default:
+      console.log(`[SW ${SW_VERSION}] 未知消息类型:`, type)
+  }
+})
+
+/**
+ * 获取缓存大小
+ */
+async function getCacheSize() {
+  if (!('storage' in navigator && 'estimate' in navigator.storage)) {
+    return null
+  }
+  
+  try {
+    const { usage, quota } = await navigator.storage.estimate()
+    return { usage, quota, percent: ((usage / quota) * 100).toFixed(2) }
+  } catch {
+    return null
+  }
+}
+
+// ============================================
+// 推送通知
+// ============================================
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+  
+  try {
+    const data = event.data.json()
+    
+    const options = {
+      body: data.body || '您有新消息',
+      icon: '/logo.svg',
+      badge: '/logo.svg',
+      vibrate: [100, 50, 100],
+      data: {
+        url: data.url || '/chat/',
+        ...data.data
+      },
+      actions: data.actions || [
+        { action: 'open', title: '查看' },
+        { action: 'dismiss', title: '忽略' }
+      ],
+      tag: data.tag || 'huanvae-notification',
+      renotify: !!data.renotify,
+      requireInteraction: !!data.requireInteraction
+    }
+    
+    event.waitUntil(
+      self.registration.showNotification(data.title || 'Huanvae Chat', options)
+    )
+  } catch (error) {
+    console.error(`[SW ${SW_VERSION}] 推送处理失败:`, error)
+  }
+})
+
+// 通知点击
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  
+  if (event.action === 'dismiss') return
+  
+  const url = event.notification.data?.url || '/chat/'
+  
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(windowClients => {
+        // 查找已打开的窗口
+        for (const client of windowClients) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            client.navigate(url)
+            return client.focus()
+          }
+        }
+        // 打开新窗口
+        return self.clients.openWindow?.(url)
+      })
+  )
+})
+
+// 通知关闭
+self.addEventListener('notificationclose', (event) => {
+  // 可以用于统计通知被忽略的情况
+  console.log(`[SW ${SW_VERSION}] 通知被关闭:`, event.notification.tag)
+})
+
+// ============================================
+// 后台同步
+// ============================================
+self.addEventListener('sync', (event) => {
+  console.log(`[SW ${SW_VERSION}] 后台同步:`, event.tag)
+  
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(syncPendingMessages())
+  }
+})
+
+async function syncPendingMessages() {
+  // 从 IndexedDB 获取待发送的消息并发送
+  // 这里是占位实现，实际需要与应用逻辑集成
+  console.log(`[SW ${SW_VERSION}] 同步待发送消息...`)
+}
+
+// ============================================
+console.log(`[SW ${SW_VERSION}] Service Worker 已加载`)

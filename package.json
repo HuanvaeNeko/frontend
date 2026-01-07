@@ -2,13 +2,15 @@
   "name": "huanvae-chat",
   "type": "module",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "dev": "next dev --turbopack --port 5173",
+    "prebuild": "node scripts/generate-sw-version.js",
     "build": "next build",
     "start": "next start --port 5173",
     "lint": "eslint .",
-    "preview": "npx wrangler pages dev out"
+    "preview": "npx wrangler pages dev out",
+    "sw:version": "node scripts/generate-sw-version.js"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

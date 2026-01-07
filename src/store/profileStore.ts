@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/profile'
+import { isAuthError } from '../api/apiClient'
 
 interface ProfileState {
   profile: UserProfile | null
@@ -16,6 +17,15 @@ interface ProfileState {
   clearError: () => void
 }
 
+/**
+ * 静默重定向到登录页面
+ */
+const silentRedirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
+
 export const useProfileStore = create<ProfileState>()(
   persist(
     (set, get) => ({
@@ -29,6 +39,12 @@ export const useProfileStore = create<ProfileState>()(
           const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
+          // 认证错误静默处理，不显示给用户
+          if (error instanceof Error && isAuthError(error)) {
+            set({ isLoading: false })
+            silentRedirectToLogin()
+            return
+          }
           const errorMessage = error instanceof Error ? error.message : '加载个人资料失败'
           set({ error: errorMessage, isLoading: false })
           throw error
@@ -43,6 +59,11 @@ export const useProfileStore = create<ProfileState>()(
           const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
+          if (error instanceof Error && isAuthError(error)) {
+            set({ isLoading: false })
+            silentRedirectToLogin()
+            return
+          }
           const errorMessage = error instanceof Error ? error.message : '更新个人资料失败'
           set({ error: errorMessage, isLoading: false })
           throw error
@@ -64,6 +85,11 @@ export const useProfileStore = create<ProfileState>()(
             set({ isLoading: false })
           }
         } catch (error) {
+          if (error instanceof Error && isAuthError(error)) {
+            set({ isLoading: false })
+            silentRedirectToLogin()
+            return
+          }
           const errorMessage = error instanceof Error ? error.message : '上传头像失败'
           set({ error: errorMessage, isLoading: false })
           throw error
@@ -76,6 +102,11 @@ export const useProfileStore = create<ProfileState>()(
           await profileApi.changePassword(passwordData)
           set({ isLoading: false })
         } catch (error) {
+          if (error instanceof Error && isAuthError(error)) {
+            set({ isLoading: false })
+            silentRedirectToLogin()
+            return
+          }
           const errorMessage = error instanceof Error ? error.message : '修改密码失败'
           set({ error: errorMessage, isLoading: false })
           throw error

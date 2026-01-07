@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { Message } from '../types'
 import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '../api/messages'
+import { isAuthError } from '../api/apiClient'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 
@@ -211,6 +212,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.log('✅ 消息同步完成:', result.conversations.length, '个会话')
       return result.conversations
     } catch (error) {
+      // 认证错误静默处理
+      if (error instanceof Error && isAuthError(error)) {
+        console.warn('消息同步因认证问题跳过')
+        return []
+      }
       console.error('消息同步失败:', error)
       throw error
     } finally {

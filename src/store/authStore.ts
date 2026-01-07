@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
-import { getAuthApiUrl } from '../utils/apiConfig'
+import { getAuthApiUrl } from '../lib/apiConfig'
 
 const AUTH_BASE_URL = getAuthApiUrl()
 

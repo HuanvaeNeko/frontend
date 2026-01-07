@@ -250,7 +250,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               {filteredFriends.map((friend, index) => (
                 <motion.div
                   key={friend.user_id}
-                  className="conversation-item"
+                  className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors hover:bg-blue-100/20"
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"

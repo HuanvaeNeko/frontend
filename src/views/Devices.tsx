@@ -10,11 +10,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { authApi } from '../api/auth'
 import { useToast } from '../hooks/use-toast'
 import { useAuthStore } from '../store/authStore'
-import { 
-  fadeInVariants, 
-  staggerContainer,
-  staggerItem,
-} from '../utils/motionAnimations'
+import { BackgroundOrbs } from '@/components/ui/glass'
 
 interface Device {
   device_id: string
@@ -65,7 +61,6 @@ export default function Devices() {
       await authApi.revokeDevice(deviceId)
       
       if (isCurrent) {
-        // 如果删除的是当前设备，清除认证并跳转到登录页
         toast({
           title: '已退出登录',
           description: '当前设备已被移除，请重新登录',
@@ -77,7 +72,6 @@ export default function Devices() {
           title: '成功',
           description: '设备已移除',
         })
-        // 重新加载设备列表
         await loadDevices()
       }
     } catch (error) {
@@ -91,7 +85,6 @@ export default function Devices() {
     }
   }
 
-  // 根据设备信息判断设备类型图标
   const getDeviceIcon = (deviceInfo: string) => {
     const info = deviceInfo.toLowerCase()
     if (info.includes('mobile') || info.includes('android') || info.includes('iphone') || info.includes('ipad')) {
@@ -103,9 +96,7 @@ export default function Devices() {
     return Monitor
   }
 
-  // 解析设备信息获取可读名称
   const getDeviceName = (deviceInfo: string) => {
-    // 尝试从 User-Agent 中提取浏览器和系统信息
     if (deviceInfo.includes('Chrome')) {
       if (deviceInfo.includes('Windows')) return 'Windows Chrome'
       if (deviceInfo.includes('Mac')) return 'Mac Chrome'
@@ -116,23 +107,16 @@ export default function Devices() {
     if (deviceInfo.includes('Firefox')) return 'Firefox 浏览器'
     if (deviceInfo.includes('Safari') && !deviceInfo.includes('Chrome')) return 'Safari 浏览器'
     if (deviceInfo.includes('Edge')) return 'Edge 浏览器'
-    
-    // 如果无法识别，返回截断的设备信息
     return deviceInfo.length > 30 ? deviceInfo.substring(0, 30) + '...' : deviceInfo
   }
 
-  // 格式化时间
   const formatTime = (timeString: string | null | undefined) => {
     if (!timeString) return '未知'
-    
     const date = new Date(timeString)
-    
-    // 检查日期是否有效
     if (isNaN(date.getTime())) return '未知'
     
     const now = new Date()
     const diff = now.getTime() - date.getTime()
-    
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
@@ -141,81 +125,84 @@ export default function Devices() {
     if (minutes < 60) return `${minutes} 分钟前`
     if (hours < 24) return `${hours} 小时前`
     if (days < 7) return `${days} 天前`
-    
     return date.toLocaleDateString('zh-CN')
   }
 
   return (
-    <div className="devices-page">
-      {/* 背景装饰球 */}
-      <div className="devices-bg-orb orb-1"></div>
-      <div className="devices-bg-orb orb-2"></div>
-      <div className="devices-bg-orb orb-3"></div>
+    <div className="min-h-screen relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100">
+      <BackgroundOrbs count={3} />
       
-      <div className="devices-container">
+      <div className="relative z-10 max-w-[1000px] mx-auto px-6 py-8">
         <motion.div 
           className="mb-6"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
         >
-          <button 
+          <motion.button 
             onClick={() => router.push('/chat')}
-            className="back-button"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/60 backdrop-blur-lg border border-blue-200/30 rounded-xl text-slate-600 transition-all hover:bg-white/90 hover:-translate-x-1"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
             <ArrowLeft size={18} />
             返回首页
-          </button>
+          </motion.button>
         </motion.div>
 
         <motion.div
-          variants={fadeInVariants}
-          initial="hidden"
-          animate="visible"
-          className="page-header"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between mb-8"
         >
-          <div className="header-left">
-            <div className="header-icon">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-[14px] bg-gradient-to-br from-blue-500 to-blue-400 flex items-center justify-center text-white shadow-[0_4px_12px_rgba(59,130,246,0.3)]">
               <Laptop size={24} />
             </div>
             <div>
-              <h1>设备管理</h1>
-              <p>管理您的登录设备</p>
+              <h1 className="text-2xl font-bold text-slate-700">设备管理</h1>
+              <p className="text-sm text-slate-500 mt-1">管理您的登录设备</p>
             </div>
           </div>
-          <button 
+          <motion.button 
             onClick={loadDevices}
             disabled={loading}
-            className="refresh-button"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/60 backdrop-blur-lg border border-blue-200/30 rounded-xl text-slate-600 transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             刷新
-          </button>
+          </motion.button>
         </motion.div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
           </div>
         ) : devices.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-muted-foreground">
+          <Card className="bg-white/70 backdrop-blur-lg border-blue-200/30">
+            <CardContent className="py-10 text-center text-slate-500">
               <AlertTriangle size={48} className="mx-auto mb-4 opacity-50" />
               <p>暂无设备信息</p>
             </CardContent>
           </Card>
         ) : (
           <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             className="space-y-4"
           >
-            {devices.map((device) => {
+            {devices.map((device, index) => {
               const DeviceIcon = getDeviceIcon(device.device_info)
               
               return (
-                <motion.div key={device.device_id} variants={staggerItem}>
-                  <Card>
+                <motion.div 
+                  key={device.device_id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Card className="bg-white/70 backdrop-blur-lg border-blue-200/30">
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between">
                         <div className="flex gap-4">
@@ -223,7 +210,7 @@ export default function Devices() {
                             <DeviceIcon size={32} className="text-blue-500" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <h3 className="text-lg font-semibold flex items-center gap-2 text-slate-700">
                               {getDeviceName(device.device_info)}
                               {device.is_current && (
                                 <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
@@ -231,7 +218,7 @@ export default function Devices() {
                                 </span>
                               )}
                             </h3>
-                            <div className="space-y-1 text-sm text-muted-foreground mt-1">
+                            <div className="space-y-1 text-sm text-slate-500 mt-1">
                               <div className="flex items-center gap-2">
                                 <MapPin size={14} />
                                 IP: {device.ip_address || '未知'}
@@ -263,12 +250,12 @@ export default function Devices() {
                             </Button>
                           </AlertDialog.Trigger>
                           <AlertDialog.Portal>
-                            <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-                            <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-full max-w-md shadow-xl z-50">
-                              <AlertDialog.Title className="text-lg font-semibold mb-2">
+                            <AlertDialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
+                            <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl p-6 w-full max-w-md shadow-xl z-50">
+                              <AlertDialog.Title className="text-lg font-semibold mb-2 text-slate-700">
                                 {device.is_current ? '确认退出登录？' : '确认移除此设备？'}
                               </AlertDialog.Title>
-                              <AlertDialog.Description className="text-sm text-muted-foreground mb-4">
+                              <AlertDialog.Description className="text-sm text-slate-500 mb-4">
                                 {device.is_current 
                                   ? '退出后需要重新登录才能继续使用'
                                   : '移除后该设备将无法继续访问，需要重新登录'}
@@ -298,13 +285,13 @@ export default function Devices() {
           </motion.div>
         )}
 
-        <Card className="mt-6 glass-card">
+        <Card className="mt-6 bg-white/70 backdrop-blur-lg border-blue-200/30">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-yellow-500 mt-0.5" />
               <div>
-                <p className="font-medium">安全提示</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="font-medium text-slate-700">安全提示</p>
+                <p className="text-sm text-slate-500 mt-1">
                   定期检查您的登录设备，如发现异常设备请立即移除并修改密码。
                   建议在公共设备上使用后及时退出登录。
                 </p>
@@ -313,151 +300,6 @@ export default function Devices() {
           </CardContent>
         </Card>
       </div>
-
-      <style>{`
-        .devices-page {
-          min-height: 100vh;
-          position: relative;
-          overflow-x: hidden;
-          background: linear-gradient(
-            135deg,
-            #e0f2fe 0%,
-            #f0f9ff 25%,
-            #ffffff 50%,
-            #f5f3ff 75%,
-            #ede9fe 100%
-          );
-        }
-
-        .devices-bg-orb {
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          opacity: 0.5;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .devices-bg-orb.orb-1 {
-          width: 400px;
-          height: 400px;
-          background: linear-gradient(135deg, #93c5fd, #60a5fa);
-          top: -100px;
-          right: -100px;
-        }
-
-        .devices-bg-orb.orb-2 {
-          width: 300px;
-          height: 300px;
-          background: linear-gradient(135deg, #c4b5fd, #a78bfa);
-          bottom: -80px;
-          left: 10%;
-        }
-
-        .devices-bg-orb.orb-3 {
-          width: 200px;
-          height: 200px;
-          background: linear-gradient(135deg, #a5b4fc, #818cf8);
-          top: 50%;
-          left: -50px;
-        }
-
-        .devices-container {
-          position: relative;
-          z-index: 1;
-          max-width: 1000px;
-          margin: 0 auto;
-          padding: 32px 24px;
-        }
-
-        .back-button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          background: rgba(255, 255, 255, 0.6);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(147, 197, 253, 0.3);
-          border-radius: 12px;
-          color: #475569;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .back-button:hover {
-          background: rgba(255, 255, 255, 0.9);
-          transform: translateX(-4px);
-        }
-
-        .page-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 32px;
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-
-        .header-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 14px;
-          background: linear-gradient(135deg, #3b82f6, #60a5fa);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-
-        .page-header h1 {
-          font-size: 28px;
-          font-weight: 700;
-          color: #1e3a5f;
-          margin: 0;
-        }
-
-        .page-header p {
-          font-size: 14px;
-          color: #64748b;
-          margin: 4px 0 0 0;
-        }
-
-        .refresh-button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          background: rgba(255, 255, 255, 0.6);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(147, 197, 253, 0.3);
-          border-radius: 12px;
-          color: #475569;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .refresh-button:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.9);
-          border-color: #3b82f6;
-          color: #3b82f6;
-        }
-
-        .refresh-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .glass-card {
-          background: rgba(255, 255, 255, 0.7) !important;
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(147, 197, 253, 0.3) !important;
-        }
-      `}</style>
     </div>
   )
 }

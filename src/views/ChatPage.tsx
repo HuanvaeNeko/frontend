@@ -29,6 +29,7 @@ import GroupList from '../components/chat/GroupList'
 import ChatWindow from '../components/chat/ChatWindow'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
+import { cn } from '@/lib/utils'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 
@@ -360,36 +361,44 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="chat-app">
+    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100">
       {/* 背景装饰球 */}
-      <div className="chat-bg-orb orb-1" />
-      <div className="chat-bg-orb orb-2" />
-      <div className="chat-bg-orb orb-3" />
+      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 -top-24 -right-24 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
+      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 -bottom-20 left-[20%] blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow-reverse" />
+      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 top-1/2 -left-12 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
 
       {/* 左侧边栏 */}
-      <aside className="chat-sidebar">
+      <aside className="w-[68px] h-full flex flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-2xl border-r border-blue-200/25 shadow-[2px_0_20px_rgba(147,197,253,0.08)]">
         {/* 用户头像 */}
-        <div className="sidebar-avatar">
-          <div className="avatar-wrapper" onClick={() => router.push('/profile')}>
+        <div className="relative mb-7">
+          <motion.div 
+            className="w-[42px] h-[42px] rounded-xl overflow-hidden bg-gradient-to-br from-white/90 to-white/60 border-2 border-white/95 shadow-[0_4px_12px_rgba(59,130,246,0.12),0_2px_6px_rgba(147,197,253,0.15)] flex items-center justify-center cursor-pointer transition-all duration-200"
+            onClick={() => router.push('/profile')}
+            whileHover={{ scale: 1.08, y: -2 }}
+          >
             {profile?.user_avatar_url || user?.avatar_url ? (
-              <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" />
+              <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" className="w-full h-full object-cover" />
             ) : (
-              <User className="w-5 h-5 text-[#94a3b8]" />
+              <User className="w-5 h-5 text-slate-400" />
             )}
-          </div>
-          {connected && <div className="online-indicator" />}
+          </motion.div>
+          {connected && (
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gradient-to-br from-green-500 to-green-600 border-2 border-white rounded-full shadow-[0_2px_8px_rgba(34,197,94,0.45)] animate-pulse-online" />
+          )}
         </div>
 
         {/* 导航按钮 */}
-        <nav className="sidebar-nav">
+        <nav className="flex flex-col gap-2 flex-1">
           {tabs.map((tab) => (
             <motion.button
               key={tab.id}
-              className={`nav-btn ${activeTab === tab.id ? 'active' : ''}`}
+              className={cn(
+                "w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200 relative",
+                activeTab === tab.id && "bg-gradient-to-br from-blue-500/20 to-blue-300/25 text-blue-600 shadow-[0_2px_8px_rgba(59,130,246,0.15)]"
+              )}
               onClick={() => { 
                 setActiveTab(tab.id)
                 setSubTab('main')
-                // 更新 URL 路径
                 const pathMap: Record<TabType, string> = {
                   friends: '/chat/friends',
                   groups: '/chat/groups',
@@ -399,53 +408,57 @@ export default function ChatPage() {
                 router.push(pathMap[tab.id])
               }}
               title={tab.label}
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
               whileTap={{ scale: 0.95 }}
             >
-              <tab.icon />
+              <tab.icon className="w-[22px] h-[22px]" />
+              {activeTab === tab.id && (
+                <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-[3px] h-5 bg-gradient-to-b from-blue-500 to-blue-400 rounded-r-sm" />
+              )}
             </motion.button>
           ))}
         </nav>
 
         {/* 底部按钮 */}
-        <div className="sidebar-bottom">
+        <div className="flex flex-col gap-2">
           <motion.button
-            className="nav-btn"
+            className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200"
             onClick={() => router.push('/settings')}
             title="设置"
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
             whileTap={{ scale: 0.95 }}
           >
-            <Settings />
+            <Settings className="w-[22px] h-[22px]" />
           </motion.button>
           <motion.button
-            className="nav-btn logout"
+            className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200 hover:bg-red-500/10 hover:text-red-600"
             onClick={handleLogout}
             title="退出"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <LogOut />
+            <LogOut className="w-[22px] h-[22px]" />
           </motion.button>
         </div>
       </aside>
 
       {/* 中间会话列表 */}
-      <div className="chat-list-container" style={{ width: 280 }}>
-        <div className="chat-list-panel">
+      <div className="relative h-full flex z-10 min-w-[240px] max-w-[400px] w-[280px]">
+        <div className="w-full h-full flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
           {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
-            <div className="chat-list-header" style={{ flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
+            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 bg-white/20">
               {/* 子标签导航 */}
               <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
                   <button
                     key={tab.id}
-                    className={`flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
+                    className={cn(
+                      "flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1",
                       subTab === tab.id
-                        ? 'bg-[var(--blue-alpha-medium)] text-[var(--color-blue-600)]'
-                        : 'text-[var(--color-text-muted)] hover:bg-[var(--blue-alpha-subtle)]'
-                    }`}
+                        ? "bg-blue-200/30 text-blue-600"
+                        : "text-slate-500 hover:bg-blue-100/20"
+                    )}
                     onClick={() => setSubTab(tab.id)}
                   >
                     <tab.icon className="w-3.5 h-3.5" />
@@ -456,13 +469,14 @@ export default function ChatPage() {
 
               {/* 搜索框 */}
               {subTab === 'main' && (
-                <div className="search-box">
-                  <Search className="w-4 h-4" />
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 border border-white/80 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
                     type="text"
                     placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 min-w-0 border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
                   />
                 </div>
               )}
@@ -471,13 +485,13 @@ export default function ChatPage() {
 
           {/* WebRTC 头部 */}
           {activeTab === 'webrtc' && (
-            <div className="chat-list-header">
-              <h2 className="font-semibold text-[var(--color-text-primary)]">视频会议</h2>
+            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 bg-white/20">
+              <h2 className="font-semibold text-slate-700">视频会议</h2>
             </div>
           )}
 
           {/* 列表内容 */}
-          <div className="conversation-list">
+          <div className="flex-1 overflow-y-auto p-2">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
@@ -530,7 +544,7 @@ export default function ChatPage() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
                   transition={{ duration: 0.15 }}
-                  className="p-4 text-center text-sm text-[var(--color-text-muted)]"
+                  className="p-4 text-center text-sm text-slate-500"
                 >
                   请在右侧创建或加入视频房间
                 </motion.div>
@@ -541,7 +555,7 @@ export default function ChatPage() {
       </div>
 
       {/* 右侧聊天窗口 */}
-      <div className="chat-window">
+      <div className="flex-1 h-full min-h-0 flex flex-col z-10 bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg">
         <AnimatePresence mode="wait">
           {activeTab === 'webrtc' ? (
             <motion.div
