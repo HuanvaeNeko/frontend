@@ -41,10 +41,16 @@ export default function AiChat() {
   const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
   }
 
   useEffect(() => {
@@ -209,12 +215,12 @@ export default function AiChat() {
   ]
 
   return (
-    <div className="w-full min-h-screen flex flex-col relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
+    <div className="w-full h-full flex flex-col relative overflow-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
       {/* 背景装饰球 */}
       <BackgroundOrbs count={3} />
 
       {/* 顶部导航栏 */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-5 py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/30">
+      <header className="sticky top-0 z-50 shrink-0 flex items-center justify-between px-5 py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/30">
         <div className="flex items-center gap-3">
           <motion.button 
             className="w-9 h-9 rounded-[10px] bg-white/60 border border-blue-200/30 flex items-center justify-center cursor-pointer text-slate-600 transition-all hover:bg-white/90 hover:-translate-x-0.5"
@@ -285,7 +291,7 @@ export default function AiChat() {
       </AnimatePresence>
 
       {/* 聊天消息区域 */}
-      <main className="flex-1 overflow-y-auto p-5 pt-20 flex flex-col gap-4 z-[1]">
+      <main ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-5 pt-20 flex flex-col gap-4 z-[1]">
         <AnimatePresence>
           {messages.map((message, index) => (
             <motion.div
@@ -354,7 +360,7 @@ export default function AiChat() {
       </main>
 
       {/* 输入区域 */}
-      <footer className="sticky bottom-0 z-50 px-6 pt-5 pb-6 bg-gradient-to-t from-white/[0.85] to-white/75 backdrop-blur-2xl border-t border-blue-200/20 shadow-[0_-4px_20px_rgba(147,197,253,0.08)]">
+      <footer className="shrink-0 z-50 px-6 pt-5 pb-6 bg-gradient-to-t from-white/[0.85] to-white/75 backdrop-blur-2xl border-t border-blue-200/20 shadow-[0_-4px_20px_rgba(147,197,253,0.08)]">
         <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-3 max-w-[800px] mx-auto">
           <div className="flex-1 relative">
             <input
@@ -454,7 +460,7 @@ export default function AiChat() {
                     type="text"
                     value={apiConfigStore.aiApiUrl}
                     onChange={(e) => apiConfigStore.setApiConfig({ aiApiUrl: e.target.value })}
-                    placeholder="http://localhost:8080/api/chat"
+                    placeholder="https://api.huanvae.cn/api/chat"
                     disabled={!apiConfigStore.useCustomApi}
                     className="py-2.5 px-3.5 rounded-[10px] border border-blue-200/40 bg-white/80 text-sm outline-none transition-all focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] disabled:bg-slate-100 disabled:text-slate-400"
                   />

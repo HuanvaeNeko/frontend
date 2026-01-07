@@ -14,7 +14,9 @@ export default function ProtectedLayout({
   return (
     <ProtectedRoute>
       <Suspense fallback={<SimpleLoading />}>
-        {children}
+        <div className="h-full overflow-hidden">
+          {children}
+        </div>
       </Suspense>
     </ProtectedRoute>
   )

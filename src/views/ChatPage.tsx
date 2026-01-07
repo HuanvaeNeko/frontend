@@ -396,7 +396,7 @@ export default function ChatPage() {
                 "w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200 relative",
                 activeTab === tab.id && "bg-gradient-to-br from-blue-500/20 to-blue-300/25 text-blue-600 shadow-[0_2px_8px_rgba(59,130,246,0.15)]"
               )}
-              onClick={() => { 
+              onClick={() => {
                 setActiveTab(tab.id)
                 setSubTab('main')
                 const pathMap: Record<TabType, string> = {
@@ -440,11 +440,11 @@ export default function ChatPage() {
             <LogOut className="w-[22px] h-[22px]" />
           </motion.button>
         </div>
-      </aside>
+        </aside>
 
       {/* 中间会话列表 */}
-      <div className="relative h-full flex z-10 min-w-[240px] max-w-[400px] w-[280px]">
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
+      <div className="relative h-full flex z-10 min-w-[240px] max-w-[400px] w-[280px] shrink-0">
+        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
           {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
             <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 bg-white/20">
@@ -467,18 +467,18 @@ export default function ChatPage() {
                 ))}
               </div>
 
-              {/* 搜索框 */}
+          {/* 搜索框 */}
               {subTab === 'main' && (
                 <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 border border-white/80 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
                     type="text"
-                    placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 min-w-0 border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-                  />
-                </div>
+                />
+              </div>
               )}
             </div>
           )}
@@ -491,7 +491,7 @@ export default function ChatPage() {
           )}
 
           {/* 列表内容 */}
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
@@ -551,36 +551,36 @@ export default function ChatPage() {
               )}
             </AnimatePresence>
           </div>
+          </div>
         </div>
-      </div>
 
       {/* 右侧聊天窗口 */}
-      <div className="flex-1 h-full min-h-0 flex flex-col z-10 bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg">
-        <AnimatePresence mode="wait">
-          {activeTab === 'webrtc' ? (
-            <motion.div
-              key="webrtc"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
+      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg">
+          <AnimatePresence mode="wait">
+            {activeTab === 'webrtc' ? (
+              <motion.div
+                key="webrtc"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               className="h-full"
-            >
-              <WebRTCPanel />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="chat"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
+              >
+                <WebRTCPanel />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               className="h-full"
-            >
-              <ChatWindow />
-            </motion.div>
-          )}
-        </AnimatePresence>
+              >
+                <ChatWindow />
+              </motion.div>
+            )}
+          </AnimatePresence>
       </div>
     </div>
   )

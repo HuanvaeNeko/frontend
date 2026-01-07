@@ -22,5 +22,5 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     return null
   }
 
-  return <>{children}</>
+  return <div className="h-full overflow-hidden">{children}</div>
 }

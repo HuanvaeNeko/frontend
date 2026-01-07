@@ -24,10 +24,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh-CN" data-theme="light">
-      <body>
+    <html lang="zh-CN" data-theme="light" className="h-full">
+      <body className="h-full overflow-hidden">
         <ClientProviders>
-          {children}
+          <div className="h-full overflow-hidden">
+            {children}
+          </div>
         </ClientProviders>
       </body>
     </html>

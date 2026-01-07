@@ -16,12 +16,7 @@
 https://api.huanvae.cn
 ```
 
-**本地开发（Development）**
-```
-http://localhost:8080
-```
-
-前端统一配置为使用生产环境地址，可通过环境变量覆盖。
+前端统一配置为使用生产环境地址，可通过环境变量 `NEXT_PUBLIC_API_URL` 覆盖。
 
 ---
 
