@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/profile'
 import { isAuthError } from '../api/apiClient'
+import { useAuthStore } from './authStore'
 
 interface ProfileState {
   profile: UserProfile | null
@@ -21,6 +22,9 @@ interface ProfileState {
  * 静默重定向到登录页面
  */
 const silentRedirectToLogin = () => {
+  const authStore = useAuthStore.getState()
+  authStore.clearAuth()
+  
   if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
     window.location.replace('/login')
   }
