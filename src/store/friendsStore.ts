@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
 import { isAuthError } from '../api/apiClient'
+import { useAuthStore } from './authStore'
 
 interface FriendsState {
   friends: Friend[]
@@ -27,6 +28,9 @@ interface FriendsState {
  * 静默重定向到登录页面
  */
 const silentRedirectToLogin = () => {
+  const authStore = useAuthStore.getState()
+  authStore.clearAuth()
+  
   if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
     window.location.replace('/login')
   }

@@ -42,11 +42,12 @@ next-env.d.ts
 coverage
 .nyc_output
 
-# PWA
+# PWA (自动生成)
 public/sw.js
 public/sw.js.map
 public/workbox-*.js
 public/workbox-*.js.map
+public/version.json
 
 # Vercel / Cloudflare Pages
 .vercel

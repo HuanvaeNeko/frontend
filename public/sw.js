@@ -8,7 +8,7 @@
 // ============================================
 // 版本配置
 // ============================================
-const SW_VERSION = '1.0.1'
+const SW_VERSION = '1.0.1+20260107.0834.5b1297f'
 const CACHE_PREFIX = 'huanvae-chat'
 const STATIC_CACHE = `${CACHE_PREFIX}-static-v${SW_VERSION}`
 const DYNAMIC_CACHE = `${CACHE_PREFIX}-dynamic-v${SW_VERSION}`
