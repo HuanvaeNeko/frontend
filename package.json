@@ -2,7 +2,7 @@
   "name": "huanvae-chat",
   "type": "module",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "dev": "next dev --turbopack --port 5173",
     "prebuild": "node scripts/generate-sw-version.js",

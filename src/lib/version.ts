@@ -1,43 +1,64 @@
 /**
  * 版本管理工具
  * 用于跟踪应用版本和 Service Worker 版本
+ * 
+ * 版本号在构建时自动生成，格式：{major}.{minor}.{patch}+{buildId}.{gitHash}
  */
 
-// 从 package.json 读取版本号（构建时注入）
+// 从环境变量读取版本号（构建时注入）或使用默认值
 export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'
 
-// 构建时间戳（用于缓存破坏）
+// 构建时间戳
 export const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString()
 
-// SW 版本（与应用版本同步）
-export const SW_VERSION = `v${APP_VERSION}`
-
 /**
- * 版本信息接口
+ * 完整版本信息接口
  */
 export interface VersionInfo {
-  app: string
-  sw: string
+  version: string
+  baseVersion: string
+  buildId: string
+  gitHash: string | null
   buildTime: string
 }
 
 /**
- * 获取完整版本信息
+ * 从 version.json 获取完整版本信息
+ * 此文件在构建时自动生成
  */
-export function getVersionInfo(): VersionInfo {
+export async function fetchVersionInfo(): Promise<VersionInfo | null> {
+  try {
+    const response = await fetch('/version.json', { cache: 'no-store' })
+    if (response.ok) {
+      return await response.json()
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 获取基础版本信息（同步）
+ */
+export function getVersionInfo() {
   return {
     app: APP_VERSION,
-    sw: SW_VERSION,
     buildTime: BUILD_TIME
   }
 }
 
 /**
- * 比较版本号
+ * 比较版本号（仅比较基础版本部分）
  * @returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
  */
 export function compareVersions(v1: string, v2: string): number {
-  const normalize = (v: string) => v.replace(/^v/, '').split('.').map(Number)
+  // 移除 build metadata（+后面的部分）
+  const normalize = (v: string) => {
+    const base = v.replace(/^v/, '').split('+')[0]
+    return base.split('.').map(n => parseInt(n, 10) || 0)
+  }
+  
   const parts1 = normalize(v1)
   const parts2 = normalize(v2)
   
@@ -169,4 +190,3 @@ export async function unregisterSW(): Promise<boolean> {
     return false
   }
 }
-

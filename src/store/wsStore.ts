@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getApiBaseUrl } from '../lib/apiConfig'
+import { getWsUrl } from '../lib/apiConfig'
 import { useAuthStore } from './authStore'
 
 // =============================================
@@ -365,10 +365,9 @@ export const useWSStore = create<WSState>((set, get) => {
       clearTimers()
 
       try {
-        // 将 http/https 转换为 ws/wss
-        const baseUrl = getApiBaseUrl()
-        const wsUrl = baseUrl.replace(/^http/, 'ws')
-        const url = `${wsUrl}/ws/messages?token=${authStore.accessToken}`
+        // 使用专用的 WebSocket URL 配置（包含正确的端口）
+        const wsBaseUrl = getWsUrl()
+        const url = `${wsBaseUrl}/ws/messages?token=${authStore.accessToken}`
 
         console.log('🔌 连接 WebSocket...')
         const ws = new WebSocket(url)

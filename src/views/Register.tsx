@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
 import { ArrowRight, Check, Loader2, User, Lock, Mail, Smile } from 'lucide-react'
+import { BackgroundOrbs } from '@/components/ui/glass'
 
 export default function Register() {
   const router = useRouter()
@@ -69,14 +70,11 @@ export default function Register() {
     }
   }
 
+  const inputClass = "w-full pl-11 pr-4 py-3 text-sm text-slate-800 bg-gradient-to-br from-white/50 to-white/35 backdrop-blur-xl border border-white/70 rounded-xl outline-none transition-all placeholder:text-slate-400 focus:border-blue-300/60 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.1),0_0_30px_rgba(147,197,253,0.25)]"
+
   return (
-    <div className="app-container">
-      {/* 浮动装饰圆球 */}
-      <div className="floating-orb orb-1" />
-      <div className="floating-orb orb-2" />
-      <div className="floating-orb orb-3" />
-      <div className="floating-orb orb-4" />
-      <div className="floating-orb orb-5" />
+    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100 py-8">
+      <BackgroundOrbs count={5} />
 
       {/* 毛玻璃注册卡片 */}
       <motion.div
@@ -92,8 +90,7 @@ export default function Register() {
           ease: [0.4, 0, 0.2, 1],
           x: { duration: 0.4 }
         }}
-        className="glass-card max-w-[460px]"
-        style={{ maxHeight: '90vh', overflowY: 'auto' }}
+        className="relative z-10 w-full max-w-[460px] mx-4 p-8 rounded-[28px] bg-gradient-to-br from-white/40 via-white/25 to-white/35 backdrop-blur-2xl border border-white/60 shadow-[0_0_60px_rgba(255,255,255,0.5),0_0_40px_rgba(147,197,253,0.15),0_8px_32px_rgba(59,130,246,0.1),0_20px_60px_rgba(0,0,0,0.08),inset_0_2px_2px_rgba(255,255,255,0.8)] max-h-[90vh] overflow-y-auto"
       >
         {/* Logo */}
         <motion.div 
@@ -107,8 +104,10 @@ export default function Register() {
             alt="Huanvae Chat" 
             className="w-16 h-16 mx-auto mb-3 drop-shadow-lg"
           />
-          <h1 className="login-title text-2xl">创建账号</h1>
-          <p className="login-subtitle text-sm">加入 Huanvae Chat</p>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-800 to-blue-500 bg-clip-text text-transparent">
+            创建账号
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">加入 Huanvae Chat</p>
         </motion.div>
 
         {/* 错误提示 */}
@@ -124,10 +123,10 @@ export default function Register() {
 
         {/* 注册表单 */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="form-group !mb-4">
-            <label className="form-label text-xs">用户 ID</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-600 pl-1">用户 ID</label>
             <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 required
@@ -135,45 +134,45 @@ export default function Register() {
                 value={formData.user_id}
                 onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 placeholder="至少3个字符"
-                className="glass-input pl-11 py-3 text-sm"
+                className={inputClass}
               />
             </div>
           </div>
 
-          <div className="form-group !mb-4">
-            <label className="form-label text-xs">昵称</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-600 pl-1">昵称</label>
             <div className="relative">
-              <Smile className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <Smile className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 required
                 value={formData.nickname}
                 onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
                 placeholder="您的昵称"
-                className="glass-input pl-11 py-3 text-sm"
+                className={inputClass}
               />
             </div>
           </div>
 
-          <div className="form-group !mb-4">
-            <label className="form-label text-xs">邮箱</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-600 pl-1">邮箱</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="email"
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="your@email.com"
-                className="glass-input pl-11 py-3 text-sm"
+                className={inputClass}
               />
             </div>
           </div>
 
-          <div className="form-group !mb-4">
-            <label className="form-label text-xs">密码</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-600 pl-1">密码</label>
             <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
                 required
@@ -181,12 +180,12 @@ export default function Register() {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="至少8位，包含字母和数字"
-                className="glass-input pl-11 py-3 text-sm"
+                className={inputClass}
               />
             </div>
             {formData.password && (
               <div className="mt-2 p-3 bg-white/30 rounded-lg space-y-2">
-                <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+                <div className="flex justify-between text-xs text-slate-500">
                   <span>密码强度</span>
                   <span className={
                     strengthScore === 3 ? 'text-green-600' : 
@@ -205,13 +204,13 @@ export default function Register() {
                   />
                 </div>
                 <div className="flex flex-wrap gap-2 text-[10px]">
-                  <span className={`flex items-center gap-1 ${passwordStrength.length ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                  <span className={`flex items-center gap-1 ${passwordStrength.length ? 'text-green-600' : 'text-slate-400'}`}>
                     <Check size={10} />8+字符
                   </span>
-                  <span className={`flex items-center gap-1 ${passwordStrength.hasLetter ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                  <span className={`flex items-center gap-1 ${passwordStrength.hasLetter ? 'text-green-600' : 'text-slate-400'}`}>
                     <Check size={10} />字母
                   </span>
-                  <span className={`flex items-center gap-1 ${passwordStrength.hasNumber ? 'text-green-600' : 'text-[var(--color-text-light)]'}`}>
+                  <span className={`flex items-center gap-1 ${passwordStrength.hasNumber ? 'text-green-600' : 'text-slate-400'}`}>
                     <Check size={10} />数字
                   </span>
                 </div>
@@ -219,17 +218,17 @@ export default function Register() {
             )}
           </div>
 
-          <div className="form-group !mb-4">
-            <label className="form-label text-xs">确认密码</label>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-600 pl-1">确认密码</label>
             <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-light)]" />
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
                 required
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                 placeholder="再次输入密码"
-                className="glass-input pl-11 py-3 text-sm"
+                className={inputClass}
               />
             </div>
             {formData.confirmPassword && (
@@ -243,11 +242,11 @@ export default function Register() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="glass-button !mt-6 !py-3"
+            className="w-full py-3.5 px-6 mt-6 rounded-xl font-semibold text-white text-sm bg-gradient-to-r from-blue-400/70 via-blue-500/70 to-blue-600/70 backdrop-blur-lg border border-white/40 shadow-[0_0_30px_rgba(96,165,250,0.25),0_8px_20px_rgba(59,130,246,0.25),inset_0_1px_1px_rgba(255,255,255,0.5)] transition-all hover:from-blue-400/80 hover:via-blue-500/80 hover:to-blue-600/80 hover:shadow-[0_0_40px_rgba(96,165,250,0.35),0_12px_28px_rgba(59,130,246,0.3)] disabled:opacity-60 disabled:cursor-not-allowed"
             whileHover={{ scale: loading ? 1 : 1.02 }}
             whileTap={{ scale: loading ? 1 : 0.98 }}
           >
-            <span className="flex items-center justify-center gap-2 text-sm">
+            <span className="flex items-center justify-center gap-2">
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -265,22 +264,20 @@ export default function Register() {
 
         {/* 分隔线 */}
         <div className="flex items-center gap-4 my-6">
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--blue-alpha-medium)] to-transparent" />
-          <span className="text-[var(--color-text-light)] text-xs">或</span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--blue-alpha-medium)] to-transparent" />
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-300/30 to-transparent" />
+          <span className="text-slate-400 text-xs">或</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-300/30 to-transparent" />
         </div>
 
         {/* 登录链接 */}
         <div className="text-center">
-          <p className="text-[var(--color-text-muted)] text-xs mb-2">
+          <p className="text-slate-500 text-xs mb-2">
             已有账号？
           </p>
           <Link href="/login">
             <motion.button
               type="button"
-              className="w-full py-2.5 px-6 rounded-xl font-medium text-sm text-[var(--color-blue-500)] 
-                         bg-[var(--blue-alpha-subtle)] border border-[var(--blue-alpha-medium)]
-                         hover:bg-[var(--blue-alpha-medium)] transition-all duration-300"
+              className="w-full py-2.5 px-6 rounded-xl font-medium text-sm text-blue-500 bg-blue-100/20 border border-blue-300/30 hover:bg-blue-100/40 transition-all duration-300"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >

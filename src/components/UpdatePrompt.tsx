@@ -258,20 +258,20 @@ export function UpdatePrompt({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -60, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="update-prompt-container"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[calc(100%-32px)] max-w-[480px]"
           >
-            <div className="update-prompt">
+            <div className="relative overflow-hidden rounded-[20px] bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-2xl border border-blue-200/40 shadow-[0_8px_32px_rgba(59,130,246,0.2),0_0_0_1px_rgba(255,255,255,0.6)_inset]">
               {/* 进度条 */}
               <motion.div
-                className="update-progress"
+                className="absolute bottom-0 left-0 h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-r-sm"
                 initial={{ width: '100%' }}
                 animate={{ width: '0%' }}
                 transition={{ duration: autoUpdateDelay / 1000, ease: 'linear' }}
               />
 
-              <div className="update-content">
+              <div className="flex items-center gap-3.5 px-4 py-4">
                 {/* 图标 */}
-                <div className="update-icon">
+                <div className="shrink-0 w-11 h-11 flex items-center justify-center rounded-[14px] bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/35">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
@@ -281,16 +281,18 @@ export function UpdatePrompt({
                 </div>
 
                 {/* 文字内容 */}
-                <div className="update-text">
-                  <h3>
+                <div className="flex-1 min-w-0">
+                  <h3 className="flex items-center gap-2 text-[15px] font-semibold text-slate-800 mb-[3px]">
                     发现新版本
                     {state.newVersion && (
-                      <span className="version-badge">v{state.newVersion}</span>
+                      <span className="text-[11px] font-medium py-0.5 px-2 rounded-md bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-500">
+                        v{state.newVersion}
+                      </span>
                     )}
                   </h3>
-                  <p>
+                  <p className="text-[13px] text-slate-500">
                     {countdown > 0 ? (
-                      <>将在 <strong>{countdown}</strong> 秒后自动更新</>
+                      <>将在 <strong className="text-blue-500 font-bold text-sm">{countdown}</strong> 秒后自动更新</>
                     ) : (
                       '正在更新...'
                     )}
@@ -298,19 +300,29 @@ export function UpdatePrompt({
                 </div>
 
                 {/* 操作按钮 */}
-                <div className="update-actions">
-                  <button className="update-btn primary" onClick={handleImmediateUpdate}>
+                <div className="flex gap-2 shrink-0">
+                  <motion.button 
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[13px] font-medium cursor-pointer transition-all bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none shadow-md shadow-blue-500/35 hover:shadow-lg hover:-translate-y-px"
+                    onClick={handleImmediateUpdate}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
                     <RefreshCw size={14} />
                     立即更新
-                  </button>
-                  <button className="update-btn secondary" onClick={handleDismiss}>
+                  </motion.button>
+                  <motion.button 
+                    className="px-3.5 py-2.5 rounded-xl text-[13px] font-medium cursor-pointer transition-all bg-white/70 text-slate-500 border border-blue-200/40 hover:bg-white/95 hover:text-slate-700"
+                    onClick={handleDismiss}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
                     稍后
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* 版本信息按钮 */}
                 <button 
-                  className="update-info-btn"
+                  className="absolute bottom-2 right-9 w-6 h-6 flex items-center justify-center rounded-md bg-transparent border-none text-slate-400 cursor-pointer transition-all hover:bg-blue-500/10 hover:text-blue-500"
                   onClick={() => setShowVersionInfo(true)}
                   title="版本信息"
                 >
@@ -318,7 +330,10 @@ export function UpdatePrompt({
                 </button>
 
                 {/* 关闭按钮 */}
-                <button className="update-close" onClick={handleDismiss}>
+                <button 
+                  className="absolute top-2 right-2 w-[26px] h-[26px] flex items-center justify-center rounded-lg bg-transparent border-none text-slate-400 cursor-pointer transition-all hover:bg-black/5 hover:text-slate-600"
+                  onClick={handleDismiss}
+                >
                   <X size={16} />
                 </button>
               </div>
@@ -334,371 +349,58 @@ export function UpdatePrompt({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="version-modal-overlay"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[10000] p-5"
             onClick={() => setShowVersionInfo(false)}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="version-modal"
+              className="w-full max-w-[340px] bg-gradient-to-br from-white/95 to-white/85 backdrop-blur-xl rounded-[20px] border border-blue-200/30 shadow-2xl overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
-              <div className="version-modal-header">
-                <h3>版本信息</h3>
-                <button onClick={() => setShowVersionInfo(false)}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-blue-200/20">
+                <h3 className="text-base font-semibold text-slate-800">版本信息</h3>
+                <button 
+                  className="w-8 h-8 flex items-center justify-center rounded-[10px] bg-transparent border-none text-slate-500 cursor-pointer transition-all hover:bg-black/5 hover:text-slate-800"
+                  onClick={() => setShowVersionInfo(false)}
+                >
                   <X size={18} />
                 </button>
               </div>
-              <div className="version-modal-content">
-                <div className="version-row">
-                  <span>应用版本</span>
-                  <span className="version-value">v{APP_VERSION}</span>
+              <div className="px-5 py-4">
+                <div className="flex justify-between items-center py-3 border-b border-blue-200/15">
+                  <span className="text-sm text-slate-500">应用版本</span>
+                  <span className="text-sm font-semibold text-slate-800 font-mono">v{APP_VERSION}</span>
                 </div>
-                <div className="version-row">
-                  <span>SW 版本</span>
-                  <span className="version-value">{state.currentVersion || '未加载'}</span>
+                <div className="flex justify-between items-center py-3 border-b border-blue-200/15">
+                  <span className="text-sm text-slate-500">SW 版本</span>
+                  <span className="text-sm font-semibold text-slate-800 font-mono">{state.currentVersion || '未加载'}</span>
                 </div>
                 {state.newVersion && state.newVersion !== state.currentVersion && (
-                  <div className="version-row new">
-                    <span>新版本</span>
-                    <span className="version-value">v{state.newVersion}</span>
+                  <div className="flex justify-between items-center py-3">
+                    <span className="text-sm text-slate-500">新版本</span>
+                    <span className="text-sm font-semibold text-emerald-500 font-mono">v{state.newVersion}</span>
                   </div>
                 )}
               </div>
-              <div className="version-modal-actions">
-                <button 
-                  className="version-btn danger"
+              <div className="px-5 py-4 border-t border-blue-200/20">
+                <motion.button 
+                  className="w-full py-3 rounded-xl text-sm font-medium cursor-pointer transition-all bg-red-500/10 text-red-600 border-none hover:bg-red-500/20"
                   onClick={async () => {
                     await clearSWCache()
                     window.location.reload()
                   }}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                 >
                   清除缓存并刷新
-                </button>
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      <style>{`
-        .update-prompt-container {
-          position: fixed;
-          top: 16px;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 9999;
-          width: calc(100% - 32px);
-          max-width: 480px;
-        }
-
-        .update-prompt {
-          position: relative;
-          overflow: hidden;
-          border-radius: 20px;
-          background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.9) 0%,
-            rgba(255, 255, 255, 0.7) 100%
-          );
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(147, 197, 253, 0.4);
-          box-shadow: 
-            0 8px 32px rgba(59, 130, 246, 0.2),
-            0 0 0 1px rgba(255, 255, 255, 0.6) inset;
-        }
-
-        .update-progress {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
-          border-radius: 0 3px 3px 0;
-        }
-
-        .update-content {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 16px 18px;
-        }
-
-        .update-icon {
-          flex-shrink: 0;
-          width: 44px;
-          height: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 14px;
-          background: linear-gradient(135deg, #3b82f6, #6366f1);
-          color: white;
-          box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
-        }
-
-        .update-text {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .update-text h3 {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 15px;
-          font-weight: 600;
-          color: #1e3a5f;
-          margin: 0 0 3px;
-        }
-
-        .version-badge {
-          font-size: 11px;
-          font-weight: 500;
-          padding: 2px 8px;
-          border-radius: 6px;
-          background: linear-gradient(135deg, #dbeafe, #e0e7ff);
-          color: #3b82f6;
-        }
-
-        .update-text p {
-          font-size: 13px;
-          color: #64748b;
-          margin: 0;
-        }
-
-        .update-text strong {
-          color: #3b82f6;
-          font-weight: 700;
-          font-size: 14px;
-        }
-
-        .update-actions {
-          display: flex;
-          gap: 8px;
-          flex-shrink: 0;
-        }
-
-        .update-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 10px 14px;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: none;
-        }
-
-        .update-btn.primary {
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          color: white;
-          box-shadow: 0 3px 10px rgba(59, 130, 246, 0.35);
-        }
-
-        .update-btn.primary:hover {
-          box-shadow: 0 5px 16px rgba(59, 130, 246, 0.45);
-          transform: translateY(-1px);
-        }
-
-        .update-btn.secondary {
-          background: rgba(255, 255, 255, 0.7);
-          color: #64748b;
-          border: 1px solid rgba(147, 197, 253, 0.4);
-        }
-
-        .update-btn.secondary:hover {
-          background: rgba(255, 255, 255, 0.95);
-          color: #475569;
-        }
-
-        .update-info-btn {
-          position: absolute;
-          bottom: 8px;
-          right: 36px;
-          width: 24px;
-          height: 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 6px;
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .update-info-btn:hover {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-        }
-
-        .update-close {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          width: 26px;
-          height: 26px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 8px;
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .update-close:hover {
-          background: rgba(0, 0, 0, 0.05);
-          color: #64748b;
-        }
-
-        /* 版本信息弹窗 */
-        .version-modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.4);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 10000;
-          padding: 20px;
-        }
-
-        .version-modal {
-          width: 100%;
-          max-width: 340px;
-          background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.95) 0%,
-            rgba(255, 255, 255, 0.85) 100%
-          );
-          backdrop-filter: blur(20px);
-          border-radius: 20px;
-          border: 1px solid rgba(147, 197, 253, 0.3);
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-          overflow: hidden;
-        }
-
-        .version-modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 18px 20px;
-          border-bottom: 1px solid rgba(147, 197, 253, 0.2);
-        }
-
-        .version-modal-header h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1e3a5f;
-          margin: 0;
-        }
-
-        .version-modal-header button {
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 10px;
-          background: transparent;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .version-modal-header button:hover {
-          background: rgba(0, 0, 0, 0.05);
-          color: #1e3a5f;
-        }
-
-        .version-modal-content {
-          padding: 16px 20px;
-        }
-
-        .version-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 0;
-          border-bottom: 1px solid rgba(147, 197, 253, 0.15);
-        }
-
-        .version-row:last-child {
-          border-bottom: none;
-        }
-
-        .version-row span:first-child {
-          font-size: 14px;
-          color: #64748b;
-        }
-
-        .version-value {
-          font-size: 14px;
-          font-weight: 600;
-          color: #1e3a5f;
-          font-family: ui-monospace, monospace;
-        }
-
-        .version-row.new .version-value {
-          color: #10b981;
-        }
-
-        .version-modal-actions {
-          padding: 16px 20px;
-          border-top: 1px solid rgba(147, 197, 253, 0.2);
-        }
-
-        .version-btn {
-          width: 100%;
-          padding: 12px;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: none;
-        }
-
-        .version-btn.danger {
-          background: rgba(239, 68, 68, 0.1);
-          color: #dc2626;
-        }
-
-        .version-btn.danger:hover {
-          background: rgba(239, 68, 68, 0.2);
-        }
-
-        @media (max-width: 520px) {
-          .update-content {
-            flex-wrap: wrap;
-          }
-
-          .update-text {
-            flex: 1 1 calc(100% - 60px);
-          }
-
-          .update-actions {
-            width: 100%;
-            margin-top: 10px;
-          }
-
-          .update-btn {
-            flex: 1;
-            justify-content: center;
-          }
-        }
-      `}</style>
     </>
   )
 }

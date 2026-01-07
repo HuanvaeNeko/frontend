@@ -33,6 +33,7 @@ import { groupMessagesApi, type GroupMessage } from '../api/groupMessages'
 import { groupsApi, type GroupMember, type GroupNotice } from '../api/groups'
 import { storageApi, type FileType } from '../api/storage'
 import { useToast } from '../hooks/use-toast'
+import { BackgroundOrbs } from '@/components/ui/glass'
 
 export default function GroupChat() {
   const router = useRouter()
@@ -432,46 +433,51 @@ export default function GroupChat() {
   // 空状态渲染
   if (!groupId || (!currentGroup && !loading)) {
     return (
-      <div className="gc-page">
-        <div className="gc-bg-orb orb-1" />
-        <div className="gc-bg-orb orb-2" />
-        <div className="gc-bg-orb orb-3" />
+      <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
+        <BackgroundOrbs count={3} />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="gc-empty"
+          className="relative z-[1] flex flex-col items-center justify-center text-center p-10 flex-1"
         >
-          <div className="gc-empty-icon">
+          <div className="w-20 h-20 flex items-center justify-center rounded-3xl bg-gradient-to-br from-blue-200/30 to-blue-400/20 text-blue-500 mb-6">
             <Users size={32} />
           </div>
-          <h2>{groupId ? '群聊不存在' : '请选择一个群聊'}</h2>
-          <p>{groupId ? '该群聊可能已被解散或您已退出' : '从侧边栏选择一个群聊开始对话'}</p>
-          <button className="gc-back-btn" onClick={() => router.push('/chat')}>
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">{groupId ? '群聊不存在' : '请选择一个群聊'}</h2>
+          <p className="text-sm text-slate-500 mb-6">{groupId ? '该群聊可能已被解散或您已退出' : '从侧边栏选择一个群聊开始对话'}</p>
+          <motion.button 
+            className="flex items-center gap-2 px-6 py-3 rounded-[14px] bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-medium cursor-pointer border-none shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:-translate-y-0.5"
+            onClick={() => router.push('/chat')}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
             <ArrowLeft size={16} />
             返回聊天
-          </button>
+          </motion.button>
         </motion.div>
-        <style>{styles}</style>
       </div>
     )
   }
 
   return (
-    <div className="gc-page">
-      <div className="gc-bg-orb orb-1" />
-      <div className="gc-bg-orb orb-2" />
-      <div className="gc-bg-orb orb-3" />
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
+      <BackgroundOrbs count={3} />
 
       {/* 顶部导航 */}
       <motion.header
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="gc-header"
+        className="relative z-10 flex items-center justify-between px-5 py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/20"
       >
-        <div className="gc-header-left">
-          <button className="gc-icon-btn" onClick={() => router.push('/chat')}>
+        <div className="flex items-center gap-3">
+          <motion.button 
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
+            onClick={() => router.push('/chat')}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
             <ArrowLeft size={20} />
-          </button>
+          </motion.button>
           <Avatar className="h-10 w-10 ring-2 ring-white/50">
             <AvatarImage src={currentGroup?.group_avatar_url} />
             <AvatarFallback className={`bg-gradient-to-br ${getAvatarGradient(currentGroup?.group_name || 'G')} text-white`}>
@@ -479,31 +485,49 @@ export default function GroupChat() {
             </AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="gc-header-title">{currentGroup?.group_name || '群聊'}</h1>
-            <p className="gc-header-subtitle">{members.length} 位成员</p>
+            <h1 className="text-base font-semibold text-slate-800">{currentGroup?.group_name || '群聊'}</h1>
+            <p className="text-xs text-slate-500">{members.length} 位成员</p>
           </div>
         </div>
 
-        <div className="gc-header-actions">
-          <button className="gc-icon-btn" onClick={() => setShowSidebar(!showSidebar)}>
+        <div className="flex gap-2">
+          <motion.button 
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
+            onClick={() => setShowSidebar(!showSidebar)}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
             <Users size={20} />
-          </button>
+          </motion.button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button className="gc-icon-btn">
+              <motion.button 
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
                 <MoreVertical size={20} />
-              </button>
+              </motion.button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content className="gc-dropdown" sideOffset={8}>
-                <DropdownMenu.Item className="gc-dropdown-item" onSelect={() => { setShowSidebar(true); setSidebarTab('settings') }}>
+              <DropdownMenu.Content className="min-w-[150px] bg-white/95 backdrop-blur-xl rounded-[14px] border border-blue-200/30 shadow-lg shadow-blue-500/15 p-1.5 z-[100]" sideOffset={8}>
+                <DropdownMenu.Item 
+                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
+                  onSelect={() => { setShowSidebar(true); setSidebarTab('settings') }}
+                >
                   <Settings size={16} />群设置
                 </DropdownMenu.Item>
-                <DropdownMenu.Item className="gc-dropdown-item" onSelect={() => { setShowSidebar(true); setSidebarTab('notices') }}>
+                <DropdownMenu.Item 
+                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
+                  onSelect={() => { setShowSidebar(true); setSidebarTab('notices') }}
+                >
                   <Bell size={16} />群公告
                 </DropdownMenu.Item>
-                <DropdownMenu.Separator className="gc-dropdown-sep" />
-                <DropdownMenu.Item className="gc-dropdown-item danger" onSelect={handleLeaveGroup}>
+                <DropdownMenu.Separator className="h-px bg-blue-200/30 my-1.5" />
+                <DropdownMenu.Item 
+                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-red-500/10"
+                  onSelect={handleLeaveGroup}
+                >
                   <LogOut size={16} />退出群聊
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
@@ -512,24 +536,28 @@ export default function GroupChat() {
         </div>
       </motion.header>
 
-      <div className="gc-main">
+      <div className="flex-1 flex overflow-hidden relative z-[1]">
         {/* 消息区域 */}
-        <div className="gc-chat">
-          <div ref={messagesContainerRef} className="gc-messages" onScroll={handleScroll}>
+        <div className="flex-1 flex flex-col min-w-0">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 flex flex-col gap-4" onScroll={handleScroll}>
             {loading && messages.length === 0 ? (
-              <div className="gc-loading">
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             ) : messages.length === 0 ? (
-              <div className="gc-no-messages">
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3">
                 <MessageCircle size={32} className="opacity-40" />
                 <p>暂无消息，开始聊天吧！</p>
               </div>
             ) : (
               <>
                 {hasMore && (
-                  <div className="gc-load-more">
-                    <button onClick={loadMoreMessages} disabled={loading}>
+                  <div className="text-center">
+                    <button 
+                      onClick={loadMoreMessages} 
+                      disabled={loading}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-[10px] bg-white/60 border border-blue-200/30 text-slate-600 text-[13px] cursor-pointer transition-all hover:bg-white/90"
+                    >
                       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                       加载更多
                     </button>
@@ -548,7 +576,7 @@ export default function GroupChat() {
                           key={message.message_uuid}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="gc-system-msg"
+                          className="text-center text-xs text-slate-500 bg-black/5 py-1.5 px-4 rounded-full self-center"
                         >
                           {message.message_content}
                         </motion.div>
@@ -560,37 +588,47 @@ export default function GroupChat() {
                         key={message.message_uuid}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className={`gc-msg ${isOwn ? 'own' : ''}`}
+                        className={`flex gap-2.5 max-w-[75%] ${isOwn ? 'flex-row-reverse ml-auto' : ''}`}
                       >
-                        <Avatar className="gc-msg-avatar">
+                        <Avatar className="w-9 h-9 shrink-0">
                           <AvatarImage src={message.sender_avatar_url} />
                           <AvatarFallback className={`bg-gradient-to-br ${gradient} text-white text-sm`}>
                             {message.sender_nickname[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
 
-                        <div className="gc-msg-content">
-                          {!isOwn && <span className="gc-msg-name">{message.sender_nickname}</span>}
+                        <div className={`flex flex-col gap-1 ${isOwn ? 'items-end' : ''}`}>
+                          {!isOwn && <span className="text-xs text-slate-500 px-2">{message.sender_nickname}</span>}
                           <DropdownMenu.Root>
                             <DropdownMenu.Trigger asChild>
-                              <div className={`gc-msg-bubble ${isOwn ? 'own' : ''}`}>
+                              <div className={`py-3 px-4 rounded-2xl cursor-pointer transition-all text-sm ${
+                                isOwn 
+                                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none shadow-lg shadow-blue-500/30'
+                                  : 'bg-white/80 backdrop-blur-lg border border-blue-200/20 shadow-sm text-slate-800 hover:shadow-md hover:shadow-blue-500/10'
+                              }`}>
                                 {renderMessageContent(message)}
                               </div>
                             </DropdownMenu.Trigger>
                             <DropdownMenu.Portal>
-                              <DropdownMenu.Content className="gc-dropdown" sideOffset={5}>
+                              <DropdownMenu.Content className="min-w-[100px] bg-white/95 backdrop-blur-xl rounded-[14px] border border-blue-200/30 shadow-lg shadow-blue-500/15 p-1.5 z-[100]" sideOffset={5}>
                                 {canRecall && !message.is_recalled && (
-                                  <DropdownMenu.Item className="gc-dropdown-item" onSelect={() => handleRecallMessage(message.message_uuid)}>
+                                  <DropdownMenu.Item 
+                                    className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
+                                    onSelect={() => handleRecallMessage(message.message_uuid)}
+                                  >
                                     <RotateCcw size={14} />撤回
                                   </DropdownMenu.Item>
                                 )}
-                                <DropdownMenu.Item className="gc-dropdown-item danger" onSelect={() => handleDeleteMessage(message.message_uuid)}>
+                                <DropdownMenu.Item 
+                                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-red-500/10"
+                                  onSelect={() => handleDeleteMessage(message.message_uuid)}
+                                >
                                   <Trash2 size={14} />删除
                                 </DropdownMenu.Item>
                               </DropdownMenu.Content>
                             </DropdownMenu.Portal>
                           </DropdownMenu.Root>
-                          <span className="gc-msg-time">{formatTime(message.send_time)}</span>
+                          <span className="text-[11px] text-slate-400 px-2">{formatTime(message.send_time)}</span>
                         </div>
                       </motion.div>
                     )
@@ -602,50 +640,62 @@ export default function GroupChat() {
           </div>
 
           {/* 输入区域 */}
-          <div className="gc-input-area">
+          <div className="px-5 py-4 bg-white/70 backdrop-blur-xl border-t border-blue-200/20">
             {selectedFile && (
-              <div className="gc-file-preview">
+              <div className="flex items-center gap-3 p-3 mb-3 bg-white/60 rounded-[14px] border border-blue-200/20">
                 {selectedFile.type.startsWith('image/') ? <ImageIcon size={24} className="text-blue-500" /> :
                  selectedFile.type.startsWith('video/') ? <Video size={24} className="text-purple-500" /> :
                  <FileText size={24} className="text-gray-500" />}
-                <div className="gc-file-info">
-                  <p className="gc-file-name">{selectedFile.name}</p>
-                  <p className="gc-file-size">{formatFileSize(selectedFile.size)}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">{selectedFile.name}</p>
+                  <p className="text-xs text-slate-500">{formatFileSize(selectedFile.size)}</p>
                 </div>
-                <button className="gc-file-cancel" onClick={handleCancelFile} disabled={sending}>
+                <button 
+                  className="p-1.5 rounded-lg bg-transparent border-none cursor-pointer text-slate-500 hover:bg-black/5"
+                  onClick={handleCancelFile} 
+                  disabled={sending}
+                >
                   <X size={16} />
                 </button>
               </div>
             )}
 
             {uploadProgress !== null && (
-              <div className="gc-upload-progress">
-                <div className="gc-progress-bar" style={{ width: `${uploadProgress}%` }} />
+              <div className="flex items-center gap-3 px-3 py-2 mb-3 bg-blue-500/10 rounded-[10px] text-xs text-blue-500">
+                <div className="h-1 bg-blue-500 rounded-sm transition-all" style={{ width: `${uploadProgress}%` }} />
                 <span>{uploadProgress.toFixed(0)}%</span>
               </div>
             )}
 
-            <div className="gc-input-row">
+            <div className="flex items-center gap-3">
               <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
-              <button className="gc-icon-btn" onClick={() => fileInputRef.current?.click()} disabled={sending}>
+              <motion.button 
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={sending}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
                 <Paperclip size={20} />
-              </button>
+              </motion.button>
               <input
                 type="text"
-                className="gc-input"
+                className="flex-1 py-3 px-4 rounded-[14px] border border-blue-200/30 bg-white/60 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white/90 placeholder:text-slate-400"
                 placeholder="输入消息..."
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 disabled={sending}
               />
-              <button
-                className="gc-send-btn"
+              <motion.button
+                className="w-11 h-11 flex items-center justify-center rounded-[14px] bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none cursor-pointer shadow-lg shadow-blue-500/30 transition-all hover:enabled:shadow-xl hover:enabled:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={selectedFile ? handleSendFile : sendMessage}
                 disabled={(!inputMessage.trim() && !selectedFile) || sending}
+                whileHover={{ scale: (!inputMessage.trim() && !selectedFile) || sending ? 1 : 1.02 }}
+                whileTap={{ scale: (!inputMessage.trim() && !selectedFile) || sending ? 1 : 0.98 }}
               >
                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
@@ -657,13 +707,17 @@ export default function GroupChat() {
               initial={{ x: 100, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 100, opacity: 0 }}
-              className="gc-sidebar"
+              className="w-[300px] shrink-0 bg-white/70 backdrop-blur-xl border-l border-blue-200/20 flex flex-col max-md:absolute max-md:right-0 max-md:top-0 max-md:bottom-0 max-md:w-[280px] max-md:z-20"
             >
-              <div className="gc-sidebar-tabs">
+              <div className="flex border-b border-blue-200/20">
                 {(['members', 'notices', 'settings'] as const).map((tab) => (
                   <button
                     key={tab}
-                    className={`gc-sidebar-tab ${sidebarTab === tab ? 'active' : ''}`}
+                    className={`flex-1 py-3.5 text-[13px] font-medium bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all ${
+                      sidebarTab === tab 
+                        ? 'text-blue-500 border-b-blue-500' 
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
                     onClick={() => setSidebarTab(tab)}
                   >
                     {tab === 'members' ? '成员' : tab === 'notices' ? '公告' : '设置'}
@@ -671,31 +725,31 @@ export default function GroupChat() {
                 ))}
               </div>
 
-              <div className="gc-sidebar-content">
+              <div className="flex-1 overflow-y-auto p-4">
                 {sidebarTab === 'members' && (
-                  <div className="gc-members">
+                  <div className="flex flex-col gap-2">
                     {isAdmin && (
-                      <button className="gc-invite-btn">
+                      <button className="flex items-center justify-center gap-2 p-3 mb-3 rounded-xl border border-dashed border-blue-500/40 bg-blue-500/5 text-blue-500 text-sm cursor-pointer transition-all hover:bg-blue-500/10">
                         <UserPlus size={16} />邀请成员
                       </button>
                     )}
                     {loadingMembers ? (
-                      <div className="gc-loading"><Loader2 className="animate-spin" /></div>
+                      <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin" /></div>
                     ) : (
                       members.map((member) => (
-                        <div key={member.user_id} className="gc-member">
+                        <div key={member.user_id} className="flex items-center gap-3 p-2.5 rounded-xl transition-all hover:bg-white/60">
                           <Avatar className="h-10 w-10">
                             <AvatarImage src={member.user_avatar_url} />
                             <AvatarFallback className={`bg-gradient-to-br ${getAvatarGradient(member.user_nickname)} text-white text-sm`}>
                               {member.user_nickname[0]?.toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="gc-member-info">
-                            <div className="gc-member-name">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 text-sm font-medium text-slate-800">
                               {member.group_nickname || member.user_nickname}
                               {getRoleIcon(member.role)}
                             </div>
-                            <span className="gc-member-role">{getRoleName(member.role)}</span>
+                            <span className="text-xs text-slate-500">{getRoleName(member.role)}</span>
                           </div>
                         </div>
                       ))
@@ -704,16 +758,16 @@ export default function GroupChat() {
                 )}
 
                 {sidebarTab === 'notices' && (
-                  <div className="gc-notices">
+                  <div className="flex flex-col gap-3">
                     {notices.length === 0 ? (
-                      <p className="gc-empty-text">暂无公告</p>
+                      <p className="text-center text-slate-500 py-10">暂无公告</p>
                     ) : (
                       notices.map((notice) => (
-                        <div key={notice.id} className={`gc-notice ${notice.is_pinned ? 'pinned' : ''}`}>
-                          {notice.is_pinned && <span className="gc-notice-pin">📌 置顶</span>}
-                          <h4>{notice.title}</h4>
-                          <p>{notice.content}</p>
-                          <div className="gc-notice-meta">
+                        <div key={notice.id} className={`p-3.5 rounded-[14px] bg-white/50 border ${notice.is_pinned ? 'border-blue-500 bg-blue-500/5' : 'border-blue-200/20'}`}>
+                          {notice.is_pinned && <span className="text-xs text-blue-500 font-medium">📌 置顶</span>}
+                          <h4 className="text-sm font-semibold text-slate-800 my-1.5">{notice.title}</h4>
+                          <p className="text-[13px] text-slate-600 leading-relaxed">{notice.content}</p>
+                          <div className="flex gap-1.5 mt-2.5 text-xs text-slate-400">
                             <span>{notice.publisher_nickname}</span>
                             <span>·</span>
                             <span>{new Date(notice.published_at).toLocaleDateString()}</span>
@@ -725,23 +779,26 @@ export default function GroupChat() {
                 )}
 
                 {sidebarTab === 'settings' && (
-                  <div className="gc-settings">
-                    <div className="gc-setting-section">
-                      <h4>群信息</h4>
-                      <div className="gc-setting-row">
-                        <span>群名称</span>
-                        <span>{currentGroup?.group_name}</span>
+                  <div className="flex flex-col gap-5">
+                    <div>
+                      <h4 className="text-[13px] font-semibold text-slate-500 mb-3 uppercase">群信息</h4>
+                      <div className="flex justify-between py-2.5 border-b border-blue-200/15 text-sm">
+                        <span className="text-slate-500">群名称</span>
+                        <span className="text-slate-800 font-medium">{currentGroup?.group_name}</span>
                       </div>
-                      <div className="gc-setting-row">
-                        <span>群ID</span>
-                        <span className="gc-mono">{currentGroup?.group_id?.slice(0, 8)}...</span>
+                      <div className="flex justify-between py-2.5 border-b border-blue-200/15 text-sm">
+                        <span className="text-slate-500">群ID</span>
+                        <span className="text-slate-800 font-medium font-mono text-xs">{currentGroup?.group_id?.slice(0, 8)}...</span>
                       </div>
-                      <div className="gc-setting-row">
-                        <span>我的角色</span>
-                        <span>{getRoleName(myMember?.role || 'member')}</span>
+                      <div className="flex justify-between py-2.5 border-b border-blue-200/15 text-sm">
+                        <span className="text-slate-500">我的角色</span>
+                        <span className="text-slate-800 font-medium">{getRoleName(myMember?.role || 'member')}</span>
                       </div>
                     </div>
-                    <button className="gc-leave-btn" onClick={handleLeaveGroup}>
+                    <button 
+                      className="flex items-center justify-center gap-2 py-3.5 rounded-[14px] bg-red-500/10 text-red-600 text-sm font-medium cursor-pointer border-none mt-auto transition-all hover:bg-red-500/20"
+                      onClick={handleLeaveGroup}
+                    >
                       <LogOut size={16} />退出群聊
                     </button>
                   </div>
@@ -751,279 +808,6 @@ export default function GroupChat() {
           )}
         </AnimatePresence>
       </div>
-
-      <style>{styles}</style>
     </div>
   )
 }
-
-const styles = `
-  .gc-page {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 25%, #ffffff 50%, #f5f3ff 75%, #ede9fe 100%);
-  }
-
-  .gc-bg-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(100px);
-    opacity: 0.4;
-    pointer-events: none;
-    z-index: 0;
-  }
-  .gc-bg-orb.orb-1 { width: 400px; height: 400px; background: linear-gradient(135deg, #93c5fd, #60a5fa); top: -100px; right: -50px; }
-  .gc-bg-orb.orb-2 { width: 300px; height: 300px; background: linear-gradient(135deg, #c4b5fd, #a78bfa); bottom: -50px; left: 10%; }
-  .gc-bg-orb.orb-3 { width: 200px; height: 200px; background: linear-gradient(135deg, #a5b4fc, #818cf8); top: 50%; left: -50px; }
-
-  .gc-header {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    background: rgba(255,255,255,0.7);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(147, 197, 253, 0.2);
-  }
-  .gc-header-left { display: flex; align-items: center; gap: 12px; }
-  .gc-header-title { font-size: 16px; font-weight: 600; color: #1e3a5f; }
-  .gc-header-subtitle { font-size: 12px; color: #64748b; }
-  .gc-header-actions { display: flex; gap: 8px; }
-
-  .gc-icon-btn {
-    width: 40px; height: 40px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.5);
-    border: 1px solid rgba(147, 197, 253, 0.2);
-    color: #475569;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .gc-icon-btn:hover { background: rgba(255,255,255,0.9); border-color: #3b82f6; color: #3b82f6; }
-
-  .gc-dropdown {
-    min-width: 150px;
-    background: rgba(255,255,255,0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 14px;
-    border: 1px solid rgba(147, 197, 253, 0.3);
-    box-shadow: 0 10px 40px rgba(59, 130, 246, 0.15);
-    padding: 6px;
-    z-index: 100;
-  }
-  .gc-dropdown-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; font-size: 14px; color: #475569;
-    border-radius: 10px; cursor: pointer; outline: none;
-    transition: all 0.15s ease;
-  }
-  .gc-dropdown-item:hover { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .gc-dropdown-item.danger { color: #dc2626; }
-  .gc-dropdown-item.danger:hover { background: rgba(220, 38, 38, 0.1); }
-  .gc-dropdown-sep { height: 1px; background: rgba(147, 197, 253, 0.3); margin: 6px 0; }
-
-  .gc-main { flex: 1; display: flex; overflow: hidden; position: relative; z-index: 1; }
-
-  .gc-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-
-  .gc-messages {
-    flex: 1; overflow-y: auto; padding: 20px;
-    display: flex; flex-direction: column; gap: 16px;
-  }
-  .gc-loading, .gc-no-messages {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    color: #64748b; gap: 12px;
-  }
-  .gc-load-more { text-align: center; }
-  .gc-load-more button {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: 10px;
-    background: rgba(255,255,255,0.6); border: 1px solid rgba(147, 197, 253, 0.3);
-    color: #475569; font-size: 13px; cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .gc-load-more button:hover { background: rgba(255,255,255,0.9); }
-
-  .gc-system-msg {
-    text-align: center; font-size: 12px; color: #64748b;
-    background: rgba(0,0,0,0.05); padding: 6px 16px;
-    border-radius: 20px; align-self: center;
-  }
-
-  .gc-msg { display: flex; gap: 10px; max-width: 75%; }
-  .gc-msg.own { flex-direction: row-reverse; margin-left: auto; }
-  .gc-msg-avatar { width: 36px; height: 36px; flex-shrink: 0; }
-  .gc-msg-content { display: flex; flex-direction: column; gap: 4px; }
-  .gc-msg.own .gc-msg-content { align-items: flex-end; }
-  .gc-msg-name { font-size: 12px; color: #64748b; padding: 0 8px; }
-  .gc-msg-bubble {
-    padding: 12px 16px; border-radius: 18px;
-    background: rgba(255,255,255,0.8); backdrop-filter: blur(10px);
-    border: 1px solid rgba(147, 197, 253, 0.2);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    cursor: pointer; transition: all 0.2s ease;
-    font-size: 14px; color: #1e3a5f;
-  }
-  .gc-msg-bubble:hover { box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1); }
-  .gc-msg-bubble.own {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    color: white; border: none;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-  }
-  .gc-msg-time { font-size: 11px; color: #94a3b8; padding: 0 8px; }
-
-  .gc-input-area {
-    padding: 16px 20px;
-    background: rgba(255,255,255,0.7);
-    backdrop-filter: blur(20px);
-    border-top: 1px solid rgba(147, 197, 253, 0.2);
-  }
-  .gc-file-preview {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px; margin-bottom: 12px;
-    background: rgba(255,255,255,0.6); border-radius: 14px;
-    border: 1px solid rgba(147, 197, 253, 0.2);
-  }
-  .gc-file-info { flex: 1; min-width: 0; }
-  .gc-file-name { font-size: 14px; font-weight: 500; color: #1e3a5f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .gc-file-size { font-size: 12px; color: #64748b; }
-  .gc-file-cancel { padding: 6px; border-radius: 8px; background: transparent; border: none; cursor: pointer; color: #64748b; }
-  .gc-file-cancel:hover { background: rgba(0,0,0,0.05); }
-
-  .gc-upload-progress {
-    display: flex; align-items: center; gap: 12px;
-    padding: 8px 12px; margin-bottom: 12px;
-    background: rgba(59, 130, 246, 0.1); border-radius: 10px;
-    font-size: 12px; color: #3b82f6;
-  }
-  .gc-progress-bar { height: 4px; background: #3b82f6; border-radius: 2px; transition: width 0.2s ease; }
-
-  .gc-input-row { display: flex; align-items: center; gap: 12px; }
-  .gc-input {
-    flex: 1; padding: 12px 16px;
-    border-radius: 14px; border: 1px solid rgba(147, 197, 253, 0.3);
-    background: rgba(255,255,255,0.6);
-    font-size: 14px; color: #1e3a5f;
-    outline: none; transition: all 0.2s ease;
-  }
-  .gc-input:focus { border-color: #3b82f6; background: rgba(255,255,255,0.9); }
-  .gc-input::placeholder { color: #94a3b8; }
-
-  .gc-send-btn {
-    width: 44px; height: 44px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    border: none; color: white; cursor: pointer;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-    transition: all 0.2s ease;
-  }
-  .gc-send-btn:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4); transform: translateY(-2px); }
-  .gc-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .gc-sidebar {
-    width: 300px; flex-shrink: 0;
-    background: rgba(255,255,255,0.7);
-    backdrop-filter: blur(20px);
-    border-left: 1px solid rgba(147, 197, 253, 0.2);
-    display: flex; flex-direction: column;
-  }
-  .gc-sidebar-tabs { display: flex; border-bottom: 1px solid rgba(147, 197, 253, 0.2); }
-  .gc-sidebar-tab {
-    flex: 1; padding: 14px;
-    font-size: 13px; font-weight: 500;
-    color: #64748b; background: transparent;
-    border: none; border-bottom: 2px solid transparent;
-    cursor: pointer; transition: all 0.2s ease;
-  }
-  .gc-sidebar-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-  .gc-sidebar-tab:hover:not(.active) { color: #475569; }
-  .gc-sidebar-content { flex: 1; overflow-y: auto; padding: 16px; }
-
-  .gc-members { display: flex; flex-direction: column; gap: 8px; }
-  .gc-invite-btn {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px; margin-bottom: 12px;
-    border-radius: 12px; border: 1px dashed rgba(59, 130, 246, 0.4);
-    background: rgba(59, 130, 246, 0.05);
-    color: #3b82f6; font-size: 14px; cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .gc-invite-btn:hover { background: rgba(59, 130, 246, 0.1); }
-  .gc-member {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px; border-radius: 12px;
-    transition: all 0.2s ease;
-  }
-  .gc-member:hover { background: rgba(255,255,255,0.6); }
-  .gc-member-info { flex: 1; min-width: 0; }
-  .gc-member-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: #1e3a5f; }
-  .gc-member-role { font-size: 12px; color: #64748b; }
-
-  .gc-notices { display: flex; flex-direction: column; gap: 12px; }
-  .gc-notice {
-    padding: 14px; border-radius: 14px;
-    background: rgba(255,255,255,0.5);
-    border: 1px solid rgba(147, 197, 253, 0.2);
-  }
-  .gc-notice.pinned { border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
-  .gc-notice-pin { font-size: 12px; color: #3b82f6; font-weight: 500; }
-  .gc-notice h4 { font-size: 14px; font-weight: 600; color: #1e3a5f; margin: 6px 0; }
-  .gc-notice p { font-size: 13px; color: #475569; line-height: 1.5; }
-  .gc-notice-meta { display: flex; gap: 6px; margin-top: 10px; font-size: 12px; color: #94a3b8; }
-
-  .gc-settings { display: flex; flex-direction: column; gap: 20px; }
-  .gc-setting-section h4 { font-size: 13px; font-weight: 600; color: #64748b; margin-bottom: 12px; text-transform: uppercase; }
-  .gc-setting-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(147, 197, 253, 0.15); font-size: 14px; }
-  .gc-setting-row span:first-child { color: #64748b; }
-  .gc-setting-row span:last-child { color: #1e3a5f; font-weight: 500; }
-  .gc-mono { font-family: monospace; font-size: 12px; }
-  .gc-leave-btn {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 14px; margin-top: auto;
-    border-radius: 14px; border: none;
-    background: rgba(220, 38, 38, 0.1);
-    color: #dc2626; font-size: 14px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s ease;
-  }
-  .gc-leave-btn:hover { background: rgba(220, 38, 38, 0.2); }
-
-  .gc-empty {
-    position: relative; z-index: 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center; padding: 40px;
-    flex: 1;
-  }
-  .gc-empty-icon {
-    width: 80px; height: 80px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 24px;
-    background: linear-gradient(135deg, rgba(147, 197, 253, 0.3), rgba(96, 165, 250, 0.2));
-    color: #3b82f6; margin-bottom: 24px;
-  }
-  .gc-empty h2 { font-size: 20px; font-weight: 600; color: #1e3a5f; margin-bottom: 8px; }
-  .gc-empty p { font-size: 14px; color: #64748b; margin-bottom: 24px; }
-  .gc-back-btn {
-    display: flex; align-items: center; gap: 8px;
-    padding: 12px 24px; border-radius: 14px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    border: none; color: white; font-size: 14px; font-weight: 500;
-    cursor: pointer; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-    transition: all 0.2s ease;
-  }
-  .gc-back-btn:hover { box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4); transform: translateY(-2px); }
-
-  .gc-empty-text { text-align: center; color: #64748b; padding: 40px 0; }
-
-  @media (max-width: 768px) {
-    .gc-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: 280px; z-index: 20; }
-  }
-`

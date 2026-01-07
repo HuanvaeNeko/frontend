@@ -8,7 +8,7 @@
 // ============================================
 // 版本配置
 // ============================================
-const SW_VERSION = '1.0.0'
+const SW_VERSION = '1.0.1'
 const CACHE_PREFIX = 'huanvae-chat'
 const STATIC_CACHE = `${CACHE_PREFIX}-static-v${SW_VERSION}`
 const DYNAMIC_CACHE = `${CACHE_PREFIX}-dynamic-v${SW_VERSION}`
@@ -131,6 +131,9 @@ self.addEventListener('fetch', (event) => {
   
   // 跳过 WebSocket
   if (request.headers.get('upgrade') === 'websocket') return
+  
+  // 跳过非 GET 请求（POST、PUT、DELETE 等不能被缓存）
+  if (request.method !== 'GET') return
   
   // 根据请求类型选择策略
   if (request.mode === 'navigate') {

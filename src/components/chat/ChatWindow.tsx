@@ -535,7 +535,7 @@ export default function ChatWindow() {
   // 未选择会话
   if (!selectedConversation) {
     return (
-      <div className="chat-content h-full flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <motion.div 
           className="text-center"
           initial={{ opacity: 0, y: 20 }}
@@ -567,11 +567,11 @@ export default function ChatWindow() {
   }
 
   return (
-    <div className="chat-content h-full flex flex-col">
+    <div className="h-full flex flex-col">
       {/* 聊天头部 */}
-      <header className="chat-header">
+      <header className="px-6 py-4 min-h-[81px] border-b border-blue-200/15 bg-white/30 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="conv-avatar">
+          <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-white/80 to-white/50 border-[1.5px] border-white/80 flex items-center justify-center shrink-0">
             <Avatar className="h-full w-full">
               <AvatarImage src={selectedConversation.avatar} />
               <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white">
@@ -579,8 +579,8 @@ export default function ChatWindow() {
               </AvatarFallback>
             </Avatar>
           </div>
-          <div className="chat-header-info">
-            <h2>{selectedConversation.name}</h2>
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <h2 className="text-base font-semibold text-slate-700">{selectedConversation.name}</h2>
             <span className="text-xs text-slate-500">
               {selectedConversation.type === 'friend' ? '好友' : '群聊'}
             </span>
@@ -590,7 +590,7 @@ export default function ChatWindow() {
         <div className="flex items-center gap-1">
           {selectedConversation.type === 'group' && (
             <motion.button
-              className="chat-menu-btn"
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:bg-blue-100/30 transition-colors"
               onClick={() => setShowGroupManagement(true)}
               title="群管理"
               whileHover={{ scale: 1.05 }}
@@ -600,7 +600,7 @@ export default function ChatWindow() {
             </motion.button>
           )}
           <motion.button 
-            className="chat-menu-btn"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:bg-blue-100/30 transition-colors"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
