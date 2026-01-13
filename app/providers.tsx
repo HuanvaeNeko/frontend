@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import SoundProvider from '@/components/SoundProvider'
 
 const Toaster = dynamic(
   () => import('@/components/ui/toaster').then(mod => ({ default: mod.Toaster })),
@@ -18,11 +19,11 @@ export default function ClientProviders({
   children: React.ReactNode
 }) {
   return (
-    <>
+    <SoundProvider>
       {children}
       <Toaster />
       <UpdatePrompt autoUpdateDelay={3000} />
-    </>
+    </SoundProvider>
   )
 }
 

@@ -11,8 +11,10 @@ import {
   Palette, 
   Bell, 
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Volume2
 } from 'lucide-react'
+import { playTap, playToggle, playButton } from '@/hooks/useSound'
 import * as Switch from '@radix-ui/react-switch'
 import { GlassPage, GlassCard, GlassButton } from '@/components/ui/glass'
 import { useSettingsStore } from '../store/settingsStore'
@@ -292,7 +294,20 @@ export default function Settings() {
             <SettingRow label="动画效果" description="启用界面动画">
               <CustomSwitch
                 checked={settings.animationsEnabled}
-                onCheckedChange={(checked) => settings.setSetting('animationsEnabled', checked)}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('animationsEnabled', checked)
+                  playToggle()
+                }}
+              />
+            </SettingRow>
+
+            <SettingRow label="3D 粒子背景" description="登录/注册页面显示 Three.js 动态背景">
+              <CustomSwitch
+                checked={settings.particleBackground}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('particleBackground', checked)
+                  playToggle()
+                }}
               />
             </SettingRow>
           </SettingsCard>
@@ -309,10 +324,34 @@ export default function Settings() {
             <SettingRow label="消息提示音" description="新消息时播放提示音">
               <CustomSwitch
                 checked={settings.soundEnabled}
-                onCheckedChange={(checked) => settings.setSetting('soundEnabled', checked)}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('soundEnabled', checked)
+                  if (checked) playToggle()
+                }}
                 disabled={!settings.notificationsEnabled}
               />
             </SettingRow>
+
+            {settings.soundEnabled && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">音效音量</span>
+                  <span className="text-xs text-gray-500">{Math.round(settings.soundVolume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={settings.soundVolume}
+                  onChange={(e) => {
+                    settings.setSetting('soundVolume', parseFloat(e.target.value))
+                    playTap()
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+              </div>
+            )}
           </SettingsCard>
         </motion.div>
 

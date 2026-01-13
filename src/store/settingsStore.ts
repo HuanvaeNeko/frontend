@@ -21,6 +21,10 @@ interface SettingsState {
   // 通知
   notificationsEnabled: boolean
   soundEnabled: boolean
+  soundVolume: number
+  
+  // 3D 效果
+  particleBackground: boolean
   
   // Actions
   setSetting: <K extends keyof Omit<SettingsState, 'setSetting' | 'resetSettings'>>(
@@ -41,6 +45,8 @@ const defaultSettings: Omit<SettingsState, 'setSetting' | 'resetSettings'> = {
   animationsEnabled: true,
   notificationsEnabled: true,
   soundEnabled: true,
+  soundVolume: 0.5,
+  particleBackground: true,
 }
 
 export const useSettingsStore = create<SettingsState>()(
