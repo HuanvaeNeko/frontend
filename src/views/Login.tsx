@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import ParticleBackground from '@/components/ui/ParticleBackground'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
+import { useSettingsStore } from '@/store/settingsStore'
 
 
 // 功能特性卡片
@@ -48,6 +49,7 @@ const FeatureCard = ({ icon: Icon, title, description, delay }: {
 export default function Login() {
   const router = useRouter()
   const login = useAuthStore((state) => state.login)
+  const particleBackground = useSettingsStore((s) => s.particleBackground)
   
   const [formData, setFormData] = useState({
     user_id: '',
@@ -90,20 +92,24 @@ export default function Login() {
     <div className="min-h-screen w-full flex">
       {/* 左侧 - 品牌区域（桌面端可见） */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden">
-        <ParticleBackground 
-          particleCount={120}
-          primaryColor="#8b5cf6"
-          secondaryColor="#6366f1"
-          backgroundColor="#0f0a1e"
-          particleSize={2.5}
-          speed={0.3}
-          showLines={true}
-          lineDistance={120}
-        />
+        {particleBackground ? (
+          <ParticleBackground 
+            particleCount={120}
+            primaryColor="#8b5cf6"
+            secondaryColor="#6366f1"
+            backgroundColor="#0f0a1e"
+            particleSize={2.5}
+            speed={0.3}
+            showLines={true}
+            lineDistance={120}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900" />
+        )}
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 w-full">
           {/* Logo 和标题 */}
-          <motion.div
+      <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -155,7 +161,7 @@ export default function Login() {
 
       {/* 右侧 - 登录表单 */}
       <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-slate-50 dark:bg-slate-900">
-        <motion.div
+        <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -180,53 +186,53 @@ export default function Login() {
             </p>
           </div>
 
-          {/* 错误提示 */}
+        {/* 错误提示 */}
           <AnimatePresence>
-            {error && (
-              <motion.div
+        {error && (
+          <motion.div
                 initial={{ opacity: 0, height: 0, marginBottom: 0 }}
                 animate={{ opacity: 1, height: 'auto', marginBottom: 24 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 className="p-4 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm overflow-hidden"
-              >
-                {error}
-              </motion.div>
-            )}
+          >
+            {error}
+          </motion.div>
+        )}
           </AnimatePresence>
 
-          {/* 登录表单 */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+        {/* 登录表单 */}
+        <form onSubmit={handleSubmit} className="space-y-5">
             {/* 用户 ID */}
-            <div className="space-y-2">
+          <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 用户 ID
               </label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={formData.user_id}
-                  onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                required
+                value={formData.user_id}
+                onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                   placeholder="请输入用户 ID"
                   className="w-full pl-12 pr-4 py-3.5 text-slate-800 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-                />
-              </div>
+              />
             </div>
+          </div>
 
             {/* 密码 */}
-            <div className="space-y-2">
+          <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                 密码
               </label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
                   type={showPassword ? 'text' : 'password'}
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="请输入密码"
+                required
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="请输入密码"
                   className="w-full pl-12 pr-12 py-3.5 text-slate-800 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
                 />
                 <button
@@ -256,66 +262,66 @@ export default function Login() {
               <a href="#" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
                 忘记密码？
               </a>
-            </div>
+          </div>
 
             {/* 登录按钮 */}
-            <motion.button
-              type="submit"
-              disabled={loading}
+          <motion.button
+            type="submit"
+            disabled={loading}
               className="w-full py-4 px-6 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
-              whileHover={{ scale: loading ? 1 : 1.02 }}
-              whileTap={{ scale: loading ? 1 : 0.98 }}
-            >
-              <span className="flex items-center justify-center gap-2">
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    登录中...
-                  </>
-                ) : (
-                  <>
-                    登录
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </span>
-            </motion.button>
-          </form>
+            whileHover={{ scale: loading ? 1 : 1.02 }}
+            whileTap={{ scale: loading ? 1 : 0.98 }}
+          >
+            <span className="flex items-center justify-center gap-2">
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  登录中...
+                </>
+              ) : (
+                <>
+                  登录
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </span>
+          </motion.button>
+        </form>
 
-          {/* 分隔线 */}
-          <div className="flex items-center gap-4 my-8">
+        {/* 分隔线 */}
+        <div className="flex items-center gap-4 my-8">
             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-            <span className="text-slate-400 text-sm">或</span>
+          <span className="text-slate-400 text-sm">或</span>
             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-          </div>
+        </div>
 
-          {/* 注册链接 */}
-          <div className="text-center">
+        {/* 注册链接 */}
+        <div className="text-center">
             <p className="text-slate-500 dark:text-slate-400 mb-4">
-              还没有账号？
-            </p>
-            <Link href="/register">
-              <motion.button
-                type="button"
+            还没有账号？
+          </p>
+          <Link href="/register">
+            <motion.button
+              type="button"
                 className="w-full py-3.5 px-6 rounded-xl font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
                 创建新账户
-              </motion.button>
-            </Link>
-          </div>
+            </motion.button>
+          </Link>
+        </div>
 
-          {/* 服务条款 */}
-          <div className="mt-8 text-center text-xs text-slate-400">
-            <p>登录即表示您同意我们的</p>
-            <p className="mt-1">
+        {/* 服务条款 */}
+        <div className="mt-8 text-center text-xs text-slate-400">
+          <p>登录即表示您同意我们的</p>
+          <p className="mt-1">
               <a href="#" className="text-indigo-600 dark:text-indigo-400 hover:underline">服务条款</a>
-              {' '}和{' '}
+            {' '}和{' '}
               <a href="#" className="text-indigo-600 dark:text-indigo-400 hover:underline">隐私政策</a>
-            </p>
-          </div>
-        </motion.div>
+          </p>
+        </div>
+      </motion.div>
       </div>
     </div>
   )

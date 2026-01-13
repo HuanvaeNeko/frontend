@@ -8,6 +8,19 @@
 
 @import "tailwindcss";
 
+/* Tailwind v4 深色模式配置 */
+@variant dark (&:where(.dark, .dark *));
+
+/* ============================================
+   减少动画模式
+   ============================================ */
+.reduce-motion,
+.reduce-motion * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 /* ============================================
    shadcn/ui CSS 变量
    ============================================ */

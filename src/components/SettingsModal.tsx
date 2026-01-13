@@ -1,14 +1,12 @@
 'use client'
 
-import { useState, useCallback, Fragment } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   X,
   Settings,
-  Sparkles,
   Globe,
-  Shield,
   Palette,
   Bell,
   Volume2,
@@ -16,11 +14,7 @@ import {
   Sun,
   Monitor,
   Check,
-  ChevronRight,
   Zap,
-  Lock,
-  Eye,
-  EyeOff,
   Languages,
   Clock,
   Box,
@@ -39,7 +33,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-type TabId = 'general' | 'appearance' | 'notifications' | 'privacy' | 'ai'
+type TabId = 'general' | 'appearance' | 'notifications'
 
 interface Tab {
   id: TabId
@@ -53,11 +47,9 @@ interface Tab {
 // ============================================
 
 const TABS: Tab[] = [
-  { id: 'general', label: '通用', icon: Settings, color: '#6366f1' },
+  { id: 'general', label: '通用', icon: Globe, color: '#6366f1' },
   { id: 'appearance', label: '外观', icon: Palette, color: '#8b5cf6' },
   { id: 'notifications', label: '通知', icon: Bell, color: '#ef4444' },
-  { id: 'privacy', label: '隐私', icon: Shield, color: '#10b981' },
-  { id: 'ai', label: 'AI', icon: Sparkles, color: '#f59e0b' },
 ]
 
 const THEMES = [
@@ -73,11 +65,149 @@ const LANGUAGES = [
   { value: 'ja', label: '日本語', flag: '🇯🇵' },
 ]
 
-const AI_MODELS = [
-  { value: 'gpt-4', label: 'GPT-4', desc: '最强大' },
-  { value: 'gpt-3.5', label: 'GPT-3.5', desc: '快速' },
-  { value: 'claude', label: 'Claude', desc: '擅长对话' },
-]
+// 多语言文本
+const i18n: Record<string, Record<string, string>> = {
+  'zh-CN': {
+    settings: '设置',
+    autoSave: '自动保存',
+    general: '通用',
+    appearance: '外观',
+    notifications: '通知',
+    reset: '重置设置',
+    language: '界面语言',
+    hour24: '24 小时制',
+    hour24Desc: '使用 24 小时时间格式',
+    theme: '主题',
+    light: '浅色',
+    dark: '深色',
+    auto: '跟随系统',
+    animations: '动画效果',
+    animationsDesc: '启用界面动画和过渡效果',
+    particles: '3D 粒子背景',
+    particlesDesc: '登录注册页显示 Three.js 动态背景',
+    pushNotif: '推送通知',
+    pushNotifDesc: '接收新消息推送通知',
+    sound: '消息提示音',
+    soundDesc: '新消息时播放提示音',
+    volume: '音效音量',
+    testNotif: '测试通知',
+    info: '信息',
+    success: '成功',
+    warning: '警告',
+    error: '错误',
+    resetSuccess: '设置已重置',
+    resetSuccessDesc: '所有设置已恢复默认值',
+    notifEnabled: '通知已开启',
+    notifEnabledDesc: '您将收到新消息提醒',
+    notifFailed: '无法开启通知',
+    notifFailedDesc: '请在浏览器设置中允许通知权限',
+  },
+  'zh-TW': {
+    settings: '設定',
+    autoSave: '自動儲存',
+    general: '一般',
+    appearance: '外觀',
+    notifications: '通知',
+    reset: '重設設定',
+    language: '介面語言',
+    hour24: '24 小時制',
+    hour24Desc: '使用 24 小時時間格式',
+    theme: '主題',
+    light: '淺色',
+    dark: '深色',
+    auto: '跟隨系統',
+    animations: '動畫效果',
+    animationsDesc: '啟用介面動畫和過渡效果',
+    particles: '3D 粒子背景',
+    particlesDesc: '登入註冊頁顯示 Three.js 動態背景',
+    pushNotif: '推送通知',
+    pushNotifDesc: '接收新訊息推送通知',
+    sound: '訊息提示音',
+    soundDesc: '新訊息時播放提示音',
+    volume: '音效音量',
+    testNotif: '測試通知',
+    info: '資訊',
+    success: '成功',
+    warning: '警告',
+    error: '錯誤',
+    resetSuccess: '設定已重設',
+    resetSuccessDesc: '所有設定已恢復預設值',
+    notifEnabled: '通知已開啟',
+    notifEnabledDesc: '您將收到新訊息提醒',
+    notifFailed: '無法開啟通知',
+    notifFailedDesc: '請在瀏覽器設定中允許通知權限',
+  },
+  'en': {
+    settings: 'Settings',
+    autoSave: 'Auto-save',
+    general: 'General',
+    appearance: 'Appearance',
+    notifications: 'Notifications',
+    reset: 'Reset Settings',
+    language: 'Language',
+    hour24: '24-hour format',
+    hour24Desc: 'Use 24-hour time format',
+    theme: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
+    auto: 'System',
+    animations: 'Animations',
+    animationsDesc: 'Enable UI animations and transitions',
+    particles: '3D Particle Background',
+    particlesDesc: 'Show Three.js background on login/register',
+    pushNotif: 'Push Notifications',
+    pushNotifDesc: 'Receive push notifications for new messages',
+    sound: 'Notification Sound',
+    soundDesc: 'Play sound for new messages',
+    volume: 'Sound Volume',
+    testNotif: 'Test Notification',
+    info: 'Info',
+    success: 'Success',
+    warning: 'Warning',
+    error: 'Error',
+    resetSuccess: 'Settings Reset',
+    resetSuccessDesc: 'All settings restored to defaults',
+    notifEnabled: 'Notifications Enabled',
+    notifEnabledDesc: 'You will receive new message alerts',
+    notifFailed: 'Cannot Enable Notifications',
+    notifFailedDesc: 'Please allow notification permissions in browser settings',
+  },
+  'ja': {
+    settings: '設定',
+    autoSave: '自動保存',
+    general: '一般',
+    appearance: '外観',
+    notifications: '通知',
+    reset: '設定をリセット',
+    language: '言語',
+    hour24: '24時間表示',
+    hour24Desc: '24時間形式を使用',
+    theme: 'テーマ',
+    light: 'ライト',
+    dark: 'ダーク',
+    auto: 'システム',
+    animations: 'アニメーション',
+    animationsDesc: 'UIアニメーションを有効にする',
+    particles: '3Dパーティクル背景',
+    particlesDesc: 'ログイン/登録ページにThree.js背景を表示',
+    pushNotif: 'プッシュ通知',
+    pushNotifDesc: '新しいメッセージの通知を受け取る',
+    sound: '通知音',
+    soundDesc: '新しいメッセージの時に音を再生',
+    volume: '音量',
+    testNotif: '通知をテスト',
+    info: '情報',
+    success: '成功',
+    warning: '警告',
+    error: 'エラー',
+    resetSuccess: '設定がリセットされました',
+    resetSuccessDesc: 'すべての設定がデフォルトに戻りました',
+    notifEnabled: '通知が有効になりました',
+    notifEnabledDesc: '新しいメッセージの通知を受け取ります',
+    notifFailed: '通知を有効にできません',
+    notifFailedDesc: 'ブラウザ設定で通知を許可してください',
+  },
+}
 
 // ============================================
 // 子组件
@@ -257,16 +387,23 @@ function Slider({
 // 设置面板内容
 // ============================================
 
+// 获取当前语言文本
+function useI18n() {
+  const { language } = useSettingsStore()
+  return i18n[language] || i18n['zh-CN']
+}
+
 // 通用设置
 function GeneralSettings() {
   const settings = useSettingsStore()
+  const t = useI18n()
 
   return (
     <div className="space-y-1">
       <SettingRow 
         icon={Languages} 
         iconColor="#6366f1" 
-        label="界面语言"
+        label={t.language}
       >
         <select
           value={settings.language}
@@ -287,8 +424,8 @@ function GeneralSettings() {
       <SettingRow 
         icon={Clock} 
         iconColor="#8b5cf6" 
-        label="24 小时制"
-        description="使用 24 小时时间格式"
+        label={t.hour24}
+        description={t.hour24Desc}
       >
         <Toggle
           checked={settings.use24HourFormat}
@@ -302,20 +439,32 @@ function GeneralSettings() {
 // 外观设置
 function AppearanceSettings() {
   const settings = useSettingsStore()
+  const t = useI18n()
+
+  const handleThemeChange = (theme: 'light' | 'dark' | 'auto') => {
+    settings.setSetting('theme', theme)
+    applyTheme(theme)
+  }
+
+  const themeLabels = {
+    light: t.light,
+    dark: t.dark,
+    auto: t.auto,
+  }
 
   return (
     <div className="space-y-6">
       {/* 主题选择 */}
       <div>
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">主题</div>
+        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{t.theme}</div>
         <div className="grid grid-cols-3 gap-3">
           {THEMES.map(theme => (
             <OptionCard
               key={theme.value}
               selected={settings.theme === theme.value}
-              onClick={() => settings.setSetting('theme', theme.value)}
+              onClick={() => handleThemeChange(theme.value)}
               icon={theme.icon}
-              label={theme.label}
+              label={themeLabels[theme.value]}
             />
           ))}
         </div>
@@ -325,8 +474,8 @@ function AppearanceSettings() {
         <SettingRow 
           icon={Zap} 
           iconColor="#f59e0b" 
-          label="动画效果"
-          description="启用界面动画和过渡效果"
+          label={t.animations}
+          description={t.animationsDesc}
         >
           <Toggle
             checked={settings.animationsEnabled}
@@ -337,8 +486,8 @@ function AppearanceSettings() {
         <SettingRow 
           icon={Box} 
           iconColor="#8b5cf6" 
-          label="3D 粒子背景"
-          description="登录注册页显示 Three.js 动态背景"
+          label={t.particles}
+          description={t.particlesDesc}
         >
           <Toggle
             checked={settings.particleBackground}
@@ -353,6 +502,7 @@ function AppearanceSettings() {
 // 通知设置
 function NotificationSettings() {
   const settings = useSettingsStore()
+  const t = useI18n()
   const { notifySuccess, notifyError, notifyWarning, notifyInfo } = useNotification()
 
   const handleNotificationToggle = async (checked: boolean) => {
@@ -360,9 +510,9 @@ function NotificationSettings() {
       const permission = await requestNotificationPermission()
       if (permission === 'granted') {
         settings.setSetting('notificationsEnabled', true)
-        notifySuccess('通知已开启', '您将收到新消息提醒')
+        notifySuccess(t.notifEnabled, t.notifEnabledDesc)
       } else {
-        notifyError('无法开启通知', '请在浏览器设置中允许通知权限')
+        notifyError(t.notifFailed, t.notifFailedDesc)
       }
     } else {
       settings.setSetting('notificationsEnabled', false)
@@ -375,8 +525,8 @@ function NotificationSettings() {
         <SettingRow 
           icon={Bell} 
           iconColor="#ef4444" 
-          label="推送通知"
-          description="接收新消息推送通知"
+          label={t.pushNotif}
+          description={t.pushNotifDesc}
         >
           <Toggle
             checked={settings.notificationsEnabled}
@@ -387,8 +537,8 @@ function NotificationSettings() {
         <SettingRow 
           icon={Volume2} 
           iconColor="#6366f1" 
-          label="消息提示音"
-          description="新消息时播放提示音"
+          label={t.sound}
+          description={t.soundDesc}
         >
           <Toggle
             checked={settings.soundEnabled}
@@ -401,7 +551,7 @@ function NotificationSettings() {
       {settings.soundEnabled && (
         <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">音效音量</span>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.volume}</span>
             <span className="text-sm text-indigo-600 font-medium">{Math.round(settings.soundVolume * 100)}%</span>
           </div>
           <Slider
@@ -413,13 +563,13 @@ function NotificationSettings() {
 
       {/* 测试通知 */}
       <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl">
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">测试通知</div>
+        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{t.testNotif}</div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: '信息', fn: () => notifyInfo('测试', '信息通知'), color: 'bg-blue-500' },
-            { label: '成功', fn: () => notifySuccess('成功', '操作完成'), color: 'bg-emerald-500' },
-            { label: '警告', fn: () => notifyWarning('警告', '请注意'), color: 'bg-amber-500' },
-            { label: '错误', fn: () => notifyError('错误', '出错了'), color: 'bg-red-500' },
+            { label: t.info, fn: () => notifyInfo(t.info, t.info), color: 'bg-blue-500' },
+            { label: t.success, fn: () => notifySuccess(t.success, t.success), color: 'bg-emerald-500' },
+            { label: t.warning, fn: () => notifyWarning(t.warning, t.warning), color: 'bg-amber-500' },
+            { label: t.error, fn: () => notifyError(t.error, t.error), color: 'bg-red-500' },
           ].map(item => (
             <button
               key={item.label}
@@ -438,75 +588,18 @@ function NotificationSettings() {
   )
 }
 
-// 隐私设置
-function PrivacySettings() {
-  const settings = useSettingsStore()
-
-  return (
-    <div className="space-y-1">
-      <SettingRow 
-        icon={Eye} 
-        iconColor="#10b981" 
-        label="在线状态"
-        description="向其他人显示您的在线状态"
-      >
-        <Toggle
-          checked={settings.showOnlineStatus}
-          onChange={(checked) => settings.setSetting('showOnlineStatus', checked)}
-        />
-      </SettingRow>
-
-      <SettingRow 
-        icon={Lock} 
-        iconColor="#6366f1" 
-        label="消息加密"
-        description="启用端到端消息加密"
-      >
-        <Toggle
-          checked={settings.messageEncryption}
-          onChange={(checked) => settings.setSetting('messageEncryption', checked)}
-        />
-      </SettingRow>
-    </div>
-  )
-}
-
-// AI 设置
-function AISettings() {
-  const settings = useSettingsStore()
-
-  return (
-    <div className="space-y-6">
-      <SettingRow 
-        icon={Sparkles} 
-        iconColor="#f59e0b" 
-        label="AI 助手"
-        description="启用智能回复和建议"
-      >
-        <Toggle
-          checked={settings.aiEnabled}
-          onChange={(checked) => settings.setSetting('aiEnabled', checked)}
-        />
-      </SettingRow>
-
-      {settings.aiEnabled && (
-        <div>
-          <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">AI 模型</div>
-          <div className="grid grid-cols-3 gap-3">
-            {AI_MODELS.map(model => (
-              <OptionCard
-                key={model.value}
-                selected={settings.aiModel === model.value}
-                onClick={() => settings.setSetting('aiModel', model.value)}
-                label={model.label}
-                description={model.desc}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+// 应用主题到 document
+function applyTheme(theme: 'light' | 'dark' | 'auto') {
+  if (typeof document === 'undefined') return
+  
+  const root = document.documentElement
+  
+  if (theme === 'auto') {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    root.classList.toggle('dark', prefersDark)
+  } else {
+    root.classList.toggle('dark', theme === 'dark')
+  }
 }
 
 // ============================================
@@ -516,6 +609,7 @@ function AISettings() {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>('general')
   const settings = useSettingsStore()
+  const t = useI18n()
   const { notifySuccess } = useNotification()
 
   const handleClose = useCallback(() => {
@@ -525,9 +619,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const handleReset = useCallback(() => {
     settings.resetSettings()
-    notifySuccess('设置已重置', '所有设置已恢复默认值')
+    applyTheme('light') // 重置后应用默认主题
+    notifySuccess(t.resetSuccess, t.resetSuccessDesc)
     playButton()
-  }, [settings, notifySuccess])
+  }, [settings, notifySuccess, t])
+  
+  // Tab 标签多语言映射
+  const tabLabels: Record<TabId, string> = {
+    general: t.general,
+    appearance: t.appearance,
+    notifications: t.notifications,
+  }
 
   const renderContent = () => {
     switch (activeTab) {
@@ -537,10 +639,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return <AppearanceSettings />
       case 'notifications':
         return <NotificationSettings />
-      case 'privacy':
-        return <PrivacySettings />
-      case 'ai':
-        return <AISettings />
       default:
         return null
     }
@@ -576,8 +674,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <Settings className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-800 dark:text-white">设置</h2>
-                  <p className="text-xs text-slate-500">自动保存</p>
+                  <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{t.settings}</h2>
+                  <p className="text-xs text-slate-500">{t.autoSave}</p>
                 </div>
               </div>
               <button
@@ -615,7 +713,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           className="w-4.5 h-4.5" 
                           style={{ color: isActive ? tab.color : undefined }} 
                         />
-                        {tab.label}
+                        {tabLabels[tab.id]}
                       </button>
                     )
                   })}
@@ -628,7 +726,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    重置设置
+                    {t.reset}
                   </button>
                 </div>
               </div>
@@ -655,7 +753,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         `}
                       >
                         <Icon className="w-4 h-4" style={{ color: isActive ? tab.color : undefined }} />
-                        {tab.label}
+                        {tabLabels[tab.id]}
                       </button>
                     )
                   })}
@@ -685,7 +783,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-xl transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
-                重置所有设置
+                {t.reset}
               </button>
             </div>
           </motion.div>

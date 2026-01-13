@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import ParticleBackground from '@/components/ui/ParticleBackground'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
+import { useSettingsStore } from '@/store/settingsStore'
 
 
 // 特性标签
@@ -100,6 +101,7 @@ const PasswordStrengthIndicator = ({ password }: { password: string }) => {
 export default function Register() {
   const router = useRouter()
   const register = useAuthStore((state) => state.register)
+  const particleBackground = useSettingsStore((s) => s.particleBackground)
   
   const [formData, setFormData] = useState({
     user_id: '',
@@ -410,16 +412,20 @@ export default function Register() {
 
       {/* 右侧 - 品牌区域（桌面端可见） */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden">
-        <ParticleBackground 
-          particleCount={100}
-          primaryColor="#a855f7"
-          secondaryColor="#6366f1"
-          backgroundColor="#0a0515"
-          particleSize={2}
-          speed={0.25}
-          showLines={true}
-          lineDistance={100}
-        />
+        {particleBackground ? (
+          <ParticleBackground 
+            particleCount={100}
+            primaryColor="#a855f7"
+            secondaryColor="#6366f1"
+            backgroundColor="#0a0515"
+            particleSize={2}
+            speed={0.25}
+            showLines={true}
+            lineDistance={100}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900" />
+        )}
         
         <div className="relative z-10 flex flex-col justify-center items-center px-12 xl:px-20 w-full">
           {/* Logo 和标题 */}
