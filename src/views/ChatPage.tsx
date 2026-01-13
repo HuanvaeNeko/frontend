@@ -28,6 +28,7 @@ import { TabType } from '../store/chatStore'
 import FriendList from '../components/chat/FriendList'
 import GroupList from '../components/chat/GroupList'
 import ChatWindow from '../components/chat/ChatWindow'
+import SettingsModal, { useSettingsModal } from '../components/SettingsModal'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
@@ -83,6 +84,7 @@ export default function ChatPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const settingsModal = useSettingsModal()
   // 使用查询参数：/chat/friends?id=xxx 或 /chat/groups?id=xxx
   const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
   const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
@@ -456,7 +458,7 @@ export default function ChatPage() {
         <div className="flex flex-col gap-2">
           <motion.button
             className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200"
-            onClick={() => router.push('/settings')}
+            onClick={settingsModal.open}
             title="设置"
             whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
             whileTap={{ scale: 0.95 }}
@@ -678,7 +680,7 @@ export default function ChatPage() {
             ))}
             <motion.button
               className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-slate-500"
-              onClick={() => router.push('/settings')}
+              onClick={settingsModal.open}
               whileTap={{ scale: 0.95 }}
             >
               <Settings className="w-5 h-5" />
@@ -687,6 +689,9 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+
+      {/* 设置模态框 */}
+      <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} />
     </div>
   )
 }
