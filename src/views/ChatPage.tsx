@@ -396,14 +396,14 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100">
+    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950">
       {/* 背景装饰球 */}
-      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 -top-24 -right-24 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow max-md:w-[200px] max-md:h-[200px]" />
-      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 -bottom-20 left-[20%] blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow-reverse max-md:w-[150px] max-md:h-[150px]" />
-      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 top-1/2 -left-12 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow max-md:hidden" />
+      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 dark:from-blue-600 dark:to-blue-800 -top-24 -right-24 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:w-[200px] max-md:h-[200px]" />
+      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 dark:from-indigo-600 dark:to-indigo-800 -bottom-20 left-[20%] blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow-reverse max-md:w-[150px] max-md:h-[150px]" />
+      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 dark:from-violet-600 dark:to-violet-800 top-1/2 -left-12 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:hidden" />
 
       {/* 左侧边栏 - 移动端隐藏 */}
-      <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-2xl border-r border-blue-200/25 shadow-[2px_0_20px_rgba(147,197,253,0.08)] hidden md:flex">
+      <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 dark:from-slate-800/90 dark:to-slate-900/80 backdrop-blur-2xl border-r border-blue-200/25 dark:border-slate-700/50 shadow-[2px_0_20px_rgba(147,197,253,0.08)] dark:shadow-none hidden md:flex">
         {/* 用户头像 */}
         <div className="relative mb-7">
           <motion.div 
@@ -488,7 +488,7 @@ export default function ChatPage() {
         <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl md:border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
           {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 bg-white/20">
+            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
               {/* 子标签导航 */}
               <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
@@ -510,7 +510,7 @@ export default function ChatPage() {
 
           {/* 搜索框 */}
               {subTab === 'main' && (
-                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 border border-white/80 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85">
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 dark:bg-slate-700/50 border border-white/80 dark:border-slate-600/50 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85 dark:focus-within:bg-slate-700/70">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
                     type="text"
@@ -526,8 +526,8 @@ export default function ChatPage() {
 
           {/* WebRTC 头部 */}
           {activeTab === 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 bg-white/20">
-              <h2 className="font-semibold text-slate-700">视频会议</h2>
+            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
+              <h2 className="font-semibold text-slate-700 dark:text-slate-200">视频会议</h2>
             </div>
           )}
 
@@ -604,10 +604,10 @@ export default function ChatPage() {
       )}>
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
-          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white/40 backdrop-blur-xl border-b border-blue-200/20 shrink-0">
+          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white/40 dark:bg-slate-800/60 backdrop-blur-xl border-b border-blue-200/20 dark:border-slate-700/50 shrink-0">
             <button
               type="button"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 bg-white/50 hover:bg-white/70 active:scale-95 transition-all"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 bg-white/50 dark:bg-slate-700/50 hover:bg-white/70 dark:hover:bg-slate-600/50 active:scale-95 transition-all"
               onClick={() => {
                 // 先清除 localStorage 中保存的会话，防止被 useEffect 恢复
                 saveStateToStorage(activeTab)
@@ -657,7 +657,7 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-xl border-t border-blue-200/30 safe-area-inset-bottom">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-blue-200/30 dark:border-slate-700/50 safe-area-inset-bottom">
           <div className="flex justify-around py-2 px-4">
             {tabs.map((tab) => (
               <motion.button
