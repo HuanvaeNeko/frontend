@@ -22,18 +22,20 @@ https://api.huanvae.cn
 
 ## 🔧 环境变量配置
 
-在项目根目录创建 `.env` 文件：
+在项目根目录创建 `.env.local` 文件：
 
 ```bash
 # API 基础地址（可选，默认使用 https://api.huanvae.cn）
-VITE_AUTH_API_URL=https://api.huanvae.cn
+NEXT_PUBLIC_API_URL=https://api.huanvae.cn
 
 # WebSocket 地址（用于实时通讯）
-VITE_WS_URL=wss://api.huanvae.cn
+NEXT_PUBLIC_WS_URL=wss://api.huanvae.cn
 
 # MinIO 公共访问地址（用于头像等资源）
-VITE_MINIO_PUBLIC_URL=https://minio.huanvae.cn
+NEXT_PUBLIC_MINIO_URL=https://minio.huanvae.cn
 ```
+
+> 注意：Next.js 使用 `NEXT_PUBLIC_` 前缀来暴露客户端可访问的环境变量。
 
 ---
 

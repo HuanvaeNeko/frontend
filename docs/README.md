@@ -47,9 +47,10 @@ docs/
 
 ## 🔧 技术栈参考
 
-- [React 18 文档](https://react.dev/)
+- [Next.js 文档](https://nextjs.org/docs)
+- [Turbopack 文档](https://turbo.build/pack)
+- [React 19 文档](https://react.dev/)
 - [TypeScript 文档](https://www.typescriptlang.org/docs/)
-- [Vite 文档](https://vitejs.dev/)
 - [shadcn/ui 文档](https://ui.shadcn.com/)
 - [Tailwind CSS 文档](https://tailwindcss.com/docs)
 - [Framer Motion 文档](https://www.framer.com/motion/)
@@ -58,4 +59,4 @@ docs/
 
 ---
 
-**最后更新：** 2024-12-13
+**最后更新：** 2026-01-13

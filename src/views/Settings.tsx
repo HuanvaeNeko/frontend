@@ -11,13 +11,49 @@ import {
   Palette, 
   Bell, 
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Volume2
 } from 'lucide-react'
+import { playTap, playToggle, playButton } from '@/hooks/useSound'
+import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
 import * as Switch from '@radix-ui/react-switch'
 import { GlassPage, GlassCard, GlassButton } from '@/components/ui/glass'
 import { useSettingsStore } from '../store/settingsStore'
 import { useApiConfigStore } from '../store/apiConfig'
 import { useToast } from '../hooks/use-toast'
+
+// 测试通知按钮组件
+function TestNotificationButton() {
+  const { notifyInfo, notifySuccess, notifyWarning, notifyError, notifyMessage } = useNotification()
+  
+  const testTypes = [
+    { label: '信息', color: 'bg-blue-100 text-blue-600', fn: () => notifyInfo('测试通知', '这是一条信息通知') },
+    { label: '成功', color: 'bg-emerald-100 text-emerald-600', fn: () => notifySuccess('操作成功', '您的设置已保存') },
+    { label: '警告', color: 'bg-amber-100 text-amber-600', fn: () => notifyWarning('警告', '请注意检查设置') },
+    { label: '错误', color: 'bg-red-100 text-red-600', fn: () => notifyError('发生错误', '请稍后重试') },
+    { label: '消息', color: 'bg-violet-100 text-violet-600', fn: () => notifyMessage('新消息', '您收到一条新消息') },
+  ]
+
+  return (
+    <div className="pt-3 border-t border-gray-100">
+      <div className="text-sm font-medium text-gray-700 mb-2">测试通知效果</div>
+      <div className="flex flex-wrap gap-2">
+        {testTypes.map(({ label, color, fn }) => (
+          <button
+            key={label}
+            onClick={() => {
+              playButton()
+              fn()
+            }}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all hover:scale-105 ${color}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -292,7 +328,20 @@ export default function Settings() {
             <SettingRow label="动画效果" description="启用界面动画">
               <CustomSwitch
                 checked={settings.animationsEnabled}
-                onCheckedChange={(checked) => settings.setSetting('animationsEnabled', checked)}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('animationsEnabled', checked)
+                  playToggle()
+                }}
+              />
+            </SettingRow>
+
+            <SettingRow label="3D 粒子背景" description="登录/注册页面显示 Three.js 动态背景">
+              <CustomSwitch
+                checked={settings.particleBackground}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('particleBackground', checked)
+                  playToggle()
+                }}
               />
             </SettingRow>
           </SettingsCard>
@@ -302,17 +351,55 @@ export default function Settings() {
             <SettingRow label="推送通知" description="接收消息推送通知">
               <CustomSwitch
                 checked={settings.notificationsEnabled}
-                onCheckedChange={(checked) => settings.setSetting('notificationsEnabled', checked)}
+                onCheckedChange={async (checked) => {
+                  if (checked) {
+                    // 请求浏览器通知权限
+                    const permission = await requestNotificationPermission()
+                    if (permission === 'granted') {
+                      settings.setSetting('notificationsEnabled', true)
+                      playToggle()
+                    }
+                  } else {
+                    settings.setSetting('notificationsEnabled', false)
+                    playToggle()
+                  }
+                }}
               />
             </SettingRow>
 
             <SettingRow label="消息提示音" description="新消息时播放提示音">
               <CustomSwitch
                 checked={settings.soundEnabled}
-                onCheckedChange={(checked) => settings.setSetting('soundEnabled', checked)}
+                onCheckedChange={(checked) => {
+                  settings.setSetting('soundEnabled', checked)
+                  if (checked) playToggle()
+                }}
                 disabled={!settings.notificationsEnabled}
               />
             </SettingRow>
+
+            {settings.soundEnabled && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">音效音量</span>
+                  <span className="text-xs text-gray-500">{Math.round(settings.soundVolume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={settings.soundVolume}
+                  onChange={(e) => {
+                    settings.setSetting('soundVolume', parseFloat(e.target.value))
+                    playTap()
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+              </div>
+            )}
+
+            <TestNotificationButton />
           </SettingsCard>
         </motion.div>
 

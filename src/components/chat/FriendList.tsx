@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users, Clock, Send } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -346,26 +347,27 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           )}
         </div>
 
-        {/* 添加好友对话框 */}
-        <AnimatePresence>
-          {showAddDialog && (
-            <>
-              {/* 遮罩层 */}
-              <motion.div
-                className="fixed inset-0 z-[100]"
-                style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowAddDialog(false)}
-              />
-              {/* 对话框 */}
-              <motion.div
-                className="fixed inset-0 flex items-center justify-center z-[101] pointer-events-none p-4"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
+        {/* 添加好友对话框 - 使用 Portal 渲染到 body */}
+        {typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {showAddDialog && (
+              <>
+                {/* 遮罩层 */}
+                <motion.div
+                  className="fixed inset-0 z-[9998]"
+                  style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowAddDialog(false)}
+                />
+                {/* 对话框 */}
+                <motion.div
+                  className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none p-4"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
                 <motion.div
                   className="w-[400px] max-w-full pointer-events-auto"
                   style={{
@@ -475,10 +477,12 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                     </motion.button>
                   </div>
                 </motion.div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
       </div>
     )
   }

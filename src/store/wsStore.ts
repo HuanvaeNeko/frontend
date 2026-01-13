@@ -231,6 +231,8 @@ export interface WSPrivateMessage {
     file_url: string | null
     file_size: number | null
     file_hash: string | null
+    filename: string | null
+    content_type: string | null
     image_width: number | null
     image_height: number | null
     seq: number
@@ -253,6 +255,8 @@ export interface WSGroupMessage {
     file_url: string | null
     file_size: number | null
     file_hash: string | null
+    filename: string | null
+    content_type: string | null
     image_width: number | null
     image_height: number | null
     seq: number

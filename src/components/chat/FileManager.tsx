@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { storageApi, FileItem, formatFileSize, FileType, StorageLocation } from '../../api/storage'
+import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 
 interface FileManagerProps {
   subTab: 'main' | 'upload'
@@ -29,6 +30,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
   const [selectedStorage, setSelectedStorage] = useState<'personal' | 'friend' | 'group'>('personal')
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
 
   // 加载文件列表
   const loadFiles = async (refresh = false) => {
@@ -165,7 +167,12 @@ export default function FileManager({ subTab }: FileManagerProps) {
   const handlePreview = async (file: FileItem) => {
     try {
       const url = await storageApi.getPresignedUrl(file.file_uuid, 'preview')
-      window.open(url, '_blank')
+      setPreviewFile({
+        url,
+        name: file.filename,
+        type: file.content_type,
+        size: file.file_size,
+      })
     } catch (error) {
       toast({
         title: '预览失败',
@@ -173,6 +180,16 @@ export default function FileManager({ subTab }: FileManagerProps) {
         variant: 'destructive',
       })
     }
+  }
+
+  // 下载预览中的文件
+  const handleDownloadPreview = async (previewFile: PreviewFile) => {
+    const a = document.createElement('a')
+    a.href = previewFile.url
+    a.download = previewFile.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   // 获取文件图标
@@ -194,10 +211,12 @@ export default function FileManager({ subTab }: FileManagerProps) {
     })
   }
 
-  // 我的文件
-  if (subTab === 'main') {
-    return (
-      <div className="flex flex-col h-full">
+  // 渲染内容
+  const renderContent = () => {
+    // 我的文件
+    if (subTab === 'main') {
+      return (
+        <div className="flex flex-col h-full">
         {/* 工具栏 */}
         <div className="p-3 border-b flex items-center justify-between">
           <span className="text-sm text-muted-foreground">
@@ -289,16 +308,16 @@ export default function FileManager({ subTab }: FileManagerProps) {
           )}
         </div>
       </div>
-    )
-  }
+      )
+    }
 
-  // 上传文件
-  if (subTab === 'upload') {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="border-2 border-dashed rounded-lg p-8 text-center">
-            <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+    // 上传文件
+    if (subTab === 'upload') {
+      return (
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="border-2 border-dashed rounded-lg p-8 text-center">
+              <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <h3 className="font-semibold mb-2">上传文件</h3>
             <p className="text-sm text-muted-foreground mb-4">
               点击或拖拽文件到此处上传
@@ -385,10 +404,26 @@ export default function FileManager({ subTab }: FileManagerProps) {
               <li>• 上传的文件将保存在您的个人空间</li>
             </ul>
           </div>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
+
+    return null
   }
 
-  return null
+  return (
+    <>
+      {renderContent()}
+      
+      {/* 文件预览 */}
+      {previewFile && (
+        <FilePreview
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+          onDownload={handleDownloadPreview}
+        />
+      )}
+    </>
+  )
 }

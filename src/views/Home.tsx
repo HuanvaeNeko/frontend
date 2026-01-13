@@ -6,11 +6,13 @@ import { Bot, MessageCircle, Video, Settings, LogOut, User, Laptop, Users, IdCar
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useAuthStore } from '../store/authStore'
+import { useUIStore } from '../store/uiStore'
 import { BackgroundOrbs } from '@/components/ui/glass'
 
 export default function Home() {
   const router = useRouter()
   const { user, logout, isAuthenticated } = useAuthStore()
+  const { openProfileModal } = useUIStore()
 
   const handleLogout = async () => {
     try {
@@ -30,7 +32,7 @@ export default function Home() {
     { icon: MessageCircle, title: '即时通讯', description: '好友与群组聊天', path: '/chat', gradient: 'from-violet-500 to-purple-400' },
     { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting', gradient: 'from-rose-500 to-pink-400' },
     { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends', gradient: 'from-emerald-500 to-teal-400' },
-    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', path: '/profile', gradient: 'from-amber-500 to-orange-400' },
+    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', onClick: openProfileModal, gradient: 'from-amber-500 to-orange-400' },
     { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings', gradient: 'from-slate-500 to-gray-400' },
   ]
 
@@ -95,7 +97,7 @@ export default function Home() {
                 >
                   <DropdownMenu.Item 
                     className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
-                    onSelect={() => router.push('/profile')}
+                    onSelect={openProfileModal}
                   >
                     <IdCard size={16} />个人资料
                   </DropdownMenu.Item>
@@ -140,14 +142,14 @@ export default function Home() {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5 mb-12">
           {features.map((feature, index) => (
             <motion.div
-              key={feature.path}
+              key={feature.title}
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 + index * 0.08 }}
             >
               <motion.button
                 className="w-full flex items-center gap-4 p-5 bg-gradient-to-br from-white/80 to-white/50 backdrop-blur-xl border border-blue-200/25 rounded-[20px] cursor-pointer text-left transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/15 hover:border-blue-500/30 group"
-                onClick={() => router.push(feature.path)}
+                onClick={feature.onClick ?? (() => router.push(feature.path!))}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
               >

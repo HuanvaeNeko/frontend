@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
 import { EmojiPicker } from './EmojiPicker'
@@ -11,12 +12,19 @@ import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
 import { groupMessagesApi, type GroupMessage } from '../../api/groupMessages'
 import { storageApi, type FileType, type StorageLocation } from '../../api/storage'
+import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import GroupManagement from './GroupManagement'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../hooks/use-toast'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import MarkdownEditor, { type MarkdownEditorRef } from './MarkdownEditor'
+import { Markdown } from '@/components/ui/markdown'
 
-export default function ChatWindow() {
+interface ChatWindowProps {
+  hideMobileHeader?: boolean
+}
+
+export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps) {
   const { toast } = useToast()
   const { user } = useAuthStore()
   const {
@@ -39,9 +47,12 @@ export default function ChatWindow() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [showGroupManagement, setShowGroupManagement] = useState(false)
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
+  const [editorHasContent, setEditorHasContent] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<MarkdownEditorRef>(null)
 
   useEffect(() => {
     if (!selectedConversation) {
@@ -130,11 +141,15 @@ export default function ChatWindow() {
     })
   }
 
-  const handleSendMessage = async () => {
-    if (!selectedConversation || !messageInput.trim() || sending) return
+  const handleSendMessage = useCallback(async () => {
+    // 从编辑器获取 Markdown 内容
+    const markdownContent = editorRef.current?.getValue() || ''
+    
+    if (!selectedConversation || !markdownContent.trim() || sending) return
 
-    const content = messageInput.trim()
-    setMessageInput('')
+    // 发送 Markdown 格式内容
+    const content = markdownContent.trim()
+    editorRef.current?.clear()
     setSending(true)
 
     try {
@@ -154,6 +169,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          filename: null,
+          content_type: null,
           image_width: null,
           image_height: null,
           seq: response.seq,
@@ -176,6 +193,8 @@ export default function ChatWindow() {
           file_url: null,
           file_size: null,
           file_hash: null,
+          filename: null,
+          content_type: null,
           image_width: null,
           image_height: null,
           seq: response.seq,
@@ -190,11 +209,11 @@ export default function ChatWindow() {
         description: error instanceof Error ? error.message : '发送消息失败',
         variant: 'destructive',
       })
-      setMessageInput(content)
+      // 发送失败不恢复内容，用户可以重新输入
     } finally {
       setSending(false)
     }
-  }
+  }, [selectedConversation, sending, user, addMessage, toast])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -297,6 +316,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            filename: file.name,
+            content_type: file.type,
             image_width: null,
             image_height: null,
             seq: response.seq,
@@ -321,6 +342,8 @@ export default function ChatWindow() {
             file_url: uploadResult.fileUrl,
             file_size: file.size,
             file_hash: null,
+            filename: file.name,
+            content_type: file.type,
             image_width: null,
             image_height: null,
             seq: response.seq,
@@ -396,13 +419,29 @@ export default function ChatWindow() {
 
   const handleFilePreview = async (message: Message) => {
     try {
+      let url = message.file_url
       if (message.file_uuid) {
-        const presignedUrl = selectedConversation?.type === 'friend'
+        url = selectedConversation?.type === 'friend'
           ? await storageApi.getFriendFilePresignedUrl(message.file_uuid, 'preview')
           : await storageApi.getPresignedUrl(message.file_uuid, 'preview')
-        window.open(presignedUrl, '_blank')
-      } else if (message.file_url) {
-        window.open(message.file_url, '_blank')
+      }
+      
+      if (url) {
+        // Message 类型没有 filename 和 content_type，根据 message_type 推断
+        const name = message.message_type === 'image' ? '图片' 
+          : message.message_type === 'video' ? '视频'
+          : message.message_type === 'file' ? '文件'
+          : '未命名文件'
+        const mimeType = message.message_type === 'image' ? 'image/*'
+          : message.message_type === 'video' ? 'video/*'
+          : 'application/octet-stream'
+        
+        setPreviewFile({
+          url,
+          name,
+          type: mimeType,
+          size: message.file_size ?? undefined,
+        })
       }
     } catch (error) {
       toast({
@@ -446,9 +485,9 @@ export default function ChatWindow() {
     switch (message.message_type) {
       case 'text':
         return (
-          <p className="whitespace-pre-wrap break-words text-sm">
+          <Markdown className="text-sm chat-message-markdown">
             {message.message_content}
-          </p>
+          </Markdown>
         )
       case 'image':
         return (
@@ -569,8 +608,8 @@ export default function ChatWindow() {
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      {/* 聊天头部 */}
-      <header className="px-6 py-4 min-h-[81px] shrink-0 border-b border-blue-200/15 bg-white/30 flex items-center justify-between">
+      {/* 聊天头部 - 移动端由父组件处理 */}
+      <header className={`px-6 py-4 min-h-[81px] shrink-0 border-b border-blue-200/15 bg-white/30 flex items-center justify-between ${hideMobileHeader ? 'hidden' : ''}`}>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-white/80 to-white/50 border-[1.5px] border-white/80 flex items-center justify-center shrink-0">
             <Avatar className="h-full w-full">
@@ -699,7 +738,7 @@ export default function ChatWindow() {
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger asChild>
                           <motion.div
-                            className="rounded-2xl px-4 py-2.5 cursor-pointer"
+                            className={`rounded-2xl px-4 py-2.5 cursor-pointer ${isOwn ? 'message-own' : ''}`}
                             style={{
                               background: isOwn
                                 ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
@@ -900,47 +939,36 @@ export default function ChatWindow() {
             <Paperclip className="h-5 w-5" />
           </motion.button>
           <EmojiPicker 
-            onSelect={(emoji) => setMessageInput(prev => prev + emoji)}
+            onSelect={(emoji) => editorRef.current?.insertText(emoji)}
             disabled={sending}
           />
-          <input
-            type="text"
-            placeholder="输入消息..."
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            onKeyPress={handleKeyPress}
+          <MarkdownEditor
+            ref={editorRef}
+            placeholder="输入消息... (支持 Markdown，Enter 发送)"
+            onSubmit={handleSendMessage}
+            onChange={() => setEditorHasContent(!(editorRef.current?.isEmpty() ?? true))}
             disabled={sending}
-            className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
-            style={{
-              background: 'rgba(255, 255, 255, 0.6)',
-              border: '1px solid rgba(147, 197, 253, 0.3)',
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)'
-              e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = 'rgba(147, 197, 253, 0.3)'
-              e.target.style.boxShadow = 'none'
-            }}
+            className="flex-1"
+            minHeight="42px"
+            maxHeight="150px"
           />
           <motion.button
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white self-end"
             style={{
-              background: (!messageInput.trim() && !selectedFile) || sending
+              background: (!editorHasContent && !selectedFile) || sending
                 ? 'rgba(147, 197, 253, 0.5)'
                 : 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: (!messageInput.trim() && !selectedFile) || sending
+              boxShadow: (!editorHasContent && !selectedFile) || sending
                 ? 'none'
                 : '0 4px 15px rgba(59, 130, 246, 0.3)',
             }}
             onClick={selectedFile ? handleSendFile : handleSendMessage}
-            disabled={(!messageInput.trim() && !selectedFile) || sending}
-            whileHover={(!messageInput.trim() && !selectedFile) || sending ? {} : { 
+            disabled={(!editorHasContent && !selectedFile) || sending}
+            whileHover={(!editorHasContent && !selectedFile) || sending ? {} : { 
               scale: 1.05,
               boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)',
             }}
-            whileTap={(!messageInput.trim() && !selectedFile) || sending ? {} : { scale: 0.95 }}
+            whileTap={(!editorHasContent && !selectedFile) || sending ? {} : { scale: 0.95 }}
           >
             {sending ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -951,24 +979,25 @@ export default function ChatWindow() {
         </div>
       </div>
 
-      {/* 群管理弹窗 */}
-      <AnimatePresence>
-        {showGroupManagement && selectedConversation?.type === 'group' && (
-          <>
-            <motion.div
-              className="fixed inset-0 z-50"
-              style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowGroupManagement(false)}
-            />
-            <motion.div 
-              className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
+      {/* 群管理弹窗 - 使用 Portal 渲染到 body */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showGroupManagement && selectedConversation?.type === 'group' && (
+            <>
+              <motion.div
+                className="fixed inset-0 z-[9998]"
+                style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowGroupManagement(false)}
+              />
+              <motion.div 
+                className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
               <motion.div 
                 className="w-[90vw] max-w-2xl h-[80vh] max-h-[700px] shadow-xl flex flex-col pointer-events-auto"
                 style={{
@@ -1003,10 +1032,20 @@ export default function ChatWindow() {
                   />
                 </div>
               </motion.div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* 文件预览 */}
+      {previewFile && (
+        <FilePreview
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   )
 }

@@ -92,10 +92,20 @@
 
 ### 新增
 
-- React + TypeScript + Vite 项目结构
+- React + TypeScript 项目结构
 - 用户认证系统（登录/注册）
 - 基础页面框架
 - GitHub Actions 自动部署
+
+## [2026-01-13] - 技术栈升级
+
+### 变更
+
+- 从 Vite 迁移到 Next.js 16 + Turbopack
+- 升级 React 到 19.2
+- 升级 TypeScript 到 5.9
+- 使用 App Router 替代 React Router
+- 添加移动端适配（底部 Tab 导航、单栏布局）
 
 ---
 
@@ -103,12 +113,12 @@
 
 | 类别 | 技术 | 版本 |
 |------|------|------|
-| 框架 | React | 18.3 |
-| 类型 | TypeScript | 5.7 |
-| 构建 | Vite | 7.2 |
+| 框架 | Next.js (App Router) | 16.1 |
+| 构建 | Turbopack（开发）| - |
+| 核心 | React | 19.2 |
+| 类型 | TypeScript | 5.9 |
 | 样式 | Tailwind CSS | 4.0 |
 | 状态 | Zustand | 5.0 |
-| 路由 | React Router | 6 |
 | UI | shadcn/ui + Radix | - |
 | 动画 | Framer Motion | 11 |
 | 图标 | Lucide React | - |

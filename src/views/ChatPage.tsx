@@ -14,7 +14,8 @@ import {
   Plus,
   Settings,
   LogOut,
-  User
+  User,
+  ArrowLeft
 } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
@@ -22,16 +23,21 @@ import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { useProfileStore } from '../store/profileStore'
 import { useWSStore } from '../store/wsStore'
+import { useUIStore } from '../store/uiStore'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { TabType } from '../store/chatStore'
 import FriendList from '../components/chat/FriendList'
 import GroupList from '../components/chat/GroupList'
 import ChatWindow from '../components/chat/ChatWindow'
+import SettingsModal, { useSettingsModal } from '../components/SettingsModal'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
+
+// 移动端视图模式
+type MobileView = 'list' | 'chat'
 
 // 从 URL 路径解析 tab 类型
 function getTabFromPath(pathname: string): TabType {
@@ -79,6 +85,8 @@ export default function ChatPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const settingsModal = useSettingsModal()
+  const { openProfileModal } = useUIStore()
   // 使用查询参数：/chat/friends?id=xxx 或 /chat/groups?id=xxx
   const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
   const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
@@ -92,6 +100,25 @@ export default function ChatPage() {
   const [subTab, setSubTab] = useState<SubTab>('main')
   const [searchQuery, setSearchQuery] = useState('')
   const [isInitialized, setIsInitialized] = useState(false)
+  const [mobileView, setMobileView] = useState<MobileView>('list')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测移动端
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // 当选中会话时，移动端自动切换到聊天视图
+  useEffect(() => {
+    if (isMobile && selectedConversation) {
+      setMobileView('chat')
+    }
+  }, [selectedConversation, isMobile])
 
   // 从 URL 路径初始化 tab 状态
   useEffect(() => {
@@ -212,6 +239,7 @@ export default function ChatPage() {
       message_uuid: string; sender_id: string; sender_nickname: string; sender_avatar_url: string
       receiver_id: string; message_content: string; message_type: 'text' | 'image' | 'video' | 'file'
       file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      filename: string | null; content_type: string | null
       image_width: number | null; image_height: number | null; seq: number; send_time: string
     }) => {
       const selectedConv = chatStore.selectedConversation
@@ -221,7 +249,8 @@ export default function ChatPage() {
           message_uuid: data.message_uuid, sender_id: data.sender_id, receiver_id: data.receiver_id,
           message_content: data.message_content, message_type: data.message_type,
           file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
-          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          file_hash: data.file_hash, filename: data.filename, content_type: data.content_type,
+          image_width: data.image_width, image_height: data.image_height,
           seq: data.seq, send_time: data.send_time,
         })
       }
@@ -238,6 +267,7 @@ export default function ChatPage() {
       sender_avatar_url: string; message_content: string
       message_type: 'text' | 'image' | 'video' | 'file' | 'system'
       file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      filename: string | null; content_type: string | null
       image_width: number | null; image_height: number | null; seq: number
       reply_to: string | null; send_time: string
     }) => {
@@ -249,7 +279,8 @@ export default function ChatPage() {
           message_content: data.message_content,
           message_type: data.message_type as 'text' | 'image' | 'video' | 'file',
           file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
-          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          file_hash: data.file_hash, filename: data.filename, content_type: data.content_type,
+          image_width: data.image_width, image_height: data.image_height,
           seq: data.seq, send_time: data.send_time,
         })
       }
@@ -360,20 +391,26 @@ export default function ChatPage() {
     }
   }
 
-  return (
-    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100">
-      {/* 背景装饰球 */}
-      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 -top-24 -right-24 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
-      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 -bottom-20 left-[20%] blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow-reverse" />
-      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 top-1/2 -left-12 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
+  // 移动端返回列表
+  const handleMobileBack = () => {
+    setMobileView('list')
+    setSelectedConversation(null)
+  }
 
-      {/* 左侧边栏 */}
-      <aside className="w-[68px] h-full flex flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-2xl border-r border-blue-200/25 shadow-[2px_0_20px_rgba(147,197,253,0.08)]">
+  return (
+    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950">
+      {/* 背景装饰球 */}
+      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 dark:from-blue-600 dark:to-blue-800 -top-24 -right-24 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:w-[200px] max-md:h-[200px]" />
+      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 dark:from-indigo-600 dark:to-indigo-800 -bottom-20 left-[20%] blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow-reverse max-md:w-[150px] max-md:h-[150px]" />
+      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 dark:from-violet-600 dark:to-violet-800 top-1/2 -left-12 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:hidden" />
+
+      {/* 左侧边栏 - 移动端隐藏 */}
+      <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 dark:from-slate-800/90 dark:to-slate-900/80 backdrop-blur-2xl border-r border-blue-200/25 dark:border-slate-700/50 shadow-[2px_0_20px_rgba(147,197,253,0.08)] dark:shadow-none hidden md:flex">
         {/* 用户头像 */}
         <div className="relative mb-7">
           <motion.div 
             className="w-[42px] h-[42px] rounded-xl overflow-hidden bg-gradient-to-br from-white/90 to-white/60 border-2 border-white/95 shadow-[0_4px_12px_rgba(59,130,246,0.12),0_2px_6px_rgba(147,197,253,0.15)] flex items-center justify-center cursor-pointer transition-all duration-200"
-            onClick={() => router.push('/profile')}
+            onClick={openProfileModal}
             whileHover={{ scale: 1.08, y: -2 }}
           >
             {profile?.user_avatar_url || user?.avatar_url ? (
@@ -423,7 +460,7 @@ export default function ChatPage() {
         <div className="flex flex-col gap-2">
           <motion.button
             className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200"
-            onClick={() => router.push('/settings')}
+            onClick={settingsModal.open}
             title="设置"
             whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
             whileTap={{ scale: 0.95 }}
@@ -442,12 +479,18 @@ export default function ChatPage() {
         </div>
         </aside>
 
-      {/* 中间会话列表 */}
-      <div className="relative h-full flex z-10 min-w-[240px] max-w-[400px] w-[280px] shrink-0">
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
+      {/* 中间会话列表 - 移动端全屏显示 */}
+      <div className={cn(
+        "relative h-full flex z-10 shrink-0",
+        "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
+        // 移动端
+        "max-md:absolute max-md:inset-0 max-md:w-full max-md:max-w-none",
+        isMobile && mobileView === 'chat' && "max-md:hidden"
+      )}>
+        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl md:border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
           {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 bg-white/20">
+            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
               {/* 子标签导航 */}
               <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
@@ -469,7 +512,7 @@ export default function ChatPage() {
 
           {/* 搜索框 */}
               {subTab === 'main' && (
-                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 border border-white/80 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85">
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 dark:bg-slate-700/50 border border-white/80 dark:border-slate-600/50 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85 dark:focus-within:bg-slate-700/70">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
                     type="text"
@@ -485,13 +528,13 @@ export default function ChatPage() {
 
           {/* WebRTC 头部 */}
           {activeTab === 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 bg-white/20">
-              <h2 className="font-semibold text-slate-700">视频会议</h2>
+            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
+              <h2 className="font-semibold text-slate-700 dark:text-slate-200">视频会议</h2>
             </div>
           )}
 
-          {/* 列表内容 */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          {/* 列表内容 - 移动端底部留空间给导航栏 */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 max-md:pb-24">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
@@ -554,34 +597,103 @@ export default function ChatPage() {
           </div>
         </div>
 
-      {/* 右侧聊天窗口 */}
-      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg">
-          <AnimatePresence mode="wait">
-            {activeTab === 'webrtc' ? (
-              <motion.div
-                key="webrtc"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
-              >
-                <WebRTCPanel />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="chat"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
-              >
-                <ChatWindow />
-              </motion.div>
+      {/* 右侧聊天窗口 - 移动端全屏覆盖 */}
+      <div className={cn(
+        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg",
+        // 移动端
+        "max-md:absolute max-md:inset-0 max-md:w-full",
+        isMobile && mobileView === 'list' && "max-md:hidden"
+      )}>
+        {/* 移动端顶部返回栏 */}
+        {isMobile && mobileView === 'chat' && (
+          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white/40 dark:bg-slate-800/60 backdrop-blur-xl border-b border-blue-200/20 dark:border-slate-700/50 shrink-0">
+            <button
+              type="button"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 bg-white/50 dark:bg-slate-700/50 hover:bg-white/70 dark:hover:bg-slate-600/50 active:scale-95 transition-all"
+              onClick={() => {
+                // 先清除 localStorage 中保存的会话，防止被 useEffect 恢复
+                saveStateToStorage(activeTab)
+                setSelectedConversation(null)
+                setMobileView('list')
+              }}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            {selectedConversation && (
+              <div className="flex-1 min-w-0">
+                <h2 className="font-semibold text-slate-700 truncate">{selectedConversation.name}</h2>
+                <span className="text-xs text-slate-500">
+                  {selectedConversation.type === 'friend' ? '好友' : '群聊'}
+                </span>
+              </div>
             )}
-          </AnimatePresence>
+          </div>
+        )}
+        
+        <AnimatePresence mode="wait">
+          {activeTab === 'webrtc' ? (
+            <motion.div
+              key="webrtc"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              <WebRTCPanel />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-h-0"
+            >
+              <ChatWindow hideMobileHeader={isMobile && mobileView === 'chat'} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* 移动端底部导航栏 */}
+      {isMobile && mobileView === 'list' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-blue-200/30 dark:border-slate-700/50 safe-area-inset-bottom">
+          <div className="flex justify-around py-2 px-4">
+            {tabs.map((tab) => (
+              <motion.button
+                key={tab.id}
+                className={cn(
+                  "flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all",
+                  activeTab === tab.id 
+                    ? "text-blue-600 bg-blue-100/50" 
+                    : "text-slate-500"
+                )}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setSubTab('main')
+                }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <tab.icon className="w-5 h-5" />
+                <span className="text-xs font-medium">{tab.label}</span>
+              </motion.button>
+            ))}
+            <motion.button
+              className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-slate-500"
+              onClick={settingsModal.open}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Settings className="w-5 h-5" />
+              <span className="text-xs font-medium">设置</span>
+            </motion.button>
+          </div>
+        </div>
+      )}
+
+      {/* 设置模态框 */}
+      <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} />
     </div>
   )
 }
