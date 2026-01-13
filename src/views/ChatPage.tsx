@@ -235,6 +235,7 @@ export default function ChatPage() {
       message_uuid: string; sender_id: string; sender_nickname: string; sender_avatar_url: string
       receiver_id: string; message_content: string; message_type: 'text' | 'image' | 'video' | 'file'
       file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      filename: string | null; content_type: string | null
       image_width: number | null; image_height: number | null; seq: number; send_time: string
     }) => {
       const selectedConv = chatStore.selectedConversation
@@ -244,7 +245,8 @@ export default function ChatPage() {
           message_uuid: data.message_uuid, sender_id: data.sender_id, receiver_id: data.receiver_id,
           message_content: data.message_content, message_type: data.message_type,
           file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
-          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          file_hash: data.file_hash, filename: data.filename, content_type: data.content_type,
+          image_width: data.image_width, image_height: data.image_height,
           seq: data.seq, send_time: data.send_time,
         })
       }
@@ -261,6 +263,7 @@ export default function ChatPage() {
       sender_avatar_url: string; message_content: string
       message_type: 'text' | 'image' | 'video' | 'file' | 'system'
       file_uuid: string | null; file_url: string | null; file_size: number | null; file_hash: string | null
+      filename: string | null; content_type: string | null
       image_width: number | null; image_height: number | null; seq: number
       reply_to: string | null; send_time: string
     }) => {
@@ -272,7 +275,8 @@ export default function ChatPage() {
           message_content: data.message_content,
           message_type: data.message_type as 'text' | 'image' | 'video' | 'file',
           file_uuid: data.file_uuid, file_url: data.file_url, file_size: data.file_size,
-          file_hash: data.file_hash, image_width: data.image_width, image_height: data.image_height,
+          file_hash: data.file_hash, filename: data.filename, content_type: data.content_type,
+          image_width: data.image_width, image_height: data.image_height,
           seq: data.seq, send_time: data.send_time,
         })
       }

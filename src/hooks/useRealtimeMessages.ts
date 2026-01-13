@@ -102,6 +102,8 @@ export function useRealtimeMessages() {
         file_url: data.file_url,
         file_size: data.file_size,
         file_hash: data.file_hash,
+        filename: data.filename ?? null,
+        content_type: data.content_type ?? null,
         image_width: data.image_width,
         image_height: data.image_height,
         seq: data.seq,
