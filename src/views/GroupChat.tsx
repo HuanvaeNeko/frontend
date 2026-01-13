@@ -36,6 +36,7 @@ import { useToast } from '../hooks/use-toast'
 import { BackgroundOrbs } from '@/components/ui/glass'
 import { MessageImage } from '@/components/chat/MessageImage'
 import { MessageVideo } from '@/components/chat/MessageVideo'
+import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 
 export default function GroupChat() {
   const router = useRouter()
@@ -53,6 +54,7 @@ export default function GroupChat() {
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [notices, setNotices] = useState<GroupNotice[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<'members' | 'notices' | 'settings'>('members')
@@ -408,7 +410,21 @@ export default function GroupChat() {
   const handleFilePreview = async (message: GroupMessage) => {
     const presignedUrl = await getFilePresignedUrl(message, 'preview')
     if (presignedUrl) {
-      window.open(presignedUrl, '_blank')
+      // GroupMessage 类型没有 filename 和 content_type，根据 message_type 推断
+      const name = message.message_type === 'image' ? '图片' 
+        : message.message_type === 'video' ? '视频'
+        : message.message_type === 'file' ? '文件'
+        : '未命名文件'
+      const mimeType = message.message_type === 'image' ? 'image/*'
+        : message.message_type === 'video' ? 'video/*'
+        : 'application/octet-stream'
+      
+      setPreviewFile({
+        url: presignedUrl,
+        name,
+        type: mimeType,
+        size: message.file_size ?? undefined,
+      })
     } else {
       toast({
         title: '预览失败',
@@ -872,6 +888,14 @@ export default function GroupChat() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* 文件预览 */}
+      {previewFile && (
+        <FilePreview
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   )
 }

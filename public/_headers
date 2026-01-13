@@ -1,0 +1,25 @@
+# Cloudflare Pages 安全头配置
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  # HSTS - 强制 HTTPS（2年有效期，包含子域名，申请预加载列表）
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+  # 防止 XSS 攻击
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-XSS-Protection: 1; mode=block
+
+  # 引用来源策略
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # 权限策略
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Service Worker 不缓存
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# 静态资源长期缓存
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable

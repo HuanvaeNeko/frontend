@@ -1,161 +1,191 @@
-# GitHub Pages 部署指南
+# 部署指南
 
-本项目已配置自动部署到 GitHub Pages。每次推送到 `main` 或 `dev` 分支时，GitHub Actions 会自动构建并部署到 `gh-pages` 分支。
+本项目使用 Next.js 16 构建，支持静态导出部署到 Cloudflare Pages、Vercel、GitHub Pages 等平台。
 
 ## 🚀 快速开始
 
+### 构建项目
+
+```bash
+pnpm build
+```
+
+构建输出目录为 `out/`，包含所有静态文件。
+
+### 本地预览
+
+```bash
+pnpm preview
+```
+
+使用 Wrangler 本地预览 Cloudflare Pages 部署效果。
+
+## ☁️ Cloudflare Pages（推荐）
+
+### 自动部署
+
+1. 连接 GitHub 仓库到 Cloudflare Pages
+2. 配置构建设置：
+   - **构建命令**: `pnpm build`
+   - **输出目录**: `out`
+   - **Node.js 版本**: `20`
+3. 部署！
+
+### 手动部署
+
+```bash
+# 构建
+pnpm build
+
+# 部署
+npx wrangler pages deploy out --project-name=huanvae-chat
+```
+
+## ▲ Vercel
+
+直接连接 Git 仓库，Vercel 会自动检测 Next.js 项目并配置：
+
+1. 导入 GitHub 仓库
+2. Vercel 自动识别 Next.js 框架
+3. 部署完成
+
+> 注意：由于使用 `output: 'export'`，Vercel 会进行静态导出。
+
+## 📄 GitHub Pages
+
 ### 1. 启用 GitHub Pages
 
-1. 进入你的 GitHub 仓库
-2. 点击 **Settings** (设置)
-3. 在左侧菜单中找到 **Pages**
-4. 在 **Build and deployment** 部分：
-   - **Source** (源) 选择 **Deploy from a branch**
-   - **Branch** (分支) 选择 **gh-pages** 和 **/ (root)**
-5. 点击 **Save** (保存)
+1. 进入仓库 **Settings** > **Pages**
+2. **Source** 选择 **Deploy from a branch**
+3. **Branch** 选择 **gh-pages** 和 **/ (root)**
+4. 保存
 
 ### 2. 配置部署路径
 
-根据你的仓库类型，需要配置不同的 base 路径：
+根据仓库类型配置 `next.config.js`：
 
-#### 情况 A: 用户/组织站点 (username.github.io)
-如果你的仓库名是 `username.github.io` 或 `organization.github.io`，部署后的地址将是：
-```
-https://username.github.io/
-```
+#### 用户站点 (username.github.io)
 
-**不需要修改** `vite.config.ts`，保持默认即可。
-
-#### 情况 B: 项目站点 (其他仓库名)
-如果你的仓库名是 `frontend` 或其他名称，部署后的地址将是：
-```
-https://username.github.io/frontend/
+```javascript
+const nextConfig = {
+  output: 'export',
+  // 默认即可，无需配置 basePath
+}
 ```
 
-**需要修改** `vite.config.ts`：
-```typescript
-export default defineConfig({
-  plugins: [react()],
-  base: '/frontend/',  // 将 'frontend' 替换为你的实际仓库名
-  // ...
-})
+#### 项目站点 (username.github.io/repo-name)
+
+```javascript
+const nextConfig = {
+  output: 'export',
+  basePath: '/repo-name',
+  assetPrefix: '/repo-name/',
+}
 ```
 
-### 3. 推送代码触发部署
+### 3. GitHub Actions 工作流
 
-```bash
-# 提交并推送到 dev 分支（或 main 分支）
-git add .
-git commit -m "配置 GitHub Pages 自动部署"
-git push origin dev
-```
-
-### 4. 查看部署状态
-
-1. 进入仓库的 **Actions** 标签页
-2. 你会看到一个名为 "部署到 GitHub Pages" 的工作流正在运行
-3. 等待部署完成（通常需要 1-3 分钟）
-4. 部署成功后，会自动推送到 `gh-pages` 分支
-5. 访问你的 GitHub Pages 地址：`https://huanvaeneko.github.io/frontend/`
-
-## 📋 工作流说明
-
-工作流文件位于 `.github/workflows/deploy.yml`，主要步骤：
-
-1. ✅ 检出代码
-2. ✅ 安装 pnpm (v9)
-3. ✅ 设置 Node.js 环境 (v20) 并自动缓存 pnpm 依赖
-4. ✅ 安装项目依赖 (`pnpm install`)
-5. ✅ 构建项目 (`pnpm build`)
-6. ✅ 部署到 gh-pages 分支
-
-**触发条件**：推送到 `main` 或 `dev` 分支时自动触发
-
-## 🔧 自定义配置
-
-### 修改触发分支
-
-默认在推送到 `main` 或 `dev` 分支时触发部署，如果你想修改触发分支，编辑 `.github/workflows/deploy.yml`：
+创建 `.github/workflows/deploy.yml`：
 
 ```yaml
+name: Deploy to GitHub Pages
+
 on:
   push:
-    branches:
-      - main    # 生产分支
-      - dev     # 开发分支
-      # - develop  # 可以添加更多分支
+    branches: [main, dev]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install
+      - run: pnpm build
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
 ```
 
-### 修改 Node.js 版本
+## 🔧 环境变量
 
-如果需要使用不同的 Node.js 版本，修改工作流中的：
+### 生产环境配置
 
-```yaml
-- name: 设置 Node.js
-  uses: actions/setup-node@v4
-  with:
-    node-version: '20'  # 改为你需要的版本
-```
+在部署平台设置以下环境变量：
 
-### 修改 pnpm 版本
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `NEXT_PUBLIC_API_URL` | 后端 API 地址 | `https://api.huanvae.cn` |
+| `NEXT_PUBLIC_WS_URL` | WebSocket 地址 | `wss://api.huanvae.cn` |
 
-如果需要使用不同的 pnpm 版本，修改工作流中的：
+### Cloudflare Pages
 
-```yaml
-- name: 安装 pnpm
-  uses: pnpm/action-setup@v4
-  with:
-    version: 9  # 改为你需要的版本
-```
+在项目设置 > 环境变量中添加。
+
+### Vercel
+
+在项目设置 > Environment Variables 中添加。
 
 ## 🐛 常见问题
 
 ### 1. 部署后页面显示 404
 
-**原因**: `base` 路径配置不正确
+**原因**: basePath 配置不正确
 
-**解决方法**: 
-- 检查 `vite.config.ts` 中的 `base` 配置是否与仓库名一致
-- 确保 `base` 路径以 `/` 开头和结尾，如 `/frontend/`
+**解决**: 
+- 检查 `next.config.js` 中的 `basePath` 配置
+- 确保与实际部署路径一致
 
-### 2. 部署后资源加载失败 (404)
+### 2. 资源加载失败
 
-**原因**: 同上，base 路径配置问题
+**原因**: assetPrefix 配置不正确
 
-**解决方法**: 
-- 修改 `vite.config.ts` 中的 `base` 配置
-- 重新提交并推送代码
+**解决**:
+- 设置正确的 `assetPrefix`
+- 格式: `/repo-name/`（注意首尾斜杠）
 
-### 3. GitHub Actions 工作流失败
+### 3. API 请求失败
 
-**可能原因**:
-- 仓库的 Actions 权限不足
+**原因**: CORS 配置或环境变量问题
 
-**解决方法**:
-1. 进入 Settings > Actions > General > Workflow permissions
-2. 选择 **"Read and write permissions"**（必须允许写权限才能推送到 gh-pages 分支）
-3. 勾选 "Allow GitHub Actions to create and approve pull requests"（可选）
-4. 保存设置后，重新触发工作流
+**解决**:
+- 确保后端配置了正确的 CORS 策略
+- 检查 `NEXT_PUBLIC_API_URL` 环境变量
 
-### 4. 部署后 API 请求失败
+### 4. 刷新页面 404
 
-**原因**: 前端部署到 GitHub Pages 后，可能存在跨域问题
+**原因**: SPA 路由需要服务器配置
 
-**解决方法**:
-- 确保后端 API 配置了正确的 CORS 策略
-- 检查 `src/store/apiConfig.ts` 和 `src/utils/apiConfig.ts` 中的 API 地址配置
+**解决**:
+- Cloudflare Pages: 自动处理
+- Nginx: 配置 `try_files $uri $uri/ /index.html`
+- 使用 `trailingSlash: true` 配置（已启用）
 
 ## 📚 相关资源
 
-- [GitHub Pages 官方文档](https://docs.github.com/en/pages)
-- [GitHub Actions 官方文档](https://docs.github.com/en/actions)
-- [Vite 部署指南](https://vitejs.dev/guide/static-deploy.html#github-pages)
-- [pnpm 官方文档](https://pnpm.io/)
+- [Next.js 部署文档](https://nextjs.org/docs/deployment)
+- [Cloudflare Pages 文档](https://developers.cloudflare.com/pages/)
+- [Vercel 文档](https://vercel.com/docs)
+- [GitHub Pages 文档](https://docs.github.com/en/pages)
 
 ## 💡 提示
 
-- 首次部署可能需要几分钟时间
+- 首次部署可能需要几分钟
 - 后续部署通常在 1-3 分钟内完成
-- 可以通过 Actions 标签页查看详细的构建日志
-- 部署成功后，GitHub Pages 地址会显示在仓库的 About 部分
+- 可以通过平台控制台查看构建日志
+- 建议使用 Preview 分支测试后再部署到生产
 
+---
+
+**更新时间**: 2026-01-13

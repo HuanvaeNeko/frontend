@@ -14,7 +14,8 @@ import {
   Plus,
   Settings,
   LogOut,
-  User
+  User,
+  ArrowLeft
 } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
@@ -32,6 +33,9 @@ import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
+
+// 移动端视图模式
+type MobileView = 'list' | 'chat'
 
 // 从 URL 路径解析 tab 类型
 function getTabFromPath(pathname: string): TabType {
@@ -92,6 +96,25 @@ export default function ChatPage() {
   const [subTab, setSubTab] = useState<SubTab>('main')
   const [searchQuery, setSearchQuery] = useState('')
   const [isInitialized, setIsInitialized] = useState(false)
+  const [mobileView, setMobileView] = useState<MobileView>('list')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // 检测移动端
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // 当选中会话时，移动端自动切换到聊天视图
+  useEffect(() => {
+    if (isMobile && selectedConversation) {
+      setMobileView('chat')
+    }
+  }, [selectedConversation, isMobile])
 
   // 从 URL 路径初始化 tab 状态
   useEffect(() => {
@@ -360,15 +383,21 @@ export default function ChatPage() {
     }
   }
 
+  // 移动端返回列表
+  const handleMobileBack = () => {
+    setMobileView('list')
+    setSelectedConversation(null)
+  }
+
   return (
     <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100">
       {/* 背景装饰球 */}
-      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 -top-24 -right-24 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
-      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 -bottom-20 left-[20%] blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow-reverse" />
-      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 top-1/2 -left-12 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow" />
+      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 -top-24 -right-24 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow max-md:w-[200px] max-md:h-[200px]" />
+      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 -bottom-20 left-[20%] blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow-reverse max-md:w-[150px] max-md:h-[150px]" />
+      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 top-1/2 -left-12 blur-[80px] opacity-40 pointer-events-none z-0 animate-float-slow max-md:hidden" />
 
-      {/* 左侧边栏 */}
-      <aside className="w-[68px] h-full flex flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-2xl border-r border-blue-200/25 shadow-[2px_0_20px_rgba(147,197,253,0.08)]">
+      {/* 左侧边栏 - 移动端隐藏 */}
+      <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-2xl border-r border-blue-200/25 shadow-[2px_0_20px_rgba(147,197,253,0.08)] hidden md:flex">
         {/* 用户头像 */}
         <div className="relative mb-7">
           <motion.div 
@@ -442,9 +471,15 @@ export default function ChatPage() {
         </div>
         </aside>
 
-      {/* 中间会话列表 */}
-      <div className="relative h-full flex z-10 min-w-[240px] max-w-[400px] w-[280px] shrink-0">
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
+      {/* 中间会话列表 - 移动端全屏显示 */}
+      <div className={cn(
+        "relative h-full flex z-10 shrink-0",
+        "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
+        // 移动端
+        "max-md:absolute max-md:inset-0 max-md:w-full max-md:max-w-none",
+        isMobile && mobileView === 'chat' && "max-md:hidden"
+      )}>
+        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl md:border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
           {/* 头部：子标签 */}
           {activeTab !== 'webrtc' && (
             <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 bg-white/20">
@@ -490,8 +525,8 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* 列表内容 */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-2">
+          {/* 列表内容 - 移动端底部留空间给导航栏 */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 max-md:pb-24">
             <AnimatePresence mode="wait">
               {activeTab === 'friends' && (
                 <motion.div
@@ -554,34 +589,100 @@ export default function ChatPage() {
           </div>
         </div>
 
-      {/* 右侧聊天窗口 */}
-      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg">
-          <AnimatePresence mode="wait">
-            {activeTab === 'webrtc' ? (
-              <motion.div
-                key="webrtc"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
-              >
-                <WebRTCPanel />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="chat"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
-              >
-                <ChatWindow />
-              </motion.div>
+      {/* 右侧聊天窗口 - 移动端全屏覆盖 */}
+      <div className={cn(
+        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg",
+        // 移动端
+        "max-md:absolute max-md:inset-0 max-md:w-full",
+        isMobile && mobileView === 'list' && "max-md:hidden"
+      )}>
+        {/* 移动端顶部返回栏 */}
+        {isMobile && mobileView === 'chat' && (
+          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white/40 backdrop-blur-xl border-b border-blue-200/20 shrink-0">
+            <button
+              type="button"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 bg-white/50 hover:bg-white/70 active:scale-95 transition-all"
+              onClick={() => {
+                // 先清除 localStorage 中保存的会话，防止被 useEffect 恢复
+                saveStateToStorage(activeTab)
+                setSelectedConversation(null)
+                setMobileView('list')
+              }}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            {selectedConversation && (
+              <div className="flex-1 min-w-0">
+                <h2 className="font-semibold text-slate-700 truncate">{selectedConversation.name}</h2>
+                <span className="text-xs text-slate-500">
+                  {selectedConversation.type === 'friend' ? '好友' : '群聊'}
+                </span>
+              </div>
             )}
-          </AnimatePresence>
+          </div>
+        )}
+        
+        <AnimatePresence mode="wait">
+          {activeTab === 'webrtc' ? (
+            <motion.div
+              key="webrtc"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              <WebRTCPanel />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 min-h-0"
+            >
+              <ChatWindow hideMobileHeader={isMobile && mobileView === 'chat'} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* 移动端底部导航栏 */}
+      {isMobile && mobileView === 'list' && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/80 backdrop-blur-xl border-t border-blue-200/30 safe-area-inset-bottom">
+          <div className="flex justify-around py-2 px-4">
+            {tabs.map((tab) => (
+              <motion.button
+                key={tab.id}
+                className={cn(
+                  "flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all",
+                  activeTab === tab.id 
+                    ? "text-blue-600 bg-blue-100/50" 
+                    : "text-slate-500"
+                )}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setSubTab('main')
+                }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <tab.icon className="w-5 h-5" />
+                <span className="text-xs font-medium">{tab.label}</span>
+              </motion.button>
+            ))}
+            <motion.button
+              className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-slate-500"
+              onClick={() => router.push('/settings')}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Settings className="w-5 h-5" />
+              <span className="text-xs font-medium">设置</span>
+            </motion.button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

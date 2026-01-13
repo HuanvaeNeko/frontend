@@ -122,6 +122,15 @@
   .animate-pulse-online {
     animation: pulse-online 2s ease-in-out infinite;
   }
+
+  /* 移动端安全区域适配 */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
 
 /* ============================================

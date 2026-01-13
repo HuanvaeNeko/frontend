@@ -77,6 +77,8 @@ export interface GroupMessage {
   file_url: string | null
   file_size: number | null
   file_hash: string | null
+  filename: string | null
+  content_type: string | null
   image_width: number | null
   image_height: number | null
   seq: number
@@ -113,7 +115,7 @@ export interface GetGroupMessagesResponse {
 export const groupMessagesApi = {
   /**
    * 发送群消息
-   * POST /api/group-messages
+   * POST /api/group_messages
    * 请求体: { group_id, message_content, message_type, file_uuid?, file_url?, file_size?, reply_to? }
    */
   sendMessage: async (request: SendGroupMessageRequest): Promise<SendGroupMessageResponse> => {
@@ -136,7 +138,7 @@ export const groupMessagesApi = {
 
   /**
    * 获取群消息列表
-   * GET /api/group-messages?group_id=xxx&before_time=xxx&limit=50
+   * GET /api/group_messages?group_id=xxx&before_time=xxx&limit=50
    * 使用 before_time 时间戳分页（性能优化）
    */
   getMessages: async (
@@ -171,7 +173,7 @@ export const groupMessagesApi = {
 
   /**
    * 删除群消息（个人，软删除，仅对自己不可见）
-   * DELETE /api/group-messages/delete
+   * DELETE /api/group_messages/delete
    * 请求体: { message_uuid }
    */
   deleteMessage: async (messageUuid: string): Promise<{ success: boolean; message: string }> => {
@@ -194,7 +196,7 @@ export const groupMessagesApi = {
 
   /**
    * 撤回群消息
-   * POST /api/group-messages/recall
+   * POST /api/group_messages/recall
    * 请求体: { message_uuid }
    * 
    * 权限:
