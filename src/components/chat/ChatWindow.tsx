@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
@@ -17,6 +17,8 @@ import GroupManagement from './GroupManagement'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../hooks/use-toast'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import MarkdownEditor, { type MarkdownEditorRef } from './MarkdownEditor'
+import { Markdown } from '@/components/ui/markdown'
 
 interface ChatWindowProps {
   hideMobileHeader?: boolean
@@ -46,9 +48,11 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [showGroupManagement, setShowGroupManagement] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
+  const [editorHasContent, setEditorHasContent] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<MarkdownEditorRef>(null)
 
   useEffect(() => {
     if (!selectedConversation) {
@@ -137,11 +141,15 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     })
   }
 
-  const handleSendMessage = async () => {
-    if (!selectedConversation || !messageInput.trim() || sending) return
+  const handleSendMessage = useCallback(async () => {
+    // 从编辑器获取 Markdown 内容
+    const markdownContent = editorRef.current?.getValue() || ''
+    
+    if (!selectedConversation || !markdownContent.trim() || sending) return
 
-    const content = messageInput.trim()
-    setMessageInput('')
+    // 发送 Markdown 格式内容
+    const content = markdownContent.trim()
+    editorRef.current?.clear()
     setSending(true)
 
     try {
@@ -201,11 +209,11 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         description: error instanceof Error ? error.message : '发送消息失败',
         variant: 'destructive',
       })
-      setMessageInput(content)
+      // 发送失败不恢复内容，用户可以重新输入
     } finally {
       setSending(false)
     }
-  }
+  }, [selectedConversation, sending, user, addMessage, toast])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -477,9 +485,9 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     switch (message.message_type) {
       case 'text':
         return (
-          <p className="whitespace-pre-wrap break-words text-sm">
+          <Markdown className="text-sm chat-message-markdown">
             {message.message_content}
-          </p>
+          </Markdown>
         )
       case 'image':
         return (
@@ -730,7 +738,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger asChild>
                           <motion.div
-                            className="rounded-2xl px-4 py-2.5 cursor-pointer"
+                            className={`rounded-2xl px-4 py-2.5 cursor-pointer ${isOwn ? 'message-own' : ''}`}
                             style={{
                               background: isOwn
                                 ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
@@ -931,58 +939,36 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             <Paperclip className="h-5 w-5" />
           </motion.button>
           <EmojiPicker 
-            onSelect={(emoji) => setMessageInput(messageInput + emoji)}
+            onSelect={(emoji) => editorRef.current?.insertText(emoji)}
             disabled={sending}
           />
-          <textarea
-            placeholder="输入消息... (Shift+Enter 换行)"
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSendMessage()
-              }
-            }}
+          <MarkdownEditor
+            ref={editorRef}
+            placeholder="输入消息... (支持 Markdown，Enter 发送)"
+            onSubmit={handleSendMessage}
+            onChange={() => setEditorHasContent(!(editorRef.current?.isEmpty() ?? true))}
             disabled={sending}
-            rows={1}
-            className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all resize-none min-h-[42px] max-h-32"
-            style={{
-              background: 'rgba(255, 255, 255, 0.6)',
-              border: '1px solid rgba(147, 197, 253, 0.3)',
-            }}
-            onInput={(e) => {
-              // 自动调整高度
-              const target = e.target as HTMLTextAreaElement
-              target.style.height = 'auto'
-              target.style.height = Math.min(target.scrollHeight, 128) + 'px'
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)'
-              e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = 'rgba(147, 197, 253, 0.3)'
-              e.target.style.boxShadow = 'none'
-            }}
+            className="flex-1"
+            minHeight="42px"
+            maxHeight="150px"
           />
           <motion.button
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white self-end"
             style={{
-              background: (!messageInput.trim() && !selectedFile) || sending
+              background: (!editorHasContent && !selectedFile) || sending
                 ? 'rgba(147, 197, 253, 0.5)'
                 : 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: (!messageInput.trim() && !selectedFile) || sending
+              boxShadow: (!editorHasContent && !selectedFile) || sending
                 ? 'none'
                 : '0 4px 15px rgba(59, 130, 246, 0.3)',
             }}
             onClick={selectedFile ? handleSendFile : handleSendMessage}
-            disabled={(!messageInput.trim() && !selectedFile) || sending}
-            whileHover={(!messageInput.trim() && !selectedFile) || sending ? {} : { 
+            disabled={(!editorHasContent && !selectedFile) || sending}
+            whileHover={(!editorHasContent && !selectedFile) || sending ? {} : { 
               scale: 1.05,
               boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)',
             }}
-            whileTap={(!messageInput.trim() && !selectedFile) || sending ? {} : { scale: 0.95 }}
+            whileTap={(!editorHasContent && !selectedFile) || sending ? {} : { scale: 0.95 }}
           >
             {sending ? (
               <Loader2 className="h-5 w-5 animate-spin" />
