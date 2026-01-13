@@ -23,6 +23,8 @@ import { Separator } from '@/components/ui/separator'
 import { useAuthStore } from '../../store/authStore'
 import { useProfileStore } from '../../store/profileStore'
 import { cn } from '@/lib/utils'
+import { useUIStore } from '@/store/uiStore'
+import { playTap } from '@/hooks/useSound'
 
 interface NavItem {
   path: string
@@ -38,7 +40,6 @@ const mainNavItems: NavItem[] = [
 ]
 
 const settingsNavItems: NavItem[] = [
-  { path: '/profile', label: '个人资料', icon: User },
   { path: '/devices', label: '设备管理', icon: Laptop },
   { path: '/settings', label: '设置', icon: Settings },
 ]
@@ -53,6 +54,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const { user, clearAuth } = useAuthStore()
   const { profile } = useProfileStore()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { openProfileModal } = useUIStore()
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
   const avatarUrl = profile?.user_avatar_url || ''
@@ -114,6 +116,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const breadcrumbs = getBreadcrumbs()
 
+  // 打开个人资料模态框
+  const handleOpenProfile = () => {
+    playTap()
+    setIsMobileMenuOpen(false)
+    openProfileModal()
+  }
+
   // 侧边栏内容（复用于桌面端和移动端抽屉）
   const SidebarContent = () => (
     <>
@@ -121,7 +130,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <div className="p-4 border-b">
         <div 
           className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors"
-          onClick={() => handleNavigation('/profile')}
+          onClick={handleOpenProfile}
         >
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatarUrl} alt={displayName} />
@@ -159,6 +168,17 @@ export default function MainLayout({ children }: MainLayoutProps) {
         <Separator className="my-4" />
 
         <p className="text-xs font-medium text-muted-foreground px-3 mb-2">账户设置</p>
+        
+        {/* 个人资料按钮 - 打开模态框 */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3"
+          onClick={handleOpenProfile}
+        >
+          <User size={18} />
+          个人资料
+        </Button>
+        
         {settingsNavItems.map(item => (
           <Button
             key={item.path}
@@ -289,6 +309,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
           {children}
         </main>
       </div>
+
     </div>
   )
 }

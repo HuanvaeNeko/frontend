@@ -23,6 +23,7 @@ import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { useProfileStore } from '../store/profileStore'
 import { useWSStore } from '../store/wsStore'
+import { useUIStore } from '../store/uiStore'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { TabType } from '../store/chatStore'
 import FriendList from '../components/chat/FriendList'
@@ -85,6 +86,7 @@ export default function ChatPage() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const settingsModal = useSettingsModal()
+  const { openProfileModal } = useUIStore()
   // 使用查询参数：/chat/friends?id=xxx 或 /chat/groups?id=xxx
   const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
   const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
@@ -408,7 +410,7 @@ export default function ChatPage() {
         <div className="relative mb-7">
           <motion.div 
             className="w-[42px] h-[42px] rounded-xl overflow-hidden bg-gradient-to-br from-white/90 to-white/60 border-2 border-white/95 shadow-[0_4px_12px_rgba(59,130,246,0.12),0_2px_6px_rgba(147,197,253,0.15)] flex items-center justify-center cursor-pointer transition-all duration-200"
-            onClick={() => router.push('/profile')}
+            onClick={openProfileModal}
             whileHover={{ scale: 1.08, y: -2 }}
           >
             {profile?.user_avatar_url || user?.avatar_url ? (
