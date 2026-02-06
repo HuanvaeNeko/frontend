@@ -133,19 +133,6 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
     }
   }, [currentFile])
 
-  // 键盘事件
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowLeft') handlePrev()
-      if (e.key === 'ArrowRight') handleNext()
-      if (e.key === '+' || e.key === '=') setScale(s => Math.min(s + 0.25, 3))
-      if (e.key === '-') setScale(s => Math.max(s - 0.25, 0.5))
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, currentIndex, allFiles.length])
-
   const handlePrev = useCallback(() => {
     if (previewType === 'pdf' && currentPage > 1) {
       setCurrentPage(p => p - 1)
@@ -167,6 +154,19 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
       setCurrentPage(1)
     }
   }, [allFiles.length, currentPage, numPages, previewType])
+
+  // 键盘事件
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') handlePrev()
+      if (e.key === 'ArrowRight') handleNext()
+      if (e.key === '+' || e.key === '=') setScale(s => Math.min(s + 0.25, 3))
+      if (e.key === '-') setScale(s => Math.max(s - 0.25, 0.5))
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, handlePrev, handleNext])
 
   const handleDownload = () => {
     if (currentFile && onDownload) {

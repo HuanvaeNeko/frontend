@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users, Clock, Send } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useFriendsStore } from '../../store/friendsStore'
 import { useChatStore } from '../../store/chatStore'
 import { useToast } from '@/hooks/use-toast'
@@ -307,40 +307,30 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   </button>
                   
                   {/* 操作菜单 */}
-                  <DropdownMenu.Root>
-                    <DropdownMenu.Trigger asChild>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <button 
                         className="p-2 rounded-lg hover:bg-white/50 transition-colors"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <MoreVertical className="h-4 w-4 text-slate-400" />
                       </button>
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Portal>
-                      <DropdownMenu.Content
-                        className="min-w-32 rounded-xl shadow-lg border p-1 z-50"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.95)',
-                          backdropFilter: 'blur(20px)',
-                          borderColor: 'rgba(147, 197, 253, 0.3)',
-                        }}
-                        align="end"
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-red-500 focus:text-red-500"
+                        onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
+                        disabled={deletingFriend === friend.user_id}
                       >
-                        <DropdownMenu.Item
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg cursor-pointer outline-none"
-                          onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
-                          disabled={deletingFriend === friend.user_id}
-                        >
-                          {deletingFriend === friend.user_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                          删除好友
-                        </DropdownMenu.Item>
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Portal>
-                  </DropdownMenu.Root>
+                        {deletingFriend === friend.user_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        删除好友
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </motion.div>
               ))}
             </AnimatePresence>

@@ -26,7 +26,7 @@ import {
   MessageCircle
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
 import { groupMessagesApi, type GroupMessage } from '../api/groupMessages'
@@ -582,8 +582,8 @@ export default function GroupChat() {
           >
             <Users size={20} />
           </motion.button>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <motion.button 
                 className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/50 border border-blue-200/20 text-slate-600 cursor-pointer transition-all hover:bg-white/90 hover:border-blue-500 hover:text-blue-500"
                 whileHover={{ scale: 1.02 }}
@@ -591,31 +591,20 @@ export default function GroupChat() {
               >
                 <MoreVertical size={20} />
               </motion.button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className="min-w-[150px] bg-white/95 backdrop-blur-xl rounded-[14px] border border-blue-200/30 shadow-lg shadow-blue-500/15 p-1.5 z-[100]" sideOffset={8}>
-                <DropdownMenu.Item 
-                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
-                  onSelect={() => { setShowSidebar(true); setSidebarTab('settings') }}
-                >
-                  <Settings size={16} />群设置
-                </DropdownMenu.Item>
-                <DropdownMenu.Item 
-                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
-                  onSelect={() => { setShowSidebar(true); setSidebarTab('notices') }}
-                >
-                  <Bell size={16} />群公告
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="h-px bg-blue-200/30 my-1.5" />
-                <DropdownMenu.Item 
-                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-red-500/10"
-                  onSelect={handleLeaveGroup}
-                >
-                  <LogOut size={16} />退出群聊
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={8}>
+              <DropdownMenuItem onSelect={() => { setShowSidebar(true); setSidebarTab('settings') }}>
+                <Settings size={16} />群设置
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => { setShowSidebar(true); setSidebarTab('notices') }}>
+                <Bell size={16} />群公告
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-red-600 focus:text-red-600" onSelect={handleLeaveGroup}>
+                <LogOut size={16} />退出群聊
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -683,8 +672,8 @@ export default function GroupChat() {
 
                         <div className={`flex flex-col gap-1 ${isOwn ? 'items-end' : ''}`}>
                           {!isOwn && <span className="text-xs text-slate-500 px-2">{message.sender_nickname}</span>}
-                          <DropdownMenu.Root>
-                            <DropdownMenu.Trigger asChild>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <div className={`py-3 px-4 rounded-2xl cursor-pointer transition-all text-sm ${
                                 isOwn 
                                   ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none shadow-lg shadow-blue-500/30'
@@ -692,26 +681,18 @@ export default function GroupChat() {
                               }`}>
                                 {renderMessageContent(message)}
                               </div>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                              <DropdownMenu.Content className="min-w-[100px] bg-white/95 backdrop-blur-xl rounded-[14px] border border-blue-200/30 shadow-lg shadow-blue-500/15 p-1.5 z-[100]" sideOffset={5}>
-                                {canRecall && !message.is_recalled && (
-                                  <DropdownMenu.Item 
-                                    className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-blue-500/10 hover:text-blue-500"
-                                    onSelect={() => handleRecallMessage(message.message_uuid)}
-                                  >
-                                    <RotateCcw size={14} />撤回
-                                  </DropdownMenu.Item>
-                                )}
-                                <DropdownMenu.Item 
-                                  className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 rounded-[10px] cursor-pointer outline-none transition-all hover:bg-red-500/10"
-                                  onSelect={() => handleDeleteMessage(message.message_uuid)}
-                                >
-                                  <Trash2 size={14} />删除
-                                </DropdownMenu.Item>
-                              </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                          </DropdownMenu.Root>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent sideOffset={5}>
+                              {canRecall && !message.is_recalled && (
+                                <DropdownMenuItem onSelect={() => handleRecallMessage(message.message_uuid)}>
+                                  <RotateCcw size={14} />撤回
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem className="text-red-600 focus:text-red-600" onSelect={() => handleDeleteMessage(message.message_uuid)}>
+                                <Trash2 size={14} />删除
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           <span className="text-[11px] text-slate-400 px-2">{formatTime(message.send_time)}</span>
                         </div>
                       </motion.div>

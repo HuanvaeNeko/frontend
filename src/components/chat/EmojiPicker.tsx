@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import * as Popover from '@radix-ui/react-popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Smile } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -29,8 +29,8 @@ export function EmojiPicker({ onSelect, disabled }: EmojiPickerProps) {
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild disabled={disabled}>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild disabled={disabled}>
         <motion.button 
           className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500 disabled:opacity-50"
           style={{
@@ -43,48 +43,46 @@ export function EmojiPicker({ onSelect, disabled }: EmojiPickerProps) {
         >
           <Smile className="h-5 w-5" />
         </motion.button>
-      </Popover.Trigger>
+      </PopoverTrigger>
       
-      <Popover.Portal>
-        <Popover.Content
-          className="z-50 w-[320px] max-h-[360px] rounded-2xl bg-white/95 backdrop-blur-xl border border-blue-200/30 shadow-lg shadow-blue-500/10 overflow-hidden"
-          sideOffset={8}
-          align="start"
-        >
-          {/* 分类标签 */}
-          <div className="flex border-b border-blue-200/20 px-2 pt-2 gap-1 overflow-x-auto">
-            {Object.keys(EMOJI_CATEGORIES).map((category) => (
+      <PopoverContent
+        className="w-[320px] max-h-[360px] rounded-2xl bg-white/95 backdrop-blur-xl border border-blue-200/30 shadow-lg shadow-blue-500/10 overflow-hidden p-0"
+        sideOffset={8}
+        align="start"
+      >
+        {/* 分类标签 */}
+        <div className="flex border-b border-blue-200/20 px-2 pt-2 gap-1 overflow-x-auto">
+          {Object.keys(EMOJI_CATEGORIES).map((category) => (
+            <button
+              key={category}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
+                activeCategory === category
+                  ? 'bg-blue-500/10 text-blue-600'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              onClick={() => setActiveCategory(category)}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+        
+        {/* 表情网格 */}
+        <div className="p-3 max-h-[280px] overflow-y-auto">
+          <div className="grid grid-cols-8 gap-1">
+            {EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES].map((emoji, index) => (
               <button
-                key={category}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
-                  activeCategory === category
-                    ? 'bg-blue-500/10 text-blue-600'
-                    : 'text-slate-500 hover:bg-slate-100'
-                }`}
-                onClick={() => setActiveCategory(category)}
+                key={`${emoji}-${index}`}
+                className="w-8 h-8 flex items-center justify-center text-xl rounded-lg hover:bg-blue-100/50 transition-colors"
+                onClick={() => handleSelect(emoji)}
               >
-                {category}
+                {emoji}
               </button>
             ))}
           </div>
-          
-          {/* 表情网格 */}
-          <div className="p-3 max-h-[280px] overflow-y-auto">
-            <div className="grid grid-cols-8 gap-1">
-              {EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES].map((emoji, index) => (
-                <button
-                  key={`${emoji}-${index}`}
-                  className="w-8 h-8 flex items-center justify-center text-xl rounded-lg hover:bg-blue-100/50 transition-colors"
-                  onClick={() => handleSelect(emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 

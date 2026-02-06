@@ -122,7 +122,6 @@ const components: Components = {
   ),
   // 图片样式
   img: ({ src, alt, ...props }) => (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       alt={alt || ''}

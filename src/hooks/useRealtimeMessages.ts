@@ -28,16 +28,14 @@ export function useRealtimeMessages() {
   // 标记是否已执行过初始同步
   const hasSyncedRef = useRef(false)
 
-  // 自动连接
+  // 自动连接（wsStore 内部已有防重机制，无需检查 connected）
   useEffect(() => {
-    if (accessToken && !connected) {
+    if (accessToken) {
       connect()
     }
-
-    return () => {
-      // 组件卸载时不断开连接，让应用全局保持连接
-    }
-  }, [accessToken, connect, connected])
+    // 不依赖 connected，避免状态变化触发重连循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken])
   
   // 连接成功后自动同步消息
   useEffect(() => {

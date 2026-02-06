@@ -6,6 +6,7 @@
 
 // 认证 API
 export { authApi, apiClient } from './auth'
+export type { DeviceInfo, GetDevicesResponse } from './auth'
 
 // 个人资料 API
 export { profileApi } from './profile'

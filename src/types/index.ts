@@ -200,4 +200,5 @@ export interface FileItem {
   preview_support: string
   created_at: string
   file_url: string
+  file_hash?: string
 }

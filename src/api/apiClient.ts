@@ -93,7 +93,7 @@ const fetchWithTimeout = async (
   } catch (error) {
     clearTimeout(timeoutId)
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('请求超时，请检查网络连接')
+      throw new Error('请求超时，请检查网络连接', { cause: error })
     }
     throw error
   }

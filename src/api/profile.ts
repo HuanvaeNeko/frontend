@@ -77,6 +77,7 @@ export interface UserProfile {
 }
 
 export interface UpdateProfileRequest {
+  nickname?: string
   email?: string
   signature?: string
 }
@@ -125,9 +126,13 @@ export const profileApi = {
    */
   updateProfile: async (updates: UpdateProfileRequest): Promise<{ message: string }> => {
     console.log('✏️ 更新个人资料:', updates)
+    const body: Record<string, string | undefined> = {}
+    if (updates.nickname !== undefined) body.nickname = updates.nickname
+    if (updates.email !== undefined) body.email = updates.email
+    if (updates.signature !== undefined) body.signature = updates.signature
     const response = await fetchWithAuth(`${PROFILE_BASE_URL}`, {
       method: 'PUT',
-      body: JSON.stringify(updates),
+      body: JSON.stringify(body),
     })
 
     if (!response.ok) {
@@ -213,7 +218,12 @@ export const profileApi = {
     }
 
     const data = await response.json()
-    console.log('✅ 头像上传成功:', data.avatar_url)
-    return data
+    console.log('✅ 头像上传成功:', data.avatar_url ?? data.data?.avatar_url)
+    // 后端返回 { avatar_url, message } 或 { data: { avatar_url }, message }
+    const resolved = data.avatar_url != null ? data : (data.data ?? data)
+    return {
+      avatar_url: resolved.avatar_url ?? '',
+      message: resolved.message ?? 'Avatar uploaded successfully',
+    }
   },
 }

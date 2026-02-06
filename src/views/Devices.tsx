@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Laptop, Smartphone, Monitor, Clock, MapPin, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import * as AlertDialog from '@radix-ui/react-alert-dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { authApi } from '../api/auth'
 import { useToast } from '../hooks/use-toast'
 import { useAuthStore } from '../store/authStore'
@@ -35,7 +35,7 @@ export default function Devices() {
     setLoading(true)
     try {
       const response = await authApi.getDevices()
-      const deviceList = response.devices || response.data?.devices || []
+      const deviceList = response.devices || []
       setDevices(Array.isArray(deviceList) ? deviceList : [])
     } catch (error) {
       console.error('加载设备列表失败:', error)
@@ -234,8 +234,8 @@ export default function Devices() {
                           </div>
                         </div>
 
-                        <AlertDialog.Root>
-                          <AlertDialog.Trigger asChild>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
                             <Button 
                               variant={device.is_current ? 'outline' : 'destructive'}
                               disabled={revoking === device.device_id}
@@ -248,34 +248,28 @@ export default function Devices() {
                                 '移除'
                               )}
                             </Button>
-                          </AlertDialog.Trigger>
-                          <AlertDialog.Portal>
-                            <AlertDialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50" />
-                            <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl p-6 w-full max-w-md shadow-xl z-50">
-                              <AlertDialog.Title className="text-lg font-semibold mb-2 text-slate-700">
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
                                 {device.is_current ? '确认退出登录？' : '确认移除此设备？'}
-                              </AlertDialog.Title>
-                              <AlertDialog.Description className="text-sm text-slate-500 mb-4">
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
                                 {device.is_current 
                                   ? '退出后需要重新登录才能继续使用'
                                   : '移除后该设备将无法继续访问，需要重新登录'}
-                              </AlertDialog.Description>
-                              <div className="flex gap-3 justify-end">
-                                <AlertDialog.Cancel asChild>
-                                  <Button variant="outline">取消</Button>
-                                </AlertDialog.Cancel>
-                                <AlertDialog.Action asChild>
-                                  <Button 
-                                    variant="destructive" 
-                                    onClick={() => handleRevoke(device.device_id, device.is_current)}
-                                  >
-                                    确认
-                                  </Button>
-                                </AlertDialog.Action>
-                              </div>
-                            </AlertDialog.Content>
-                          </AlertDialog.Portal>
-                        </AlertDialog.Root>
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleRevoke(device.device_id, device.is_current)}
+                              >
+                                确认
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </CardContent>
                   </Card>

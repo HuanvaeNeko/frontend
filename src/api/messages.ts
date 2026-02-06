@@ -291,7 +291,11 @@ export const messagesApi = {
 
     const result = await response.json()
     console.log('✅ 消息同步完成')
-    return result.data
+    // 后端返回 { code, message, data: { conversations } }
+    const data = result.data ?? result
+    return {
+      conversations: Array.isArray(data.conversations) ? data.conversations : [],
+    }
   },
 }
 

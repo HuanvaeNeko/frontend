@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, Video, AlertCircle, Play } from 'lucide-react'
+import { Loader2, AlertCircle, Play } from 'lucide-react'
 import { storageApi } from '../../api/storage'
 
 interface MessageVideoProps {

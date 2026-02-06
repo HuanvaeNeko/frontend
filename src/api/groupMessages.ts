@@ -132,8 +132,13 @@ export const groupMessagesApi = {
     }
 
     const result = await response.json()
-    console.log('✅ 群消息发送成功:', result.data.message_uuid)
-    return result.data
+    const data = result.data ?? result
+    console.log('✅ 群消息发送成功:', data.message_uuid)
+    return {
+      message_uuid: data.message_uuid,
+      send_time: data.send_time,
+      seq: data.seq,
+    }
   },
 
   /**
@@ -168,7 +173,12 @@ export const groupMessagesApi = {
     }
 
     const result = await response.json()
-    return result.data
+    // 后端可能返回 { data: { messages, has_more } } 或直接 { messages, has_more }
+    const data = result.data ?? result
+    return {
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      has_more: Boolean(data.has_more),
+    }
   },
 
   /**
@@ -191,7 +201,8 @@ export const groupMessagesApi = {
 
     const result = await response.json()
     console.log('✅ 群消息删除成功')
-    return result.data
+    const data = result.data ?? result
+    return { success: Boolean(data.success), message: data.message ?? '消息已删除' }
   },
 
   /**
@@ -218,7 +229,8 @@ export const groupMessagesApi = {
 
     const result = await response.json()
     console.log('✅ 群消息撤回成功')
-    return result.data
+    const data = result.data ?? result
+    return { success: Boolean(data.success), message: data.message ?? '消息已撤回' }
   },
 
   /**

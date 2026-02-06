@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { 
   MessageCircle, 
   Users, 
@@ -17,6 +17,10 @@ import {
   User,
   ArrowLeft
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChatStore } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
 import { useGroupStore } from '../store/groupStore'
@@ -35,11 +39,8 @@ import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
-
-// 移动端视图模式
 type MobileView = 'list' | 'chat'
 
-// 从 URL 路径解析 tab 类型
 function getTabFromPath(pathname: string): TabType {
   if (pathname.startsWith('/chat/groups')) return 'groups'
   if (pathname.startsWith('/chat/files')) return 'files'
@@ -47,37 +48,28 @@ function getTabFromPath(pathname: string): TabType {
   return 'friends'
 }
 
-// localStorage key
-const STORAGE_KEY = 'huanvae_chat_state'
+let chatPageInitialized = false
 
-// 保存状态到 localStorage
-function saveStateToStorage(tab: TabType, conversationId?: string, conversationType?: 'friend' | 'group') {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      tab,
-      conversationId,
-      conversationType,
-      timestamp: Date.now(),
-    }))
-  } catch (e) {
-    console.warn('无法保存状态到 localStorage:', e)
-  }
+export function resetChatPageInit() {
+  chatPageInitialized = false
 }
 
-// 从 localStorage 加载状态
+const STORAGE_KEY = 'huanvae_chat_state'
+
+function saveStateToStorage(tab: TabType, conversationId?: string, conversationType?: 'friend' | 'group') {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tab, conversationId, conversationType, timestamp: Date.now() }))
+  } catch (e) { console.warn('无法保存状态到 localStorage:', e) }
+}
+
 function loadStateFromStorage(): { tab: TabType; conversationId?: string; conversationType?: 'friend' | 'group' } | null {
   try {
     const data = localStorage.getItem(STORAGE_KEY)
     if (data) {
       const parsed = JSON.parse(data)
-      // 24 小时内的状态才恢复
-      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-        return parsed
-      }
+      if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) return parsed
     }
-  } catch (e) {
-    console.warn('无法从 localStorage 加载状态:', e)
-  }
+  } catch (e) { console.warn('无法从 localStorage 加载状态:', e) }
   return null
 }
 
@@ -87,7 +79,6 @@ export default function ChatPage() {
   const searchParams = useSearchParams()
   const settingsModal = useSettingsModal()
   const { openProfileModal } = useUIStore()
-  // 使用查询参数：/chat/friends?id=xxx 或 /chat/groups?id=xxx
   const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
   const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
   const { user, logout, accessToken } = useAuthStore()
@@ -95,7 +86,7 @@ export default function ChatPage() {
   const { activeTab, setActiveTab, setSelectedConversation, selectedConversation } = useChatStore()
   const { friends, loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
   const { myGroups, loadMyGroups } = useGroupStore()
-  const { connect: connectWS, disconnect: disconnectWS, connected } = useWSStore()
+  const { connect: connectWS, connected } = useWSStore()
   
   const [subTab, setSubTab] = useState<SubTab>('main')
   const [searchQuery, setSearchQuery] = useState('')
@@ -103,134 +94,85 @@ export default function ChatPage() {
   const [mobileView, setMobileView] = useState<MobileView>('list')
   const [isMobile, setIsMobile] = useState(false)
 
-  // 检测移动端
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-    }
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // 当选中会话时，移动端自动切换到聊天视图
   useEffect(() => {
-    if (isMobile && selectedConversation) {
-      setMobileView('chat')
-    }
+    if (isMobile && selectedConversation) setMobileView('chat')
   }, [selectedConversation, isMobile])
 
-  // 从 URL 路径初始化 tab 状态
   useEffect(() => {
     const tabFromPath = getTabFromPath(pathname || '/chat')
-    
-    // 如果 URL 指定了 tab，使用 URL 的
     if (pathname !== '/chat' && pathname !== '/chat/') {
       setActiveTab(tabFromPath)
     } else {
-      // 如果是 /chat，尝试从 localStorage 恢复
       const savedState = loadStateFromStorage()
-      if (savedState && !isInitialized) {
-        setActiveTab(savedState.tab)
-      }
+      if (savedState && !isInitialized) setActiveTab(savedState.tab)
     }
     setIsInitialized(true)
   }, [pathname, setActiveTab, isInitialized])
 
-  // 处理 URL 中的 friendId 参数
   useEffect(() => {
     if (friendId && friends.length > 0) {
       const friend = friends.find(f => f.user_id === friendId)
       if (friend) {
-        setSelectedConversation({
-          id: friend.user_id,
-          type: 'friend',
-          name: friend.nickname,
-          avatar: friend.avatar_url,
-          unreadCount: 0,
-        })
+        setSelectedConversation({ id: friend.user_id, type: 'friend', name: friend.nickname, avatar: friend.avatar_url, unreadCount: 0 })
         setActiveTab('friends')
       }
     }
   }, [friendId, friends, setSelectedConversation, setActiveTab])
 
-  // 处理 URL 中的 groupId 参数
   useEffect(() => {
     if (groupId && myGroups.length > 0) {
       const group = myGroups.find(g => g.group_id === groupId)
       if (group) {
-        setSelectedConversation({
-          id: group.group_id,
-          type: 'group',
-          name: group.group_name,
-          avatar: group.group_avatar_url,
-          unreadCount: 0,
-        })
+        setSelectedConversation({ id: group.group_id, type: 'group', name: group.group_name, avatar: group.group_avatar_url, unreadCount: 0 })
         setActiveTab('groups')
       }
     }
   }, [groupId, myGroups, setSelectedConversation, setActiveTab])
 
-  // 从 localStorage 恢复会话
   useEffect(() => {
     if (!isInitialized || friendId || groupId) return
-    
     const savedState = loadStateFromStorage()
     if (!savedState?.conversationId) return
-
     if (savedState.conversationType === 'friend' && friends.length > 0) {
       const friend = friends.find(f => f.user_id === savedState.conversationId)
       if (friend && !selectedConversation) {
-        setSelectedConversation({
-          id: friend.user_id,
-          type: 'friend',
-          name: friend.nickname,
-          avatar: friend.avatar_url,
-          unreadCount: 0,
-        })
+        setSelectedConversation({ id: friend.user_id, type: 'friend', name: friend.nickname, avatar: friend.avatar_url, unreadCount: 0 })
       }
     } else if (savedState.conversationType === 'group' && myGroups.length > 0) {
       const group = myGroups.find(g => g.group_id === savedState.conversationId)
       if (group && !selectedConversation) {
-        setSelectedConversation({
-          id: group.group_id,
-          type: 'group',
-          name: group.group_name,
-          avatar: group.group_avatar_url,
-          unreadCount: 0,
-        })
+        setSelectedConversation({ id: group.group_id, type: 'group', name: group.group_name, avatar: group.group_avatar_url, unreadCount: 0 })
       }
     }
   }, [isInitialized, friendId, groupId, friends, myGroups, selectedConversation, setSelectedConversation])
 
-  // 当 tab 或选中会话变化时，更新 localStorage
   useEffect(() => {
     if (!isInitialized) return
-    saveStateToStorage(
-      activeTab,
-      selectedConversation?.id,
-      selectedConversation?.type
-    )
+    saveStateToStorage(activeTab, selectedConversation?.id, selectedConversation?.type)
   }, [activeTab, selectedConversation, isInitialized])
 
-  // 初始化加载数据
   useEffect(() => {
     if (user && accessToken) {
-      loadProfile().catch(console.error)
+      if (!chatPageInitialized) {
+        chatPageInitialized = true
+        loadProfile().catch(console.error)
+        loadFriends().catch(console.error)
+        loadPendingRequests().catch(console.error)
+        loadSentRequests().catch(console.error)
+        loadMyGroups().catch(console.error)
+      }
       connectWS()
-      loadFriends().catch(console.error)
-      loadPendingRequests().catch(console.error)
-      loadSentRequests().catch(console.error)
-      loadMyGroups().catch(console.error)
-    }
-
-    return () => {
-      disconnectWS()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accessToken])
 
-  // 注册 WebSocket 消息处理器
   useEffect(() => {
     const wsStore = useWSStore.getState()
     const chatStore = useChatStore.getState()
@@ -243,8 +185,7 @@ export default function ChatPage() {
       image_width: number | null; image_height: number | null; seq: number; send_time: string
     }) => {
       const selectedConv = chatStore.selectedConversation
-      if (selectedConv?.type === 'friend' && 
-          (selectedConv.id === data.sender_id || selectedConv.id === data.receiver_id)) {
+      if (selectedConv?.type === 'friend' && (selectedConv.id === data.sender_id || selectedConv.id === data.receiver_id)) {
         chatStore.addMessage({
           message_uuid: data.message_uuid, sender_id: data.sender_id, receiver_id: data.receiver_id,
           message_content: data.message_content, message_type: data.message_type,
@@ -354,6 +295,8 @@ export default function ChatPage() {
 
   const handleLogout = async () => {
     try {
+      useWSStore.getState().disconnect()
+      resetChatPageInit()
       await logout()
       router.push('/login')
     } catch (error) {
@@ -391,107 +334,100 @@ export default function ChatPage() {
     }
   }
 
-  // 移动端返回列表
-  const handleMobileBack = () => {
-    setMobileView('list')
-    setSelectedConversation(null)
-  }
-
   return (
-    <div className="w-full h-screen flex relative overflow-hidden bg-gradient-to-br from-blue-100 via-slate-50 to-purple-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950">
-      {/* 背景装饰球 */}
-      <div className="absolute w-[400px] h-[400px] rounded-full bg-gradient-to-br from-blue-300 to-blue-400 dark:from-blue-600 dark:to-blue-800 -top-24 -right-24 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:w-[200px] max-md:h-[200px]" />
-      <div className="absolute w-[300px] h-[300px] rounded-full bg-gradient-to-br from-indigo-300 to-indigo-400 dark:from-indigo-600 dark:to-indigo-800 -bottom-20 left-[20%] blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow-reverse max-md:w-[150px] max-md:h-[150px]" />
-      <div className="absolute w-[250px] h-[250px] rounded-full bg-gradient-to-br from-violet-300 to-violet-400 dark:from-violet-600 dark:to-violet-800 top-1/2 -left-12 blur-[80px] opacity-40 dark:opacity-20 pointer-events-none z-0 animate-float-slow max-md:hidden" />
-
-      {/* 左侧边栏 - 移动端隐藏 */}
-      <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-gradient-to-b from-white/75 to-white/55 dark:from-slate-800/90 dark:to-slate-900/80 backdrop-blur-2xl border-r border-blue-200/25 dark:border-slate-700/50 shadow-[2px_0_20px_rgba(147,197,253,0.08)] dark:shadow-none hidden md:flex">
-        {/* 用户头像 */}
-        <div className="relative mb-7">
-          <motion.div 
-            className="w-[42px] h-[42px] rounded-xl overflow-hidden bg-gradient-to-br from-white/90 to-white/60 border-2 border-white/95 shadow-[0_4px_12px_rgba(59,130,246,0.12),0_2px_6px_rgba(147,197,253,0.15)] flex items-center justify-center cursor-pointer transition-all duration-200"
-            onClick={openProfileModal}
-            whileHover={{ scale: 1.08, y: -2 }}
-          >
-            {profile?.user_avatar_url || user?.avatar_url ? (
-              <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" className="w-full h-full object-cover" />
-            ) : (
-              <User className="w-5 h-5 text-slate-400" />
-            )}
-          </motion.div>
-          {connected && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gradient-to-br from-green-500 to-green-600 border-2 border-white rounded-full shadow-[0_2px_8px_rgba(34,197,94,0.45)] animate-pulse-online" />
-          )}
-        </div>
-
-        {/* 导航按钮 */}
-        <nav className="flex flex-col gap-2 flex-1">
-          {tabs.map((tab) => (
-            <motion.button
-              key={tab.id}
-              className={cn(
-                "w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200 relative",
-                activeTab === tab.id && "bg-gradient-to-br from-blue-500/20 to-blue-300/25 text-blue-600 shadow-[0_2px_8px_rgba(59,130,246,0.15)]"
-              )}
-              onClick={() => {
-                setActiveTab(tab.id)
-                setSubTab('main')
-                const pathMap: Record<TabType, string> = {
-                  friends: '/chat/friends',
-                  groups: '/chat/groups',
-                  files: '/chat/files',
-                  webrtc: '/chat/webrtc',
-                }
-                router.push(pathMap[tab.id])
-              }}
-              title={tab.label}
-              whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
-              whileTap={{ scale: 0.95 }}
+    <div className="w-full h-screen flex relative overflow-hidden bg-background">
+      {/* 左侧图标栏 */}
+      <TooltipProvider>
+        <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-card border-r border-border hidden md:flex">
+          {/* 用户头像 */}
+          <div className="relative mb-7">
+            <button
+              className="w-[42px] h-[42px] rounded-xl overflow-hidden bg-muted border-2 border-border flex items-center justify-center cursor-pointer transition-all hover:ring-2 hover:ring-primary/30"
+              onClick={openProfileModal}
             >
-              <tab.icon className="w-[22px] h-[22px]" />
-              {activeTab === tab.id && (
-                <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-[3px] h-5 bg-gradient-to-b from-blue-500 to-blue-400 rounded-r-sm" />
+              {profile?.user_avatar_url || user?.avatar_url ? (
+                <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-5 h-5 text-muted-foreground" />
               )}
-            </motion.button>
-          ))}
-        </nav>
+            </button>
+            {connected && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-card rounded-full animate-pulse-online" />
+            )}
+          </div>
 
-        {/* 底部按钮 */}
-        <div className="flex flex-col gap-2">
-          <motion.button
-            className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200"
-            onClick={settingsModal.open}
-            title="设置"
-            whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 197, 253, 0.18)' }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Settings className="w-[22px] h-[22px]" />
-          </motion.button>
-          <motion.button
-            className="w-11 h-11 rounded-[14px] border-none bg-transparent text-slate-500 cursor-pointer flex items-center justify-center transition-all duration-200 hover:bg-red-500/10 hover:text-red-600"
-            onClick={handleLogout}
-            title="退出"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <LogOut className="w-[22px] h-[22px]" />
-          </motion.button>
-        </div>
+          {/* 导航按钮 */}
+          <nav className="flex flex-col gap-2 flex-1">
+            {tabs.map((tab) => (
+              <Tooltip key={tab.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    className={cn(
+                      "w-11 h-11 rounded-xl flex items-center justify-center transition-all relative",
+                      activeTab === tab.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                    onClick={() => {
+                      setActiveTab(tab.id)
+                      setSubTab('main')
+                      const pathMap: Record<TabType, string> = {
+                        friends: '/chat/friends', groups: '/chat/groups',
+                        files: '/chat/files', webrtc: '/chat/webrtc',
+                      }
+                      router.push(pathMap[tab.id])
+                    }}
+                  >
+                    <tab.icon className="w-[22px] h-[22px]" />
+                    {activeTab === tab.id && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-sm" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{tab.label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </nav>
+
+          {/* 底部按钮 */}
+          <div className="flex flex-col gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+                  onClick={settingsModal.open}
+                >
+                  <Settings className="w-[22px] h-[22px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">设置</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="w-[22px] h-[22px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">退出</TooltipContent>
+            </Tooltip>
+          </div>
         </aside>
+      </TooltipProvider>
 
-      {/* 中间会话列表 - 移动端全屏显示 */}
+      {/* 中间会话列表 */}
       <div className={cn(
         "relative h-full flex z-10 shrink-0",
         "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
-        // 移动端
         "max-md:absolute max-md:inset-0 max-md:w-full max-md:max-w-none",
         isMobile && mobileView === 'chat' && "max-md:hidden"
       )}>
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-xl md:border-r border-blue-200/20 shadow-[2px_0_24px_rgba(147,197,253,0.06)]">
-          {/* 头部：子标签 */}
+        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-card md:border-r border-border">
+          {/* 子标签头部 */}
           {activeTab !== 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
-              {/* 子标签导航 */}
+            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border">
               <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
                   <button
@@ -499,8 +435,8 @@ export default function ChatPage() {
                     className={cn(
                       "flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1",
                       subTab === tab.id
-                        ? "bg-blue-200/30 text-blue-600"
-                        : "text-slate-500 hover:bg-blue-100/20"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent"
                     )}
                     onClick={() => setSubTab(tab.id)}
                   >
@@ -510,119 +446,81 @@ export default function ChatPage() {
                 ))}
               </div>
 
-          {/* 搜索框 */}
               {subTab === 'main' && (
-                <div className="flex items-center gap-2.5 px-4 py-3 bg-white/70 dark:bg-slate-700/50 border border-white/80 dark:border-slate-600/50 rounded-[14px] transition-all shadow-[0_2px_8px_rgba(147,197,253,0.08)] focus-within:border-blue-300/50 focus-within:shadow-[0_0_0_4px_rgba(147,197,253,0.12),0_4px_12px_rgba(147,197,253,0.1)] focus-within:bg-white/85 dark:focus-within:bg-slate-700/70">
-                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                  <input
-                    type="text"
-                  placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 min-w-0 border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-                />
-              </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
               )}
             </div>
           )}
 
-          {/* WebRTC 头部 */}
           {activeTab === 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-blue-200/15 dark:border-slate-700/50 bg-white/20 dark:bg-slate-800/30">
-              <h2 className="font-semibold text-slate-700 dark:text-slate-200">视频会议</h2>
+            <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-border">
+              <h2 className="font-semibold text-foreground">视频会议</h2>
             </div>
           )}
 
-          {/* 列表内容 - 移动端底部留空间给导航栏 */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-2 max-md:pb-24">
-            <AnimatePresence mode="wait">
-              {activeTab === 'friends' && (
-                <motion.div
-                  key="friends"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <FriendList 
-                    subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} 
-                    searchQuery={searchQuery} 
-                  />
-                </motion.div>
-              )}
-              
-              {activeTab === 'groups' && (
-                <motion.div
-                  key="groups"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <GroupList 
-                    subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} 
-                    searchQuery={searchQuery} 
-                  />
-                </motion.div>
-              )}
-              
-              {activeTab === 'files' && (
-                <motion.div
-                  key="files"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <FileManager 
-                    subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} 
-                  />
-                </motion.div>
-              )}
-
-              {activeTab === 'webrtc' && (
-                <motion.div
-                  key="webrtc-list"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.15 }}
-                  className="p-4 text-center text-sm text-slate-500"
-                >
-                  请在右侧创建或加入视频房间
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          </div>
+          {/* 列表内容 */}
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-2 max-md:pb-24">
+              <AnimatePresence mode="wait">
+                {activeTab === 'friends' && (
+                  <motion.div key="friends" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                    <FriendList subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} searchQuery={searchQuery} />
+                  </motion.div>
+                )}
+                {activeTab === 'groups' && (
+                  <motion.div key="groups" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                    <GroupList subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} searchQuery={searchQuery} />
+                  </motion.div>
+                )}
+                {activeTab === 'files' && (
+                  <motion.div key="files" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                    <FileManager subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} />
+                  </motion.div>
+                )}
+                {activeTab === 'webrtc' && (
+                  <motion.div key="webrtc-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="p-4 text-center text-sm text-muted-foreground">
+                    请在右侧创建或加入视频房间
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </ScrollArea>
         </div>
+      </div>
 
-      {/* 右侧聊天窗口 - 移动端全屏覆盖 */}
+      {/* 右侧聊天窗口 */}
       <div className={cn(
-        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-gradient-to-b from-white/50 to-white/30 backdrop-blur-lg",
-        // 移动端
+        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-background",
         "max-md:absolute max-md:inset-0 max-md:w-full",
         isMobile && mobileView === 'list' && "max-md:hidden"
       )}>
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
-          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white/40 dark:bg-slate-800/60 backdrop-blur-xl border-b border-blue-200/20 dark:border-slate-700/50 shrink-0">
-            <button
-              type="button"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 bg-white/50 dark:bg-slate-700/50 hover:bg-white/70 dark:hover:bg-slate-600/50 active:scale-95 transition-all"
+          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-card border-b border-border shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
               onClick={() => {
-                // 先清除 localStorage 中保存的会话，防止被 useEffect 恢复
                 saveStateToStorage(activeTab)
                 setSelectedConversation(null)
                 setMobileView('list')
               }}
             >
               <ArrowLeft className="w-5 h-5" />
-            </button>
+            </Button>
             {selectedConversation && (
               <div className="flex-1 min-w-0">
-                <h2 className="font-semibold text-slate-700 truncate">{selectedConversation.name}</h2>
-                <span className="text-xs text-slate-500">
+                <h2 className="font-semibold text-foreground truncate">{selectedConversation.name}</h2>
+                <span className="text-xs text-muted-foreground">
                   {selectedConversation.type === 'friend' ? '好友' : '群聊'}
                 </span>
               </div>
@@ -632,25 +530,11 @@ export default function ChatPage() {
         
         <AnimatePresence mode="wait">
           {activeTab === 'webrtc' ? (
-            <motion.div
-              key="webrtc"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
-            >
+            <motion.div key="webrtc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="h-full">
               <WebRTCPanel />
             </motion.div>
           ) : (
-            <motion.div
-              key="chat"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="flex-1 min-h-0"
-            >
+            <motion.div key="chat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 min-h-0">
               <ChatWindow hideMobileHeader={isMobile && mobileView === 'chat'} />
             </motion.div>
           )}
@@ -659,40 +543,32 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-blue-200/30 dark:border-slate-700/50 safe-area-inset-bottom">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card/80 backdrop-blur-xl border-t border-border safe-area-inset-bottom">
           <div className="flex justify-around py-2 px-4">
             {tabs.map((tab) => (
-              <motion.button
+              <button
                 key={tab.id}
                 className={cn(
                   "flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all",
-                  activeTab === tab.id 
-                    ? "text-blue-600 bg-blue-100/50" 
-                    : "text-slate-500"
+                  activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground"
                 )}
-                onClick={() => {
-                  setActiveTab(tab.id)
-                  setSubTab('main')
-                }}
-                whileTap={{ scale: 0.95 }}
+                onClick={() => { setActiveTab(tab.id); setSubTab('main') }}
               >
                 <tab.icon className="w-5 h-5" />
                 <span className="text-xs font-medium">{tab.label}</span>
-              </motion.button>
+              </button>
             ))}
-            <motion.button
-              className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-slate-500"
+            <button
+              className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-muted-foreground"
               onClick={settingsModal.open}
-              whileTap={{ scale: 0.95 }}
             >
               <Settings className="w-5 h-5" />
               <span className="text-xs font-medium">设置</span>
-            </motion.button>
+            </button>
           </div>
         </div>
       )}
 
-      {/* 设置模态框 */}
       <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} />
     </div>
   )
