@@ -23,8 +23,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import * as Dialog from '@radix-ui/react-dialog'
-import * as AlertDialog from '@radix-ui/react-alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import {
   groupsApi,
   type Group,
@@ -636,78 +636,66 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <CardContent className="space-y-2">
                 {/* 普通成员可以退出群聊 */}
                 {!isOwner && (
-                  <AlertDialog.Root>
-                    <AlertDialog.Trigger asChild>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
                       <Button variant="outline" className="w-full gap-2 text-red-600 border-red-200 hover:bg-red-50">
                         <UserMinus className="h-4 w-4" />
                         退出群聊
                       </Button>
-                    </AlertDialog.Trigger>
-                    <AlertDialog.Portal>
-                      <AlertDialog.Overlay className="fixed inset-0 bg-black/50" />
-                      <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-                        <AlertDialog.Title className="text-lg font-semibold">确认退出群聊？</AlertDialog.Title>
-                        <AlertDialog.Description className="text-sm text-muted-foreground mt-2">
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>确认退出群聊？</AlertDialogTitle>
+                        <AlertDialogDescription>
                           退出后将不再接收群消息，需要重新申请或被邀请才能再次加入。
-                        </AlertDialog.Description>
-                        <div className="flex justify-end gap-2 mt-4">
-                          <AlertDialog.Cancel asChild>
-                            <Button variant="ghost">取消</Button>
-                          </AlertDialog.Cancel>
-                          <AlertDialog.Action asChild>
-                            <Button
-                              variant="destructive"
-                              onClick={async () => {
-                                await groupsApi.leaveGroup(groupId)
-                                toast({ title: '成功', description: '已退出群聊' })
-                                onClose?.()
-                              }}
-                            >
-                              确认退出
-                            </Button>
-                          </AlertDialog.Action>
-                        </div>
-                      </AlertDialog.Content>
-                    </AlertDialog.Portal>
-                  </AlertDialog.Root>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            await groupsApi.leaveGroup(groupId)
+                            toast({ title: '成功', description: '已退出群聊' })
+                            onClose?.()
+                          }}
+                        >
+                          确认退出
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
 
                 {/* 群主可以解散群聊 */}
                 {isOwner && (
-                  <AlertDialog.Root>
-                    <AlertDialog.Trigger asChild>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
                       <Button variant="destructive" className="w-full gap-2">
                         <Trash2 className="h-4 w-4" />
                         解散群聊
                       </Button>
-                    </AlertDialog.Trigger>
-                    <AlertDialog.Portal>
-                      <AlertDialog.Overlay className="fixed inset-0 bg-black/50" />
-                      <AlertDialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-                        <AlertDialog.Title className="text-lg font-semibold">确认解散群聊？</AlertDialog.Title>
-                        <AlertDialog.Description className="text-sm text-muted-foreground mt-2">
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>确认解散群聊？</AlertDialogTitle>
+                        <AlertDialogDescription>
                           此操作不可撤销，群聊将被永久删除。
-                        </AlertDialog.Description>
-                        <div className="flex justify-end gap-2 mt-4">
-                          <AlertDialog.Cancel asChild>
-                            <Button variant="ghost">取消</Button>
-                          </AlertDialog.Cancel>
-                          <AlertDialog.Action asChild>
-                            <Button
-                              variant="destructive"
-                              onClick={async () => {
-                                await groupsApi.disbandGroup(groupId)
-                                toast({ title: '成功', description: '群聊已解散' })
-                                onClose?.()
-                              }}
-                            >
-                              确认解散
-                            </Button>
-                          </AlertDialog.Action>
-                        </div>
-                      </AlertDialog.Content>
-                    </AlertDialog.Portal>
-                  </AlertDialog.Root>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            await groupsApi.disbandGroup(groupId)
+                            toast({ title: '成功', description: '群聊已解散' })
+                            onClose?.()
+                          }}
+                        >
+                          确认解散
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
               </CardContent>
             </Card>
@@ -1032,156 +1020,150 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       </div>
 
       {/* 邀请成员弹窗 */}
-      <Dialog.Root open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-            <Dialog.Title className="text-lg font-semibold">邀请成员</Dialog.Title>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">用户ID（多个用逗号分隔）</label>
-                <Input
-                  value={inviteUserIds}
-                  onChange={e => setInviteUserIds(e.target.value)}
-                  placeholder="user1, user2, user3"
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setShowInviteDialog(false)}>取消</Button>
-                <Button onClick={handleInviteMembers} disabled={inviting}>
-                  {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : '邀请'}
-                </Button>
-              </div>
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>邀请成员</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground">用户ID（多个用逗号分隔）</label>
+              <Input
+                value={inviteUserIds}
+                onChange={e => setInviteUserIds(e.target.value)}
+                placeholder="user1, user2, user3"
+                className="mt-1"
+              />
             </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowInviteDialog(false)}>取消</Button>
+              <Button onClick={handleInviteMembers} disabled={inviting}>
+                {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : '邀请'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 发布公告弹窗 */}
-      <Dialog.Root open={showNoticeDialog} onOpenChange={setShowNoticeDialog}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-            <Dialog.Title className="text-lg font-semibold">发布公告</Dialog.Title>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">标题</label>
-                <Input
-                  value={noticeTitle}
-                  onChange={e => setNoticeTitle(e.target.value)}
-                  placeholder="公告标题"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">内容</label>
-                <textarea
-                  value={noticeContent}
-                  onChange={e => setNoticeContent(e.target.value)}
-                  placeholder="公告内容"
-                  className="mt-1 w-full p-2 border rounded-lg resize-none h-32"
-                />
-              </div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={noticePinned}
-                  onChange={e => setNoticePinned(e.target.checked)}
-                />
-                <span className="text-sm">置顶公告</span>
-              </label>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>取消</Button>
-                <Button onClick={handleCreateNotice} disabled={creatingNotice}>
-                  {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : '发布'}
-                </Button>
-              </div>
+      <Dialog open={showNoticeDialog} onOpenChange={setShowNoticeDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>发布公告</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground">标题</label>
+              <Input
+                value={noticeTitle}
+                onChange={e => setNoticeTitle(e.target.value)}
+                placeholder="公告标题"
+                className="mt-1"
+              />
             </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <div>
+              <label className="text-sm text-muted-foreground">内容</label>
+              <textarea
+                value={noticeContent}
+                onChange={e => setNoticeContent(e.target.value)}
+                placeholder="公告内容"
+                className="mt-1 w-full p-2 border rounded-lg resize-none h-32"
+              />
+            </div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={noticePinned}
+                onChange={e => setNoticePinned(e.target.checked)}
+              />
+              <span className="text-sm">置顶公告</span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>取消</Button>
+              <Button onClick={handleCreateNotice} disabled={creatingNotice}>
+                {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : '发布'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 生成邀请码弹窗 */}
-      <Dialog.Root open={showCodeDialog} onOpenChange={setShowCodeDialog}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-            <Dialog.Title className="text-lg font-semibold">生成邀请码</Dialog.Title>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">最大使用次数</label>
-                <Input
-                  type="number"
-                  value={codeMaxUses}
-                  onChange={e => setCodeMaxUses(parseInt(e.target.value) || 1)}
-                  min={1}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">有效期（小时）</label>
-                <Input
-                  type="number"
-                  value={codeExpireHours}
-                  onChange={e => setCodeExpireHours(parseInt(e.target.value) || 1)}
-                  min={1}
-                  max={168}
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setShowCodeDialog(false)}>取消</Button>
-                <Button onClick={handleGenerateCode} disabled={generatingCode}>
-                  {generatingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
-                </Button>
-              </div>
+      <Dialog open={showCodeDialog} onOpenChange={setShowCodeDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>生成邀请码</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground">最大使用次数</label>
+              <Input
+                type="number"
+                value={codeMaxUses}
+                onChange={e => setCodeMaxUses(parseInt(e.target.value) || 1)}
+                min={1}
+                className="mt-1"
+              />
             </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <div>
+              <label className="text-sm text-muted-foreground">有效期（小时）</label>
+              <Input
+                type="number"
+                value={codeExpireHours}
+                onChange={e => setCodeExpireHours(parseInt(e.target.value) || 1)}
+                min={1}
+                max={168}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowCodeDialog(false)}>取消</Button>
+              <Button onClick={handleGenerateCode} disabled={generatingCode}>
+                {generatingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 禁言弹窗 */}
-      <Dialog.Root open={showMuteDialog} onOpenChange={setShowMuteDialog}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 shadow-xl">
-            <Dialog.Title className="text-lg font-semibold">
-              禁言成员: {selectedMember?.user_nickname}
-            </Dialog.Title>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">禁言时长（分钟）</label>
-                <Input
-                  type="number"
-                  value={muteDuration}
-                  onChange={e => setMuteDuration(parseInt(e.target.value) || 1)}
-                  min={1}
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {[10, 30, 60, 360, 1440].map(mins => (
-                  <Button
-                    key={mins}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMuteDuration(mins)}
-                  >
-                    {mins < 60 ? `${mins}分钟` : `${mins / 60}小时`}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setShowMuteDialog(false)}>取消</Button>
-                <Button onClick={handleMuteMember} disabled={operating}>
-                  {operating ? <Loader2 className="h-4 w-4 animate-spin" /> : '确认禁言'}
-                </Button>
-              </div>
+      <Dialog open={showMuteDialog} onOpenChange={setShowMuteDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>禁言成员: {selectedMember?.user_nickname}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-muted-foreground">禁言时长（分钟）</label>
+              <Input
+                type="number"
+                value={muteDuration}
+                onChange={e => setMuteDuration(parseInt(e.target.value) || 1)}
+                min={1}
+                className="mt-1"
+              />
             </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <div className="flex gap-2 flex-wrap">
+              {[10, 30, 60, 360, 1440].map(mins => (
+                <Button
+                  key={mins}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMuteDuration(mins)}
+                >
+                  {mins < 60 ? `${mins}分钟` : `${mins / 60}小时`}
+                </Button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowMuteDialog(false)}>取消</Button>
+              <Button onClick={handleMuteMember} disabled={operating}>
+                {operating ? <Loader2 className="h-4 w-4 animate-spin" /> : '确认禁言'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

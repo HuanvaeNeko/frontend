@@ -18,12 +18,14 @@ import {
   Shield,
   Sparkles
 } from 'lucide-react'
-import ParticleBackground from '@/components/ui/ParticleBackground'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
-import { useSettingsStore } from '@/store/settingsStore'
 
 
-// 功能特性卡片
 const FeatureCard = ({ icon: Icon, title, description, delay }: {
   icon: React.ElementType
   title: string
@@ -34,9 +36,9 @@ const FeatureCard = ({ icon: Icon, title, description, delay }: {
     initial={{ opacity: 0, x: -20 }}
     animate={{ opacity: 1, x: 0 }}
     transition={{ delay, duration: 0.5 }}
-    className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
+    className="flex items-start gap-4 p-4 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-colors"
   >
-    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
+    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shrink-0">
       <Icon className="w-6 h-6 text-white" />
     </div>
     <div>
@@ -49,7 +51,6 @@ const FeatureCard = ({ icon: Icon, title, description, delay }: {
 export default function Login() {
   const router = useRouter()
   const login = useAuthStore((state) => state.login)
-  const particleBackground = useSettingsStore((s) => s.particleBackground)
   
   const [formData, setFormData] = useState({
     user_id: '',
@@ -63,7 +64,6 @@ export default function Login() {
 
   useEffect(() => {
     setMounted(true)
-    // 预热音频上下文
     warmupSound()
   }, [])
 
@@ -90,38 +90,25 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex">
-      {/* 左侧 - 品牌区域（桌面端可见） */}
+      {/* 左侧品牌区域 */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden">
-        {particleBackground ? (
-          <ParticleBackground 
-            particleCount={120}
-            primaryColor="#8b5cf6"
-            secondaryColor="#6366f1"
-            backgroundColor="#0f0a1e"
-            particleSize={2.5}
-            speed={0.3}
-            showLines={true}
-            lineDistance={120}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900" />
-        )}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent" />
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 w-full">
-          {/* Logo 和标题 */}
-      <motion.div
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
             className="mb-12"
           >
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
                 <Sparkles className="w-8 h-8 text-white" />
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-white">Huanvae</h1>
-                <p className="text-purple-300">智能通讯平台</p>
+                <p className="text-blue-300">智能通讯平台</p>
               </div>
             </div>
             <p className="text-xl text-slate-300 max-w-md leading-relaxed">
@@ -129,38 +116,17 @@ export default function Login() {
             </p>
           </motion.div>
 
-          {/* 功能特性 */}
           <div className="space-y-4 max-w-md">
-            <FeatureCard
-              icon={MessageCircle}
-              title="即时消息"
-              description="支持富文本、Markdown、文件传输"
-              delay={0.2}
-            />
-            <FeatureCard
-              icon={Users}
-              title="群聊管理"
-              description="创建群组，邀请好友，团队协作"
-              delay={0.3}
-            />
-            <FeatureCard
-              icon={Video}
-              title="视频通话"
-              description="高清视频会议，屏幕共享"
-              delay={0.4}
-            />
-            <FeatureCard
-              icon={Shield}
-              title="安全加密"
-              description="端到端加密，保护您的隐私"
-              delay={0.5}
-            />
+            <FeatureCard icon={MessageCircle} title="即时消息" description="支持富文本、Markdown、文件传输" delay={0.2} />
+            <FeatureCard icon={Users} title="群聊管理" description="创建群组，邀请好友，团队协作" delay={0.3} />
+            <FeatureCard icon={Video} title="视频通话" description="高清视频会议，屏幕共享" delay={0.4} />
+            <FeatureCard icon={Shield} title="安全加密" description="端到端加密，保护您的隐私" delay={0.5} />
           </div>
         </div>
       </div>
 
-      {/* 右侧 - 登录表单 */}
-      <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-slate-50 dark:bg-slate-900">
+      {/* 右侧登录表单 */}
+      <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-background">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -169,159 +135,132 @@ export default function Login() {
         >
           {/* 移动端 Logo */}
           <div className="lg:hidden text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg mx-auto mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg mx-auto mb-4">
               <Sparkles className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Huanvae Chat</h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">智能通讯平台</p>
+            <h1 className="text-2xl font-bold text-foreground">Huanvae Chat</h1>
+            <p className="text-muted-foreground mt-1">智能通讯平台</p>
           </div>
 
-          {/* 标题 */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
-              欢迎回来 👋
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 mt-2">
-              登录您的账户以继续
-            </p>
-          </div>
+          <Card className="border-0 shadow-none bg-transparent">
+            <CardHeader className="px-0">
+              <CardTitle className="text-2xl">欢迎回来 👋</CardTitle>
+              <CardDescription>登录您的账户以继续</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0">
+              {/* 错误提示 */}
+              <AnimatePresence>
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm overflow-hidden"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-        {/* 错误提示 */}
-          <AnimatePresence>
-        {error && (
-          <motion.div
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: 'auto', marginBottom: 24 }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                className="p-4 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm overflow-hidden"
-          >
-            {error}
-          </motion.div>
-        )}
-          </AnimatePresence>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="user_id">用户 ID</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="user_id"
+                      type="text"
+                      required
+                      value={formData.user_id}
+                      onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+                      placeholder="请输入用户 ID"
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
 
-        {/* 登录表单 */}
-        <form onSubmit={handleSubmit} className="space-y-5">
-            {/* 用户 ID */}
-          <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                用户 ID
-              </label>
-            <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                required
-                value={formData.user_id}
-                onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-                  placeholder="请输入用户 ID"
-                  className="w-full pl-12 pr-4 py-3.5 text-slate-800 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-              />
-            </div>
-          </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">密码</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="请输入密码"
+                      className="pl-10 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
 
-            {/* 密码 */}
-          <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                密码
-              </label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                  type={showPassword ? 'text' : 'password'}
-                required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="请输入密码"
-                  className="w-full pl-12 pr-12 py-3.5 text-slate-800 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => {
+                        setRememberMe(e.target.checked)
+                        playTap()
+                      }}
+                      className="w-4 h-4 rounded border-input text-primary focus:ring-ring focus:ring-offset-0"
+                    />
+                    <span className="text-sm text-muted-foreground">记住我</span>
+                  </label>
+                  <a href="#" className="text-sm text-primary hover:underline">
+                    忘记密码？
+                  </a>
+                </div>
+
+                <Button type="submit" disabled={loading} className="w-full" size="lg">
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      登录中...
+                    </>
+                  ) : (
+                    <>
+                      登录
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div className="flex items-center gap-4 my-6">
+                <Separator className="flex-1" />
+                <span className="text-muted-foreground text-sm">或</span>
+                <Separator className="flex-1" />
               </div>
-            </div>
 
-            {/* 记住我 & 忘记密码 */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => {
-                    setRememberMe(e.target.checked)
-                    playTap()
-                  }}
-                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0"
-                />
-                <span className="text-sm text-slate-600 dark:text-slate-400">记住我</span>
-              </label>
-              <a href="#" className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
-                忘记密码？
-              </a>
-          </div>
+              <div className="text-center">
+                <p className="text-muted-foreground mb-3 text-sm">还没有账号？</p>
+                <Link href="/register">
+                  <Button variant="outline" className="w-full" size="lg">
+                    创建新账户
+                  </Button>
+                </Link>
+              </div>
 
-            {/* 登录按钮 */}
-          <motion.button
-            type="submit"
-            disabled={loading}
-              className="w-full py-4 px-6 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
-            whileHover={{ scale: loading ? 1 : 1.02 }}
-            whileTap={{ scale: loading ? 1 : 0.98 }}
-          >
-            <span className="flex items-center justify-center gap-2">
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  登录中...
-                </>
-              ) : (
-                <>
-                  登录
-                  <ArrowRight className="w-5 h-5" />
-                </>
-              )}
-            </span>
-          </motion.button>
-        </form>
-
-        {/* 分隔线 */}
-        <div className="flex items-center gap-4 my-8">
-            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-          <span className="text-slate-400 text-sm">或</span>
-            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-        </div>
-
-        {/* 注册链接 */}
-        <div className="text-center">
-            <p className="text-slate-500 dark:text-slate-400 mb-4">
-            还没有账号？
-          </p>
-          <Link href="/register">
-            <motion.button
-              type="button"
-                className="w-full py-3.5 px-6 rounded-xl font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-                创建新账户
-            </motion.button>
-          </Link>
-        </div>
-
-        {/* 服务条款 */}
-        <div className="mt-8 text-center text-xs text-slate-400">
-          <p>登录即表示您同意我们的</p>
-          <p className="mt-1">
-              <a href="#" className="text-indigo-600 dark:text-indigo-400 hover:underline">服务条款</a>
-            {' '}和{' '}
-              <a href="#" className="text-indigo-600 dark:text-indigo-400 hover:underline">隐私政策</a>
-          </p>
-        </div>
-      </motion.div>
+              <div className="mt-6 text-center text-xs text-muted-foreground">
+                <p>登录即表示您同意我们的</p>
+                <p className="mt-1">
+                  <a href="#" className="text-primary hover:underline">服务条款</a>
+                  {' '}和{' '}
+                  <a href="#" className="text-primary hover:underline">隐私政策</a>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     </div>
   )

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { playTap, playToggle, playButton } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
-import * as Switch from '@radix-ui/react-switch'
+import { Switch as ShadcnSwitch } from '@/components/ui/switch'
 import { GlassPage, GlassCard, GlassButton } from '@/components/ui/glass'
 import { useSettingsStore } from '../store/settingsStore'
 import { useApiConfigStore } from '../store/apiConfig'
@@ -127,23 +127,11 @@ interface CustomSwitchProps {
 
 function CustomSwitch({ checked, onCheckedChange, disabled }: CustomSwitchProps) {
   return (
-    <Switch.Root
-      className="w-11 h-6 rounded-full relative outline-none cursor-pointer transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-      style={{
-        background: checked 
-          ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-          : 'rgba(148, 163, 184, 0.3)',
-        boxShadow: checked ? '0 2px 8px rgba(59, 130, 246, 0.25)' : 'inset 0 1px 2px rgba(0,0,0,0.08)',
-      }}
+    <ShadcnSwitch
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
-    >
-      <Switch.Thumb 
-        className="block w-[18px] h-[18px] bg-white rounded-full transition-transform duration-300 translate-x-[3px] will-change-transform data-[state=checked]:translate-x-[23px]"
-        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}
-      />
-    </Switch.Root>
+    />
   )
 }
 
