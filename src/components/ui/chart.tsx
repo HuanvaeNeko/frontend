@@ -126,6 +126,7 @@ function ChartTooltipContent({
     // Injected by recharts at runtime but removed from Tooltip props type in v3
     payload?: Record<string, unknown>[]
     active?: boolean
+    label?: string | number
   }) {
   const { config } = useChart()
 
