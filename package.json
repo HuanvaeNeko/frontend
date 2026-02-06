@@ -49,7 +49,6 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^10.0.1",
     "@serwist/cli": "^9.5.4",
     "@serwist/next": "^9.5.4",
@@ -57,13 +56,10 @@
     "@types/node": "^25.2.1",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.54.0",
-    "@typescript-eslint/parser": "^8.54.0",
     "autoprefixer": "^10.4.24",
     "concurrently": "^9.2.1",
     "esbuild": "^0.27.3",
     "eslint": "^10.0.0",
-    "eslint-config-next": "^16.1.6",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.3.0",
     "postcss": "^8.5.6",

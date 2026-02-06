@@ -79,7 +79,7 @@ export const useAuthStore = create<AuthStore>()(
           } catch (fetchError) {
             clearTimeout(timeoutId)
             if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-              throw new Error('请求超时，请检查网络连接或后端服务是否正常')
+              throw new Error('请求超时，请检查网络连接或后端服务是否正常', { cause: fetchError })
             }
             throw fetchError
           }
@@ -144,7 +144,7 @@ export const useAuthStore = create<AuthStore>()(
           } catch (fetchError) {
             clearTimeout(timeoutId)
             if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-              throw new Error('请求超时，请检查网络连接或后端服务是否正常')
+              throw new Error('请求超时，请检查网络连接或后端服务是否正常', { cause: fetchError })
             }
             throw fetchError
           }

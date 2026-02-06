@@ -118,7 +118,7 @@ export default function AiChat() {
              (data.choices?.[0]?.message?.content) || '收到您的消息，但我暂时无法回复。'
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error('请求已取消')
+        throw new Error('请求已取消', { cause: err })
       }
       throw err
     }
