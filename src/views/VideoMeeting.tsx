@@ -138,6 +138,13 @@ export default function VideoMeeting() {
 
   const getLocalStream = async () => {
     try {
+      // 检查 mediaDevices API 是否可用（需要 HTTPS 或 localhost）
+      if (!navigator.mediaDevices?.enumerateDevices) {
+        console.warn('navigator.mediaDevices 不可用，可能不在安全上下文中（需要 HTTPS 或 localhost）')
+        setIsVideoEnabled(false)
+        setIsMuted(true)
+        return
+      }
       const devices = await navigator.mediaDevices.enumerateDevices()
       const hasVideo = devices.some(d => d.kind === 'videoinput')
       const hasAudio = devices.some(d => d.kind === 'audioinput')

@@ -282,6 +282,7 @@ type MessageHandler<T = unknown> = (data: T) => void
 interface WSState {
   ws: WebSocket | null
   connected: boolean
+  connecting: boolean
   reconnecting: boolean
   reconnectAttempts: number
   error: string | null
@@ -306,6 +307,8 @@ const PING_INTERVAL = 30000 // 30 秒
 export const useWSStore = create<WSState>((set, get) => {
   let pingInterval: ReturnType<typeof setInterval> | null = null
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  // 用于跟踪当前活跃的 WebSocket 实例，防止旧实例的回调干扰新实例
+  let activeWsId = 0
 
   const clearTimers = () => {
     if (pingInterval) {
@@ -322,7 +325,7 @@ export const useWSStore = create<WSState>((set, get) => {
     const state = get()
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        set({ error: '无法连接到服务器，请刷新页面重试' })
+        set({ error: '无法连接到服务器，请刷新页面重试', reconnecting: false })
       }
       return
     }
@@ -338,7 +341,7 @@ export const useWSStore = create<WSState>((set, get) => {
     console.log(`将在 ${delay / 1000} 秒后重连 (第 ${state.reconnectAttempts + 1} 次尝试)`)
 
     reconnectTimeout = setTimeout(() => {
-      set(s => ({ reconnectAttempts: s.reconnectAttempts + 1 }))
+      set(s => ({ reconnectAttempts: s.reconnectAttempts + 1, reconnecting: false }))
       get().connect()
     }, delay)
   }
@@ -346,6 +349,7 @@ export const useWSStore = create<WSState>((set, get) => {
   return {
     ws: null,
     connected: false,
+    connecting: false,
     reconnecting: false,
     reconnectAttempts: 0,
     error: null,
@@ -361,12 +365,29 @@ export const useWSStore = create<WSState>((set, get) => {
         return
       }
 
-      // 如果已连接，先断开
+      // 如果已连接或正在连接，直接返回
+      if (state.connected || state.connecting) {
+        return
+      }
+
+      // 递增 wsId，使旧 WS 的回调失效
+      const wsId = ++activeWsId
+
+      // 如果有旧的 WebSocket，静默关闭（用 1000 防止触发重连）
       if (state.ws) {
-        state.ws.close()
+        try {
+          state.ws.onclose = null
+          state.ws.onerror = null
+          state.ws.onmessage = null
+          state.ws.onopen = null
+          state.ws.close(1000, 'Replacing connection')
+        } catch {
+          // 忽略关闭错误
+        }
       }
 
       clearTimers()
+      set({ connecting: true, error: null, reconnecting: false })
 
       try {
         // 使用专用的 WebSocket URL 配置（包含正确的端口）
@@ -377,9 +398,15 @@ export const useWSStore = create<WSState>((set, get) => {
         const ws = new WebSocket(url)
 
         ws.onopen = () => {
+          // 如果这个 ws 已经不是最新的，忽略
+          if (wsId !== activeWsId) {
+            ws.close(1000, 'Stale connection')
+            return
+          }
           console.log('✅ WebSocket 已连接')
           set({
             connected: true,
+            connecting: false,
             reconnecting: false,
             reconnectAttempts: 0,
             error: null
@@ -395,6 +422,9 @@ export const useWSStore = create<WSState>((set, get) => {
         }
 
         ws.onmessage = (event) => {
+          // 如果这个 ws 已经不是最新的，忽略
+          if (wsId !== activeWsId) return
+
           try {
             const message: WSMessage = JSON.parse(event.data)
 
@@ -417,7 +447,6 @@ export const useWSStore = create<WSState>((set, get) => {
                   if ('data' in message) {
                     payload = message.data
                   } else {
-                     
                     const { type: _type, ...rest } = message
                     payload = rest
                   }
@@ -444,18 +473,25 @@ export const useWSStore = create<WSState>((set, get) => {
           }
         }
 
-        ws.onerror = (error) => {
-          console.error('❌ WebSocket 错误:', error)
+        ws.onerror = () => {
+          // 如果这个 ws 已经不是最新的，忽略
+          if (wsId !== activeWsId) return
+          console.error('❌ WebSocket 连接错误')
           set({
             error: 'WebSocket 连接错误',
-            connected: false
+            connected: false,
+            connecting: false
           })
         }
 
         ws.onclose = (event) => {
+          // 如果这个 ws 已经不是最新的，忽略（防止旧实例覆盖新实例状态）
+          if (wsId !== activeWsId) return
+
           console.log('🔌 WebSocket 已断开:', event.code, event.reason)
           set({
             connected: false,
+            connecting: false,
             ws: null
           })
 
@@ -467,12 +503,13 @@ export const useWSStore = create<WSState>((set, get) => {
           }
         }
 
-        set({ ws, error: null, reconnecting: false })
+        set({ ws })
       } catch (error) {
         console.error('创建 WebSocket 连接失败:', error)
         set({
           error: error instanceof Error ? error.message : 'WebSocket 连接失败',
-          connected: false
+          connected: false,
+          connecting: false
         })
         scheduleReconnect()
       }
@@ -481,12 +518,23 @@ export const useWSStore = create<WSState>((set, get) => {
     disconnect: () => {
       const state = get()
       clearTimers()
+      // 递增 wsId 使旧回调全部失效
+      activeWsId++
 
       if (state.ws) {
-        state.ws.close(1000, 'User disconnect')
+        try {
+          state.ws.onclose = null
+          state.ws.onerror = null
+          state.ws.onmessage = null
+          state.ws.onopen = null
+          state.ws.close(1000, 'User disconnect')
+        } catch {
+          // 忽略
+        }
         set({
           ws: null,
           connected: false,
+          connecting: false,
           reconnecting: false,
           reconnectAttempts: 0
         })
@@ -543,8 +591,8 @@ export const useWSStore = create<WSState>((set, get) => {
 
 // 导出便捷 hooks
 export const useWSConnection = () => {
-  const { connected, reconnecting, error, connect, disconnect } = useWSStore()
-  return { connected, reconnecting, error, connect, disconnect }
+  const { connected, connecting, reconnecting, error, connect, disconnect } = useWSStore()
+  return { connected, connecting, reconnecting, error, connect, disconnect }
 }
 
 export const useWSMessageHandler = <T>(type: string, handler: MessageHandler<T>) => {

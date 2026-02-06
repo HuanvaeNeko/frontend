@@ -12,7 +12,6 @@ import {
   Bell, 
   RotateCcw,
   Sparkles,
-  Volume2
 } from 'lucide-react'
 import { playTap, playToggle, playButton } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'

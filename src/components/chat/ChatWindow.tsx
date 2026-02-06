@@ -33,8 +33,8 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     setMessages,
     addMessage,
     prependMessages,
-    messageInput,
-    setMessageInput,
+    messageInput: _messageInput,
+    setMessageInput: _setMessageInput,
     getTypingUsers,
     typingUsers,
   } = useChatStore()
@@ -215,7 +215,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     }
   }, [selectedConversation, sending, user, addMessage, toast])
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const _handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
@@ -695,7 +695,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             )}
 
             <AnimatePresence initial={false}>
-              {messages.map((message, index) => {
+              {messages.map((message, _index) => {
                 const isOwn = message.sender_id === user?.user_id
                 const groupMessage = selectedConversation.type === 'group' ? (message as unknown as GroupMessage) : null
                 const canRecall = isOwn && canRecallMessage(message.send_time)

@@ -47,6 +47,15 @@ function getTabFromPath(pathname: string): TabType {
   return 'friends'
 }
 
+// 模块级标志：防止路由切换/HMR 导致重复加载初始数据
+// 仅在用户登出时重置（见 authStore.logout）
+let chatPageInitialized = false
+
+// 重置初始化标志（供 logout 调用）
+export function resetChatPageInit() {
+  chatPageInitialized = false
+}
+
 // localStorage key
 const STORAGE_KEY = 'huanvae_chat_state'
 
@@ -95,7 +104,7 @@ export default function ChatPage() {
   const { activeTab, setActiveTab, setSelectedConversation, selectedConversation } = useChatStore()
   const { friends, loadFriends, loadPendingRequests, loadSentRequests } = useFriendsStore()
   const { myGroups, loadMyGroups } = useGroupStore()
-  const { connect: connectWS, disconnect: disconnectWS, connected } = useWSStore()
+  const { connect: connectWS, connected } = useWSStore()
   
   const [subTab, setSubTab] = useState<SubTab>('main')
   const [searchQuery, setSearchQuery] = useState('')
@@ -213,20 +222,21 @@ export default function ChatPage() {
     )
   }, [activeTab, selectedConversation, isInitialized])
 
-  // 初始化加载数据
+  // 初始化加载数据 —— 使用模块级标志防止路由切换/HMR/Strict Mode 重复调用
   useEffect(() => {
     if (user && accessToken) {
-      loadProfile().catch(console.error)
+      if (!chatPageInitialized) {
+        chatPageInitialized = true
+        loadProfile().catch(console.error)
+        loadFriends().catch(console.error)
+        loadPendingRequests().catch(console.error)
+        loadSentRequests().catch(console.error)
+        loadMyGroups().catch(console.error)
+      }
+      // WebSocket 连接由 wsStore 内部防重，直接调用即可
       connectWS()
-      loadFriends().catch(console.error)
-      loadPendingRequests().catch(console.error)
-      loadSentRequests().catch(console.error)
-      loadMyGroups().catch(console.error)
     }
-
-    return () => {
-      disconnectWS()
-    }
+    // 不在 cleanup 中调用 disconnectWS —— WS 是全局连接，只在 logout 时断开
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accessToken])
 
@@ -354,6 +364,9 @@ export default function ChatPage() {
 
   const handleLogout = async () => {
     try {
+      // 断开 WebSocket 连接并重置初始化标志
+      useWSStore.getState().disconnect()
+      resetChatPageInit()
       await logout()
       router.push('/login')
     } catch (error) {
@@ -392,7 +405,7 @@ export default function ChatPage() {
   }
 
   // 移动端返回列表
-  const handleMobileBack = () => {
+  const _handleMobileBack = () => {
     setMobileView('list')
     setSelectedConversation(null)
   }

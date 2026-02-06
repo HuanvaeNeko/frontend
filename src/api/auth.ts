@@ -61,6 +61,20 @@ const fetchWithAuth = async (
   return response
 }
 
+// 设备列表响应（与后端 GET /api/auth/devices 一致）
+export interface DeviceInfo {
+  device_id: string
+  device_info?: string
+  ip_address?: string
+  last_active_at?: string
+  created_at?: string
+  is_current: boolean
+}
+
+export interface GetDevicesResponse {
+  devices: DeviceInfo[]
+}
+
 export const authApi = {
   // 登录
   login: async (credentials: { user_id: string; password: string; device_info?: string; mac_address?: string }) => {
@@ -167,7 +181,8 @@ export const authApi = {
   },
 
   // 获取设备列表
-  getDevices: async () => {
+  // GET /api/auth/devices，响应 { devices: DeviceInfo[] }
+  getDevices: async (): Promise<GetDevicesResponse> => {
     const response = await fetchWithAuth(`${AUTH_BASE_URL}/devices`, {
       method: 'GET',
     })
@@ -177,20 +192,23 @@ export const authApi = {
       throw new Error(errorData.error || errorData.message || '获取设备列表失败')
     }
 
-    return response.json()
+    const data = await response.json()
+    return {
+      devices: Array.isArray(data.devices) ? data.devices : [],
+    }
   },
 
   // 撤销设备
-  revokeDevice: async (deviceId: string) => {
+  // DELETE /api/auth/devices/{device_id}
+  revokeDevice: async (deviceId: string): Promise<void> => {
     const response = await fetchWithAuth(`${AUTH_BASE_URL}/devices/${deviceId}`, {
       method: 'DELETE',
     })
 
     if (!response.ok) {
-      throw new Error('Failed to revoke device')
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || errorData.message || '撤销设备失败')
     }
-
-    return response.json()
   },
 }
 
