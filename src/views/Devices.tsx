@@ -35,7 +35,7 @@ export default function Devices() {
     setLoading(true)
     try {
       const response = await authApi.getDevices()
-      const deviceList = response.devices || response.data?.devices || []
+      const deviceList = response.devices || []
       setDevices(Array.isArray(deviceList) ? deviceList : [])
     } catch (error) {
       console.error('加载设备列表失败:', error)

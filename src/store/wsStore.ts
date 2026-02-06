@@ -392,7 +392,7 @@ export const useWSStore = create<WSState>((set, get) => {
       try {
         // 使用专用的 WebSocket URL 配置（包含正确的端口）
         const wsBaseUrl = getWsUrl()
-        const url = `${wsBaseUrl}/ws/messages?token=${authStore.accessToken}`
+        const url = `${wsBaseUrl}/ws?token=${encodeURIComponent(authStore.accessToken)}`
 
         console.log('🔌 连接 WebSocket...')
         const ws = new WebSocket(url)
