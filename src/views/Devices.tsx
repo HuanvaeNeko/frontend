@@ -30,13 +30,23 @@ export default function Devices() {
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<string | null>(null)
 
-  // 加载设备列表
+  // 加载设备列表（将 API 的 DeviceInfo[] 规范为 Device[]，补全可选字段）
   const loadDevices = async () => {
     setLoading(true)
     try {
       const response = await authApi.getDevices()
       const deviceList = response.devices || []
-      setDevices(Array.isArray(deviceList) ? deviceList : [])
+      const normalized: Device[] = (Array.isArray(deviceList) ? deviceList : []).map(
+        (d) => ({
+          device_id: d.device_id,
+          device_info: d.device_info ?? '',
+          ip_address: d.ip_address ?? '',
+          last_active_at: d.last_active_at ?? '',
+          created_at: d.created_at ?? '',
+          is_current: d.is_current ?? false,
+        })
+      )
+      setDevices(normalized)
     } catch (error) {
       console.error('加载设备列表失败:', error)
       toast({
