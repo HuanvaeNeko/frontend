@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle } from 'lucide-react'
+import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle, Copy, Upload } from 'lucide-react'
 import { EmojiPicker } from './EmojiPicker'
 import { MessageImage } from './MessageImage'
 import { MessageVideo } from './MessageVideo'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
 import { groupMessagesApi, type GroupMessage } from '../../api/groupMessages'
@@ -19,6 +19,7 @@ import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import GroupManagement from './GroupManagement'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../../hooks/use-toast'
+import { useRealtimeMessages } from '../../hooks/useRealtimeMessages'
 import MarkdownEditor, { type MarkdownEditorRef } from './MarkdownEditor'
 import { Markdown } from '@/components/ui/markdown'
 
@@ -29,14 +30,13 @@ interface ChatWindowProps {
 export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps) {
   const { toast } = useToast()
   const { user } = useAuthStore()
+  const { setActiveChat } = useRealtimeMessages()
   const {
     selectedConversation,
     messages,
     setMessages,
     addMessage,
     prependMessages,
-    messageInput: _messageInput,
-    setMessageInput: _setMessageInput,
     getTypingUsers,
     typingUsers,
   } = useChatStore()
@@ -51,13 +51,21 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
   const [showGroupManagement, setShowGroupManagement] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [editorHasContent, setEditorHasContent] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<MarkdownEditorRef>(null)
 
+  // 设置活跃聊天 + 加载消息
   useEffect(() => {
-    if (!selectedConversation) { setMessages([]); return }
+    if (!selectedConversation) {
+      setMessages([])
+      setActiveChat(null, null)
+      return
+    }
+    setActiveChat(selectedConversation.type, selectedConversation.id)
     loadMessages()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation])
@@ -123,19 +131,30 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         const response = await groupMessagesApi.sendMessage({ group_id: selectedConversation.id, message_content: content, message_type: 'text' })
         addMessage({ message_uuid: response.message_uuid, sender_id: user?.user_id || '', receiver_id: selectedConversation.id, message_content: content, message_type: 'text', file_uuid: null, file_url: null, file_size: null, file_hash: null, filename: null, content_type: null, image_width: null, image_height: null, seq: response.seq, send_time: response.send_time })
       }
+      // 更新消息预览
+      useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, content, 'text', new Date().toISOString())
     } catch (error) {
       console.error('发送消息失败:', error)
       toast({ title: '发送失败', description: error instanceof Error ? error.message : '发送消息失败', variant: 'destructive' })
     } finally { setSending(false) }
   }, [selectedConversation, sending, user, addMessage, toast])
 
+  // =============================================
+  // 文件处理
+  // =============================================
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 100 * 1024 * 1024 * 1024) { toast({ title: '文件太大', description: '文件大小不能超过 100GB', variant: 'destructive' }); return }
-      setSelectedFile(file)
-    }
+    if (file) processFileForUpload(file)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const processFileForUpload = (file: File) => {
+    if (file.size > 100 * 1024 * 1024 * 1024) {
+      toast({ title: '文件太大', description: '文件大小不能超过 100GB', variant: 'destructive' })
+      return
+    }
+    setSelectedFile(file)
   }
 
   const handleCancelFile = () => { setSelectedFile(null); setUploadProgress(null) }
@@ -175,6 +194,71 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     } finally { setSending(false); setUploadProgress(null) }
   }
 
+  // =============================================
+  // 拖拽上传
+  // =============================================
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current++
+    if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragging(false)
+    if (sending) return
+    const files = e.dataTransfer.files
+    if (files.length > 0) processFileForUpload(files[0])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sending])
+
+  // =============================================
+  // 粘贴图片
+  // =============================================
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (sending) return
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault()
+        const file = items[i].getAsFile()
+        if (file) {
+          const namedFile = new File([file], `clipboard-${Date.now()}.png`, { type: file.type })
+          processFileForUpload(namedFile)
+        }
+        return
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sending])
+
+  // =============================================
+  // 消息操作
+  // =============================================
+
+  const handleCopyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      toast({ title: '已复制', description: '消息内容已复制到剪贴板' })
+    } catch {
+      toast({ title: '复制失败', description: '无法复制到剪贴板', variant: 'destructive' })
+    }
+  }
+
   const handleDeleteMessage = async (messageUuid: string) => {
     try {
       if (selectedConversation?.type === 'friend') await messagesApi.deleteMessage(messageUuid)
@@ -190,7 +274,12 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     try {
       if (selectedConversation?.type === 'friend') await messagesApi.recallMessage(messageUuid)
       else if (selectedConversation?.type === 'group') await groupMessagesApi.recallMessage(messageUuid)
-      setMessages(messages.filter(m => m.message_uuid !== messageUuid))
+      // 标记为已撤回而不是删除
+      setMessages(messages.map(m =>
+        m.message_uuid === messageUuid
+          ? { ...m, message_content: '你撤回了一条消息', message_type: 'text' as const }
+          : m
+      ))
       toast({ title: '成功', description: '消息已撤回' })
     } catch (error) {
       toast({ title: '撤回失败', description: error instanceof Error ? error.message : '撤回消息失败（可能超过2分钟）', variant: 'destructive' })
@@ -293,7 +382,31 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
+    <div
+      className="h-full flex flex-col min-h-0 overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* 拖拽覆盖层 */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary rounded-xl flex items-center justify-center"
+          >
+            <div className="text-center">
+              <Upload className="h-12 w-12 text-primary mx-auto mb-3" />
+              <p className="text-lg font-medium text-primary">拖放文件到此处上传</p>
+              <p className="text-sm text-muted-foreground mt-1">支持图片、视频和文档</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 聊天头部 */}
       <header className={`px-6 py-4 min-h-[81px] shrink-0 border-b border-border bg-card flex items-center justify-between ${hideMobileHeader ? 'hidden' : ''}`}>
         <div className="flex items-center gap-3">
@@ -336,6 +449,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                 const isOwn = message.sender_id === user?.user_id
                 const groupMessage = selectedConversation.type === 'group' ? (message as unknown as GroupMessage) : null
                 const canRecall = isOwn && canRecallMessage(message.send_time)
+                const isRecalled = (message as Message & { is_recalled?: boolean }).is_recalled
                 return (
                   <motion.div key={message.message_uuid} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} group`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
                     <Avatar className="h-10 w-10 shrink-0">
@@ -346,23 +460,51 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                     </Avatar>
                     <div className={`flex flex-col gap-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
                       {groupMessage && !isOwn && <span className="text-xs text-muted-foreground px-2">{groupMessage.sender_nickname}</span>}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <div className={`rounded-2xl px-4 py-2.5 cursor-pointer ${isOwn ? 'message-own bg-primary text-primary-foreground shadow-md' : 'bg-card border border-border text-foreground'}`}>
-                            {renderMessageContent(message, isOwn)}
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {canRecall && (
-                            <DropdownMenuItem onClick={() => handleRecallMessage(message.message_uuid)}>
-                              <RotateCcw className="h-4 w-4 mr-2" />撤回
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteMessage(message.message_uuid)}>
-                            <Trash2 className="h-4 w-4 mr-2" />删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+
+                      {isRecalled ? (
+                        /* 已撤回的消息 */
+                        <div className="px-4 py-2 text-xs text-muted-foreground italic">
+                          {isOwn ? '你撤回了一条消息' : `${groupMessage?.sender_nickname || '对方'}撤回了一条消息`}
+                        </div>
+                      ) : (
+                        /* 右键菜单包裹的消息气泡 */
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <div className={`rounded-2xl px-4 py-2.5 cursor-pointer ${isOwn ? 'message-own bg-primary text-primary-foreground shadow-md' : 'bg-card border border-border text-foreground'}`}>
+                              {renderMessageContent(message, isOwn)}
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            {message.message_type === 'text' && (
+                              <ContextMenuItem onClick={() => handleCopyMessage(message.message_content)}>
+                                <Copy className="h-4 w-4 mr-2" />复制
+                              </ContextMenuItem>
+                            )}
+                            {(message.file_url || message.file_uuid) && (
+                              <ContextMenuItem onClick={() => handleFileDownload(message)}>
+                                <Download className="h-4 w-4 mr-2" />下载
+                              </ContextMenuItem>
+                            )}
+                            {(message.message_type === 'image' || message.message_type === 'video') && (message.file_url || message.file_uuid) && (
+                              <ContextMenuItem onClick={() => handleFilePreview(message)}>
+                                <ImageIcon className="h-4 w-4 mr-2" />预览
+                              </ContextMenuItem>
+                            )}
+                            {canRecall && (
+                              <>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => handleRecallMessage(message.message_uuid)}>
+                                  <RotateCcw className="h-4 w-4 mr-2" />撤回
+                                </ContextMenuItem>
+                              </>
+                            )}
+                            <ContextMenuSeparator />
+                            <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteMessage(message.message_uuid)}>
+                              <Trash2 className="h-4 w-4 mr-2" />删除
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )}
                       <span className="text-xs text-muted-foreground px-2">{new Date(message.send_time).toLocaleTimeString()}</span>
                     </div>
                   </motion.div>
@@ -391,7 +533,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       </div>
 
       {/* 输入区域 */}
-      <div className="p-4 shrink-0 border-t border-border bg-card/50">
+      <div className="p-4 shrink-0 border-t border-border bg-card/50" onPaste={handlePaste}>
         <AnimatePresence>
           {selectedFile && (
             <motion.div className="mb-3 p-3 rounded-xl flex items-center gap-3 bg-muted border border-border" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
@@ -439,6 +581,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         <DialogContent className="max-w-2xl h-[80vh] max-h-[700px] flex flex-col p-0">
           <DialogHeader className="p-4 border-b border-border shrink-0">
             <DialogTitle>群管理</DialogTitle>
+            <DialogDescription className="sr-only">管理群聊设置、成员和公告</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden">
             <GroupManagement groupId={selectedConversation?.id || ''} onClose={() => setShowGroupManagement(false)} />

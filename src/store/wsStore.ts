@@ -213,68 +213,47 @@ export interface WSFileUploaded {
 }
 
 // =============================================
-// 兼容旧格式的类型别名（逐步迁移）
+// 连接成功消息
 // =============================================
 
-// 私聊消息（兼容旧格式，实际使用 WSNewMessage）
-export interface WSPrivateMessage {
-  type: 'private_message'
-  data: {
-    message_uuid: string
-    sender_id: string
-    sender_nickname: string
-    sender_avatar_url: string
-    receiver_id: string
-    message_content: string
-    message_type: 'text' | 'image' | 'video' | 'file'
-    file_uuid: string | null
-    file_url: string | null
-    file_size: number | null
-    file_hash: string | null
-    filename: string | null
-    content_type: string | null
-    image_width: number | null
-    image_height: number | null
-    seq: number
-    send_time: string
+export interface WSConnectedMessage {
+  type: 'connected'
+  unread_summary: {
+    total_count: number
+    friend_unreads: Array<{
+      friend_id: string
+      unread_count: number
+      last_message_preview: string | null
+      last_message_time: string | null
+    }>
+    group_unreads: Array<{
+      group_id: string
+      unread_count: number
+      last_message_preview: string | null
+      last_message_time: string | null
+    }>
   }
 }
 
-// 群聊消息（兼容旧格式，实际使用 WSNewMessage）
-export interface WSGroupMessage {
-  type: 'group_message'
-  data: {
-    message_uuid: string
-    group_id: string
-    sender_id: string
-    sender_nickname: string
-    sender_avatar_url: string
-    message_content: string
-    message_type: 'text' | 'image' | 'video' | 'file' | 'system'
-    file_uuid: string | null
-    file_url: string | null
-    file_size: number | null
-    file_hash: string | null
-    filename: string | null
-    content_type: string | null
-    image_width: number | null
-    image_height: number | null
-    seq: number
-    reply_to: string | null
-    send_time: string
-  }
+// 已读同步通知
+export interface WSReadSync {
+  type: 'read_sync'
+  source_type: 'friend' | 'group'
+  source_id: string
+  reader_id: string
+  read_at: string
 }
 
 // 所有 WebSocket 消息类型联合
 export type WSMessage =
+  | WSConnectedMessage
   | WSNewMessage
   | WSMessageRecalled
   | WSSystemNotification
+  | WSReadSync
   | WSOnlineStatus
   | WSTypingStatus
   | WSFileUploaded
-  | WSPrivateMessage
-  | WSGroupMessage
   | { type: string; data?: unknown; [key: string]: unknown }
 
 type MessageHandler<T = unknown> = (data: T) => void
@@ -294,13 +273,15 @@ interface WSState {
   // Actions
   connect: () => void
   disconnect: () => void
-  send: (message: { type: string; data?: unknown }) => void
+  send: (message: { type: string; [key: string]: unknown }) => void
   sendTyping: (conversationType: 'private' | 'group', conversationId: string, isTyping: boolean) => void
+  sendMarkRead: (targetType: 'friend' | 'group', targetId: string) => void
   registerHandler: <T>(type: string, handler: MessageHandler<T>) => () => void
   unregisterHandler: (type: string, handler: MessageHandler) => void
 }
 
 const MAX_RECONNECT_ATTEMPTS = 10
+const TOKEN_REFRESH_THRESHOLD = 3 // 连续失败 3 次后尝试刷新 token
 const RECONNECT_BASE_DELAY = 1000 // 1 秒
 const PING_INTERVAL = 30000 // 30 秒
 
@@ -321,7 +302,7 @@ export const useWSStore = create<WSState>((set, get) => {
     }
   }
 
-  const scheduleReconnect = () => {
+  const scheduleReconnect = async (closeCode?: number) => {
     const state = get()
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -330,15 +311,38 @@ export const useWSStore = create<WSState>((set, get) => {
       return
     }
 
+    const attempts = state.reconnectAttempts
+    const isAuthError = closeCode === 1008
+    const shouldRefreshToken = isAuthError || attempts >= TOKEN_REFRESH_THRESHOLD
+
+    // 尝试刷新 token
+    if (shouldRefreshToken) {
+      console.warn('[WebSocket] 尝试刷新 token...')
+      const authStore = useAuthStore.getState()
+      if (authStore.refreshToken) {
+        try {
+          await authStore.refreshAccessToken()
+          console.log('[WebSocket] Token 刷新成功，立即重连')
+          set({ reconnectAttempts: 0, reconnecting: false })
+          get().connect()
+          return
+        } catch {
+          console.error('[WebSocket] Token 刷新失败，退出登录')
+          authStore.clearAuth()
+          return
+        }
+      }
+    }
+
     set({ reconnecting: true })
 
     // 指数退避重连
     const delay = Math.min(
-      RECONNECT_BASE_DELAY * Math.pow(2, state.reconnectAttempts),
+      RECONNECT_BASE_DELAY * Math.pow(2, attempts),
       30000 // 最大 30 秒
     )
 
-    console.log(`将在 ${delay / 1000} 秒后重连 (第 ${state.reconnectAttempts + 1} 次尝试)`)
+    console.log(`将在 ${delay / 1000} 秒后重连 (第 ${attempts + 1} 次尝试)`)
 
     reconnectTimeout = setTimeout(() => {
       set(s => ({ reconnectAttempts: s.reconnectAttempts + 1, reconnecting: false }))
@@ -499,7 +503,7 @@ export const useWSStore = create<WSState>((set, get) => {
 
           // 正常关闭（1000）或用户主动断开不重连
           if (event.code !== 1000 && event.code !== 1001) {
-            scheduleReconnect()
+            scheduleReconnect(event.code)
           }
         }
 
@@ -558,6 +562,14 @@ export const useWSStore = create<WSState>((set, get) => {
           conversation_id: conversationId,
           is_typing: isTyping
         }
+      })
+    },
+
+    sendMarkRead: (targetType, targetId) => {
+      get().send({
+        type: 'mark_read',
+        target_type: targetType,
+        target_id: targetId,
       })
     },
 

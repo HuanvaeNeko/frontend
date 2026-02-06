@@ -1,9 +1,11 @@
 import { useEffect, useCallback, useRef } from 'react'
-import { useWSStore, type WSPrivateMessage, type WSGroupMessage, type WSMessageRecalled } from '../store/wsStore'
-import { useChatStore } from '../store/chatStore'
+import { useWSStore, type WSNewMessage, type WSMessageRecalled, type WSSystemNotification } from '../store/wsStore'
+import { useChatStore, type UnreadSummary } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
 import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '../store/authStore'
+import { notifyMessage } from './useNotification'
+import { playMessage } from './useSound'
 import type { Message } from '../api/messages'
 
 /**
@@ -11,173 +13,298 @@ import type { Message } from '../api/messages'
  * 
  * 功能：
  * - 自动连接 WebSocket
- * - 处理新私聊消息
- * - 处理新群聊消息
+ * - 处理 connected 消息（未读摘要）
+ * - 处理 new_message（统一好友/群聊新消息格式）
  * - 处理消息撤回
- * - 处理好友请求通知
- * - 处理群邀请通知
+ * - 处理系统通知（好友请求/群事件等）
+ * - 活跃聊天检测（不增加未读/不触发通知）
+ * - 浏览器通知 + 音效
  * - 应用启动时自动同步增量消息
  */
 export function useRealtimeMessages() {
   const { accessToken } = useAuthStore()
-  const { connect, disconnect, connected, registerHandler } = useWSStore()
-  const { selectedConversation, addMessage, setMessages, messages, syncMessages, conversations } = useChatStore()
-  const { loadPendingRequests } = useFriendsStore()
+  const { connect, disconnect, connected, registerHandler, sendMarkRead } = useWSStore()
+  const chatStore = useChatStore()
+  const { loadPendingRequests, loadFriends } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
   
   // 标记是否已执行过初始同步
   const hasSyncedRef = useRef(false)
 
-  // 自动连接（wsStore 内部已有防重机制，无需检查 connected）
+  // 自动连接
   useEffect(() => {
     if (accessToken) {
       connect()
     }
-    // 不依赖 connected，避免状态变化触发重连循环
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
   
   // 连接成功后自动同步消息
   useEffect(() => {
-    if (connected && conversations.length > 0 && !hasSyncedRef.current) {
+    if (connected && chatStore.conversations.length > 0 && !hasSyncedRef.current) {
       hasSyncedRef.current = true
       console.log('🔄 应用启动，开始同步消息...')
-      syncMessages().catch(error => {
+      chatStore.syncMessages().catch(error => {
         console.error('消息同步失败:', error)
       })
     }
-  }, [connected, conversations.length, syncMessages])
+  }, [connected, chatStore.conversations.length, chatStore])
 
-  // 处理新私聊消息
-  const handlePrivateMessage = useCallback((data: WSPrivateMessage['data']) => {
-    console.log('📨 收到私聊消息:', data)
+  // =============================================
+  // 处理 connected 消息（未读摘要）
+  // =============================================
+  const handleConnected = useCallback((data: { unread_summary: UnreadSummary }) => {
+    console.log('📡 WebSocket 已连接，收到未读摘要:', data.unread_summary)
+    useChatStore.getState().setUnreadSummary(data.unread_summary)
+  }, [])
 
-    // 转换为 Message 格式
-    const message: Message = {
-      message_uuid: data.message_uuid,
-      sender_id: data.sender_id,
-      receiver_id: data.receiver_id,
-      message_content: data.message_content,
-      message_type: data.message_type,
-      file_uuid: data.file_uuid,
-      file_url: data.file_url,
-      file_size: data.file_size,
-      file_hash: data.file_hash,
-      filename: data.filename ?? null,
-      content_type: data.content_type ?? null,
-      image_width: data.image_width,
-      image_height: data.image_height,
-      seq: data.seq,
-      send_time: data.send_time,
+  // =============================================
+  // 处理 new_message（统一格式）
+  // =============================================
+  const handleNewMessage = useCallback((data: Omit<WSNewMessage, 'type'>) => {
+    console.log('📨 收到新消息:', data.source_type, data.source_id)
+    const store = useChatStore.getState()
+    const currentUser = useAuthStore.getState().user
+
+    // 生成消息预览文本
+    const previewText = getMessagePreviewText(data.message_type, data.content)
+
+    // 检查是否是活跃聊天
+    const isActiveChat = store.activeChat &&
+      store.activeChat.type === data.source_type &&
+      store.activeChat.id === data.source_id
+
+    // 更新未读计数（非活跃聊天才增加）
+    if (data.source_type === 'friend') {
+      store.updateFriendUnread(data.source_id, previewText, data.timestamp, !isActiveChat)
+    } else {
+      store.updateGroupUnread(data.source_id, previewText, data.timestamp, !isActiveChat)
     }
 
-    // 如果当前正在查看这个对话，添加消息
-    if (
-      selectedConversation?.type === 'friend' &&
-      (selectedConversation.id === data.sender_id || selectedConversation.id === data.receiver_id)
-    ) {
-      addMessage(message)
-    }
+    // 转换为 Message 格式并添加到当前会话
+    const selected = store.selectedConversation
+    const shouldAddToChat = selected &&
+      selected.type === data.source_type &&
+      selected.id === data.source_id
 
-    // TODO: 更新未读计数
-  }, [selectedConversation, addMessage])
-
-  // 处理新群聊消息
-  const handleGroupMessage = useCallback((data: WSGroupMessage['data']) => {
-    console.log('📨 收到群聊消息:', data)
-
-    // 如果当前正在查看这个群聊，添加消息
-    if (selectedConversation?.type === 'group' && selectedConversation.id === data.group_id) {
-      // 群消息类型包含 'system'，但需要转换为私聊消息类型
+    if (shouldAddToChat) {
       const msgType = data.message_type === 'system' ? 'text' : data.message_type
       const message: Message = {
         message_uuid: data.message_uuid,
         sender_id: data.sender_id,
-        receiver_id: data.group_id,
-        message_content: data.message_content,
+        receiver_id: data.source_id,
+        message_content: data.content,
         message_type: msgType as Message['message_type'],
-        file_uuid: data.file_uuid,
-        file_url: data.file_url,
-        file_size: data.file_size,
-        file_hash: data.file_hash,
-        filename: data.filename ?? null,
-        content_type: data.content_type ?? null,
-        image_width: data.image_width,
-        image_height: data.image_height,
+        file_uuid: data.file_uuid ?? null,
+        file_url: data.file_url ?? null,
+        file_size: data.file_size ?? null,
+        file_hash: data.file_hash ?? null,
+        filename: null,
+        content_type: null,
+        image_width: data.image_width ?? null,
+        image_height: data.image_height ?? null,
         seq: data.seq,
-        send_time: data.send_time,
+        send_time: data.timestamp,
       }
-      addMessage(message)
+      store.addMessage(message)
     }
 
-    // TODO: 更新未读计数
-  }, [selectedConversation, addMessage])
+    // 发送通知（非自己发送、非活跃聊天）
+    if (data.sender_id !== currentUser?.user_id && !isActiveChat) {
+      const title = data.source_type === 'friend'
+        ? data.sender_nickname
+        : `群聊 · ${data.sender_nickname}`
 
+      notifyMessage(title, previewText, { native: true })
+      playMessage()
+    }
+  }, [])
+
+  // =============================================
   // 处理消息撤回
+  // =============================================
   const handleMessageRecalled = useCallback((data: Omit<WSMessageRecalled, 'type'>) => {
     console.log('🔙 消息已撤回:', data)
+    const store = useChatStore.getState()
+    // 标记为已撤回而不是删除
+    const updatedMessages = store.messages.map(m =>
+      m.message_uuid === data.message_uuid
+        ? { ...m, message_content: '此消息已被撤回', message_type: 'text' as const, is_recalled: true }
+        : m
+    )
+    store.setMessages(updatedMessages)
+  }, [])
 
-    // 从当前消息列表中移除
-    setMessages(messages.filter(m => m.message_uuid !== data.message_uuid))
-  }, [messages, setMessages])
+  // =============================================
+  // 处理系统通知
+  // =============================================
+  const handleSystemNotification = useCallback((data: Omit<WSSystemNotification, 'type'>) => {
+    console.log('🔔 系统通知:', data.notification_type, data.data)
+    const notifData = data.data as Record<string, string>
 
-  // 处理好友请求
-  const handleFriendRequest = useCallback(() => {
-    console.log('👋 收到新的好友请求')
-    loadPendingRequests().catch(console.error)
-  }, [loadPendingRequests])
+    switch (data.notification_type) {
+      case 'friend_request':
+        loadPendingRequests().catch(console.error)
+        notifyMessage('好友请求', `${notifData.from_nickname || '某人'} 请求添加你为好友`, { native: true })
+        break
 
-  // 处理好友请求结果
-  const handleFriendRequestResult = useCallback((data: { target_user_id: string; result: 'approved' | 'rejected' }) => {
-    console.log('📋 好友请求结果:', data)
-    // 如果通过了，刷新好友列表
-    if (data.result === 'approved') {
-      useFriendsStore.getState().loadFriends().catch(console.error)
+      case 'friend_request_approved':
+        loadFriends().catch(console.error)
+        notifyMessage('好友请求已通过', `${notifData.friend_nickname || '某人'} 已通过你的好友请求`, { native: true })
+        break
+
+      case 'friend_request_rejected':
+        notifyMessage('好友请求被拒绝', `${notifData.user_nickname || '某人'} 拒绝了你的好友请求`)
+        break
+
+      case 'friend_deleted': {
+        loadFriends().catch(console.error)
+        // 从会话列表移除
+        const deletedFriendId = notifData.friend_id
+        if (deletedFriendId) {
+          useChatStore.getState().removeConversation(deletedFriendId)
+        }
+        break
+      }
+
+      case 'group_invite':
+        notifyMessage('群邀请', `${notifData.inviter_nickname || '某人'} 邀请你加入群聊 ${notifData.group_name || ''}`, { native: true })
+        loadMyGroups().catch(console.error)
+        break
+
+      case 'group_join_request':
+        notifyMessage('入群申请', `${notifData.applicant_nickname || notifData.user_nickname || '某人'} 申请加入群聊 ${notifData.group_name || ''}`)
+        break
+
+      case 'group_join_approved':
+        loadMyGroups().catch(console.error)
+        notifyMessage('入群申请已通过', `你已加入群聊 ${notifData.group_name || ''}`, { native: true })
+        break
+
+      case 'group_removed':
+        loadMyGroups().catch(console.error)
+        if (notifData.group_id) {
+          useChatStore.getState().removeConversation(notifData.group_id)
+        }
+        notifyMessage('已被移出群聊', `你已被移出群聊 ${notifData.group_name || ''}`)
+        break
+
+      case 'group_disbanded':
+        loadMyGroups().catch(console.error)
+        if (notifData.group_id) {
+          useChatStore.getState().removeConversation(notifData.group_id)
+        }
+        notifyMessage('群聊已解散', `群聊 ${notifData.group_name || ''} 已解散`)
+        break
+
+      case 'group_notice_updated':
+        notifyMessage('群公告更新', `群聊 ${notifData.group_name || ''} 的公告已更新`)
+        break
+
+      case 'owner_transferred':
+        loadMyGroups().catch(console.error)
+        notifyMessage('群主已转让', `群聊 ${notifData.group_name || ''} 的群主已转让给 ${notifData.new_owner_nickname || '某人'}`)
+        break
+
+      case 'admin_set':
+      case 'admin_removed':
+        loadMyGroups().catch(console.error)
+        break
+
+      case 'member_muted':
+      case 'member_unmuted':
+        // 如果是当前用户被禁言/解禁，可以更新 UI
+        break
+
+      default:
+        console.log('未处理的系统通知类型:', data.notification_type)
     }
+  }, [loadPendingRequests, loadFriends, loadMyGroups])
+
+  // =============================================
+  // 处理正在输入状态
+  // =============================================
+  const handleTyping = useCallback((data: {
+    user_id: string
+    conversation_type: 'private' | 'group'
+    conversation_id: string
+    is_typing: boolean
+  }) => {
+    useChatStore.getState().setTypingStatus({
+      conversationId: data.conversation_id,
+      conversationType: data.conversation_type,
+      userId: data.user_id,
+      isTyping: data.is_typing,
+      timestamp: Date.now(),
+    })
   }, [])
 
-  // 处理群邀请
-  const handleGroupInvitation = useCallback(() => {
-    console.log('📩 收到群邀请')
-    // 可以在这里更新群邀请计数或刷新邀请列表
-  }, [])
-
-  // 处理群成员变化
-  const handleGroupMemberChange = useCallback((data: { group_id: string }) => {
-    console.log('👥 群成员变化:', data)
-    // 刷新群组列表
-    loadMyGroups().catch(console.error)
-  }, [loadMyGroups])
-
+  // =============================================
   // 注册消息处理器
+  // =============================================
   useEffect(() => {
     const unsubscribers: (() => void)[] = []
 
-    unsubscribers.push(registerHandler<WSPrivateMessage['data']>('private_message', handlePrivateMessage))
-    unsubscribers.push(registerHandler<WSGroupMessage['data']>('group_message', handleGroupMessage))
+    // 新格式：connected + new_message + system_notification
+    unsubscribers.push(registerHandler<{ unread_summary: UnreadSummary }>('connected', handleConnected))
+    unsubscribers.push(registerHandler<Omit<WSNewMessage, 'type'>>('new_message', handleNewMessage))
     unsubscribers.push(registerHandler<Omit<WSMessageRecalled, 'type'>>('message_recalled', handleMessageRecalled))
-    unsubscribers.push(registerHandler('friend_request', handleFriendRequest))
-    unsubscribers.push(registerHandler('friend_request_result', handleFriendRequestResult))
-    unsubscribers.push(registerHandler('group_invitation', handleGroupInvitation))
-    unsubscribers.push(registerHandler('group_member_joined', handleGroupMemberChange))
-    unsubscribers.push(registerHandler('group_member_left', handleGroupMemberChange))
-    unsubscribers.push(registerHandler('group_member_removed', handleGroupMemberChange))
+    unsubscribers.push(registerHandler<Omit<WSSystemNotification, 'type'>>('system_notification', handleSystemNotification))
+    unsubscribers.push(registerHandler<{
+      user_id: string
+      conversation_type: 'private' | 'group'
+      conversation_id: string
+      is_typing: boolean
+    }>('typing', handleTyping))
 
     return () => {
       unsubscribers.forEach(unsub => unsub())
     }
   }, [
     registerHandler,
-    handlePrivateMessage,
-    handleGroupMessage,
+    handleConnected,
+    handleNewMessage,
     handleMessageRecalled,
-    handleFriendRequest,
-    handleFriendRequestResult,
-    handleGroupInvitation,
-    handleGroupMemberChange,
+    handleSystemNotification,
+    handleTyping,
   ])
 
-  return { connected, disconnect }
+  // =============================================
+  // Mark Read 功能
+  // =============================================
+  const markRead = useCallback((targetType: 'friend' | 'group', targetId: string) => {
+    // 发送 WebSocket 消息
+    sendMarkRead(targetType, targetId)
+    // 本地清零
+    useChatStore.getState().markRead(targetType, targetId)
+  }, [sendMarkRead])
+
+  // 设置活跃聊天
+  const setActiveChat = useCallback((type: 'friend' | 'group' | null, id: string | null) => {
+    if (type && id) {
+      useChatStore.getState().setActiveChat({ type, id })
+      // 设置活跃聊天时自动 markRead
+      markRead(type, id)
+    } else {
+      useChatStore.getState().setActiveChat(null)
+    }
+  }, [markRead])
+
+  return { connected, disconnect, markRead, setActiveChat }
+}
+
+// =============================================
+// 辅助函数
+// =============================================
+
+function getMessagePreviewText(messageType: string, content: string): string {
+  switch (messageType) {
+    case 'text': return content.length > 50 ? content.slice(0, 50) + '...' : content
+    case 'image': return '[图片]'
+    case 'video': return '[视频]'
+    case 'file': return '[文件]'
+    default: return content
+  }
 }
 
 /**
@@ -207,8 +334,13 @@ export function useTypingIndicator(conversationType: 'private' | 'group', conver
       is_typing: boolean
     }>('typing', (data) => {
       if (data.conversation_type === conversationType && data.conversation_id === conversationId) {
-        // TODO: 更新正在输入状态
-        console.log(`${data.user_id} ${data.is_typing ? '正在输入...' : '停止输入'}`)
+        useChatStore.getState().setTypingStatus({
+          conversationId: data.conversation_id,
+          conversationType: data.conversation_type,
+          userId: data.user_id,
+          isTyping: data.is_typing,
+          timestamp: Date.now(),
+        })
       }
     })
 
