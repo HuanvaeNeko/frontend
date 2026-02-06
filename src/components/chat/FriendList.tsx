@@ -299,9 +299,24 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                             <span className="text-xs text-green-500 ml-1">在线</span>
                           )}
                         </span>
+                        {/* 未读计数角标 */}
+                        {(() => {
+                          const unread = useChatStore.getState().getFriendUnread(friend.user_id)
+                          if (unread > 0) return (
+                            <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold text-white bg-red-500 rounded-full">
+                              {unread > 99 ? '99+' : unread}
+                            </span>
+                          )
+                          return null
+                        })()}
                       </div>
                       <div className="conv-preview">
-                        {friend.signature || friend.user_id}
+                        {(() => {
+                          const summary = useChatStore.getState().unreadSummary
+                          const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.user_id)
+                          if (friendUnread?.last_message_preview) return friendUnread.last_message_preview
+                          return friend.signature || friend.user_id
+                        })()}
                       </div>
                     </div>
                   </button>

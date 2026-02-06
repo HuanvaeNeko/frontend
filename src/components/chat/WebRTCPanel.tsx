@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
@@ -162,7 +162,7 @@ export default function WebRTCPanel() {
       {/* 创建房间 Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>创建视频房间</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>创建视频房间</DialogTitle><DialogDescription className="sr-only">设置房间名称、密码和参数</DialogDescription></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>房间名称（可选）</Label>
@@ -211,7 +211,7 @@ export default function WebRTCPanel() {
       {/* 加入房间 Dialog */}
       <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>加入视频房间</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>加入视频房间</DialogTitle><DialogDescription className="sr-only">输入房间号和密码加入会议</DialogDescription></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>房间号 *</Label>

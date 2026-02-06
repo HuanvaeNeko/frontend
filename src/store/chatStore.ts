@@ -26,6 +26,39 @@ export interface TypingStatus {
   timestamp: number
 }
 
+// =============================================
+// 未读消息摘要（来自 WebSocket connected 消息）
+// =============================================
+
+export interface FriendUnread {
+  friend_id: string
+  unread_count: number
+  last_message_preview: string | null
+  last_message_time: string | null
+}
+
+export interface GroupUnread {
+  group_id: string
+  unread_count: number
+  last_message_preview: string | null
+  last_message_time: string | null
+}
+
+export interface UnreadSummary {
+  total_count: number
+  friend_unreads: FriendUnread[]
+  group_unreads: GroupUnread[]
+}
+
+// =============================================
+// 活跃聊天
+// =============================================
+
+export interface ActiveChat {
+  type: 'friend' | 'group'
+  id: string
+}
+
 interface ChatState {
   // 当前激活的标签页
   activeTab: TabType
@@ -34,6 +67,10 @@ interface ChatState {
   // 当前选中的会话
   selectedConversation: Conversation | null
   setSelectedConversation: (conversation: Conversation | null) => void
+
+  // 活跃聊天（用于判断是否增加未读计数和触发通知）
+  activeChat: ActiveChat | null
+  setActiveChat: (chat: ActiveChat | null) => void
 
   // 会话列表
   conversations: Conversation[]
@@ -52,8 +89,20 @@ interface ChatState {
   messageInput: string
   setMessageInput: (input: string) => void
 
-  // 未读消息总数
+  // 未读消息摘要（来自服务器 WebSocket）
+  unreadSummary: UnreadSummary | null
+  setUnreadSummary: (summary: UnreadSummary | null) => void
+  getFriendUnread: (friendId: string) => number
+  getGroupUnread: (groupId: string) => number
   totalUnreadCount: number
+
+  // 未读计数更新（基于 unreadSummary）
+  updateFriendUnread: (friendId: string, preview: string, timestamp: string, increment: boolean) => void
+  updateGroupUnread: (groupId: string, preview: string, timestamp: string, increment: boolean) => void
+  markRead: (targetType: 'friend' | 'group', targetId: string) => void
+  updateLastMessage: (targetType: 'friend' | 'group', targetId: string, preview: string, messageType: string, timestamp: string) => void
+
+  // 兼容旧的更新方式
   updateUnreadCount: () => void
 
   // WebSocket 连接状态
@@ -75,6 +124,17 @@ interface ChatState {
   clearCurrentChat: () => void
 }
 
+// 生成消息预览文本
+function getMessagePreviewText(messageType: string, content: string): string {
+  switch (messageType) {
+    case 'text': return content.length > 50 ? content.slice(0, 50) + '...' : content
+    case 'image': return '[图片]'
+    case 'video': return '[视频]'
+    case 'file': return '[文件]'
+    default: return content
+  }
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   activeTab: 'friends',
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -82,17 +142,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedConversation: null,
   setSelectedConversation: (conversation) => set({ selectedConversation: conversation }),
 
+  activeChat: null,
+  setActiveChat: (chat) => set({ activeChat: chat }),
+
   conversations: [],
   setConversations: (conversations) => {
     set({ conversations })
-    get().updateUnreadCount()
   },
   addConversation: (conversation) => {
     const conversations = get().conversations
     const exists = conversations.find((c) => c.id === conversation.id)
     if (!exists) {
       set({ conversations: [conversation, ...conversations] })
-      get().updateUnreadCount()
     }
   },
   updateConversation: (id, updates) => {
@@ -101,13 +162,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         c.id === id ? { ...c, ...updates } : c
       ),
     })
-    get().updateUnreadCount()
   },
   removeConversation: (id) => {
     set({
       conversations: get().conversations.filter((c) => c.id !== id),
     })
-    get().updateUnreadCount()
   },
 
   messages: [],
@@ -122,10 +181,170 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messageInput: '',
   setMessageInput: (input) => set({ messageInput: input }),
 
+  // =============================================
+  // 未读消息摘要管理
+  // =============================================
+
+  unreadSummary: null,
+  setUnreadSummary: (summary) => set({ unreadSummary: summary, totalUnreadCount: summary?.total_count ?? 0 }),
+
   totalUnreadCount: 0,
+
+  getFriendUnread: (friendId) => {
+    const summary = get().unreadSummary
+    if (!summary) return 0
+    const found = summary.friend_unreads.find(u => u.friend_id === friendId)
+    return found?.unread_count ?? 0
+  },
+
+  getGroupUnread: (groupId) => {
+    const summary = get().unreadSummary
+    if (!summary) return 0
+    const found = summary.group_unreads.find(u => u.group_id === groupId)
+    return found?.unread_count ?? 0
+  },
+
+  updateFriendUnread: (friendId, preview, timestamp, increment) => {
+    set(state => {
+      const prev = state.unreadSummary
+      if (!prev) {
+        return {
+          unreadSummary: {
+            total_count: increment ? 1 : 0,
+            friend_unreads: [{
+              friend_id: friendId,
+              unread_count: increment ? 1 : 0,
+              last_message_preview: preview,
+              last_message_time: timestamp,
+            }],
+            group_unreads: [],
+          }
+        }
+      }
+
+      const newFriendUnreads = [...prev.friend_unreads]
+      const idx = newFriendUnreads.findIndex(u => u.friend_id === friendId)
+
+      if (idx >= 0) {
+        newFriendUnreads[idx] = {
+          ...newFriendUnreads[idx],
+          unread_count: increment ? newFriendUnreads[idx].unread_count + 1 : newFriendUnreads[idx].unread_count,
+          last_message_preview: preview,
+          last_message_time: timestamp,
+        }
+      } else {
+        newFriendUnreads.push({
+          friend_id: friendId,
+          unread_count: increment ? 1 : 0,
+          last_message_preview: preview,
+          last_message_time: timestamp,
+        })
+      }
+
+      const totalCount = newFriendUnreads.reduce((sum, u) => sum + u.unread_count, 0) +
+        prev.group_unreads.reduce((sum, u) => sum + u.unread_count, 0)
+
+      return {
+        unreadSummary: {
+          total_count: totalCount,
+          friend_unreads: newFriendUnreads,
+          group_unreads: prev.group_unreads,
+        }
+      }
+    })
+  },
+
+  updateGroupUnread: (groupId, preview, timestamp, increment) => {
+    set(state => {
+      const prev = state.unreadSummary
+      if (!prev) {
+        return {
+          unreadSummary: {
+            total_count: increment ? 1 : 0,
+            friend_unreads: [],
+            group_unreads: [{
+              group_id: groupId,
+              unread_count: increment ? 1 : 0,
+              last_message_preview: preview,
+              last_message_time: timestamp,
+            }],
+          }
+        }
+      }
+
+      const newGroupUnreads = [...prev.group_unreads]
+      const idx = newGroupUnreads.findIndex(u => u.group_id === groupId)
+
+      if (idx >= 0) {
+        newGroupUnreads[idx] = {
+          ...newGroupUnreads[idx],
+          unread_count: increment ? newGroupUnreads[idx].unread_count + 1 : newGroupUnreads[idx].unread_count,
+          last_message_preview: preview,
+          last_message_time: timestamp,
+        }
+      } else {
+        newGroupUnreads.push({
+          group_id: groupId,
+          unread_count: increment ? 1 : 0,
+          last_message_preview: preview,
+          last_message_time: timestamp,
+        })
+      }
+
+      const totalCount = prev.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) +
+        newGroupUnreads.reduce((sum, u) => sum + u.unread_count, 0)
+
+      return {
+        unreadSummary: {
+          total_count: totalCount,
+          friend_unreads: prev.friend_unreads,
+          group_unreads: newGroupUnreads,
+        }
+      }
+    })
+  },
+
+  markRead: (targetType, targetId) => {
+    // 发送 mark_read WebSocket 消息（由 wsStore 处理）
+    // 这里只更新本地未读摘要
+    set(state => {
+      const prev = state.unreadSummary
+      if (!prev) return {}
+
+      let newSummary: UnreadSummary
+      if (targetType === 'friend') {
+        const newFriendUnreads = prev.friend_unreads.map(u =>
+          u.friend_id === targetId ? { ...u, unread_count: 0 } : u
+        )
+        const totalCount = newFriendUnreads.reduce((sum, u) => sum + u.unread_count, 0) +
+          prev.group_unreads.reduce((sum, u) => sum + u.unread_count, 0)
+        newSummary = { total_count: totalCount, friend_unreads: newFriendUnreads, group_unreads: prev.group_unreads }
+      } else {
+        const newGroupUnreads = prev.group_unreads.map(u =>
+          u.group_id === targetId ? { ...u, unread_count: 0 } : u
+        )
+        const totalCount = prev.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) +
+          newGroupUnreads.reduce((sum, u) => sum + u.unread_count, 0)
+        newSummary = { total_count: totalCount, friend_unreads: prev.friend_unreads, group_unreads: newGroupUnreads }
+      }
+
+      return { unreadSummary: newSummary }
+    })
+  },
+
+  updateLastMessage: (targetType, targetId, preview, messageType, timestamp) => {
+    const previewText = getMessagePreviewText(messageType, preview)
+    if (targetType === 'friend') {
+      get().updateFriendUnread(targetId, previewText, timestamp, false)
+    } else {
+      get().updateGroupUnread(targetId, previewText, timestamp, false)
+    }
+  },
+
   updateUnreadCount: () => {
+    // 兼容旧方式：从 conversations 列表计算
     const total = get().conversations.reduce((sum, c) => sum + c.unreadCount, 0)
-    set({ totalUnreadCount: total })
+    void total // 使用 unreadSummary 来计算总未读数
   },
 
   wsConnected: false,
@@ -237,6 +456,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       selectedConversation: null,
       messages: [],
       messageInput: '',
+      activeChat: null,
     })
   },
 }))

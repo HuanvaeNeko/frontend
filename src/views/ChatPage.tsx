@@ -382,6 +382,27 @@ export default function ChatPage() {
                     {activeTab === tab.id && (
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-sm" />
                     )}
+                    {/* 未读角标 */}
+                    {tab.id === 'friends' && (() => {
+                      const summary = useChatStore.getState().unreadSummary
+                      const total = summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
+                      if (total > 0) return (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                          {total > 99 ? '99+' : total}
+                        </span>
+                      )
+                      return null
+                    })()}
+                    {tab.id === 'groups' && (() => {
+                      const summary = useChatStore.getState().unreadSummary
+                      const total = summary?.group_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
+                      if (total > 0) return (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                          {total > 99 ? '99+' : total}
+                        </span>
+                      )
+                      return null
+                    })()}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">{tab.label}</TooltipContent>

@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import {
   groupsApi,
@@ -1024,6 +1024,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>邀请成员</DialogTitle>
+            <DialogDescription className="sr-only">通过用户ID邀请成员加入群聊</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -1050,6 +1051,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>发布公告</DialogTitle>
+            <DialogDescription className="sr-only">编写并发布群公告</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -1093,6 +1095,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>生成邀请码</DialogTitle>
+            <DialogDescription className="sr-only">设置邀请码的使用次数和有效期</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -1131,6 +1134,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>禁言成员: {selectedMember?.user_nickname}</DialogTitle>
+            <DialogDescription className="sr-only">设置禁言时长</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
