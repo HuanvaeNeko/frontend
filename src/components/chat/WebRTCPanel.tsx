@@ -17,7 +17,7 @@ import { useAuthStore } from '../../store/authStore'
 export default function WebRTCPanel() {
   const router = useRouter()
   const { toast } = useToast()
-  const { accessToken } = useAuthStore()
+  const { accessToken: _accessToken } = useAuthStore()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showJoinDialog, setShowJoinDialog] = useState(false)
   const [creating, setCreating] = useState(false)

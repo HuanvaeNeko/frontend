@@ -123,6 +123,9 @@ function ChartTooltipContent({
     indicator?: "line" | "dot" | "dashed"
     nameKey?: string
     labelKey?: string
+    // Injected by recharts at runtime but removed from Tooltip props type in v3
+    payload?: Record<string, unknown>[]
+    active?: boolean
   }) {
   const { config } = useChart()
 
