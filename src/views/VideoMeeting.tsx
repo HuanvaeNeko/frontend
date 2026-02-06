@@ -36,13 +36,12 @@ export default function VideoMeeting() {
   const searchParams = useSearchParams()
   const params = useParams<{ roomId?: string }>()
   const urlRoomId = params?.roomId
-  const { accessToken, user } = useAuthStore()
+  const { user } = useAuthStore()
   
   const roomId = urlRoomId || searchParams.get('room') || ''
   const password = searchParams.get('pwd') || ''
   const displayName = searchParams.get('name') || user?.nickname || '访客'
   const urlToken = searchParams.get('token') || ''
-  const isCreator = searchParams.get('creator') === 'true'
   
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(true)
@@ -105,29 +104,27 @@ export default function VideoMeeting() {
       await getLocalStream()
       
       let wsToken: string
+      
       if (urlToken) {
+        // 从 WebRTCPanel 跳转过来，已有 ws_token
         wsToken = urlToken
-        if (isCreator && accessToken) {
+        try {
           const iceServers = await webrtcApi.getIceServers()
           iceServersRef.current = iceServers
-        } else {
-          try {
-            const joinResult = await webrtcApi.joinRoom(roomId, { password, display_name: displayName })
-            iceServersRef.current = joinResult.ice_servers
-            wsToken = joinResult.ws_token
-          } catch {
-            iceServersRef.current = [{ urls: ['stun:stun.l.google.com:19302'] }]
-          }
+        } catch {
+          iceServersRef.current = [{ urls: ['stun:stun.l.google.com:19302'] }]
         }
-      } else if (accessToken) {
-        wsToken = accessToken
-        const iceServers = await webrtcApi.getIceServers()
-        iceServersRef.current = iceServers
       } else {
-        const joinResult = await webrtcApi.joinRoom(roomId, { password, display_name: displayName })
+        // 通过分享链接进入，需要 joinRoom 获取 ws_token
+        const joinResult = await webrtcApi.joinRoom(roomId, {
+          password,
+          display_name: displayName,
+          avatar_url: user?.avatar_url || undefined,
+        })
         wsToken = joinResult.ws_token
         iceServersRef.current = joinResult.ice_servers
       }
+      
       connectSignaling(wsToken)
     } catch (err) {
       console.error('初始化会议失败:', err)

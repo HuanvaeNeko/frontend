@@ -46,7 +46,7 @@ export default function WebRTCPanel() {
       setCurrentRoom({ roomId: response.room_id, password: roomPassword || '无', shareLink })
       toast({ title: '成功', description: '房间创建成功！正在跳转...' })
       setShowCreateDialog(false)
-      const params = new URLSearchParams({ room: response.room_id, token: accessToken || '', creator: 'true' })
+      const params = new URLSearchParams({ room: response.room_id, token: response.ws_token, creator: 'true' })
       if (roomPassword) params.set('pwd', roomPassword)
       router.push(`/video-meeting?${params.toString()}`)
     } catch (error) {
