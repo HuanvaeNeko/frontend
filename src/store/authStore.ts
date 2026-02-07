@@ -6,6 +6,34 @@ import { getAuthApiUrl } from '../lib/apiConfig'
 
 const AUTH_BASE_URL = getAuthApiUrl()
 
+// 仅在客户端使用 localStorage，避免 Next.js SSR 报错并保证刷新后正确恢复登录状态
+const safeStorage = {
+  getItem: (name: string): string | null => {
+    if (typeof window === 'undefined') return null
+    try {
+      return localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(name, value)
+    } catch {
+      // ignore
+    }
+  },
+  removeItem: (name: string): void => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.removeItem(name)
+    } catch {
+      // ignore
+    }
+  },
+}
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -234,7 +262,7 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => safeStorage),
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,

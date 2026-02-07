@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
 
+const REMEMBER_USER_KEY = 'huanvae-remember-user_id'
 
 const FeatureCard = ({ icon: Icon, title, description, delay }: {
   icon: React.ElementType
@@ -62,9 +63,19 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false)
   const [mounted, setMounted] = useState(false)
 
+  // 恢复“记住我”保存的用户 ID（仅客户端）
   useEffect(() => {
     setMounted(true)
     warmupSound()
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(REMEMBER_USER_KEY) : null
+      if (saved) {
+        setFormData((prev) => ({ ...prev, user_id: saved }))
+        setRememberMe(true)
+      }
+    } catch {
+      // ignore
+    }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,6 +86,19 @@ export default function Login() {
 
     try {
       await login(formData)
+      if (rememberMe) {
+        try {
+          localStorage.setItem(REMEMBER_USER_KEY, formData.user_id.trim())
+        } catch {
+          // ignore
+        }
+      } else {
+        try {
+          localStorage.removeItem(REMEMBER_USER_KEY)
+        } catch {
+          // ignore
+        }
+      }
       playSuccess()
       router.push('/')
     } catch (err) {

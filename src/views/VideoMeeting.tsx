@@ -201,6 +201,13 @@ export default function VideoMeeting() {
     }
   }, [mediaError])
 
+  // 同步本地 <video> 的 srcObject：摄像头流或投屏流
+  useEffect(() => {
+    if (!localVideoRef.current) return
+    const stream = isScreenSharing ? screenStreamRef.current : localStreamRef.current
+    if (stream) localVideoRef.current.srcObject = stream
+  }, [isScreenSharing, isConnected])
+
   // =============================================
   // 发言检测
   // =============================================
@@ -552,20 +559,23 @@ export default function VideoMeeting() {
 
   const toggleMute = () => {
     if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = isMuted })
-      if (isMuted) {
-        // 重新开始发言检测
-        startVolumeDetection(localStreamRef.current)
-      } else {
+      const nextMuted = !isMuted
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !nextMuted })
+      if (nextMuted) {
         stopVolumeDetection()
         broadcastSpeakingStatus(false)
+      } else {
+        startVolumeDetection(localStreamRef.current)
       }
     }
     setIsMuted(!isMuted)
   }
 
   const toggleVideo = () => {
-    if (localStreamRef.current) localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = !isVideoEnabled })
+    if (localStreamRef.current) {
+      const nextEnabled = !isVideoEnabled
+      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = nextEnabled })
+    }
     setIsVideoEnabled(!isVideoEnabled)
   }
 
@@ -668,8 +678,10 @@ export default function VideoMeeting() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
+  // 本地展示流：投屏时用屏幕流，否则用摄像头/麦克风流
+  const localDisplayStream = isScreenSharing ? screenStreamRef.current : localStreamRef.current
   const allStreams = [
-    { id: 'local', isLocal: true, stream: localStreamRef.current, name: displayName, isSpeaking, isCreator: isCreatorRef.current },
+    { id: 'local', isLocal: true, stream: localDisplayStream ?? localStreamRef.current, name: displayName, isSpeaking, isCreator: isCreatorRef.current },
     ...remoteStreams.map(rs => ({ id: rs.peerId, isLocal: false, stream: rs.stream, name: rs.participant.name, isSpeaking: rs.isSpeaking, isCreator: rs.participant.is_creator })),
   ]
 
