@@ -45,7 +45,7 @@ export default function Home() {
         animate={{ y: 0, opacity: 1 }}
         className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border"
       >
-        <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-3.5">
             <Avatar className="h-11 w-11">
               <AvatarImage src={user?.avatar_url} />
@@ -59,16 +59,16 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => router.push('/devices')} title="设备管理">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target" onClick={() => router.push('/devices')} title="设备管理">
               <Laptop size={18} />
             </Button>
-            <Button variant="outline" size="icon" onClick={() => router.push('/settings')} title="设置">
+            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target" onClick={() => router.push('/settings')} title="设置">
               <Settings size={18} />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target">
                   <User size={18} />
                 </Button>
               </DropdownMenuTrigger>
@@ -93,7 +93,7 @@ export default function Home() {
       </motion.header>
 
       {/* 主内容区 */}
-      <main className="relative z-[1] max-w-[1200px] mx-auto px-6 py-10 pb-16">
+      <main className="relative z-[1] max-w-[1200px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-12 sm:pb-16">
         {/* 欢迎区 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -101,10 +101,10 @@ export default function Home() {
           transition={{ delay: 0.1 }}
           className="text-center mb-12"
         >
-          <h1 className="text-5xl font-extrabold bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 bg-clip-text text-transparent mb-3">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 bg-clip-text text-transparent mb-3">
             Huanvae Chat
           </h1>
-          <p className="text-lg text-muted-foreground">
+          <p className="text-base sm:text-lg text-muted-foreground">
             欢迎回来，<span className="text-primary">{user?.nickname || '用户'}</span>！开始您的智能通讯之旅
           </p>
         </motion.div>

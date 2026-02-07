@@ -220,7 +220,7 @@ export default function AiChat() {
       <BackgroundOrbs count={3} />
 
       {/* 顶部导航栏 */}
-      <header className="sticky top-0 z-50 shrink-0 flex items-center justify-between px-5 py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/30">
+      <header className="sticky top-0 z-50 shrink-0 flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/30 safe-area-inset-top">
         <div className="flex items-center gap-3">
           <motion.button 
             className="w-9 h-9 rounded-[10px] bg-white/60 border border-blue-200/30 flex items-center justify-center cursor-pointer text-slate-600 transition-all hover:bg-white/90 hover:-translate-x-0.5"

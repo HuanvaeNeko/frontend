@@ -489,7 +489,7 @@ export default function ChatPage() {
 
           {/* 列表内容 */}
           <ScrollArea className="flex-1 min-h-0">
-            <div className="p-2 max-md:pb-24">
+            <div className="p-2 max-md:pb-28">
               <AnimatePresence mode="wait">
                 {activeTab === 'friends' && (
                   <motion.div key="friends" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -525,11 +525,11 @@ export default function ChatPage() {
       )}>
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
-          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-card border-b border-border shrink-0">
+          <div className="md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top">
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-10 w-10 min-h-[44px] min-w-[44px] touch-target"
               onClick={() => {
                 saveStateToStorage(activeTab)
                 setSelectedConversation(null)
@@ -564,26 +564,26 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card/80 backdrop-blur-xl border-t border-border safe-area-inset-bottom">
-          <div className="flex justify-around py-2 px-4">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card/95 backdrop-blur-xl border-t border-border pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-2">
+          <div className="flex justify-around items-stretch">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 className={cn(
-                  "flex flex-col items-center gap-1 py-2 px-4 rounded-xl transition-all",
-                  activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground"
+                  "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl transition-all touch-target",
+                  activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground active:bg-muted/50"
                 )}
                 onClick={() => { setActiveTab(tab.id); setSubTab('main') }}
               >
-                <tab.icon className="w-5 h-5" />
+                <tab.icon className="w-6 h-6 shrink-0" />
                 <span className="text-xs font-medium">{tab.label}</span>
               </button>
             ))}
             <button
-              className="flex flex-col items-center gap-1 py-2 px-4 rounded-xl text-muted-foreground"
+              className="flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target"
               onClick={settingsModal.open}
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-6 h-6 shrink-0" />
               <span className="text-xs font-medium">设置</span>
             </button>
           </div>

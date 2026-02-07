@@ -533,7 +533,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       </div>
 
       {/* 输入区域 */}
-      <div className="p-4 shrink-0 border-t border-border bg-card/50" onPaste={handlePaste}>
+      <div className="p-3 sm:p-4 shrink-0 border-t border-border bg-card/50 pb-[max(1rem,env(safe-area-inset-bottom))]" onPaste={handlePaste}>
         <AnimatePresence>
           {selectedFile && (
             <motion.div className="mb-3 p-3 rounded-xl flex items-center gap-3 bg-muted border border-border" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>

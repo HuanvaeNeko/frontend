@@ -183,7 +183,7 @@ export default function Settings() {
 
   return (
     <GlassPage orbCount={4}>
-      <div className="container mx-auto px-4 py-6 max-w-4xl">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-4xl">
         {/* 返回按钮 */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}

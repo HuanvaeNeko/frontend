@@ -209,18 +209,18 @@ export default function MainLayout({ children }: MainLayoutProps) {
       </aside>
 
       {/* 主内容区 */}
-      <div className="flex-1 md:ml-64">
+      <div className="flex-1 md:ml-64 min-h-0 flex flex-col">
         {/* 面包屑导航 */}
-        <header className="bg-card border-b border-border px-4 md:px-6 py-3 sticky top-0 z-10">
+        <header className="bg-card border-b border-border px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 sticky top-0 z-10 safe-area-inset-top">
           <nav className="flex items-center gap-2 text-sm">
             {/* 移动端菜单 */}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 md:hidden">
-                  <Menu size={20} />
+                <Button variant="ghost" size="sm" className="h-9 w-9 min-h-[44px] min-w-[44px] p-0 md:hidden touch-target">
+                  <Menu size={22} />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-72 flex flex-col">
+              <SheetContent side="left" className="p-0 w-[85vw] max-w-[320px] flex flex-col">
                 <SidebarContent />
               </SheetContent>
             </Sheet>
@@ -257,7 +257,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
           </nav>
         </header>
 
-        <main>{children}</main>
+        <main className="flex-1 min-h-0 overflow-auto">{children}</main>
       </div>
     </div>
   )
