@@ -150,7 +150,7 @@ export default function Login() {
       </div>
 
       {/* 右侧登录表单 */}
-      <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-background">
+      <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-4 sm:p-6 md:p-12 bg-background min-h-[100dvh] lg:min-h-0">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

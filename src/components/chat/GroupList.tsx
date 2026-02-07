@@ -392,7 +392,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               {filteredGroups.map((group, index) => (
                 <motion.button
                   key={group.group_id}
-                  className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors hover:bg-blue-100/20 w-full"
+                  className="flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-blue-100/20 active:bg-blue-100/30 w-full"
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
