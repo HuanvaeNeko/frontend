@@ -153,6 +153,12 @@ export default function VideoMeeting() {
   const animationFrameRef = useRef<number>(0)
   const lastSpeakingRef = useRef(false)
   const isCreatorRef = useRef(false)
+  const isMutedRef = useRef(isMuted)
+  const isVideoEnabledRef = useRef(isVideoEnabled)
+  const isScreenSharingRef = useRef(isScreenSharing)
+  useEffect(() => { isMutedRef.current = isMuted }, [isMuted])
+  useEffect(() => { isVideoEnabledRef.current = isVideoEnabled }, [isVideoEnabled])
+  useEffect(() => { isScreenSharingRef.current = isScreenSharing }, [isScreenSharing])
 
   // =============================================
   // 生命周期
@@ -294,6 +300,26 @@ export default function VideoMeeting() {
     checkMid()
   }, [broadcastMediaType])
 
+  const updateRemoteStreamsFromMediaType = useCallback((peerId: string) => {
+    const pc = peerConnectionsRef.current[peerId]
+    const peerMap = mediaTypeMapsRef.current.get(peerId)
+    if (!pc || !peerMap) return
+    let cameraStream: MediaStream | undefined
+    let screenStream: MediaStream | undefined
+    pc.getTransceivers().forEach(transceiver => {
+      const mid = transceiver.mid
+      if (!mid) return
+      const type = peerMap.get(mid)
+      const track = transceiver.receiver.track
+      if (!track || track.kind !== 'video') return
+      if (type === 'camera') cameraStream = new MediaStream([track])
+      else if (type === 'screen') screenStream = new MediaStream([track])
+    })
+    setRemoteStreams(prev => prev.map(s =>
+      s.peerId === peerId ? { ...s, cameraStream, screenStream } : s
+    ))
+  }, [])
+
   const handleDataChannelMessage = useCallback((peerId: string, data: string) => {
     try {
       const message = JSON.parse(data)
@@ -302,16 +328,16 @@ export default function VideoMeeting() {
           s.peerId === peerId ? { ...s, isSpeaking: message.speaking } : s
         ))
       } else if (message.type === 'media-type') {
-        // 更新媒体类型映射
         if (!mediaTypeMapsRef.current.has(peerId)) {
           mediaTypeMapsRef.current.set(peerId, new Map())
         }
         mediaTypeMapsRef.current.get(peerId)!.set(message.mid, message.mediaType)
+        updateRemoteStreamsFromMediaType(peerId)
       }
     } catch {
       // 忽略解析错误
     }
-  }, [])
+  }, [updateRemoteStreamsFromMediaType])
 
   // =============================================
   // 初始化
@@ -433,6 +459,125 @@ export default function VideoMeeting() {
   // PeerConnection 管理 (Transceiver 架构)
   // =============================================
 
+  const getTransceiverRefs = useCallback((peerId: string): TransceiverRefs => {
+    let refs = transceiverMapRef.current.get(peerId)
+    if (!refs) {
+      refs = { mic: null, camera: null, screen: null }
+      transceiverMapRef.current.set(peerId, refs)
+    }
+    return refs
+  }, [])
+
+  const addTransceiversForCurrentState = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
+    const refs = getTransceiverRefs(peerId)
+    const local = localStreamRef.current
+    const screen = screenStreamRef.current
+    const muted = isMutedRef.current
+    const videoOn = isVideoEnabledRef.current
+    const screenOn = isScreenSharingRef.current
+
+    if (local) {
+      const audioTrack = local.getAudioTracks()[0]
+      if (audioTrack && !muted) {
+        if (!refs.mic) {
+          refs.mic = pc.addTransceiver(audioTrack, { direction: 'sendrecv' })
+        } else {
+          await refs.mic.sender.replaceTrack(audioTrack)
+          if (refs.mic.direction !== 'sendrecv') refs.mic.direction = 'sendrecv'
+        }
+      }
+      const videoTrack = local.getVideoTracks()[0]
+      if (videoTrack && videoOn && !screenOn) {
+        if (!refs.camera) {
+          refs.camera = pc.addTransceiver(videoTrack, { direction: 'sendrecv' })
+          waitForMidAndBroadcast(refs.camera, peerId, 'camera')
+        } else {
+          await refs.camera.sender.replaceTrack(videoTrack)
+          if (refs.camera.direction !== 'sendrecv') refs.camera.direction = 'sendrecv'
+          if (refs.camera.mid) broadcastMediaType(peerId, refs.camera.mid, 'camera')
+        }
+      }
+    }
+    if (screen) {
+      const screenTrack = screen.getVideoTracks()[0]
+      if (screenTrack) {
+        if (!refs.screen) {
+          refs.screen = pc.addTransceiver(screenTrack, { direction: 'sendrecv' })
+          waitForMidAndBroadcast(refs.screen, peerId, 'screen')
+        } else {
+          await refs.screen.sender.replaceTrack(screenTrack)
+          if (refs.screen.direction !== 'sendrecv') refs.screen.direction = 'sendrecv'
+          if (refs.screen.mid) broadcastMediaType(peerId, refs.screen.mid, 'screen')
+        }
+      }
+    }
+  }, [getTransceiverRefs, waitForMidAndBroadcast, broadcastMediaType])
+
+  const stopMicTransceiver = useCallback((peerId: string) => {
+    const refs = transceiverMapRef.current.get(peerId)
+    if (refs?.mic) {
+      refs.mic.sender.replaceTrack(null).catch(() => {})
+      refs.mic.direction = 'inactive'
+    }
+  }, [])
+
+  const stopCameraTransceiver = useCallback((peerId: string) => {
+    const refs = transceiverMapRef.current.get(peerId)
+    if (refs?.camera) {
+      refs.camera.sender.replaceTrack(null).catch(() => {})
+      refs.camera.direction = 'inactive'
+    }
+  }, [])
+
+  const stopScreenTransceiver = useCallback((peerId: string) => {
+    const refs = transceiverMapRef.current.get(peerId)
+    if (refs?.screen) {
+      refs.screen.sender.replaceTrack(null).catch(() => {})
+      refs.screen.direction = 'inactive'
+    }
+  }, [])
+
+  const addMicTransceiverForAll = useCallback(async (track: MediaStreamTrack) => {
+    for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
+      getTransceiverRefs(peerId)
+      const tRefs = transceiverMapRef.current.get(peerId)!
+      if (!tRefs.mic) {
+        tRefs.mic = pc.addTransceiver(track, { direction: 'sendrecv' })
+      } else {
+        await tRefs.mic.sender.replaceTrack(track)
+        tRefs.mic.direction = 'sendrecv'
+      }
+    }
+  }, [getTransceiverRefs])
+
+  const addCameraTransceiverForAll = useCallback(async (track: MediaStreamTrack) => {
+    for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
+      const tRefs = getTransceiverRefs(peerId)
+      if (!tRefs.camera) {
+        tRefs.camera = pc.addTransceiver(track, { direction: 'sendrecv' })
+        waitForMidAndBroadcast(tRefs.camera, peerId, 'camera')
+      } else {
+        await tRefs.camera.sender.replaceTrack(track)
+        tRefs.camera.direction = 'sendrecv'
+        if (tRefs.camera.mid) broadcastMediaType(peerId, tRefs.camera.mid, 'camera')
+      }
+    }
+  }, [getTransceiverRefs, waitForMidAndBroadcast, broadcastMediaType])
+
+  const addScreenTransceiverForAll = useCallback(async (track: MediaStreamTrack) => {
+    for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
+      const tRefs = getTransceiverRefs(peerId)
+      if (!tRefs.screen) {
+        tRefs.screen = pc.addTransceiver(track, { direction: 'sendrecv' })
+        waitForMidAndBroadcast(tRefs.screen, peerId, 'screen')
+      } else {
+        await tRefs.screen.sender.replaceTrack(track)
+        tRefs.screen.direction = 'sendrecv'
+        if (tRefs.screen.mid) broadcastMediaType(peerId, tRefs.screen.mid, 'screen')
+      }
+    }
+  }, [getTransceiverRefs, waitForMidAndBroadcast, broadcastMediaType])
+
   const createPeerConnection = (peerId: string): RTCPeerConnection => {
     const config: RTCConfiguration = {
       iceServers: iceServersRef.current.map(server => ({
@@ -441,31 +586,16 @@ export default function VideoMeeting() {
     }
     const pc = new RTCPeerConnection(config)
 
-    // 初始化 transceiver refs
-    const tRefs: TransceiverRefs = { mic: null, camera: null, screen: null }
-    transceiverMapRef.current.set(peerId, tRefs)
+    getTransceiverRefs(peerId)
 
-    // 添加本地媒体流的 tracks 通过 transceiver
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0]
-      const videoTrack = localStreamRef.current.getVideoTracks()[0]
-
-      if (audioTrack) {
-        tRefs.mic = pc.addTransceiver(audioTrack, { direction: 'sendrecv' })
-      }
-      if (videoTrack) {
-        tRefs.camera = pc.addTransceiver(videoTrack, { direction: 'sendrecv' })
-      }
-    }
-
+    // 不在此处添加 transceiver，由 createOffer / handleOffer 按当前媒体状态添加
     // 设置 DataChannel
     const channel = pc.createDataChannel('status', { ordered: true })
     channel.onmessage = (e) => handleDataChannelMessage(peerId, e.data)
     channel.onopen = () => {
-      // 广播当前摄像头 transceiver 的 mid
-      if (tRefs.camera?.mid) {
-        broadcastMediaType(peerId, tRefs.camera.mid, 'camera')
-      }
+      const refs = transceiverMapRef.current.get(peerId)
+      if (refs?.camera?.mid) broadcastMediaType(peerId, refs.camera.mid, 'camera')
+      if (refs?.screen?.mid) broadcastMediaType(peerId, refs.screen.mid, 'screen')
     }
     dataChannelsRef.current.set(peerId, channel)
 
@@ -513,14 +643,17 @@ export default function VideoMeeting() {
 
   const createOffer = async (peerId: string) => {
     const pc = createPeerConnection(peerId)
+    await addTransceiversForCurrentState(peerId, pc)
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     if (wsRef.current && offer.sdp) webrtcApi.sendOffer(wsRef.current, peerId, offer.sdp)
   }
 
   const handleOffer = async (peerId: string, sdp: string) => {
-    const pc = createPeerConnection(peerId)
+    let pc = peerConnectionsRef.current[peerId]
+    if (!pc) pc = createPeerConnection(peerId)
     await pc.setRemoteDescription({ type: 'offer', sdp })
+    await addTransceiversForCurrentState(peerId, pc)
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     if (wsRef.current && answer.sdp) webrtcApi.sendAnswer(wsRef.current, peerId, answer.sdp)
@@ -557,53 +690,57 @@ export default function VideoMeeting() {
   // 媒体控制
   // =============================================
 
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const nextMuted = !isMuted
-      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = !nextMuted })
-      if (nextMuted) {
+  const toggleMute = async () => {
+    const nextMuted = !isMuted
+    if (nextMuted) {
+      Object.keys(peerConnectionsRef.current).forEach(stopMicTransceiver)
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = false })
         stopVolumeDetection()
         broadcastSpeakingStatus(false)
-      } else {
-        startVolumeDetection(localStreamRef.current)
+      }
+    } else {
+      if (localStreamRef.current) {
+        const audioTrack = localStreamRef.current.getAudioTracks()[0]
+        if (audioTrack) {
+          audioTrack.enabled = true
+          await addMicTransceiverForAll(audioTrack)
+          startVolumeDetection(localStreamRef.current)
+        }
       }
     }
-    setIsMuted(!isMuted)
+    setIsMuted(nextMuted)
   }
 
-  const toggleVideo = () => {
-    if (localStreamRef.current) {
-      const nextEnabled = !isVideoEnabled
-      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = nextEnabled })
+  const toggleVideo = async () => {
+    const nextEnabled = !isVideoEnabled
+    if (!nextEnabled) {
+      Object.keys(peerConnectionsRef.current).forEach(stopCameraTransceiver)
+      if (localStreamRef.current) {
+        localStreamRef.current.getVideoTracks().forEach(t => { t.enabled = false })
+      }
+    } else {
+      if (localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0]
+        if (videoTrack) {
+          videoTrack.enabled = true
+          await addCameraTransceiverForAll(videoTrack)
+        }
+      }
     }
-    setIsVideoEnabled(!isVideoEnabled)
+    setIsVideoEnabled(nextEnabled)
   }
 
   const toggleScreenShare = async (settings?: ScreenShareSettings) => {
     if (isScreenSharing) {
-      // 停止屏幕共享
+      Object.keys(peerConnectionsRef.current).forEach(stopScreenTransceiver)
       if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(track => track.stop())
+        screenStreamRef.current.getTracks().forEach(t => t.stop())
         screenStreamRef.current = null
       }
-      // 恢复摄像头
       if (localStreamRef.current) {
         const videoTrack = localStreamRef.current.getVideoTracks()[0]
-        if (videoTrack) {
-          Object.entries(peerConnectionsRef.current).forEach(([peerId, pc]) => {
-            const tRefs = transceiverMapRef.current.get(peerId)
-            // 恢复 camera transceiver
-            if (tRefs?.camera) {
-              tRefs.camera.sender.replaceTrack(videoTrack).catch(console.error)
-            }
-            // 停止 screen transceiver
-            if (tRefs?.screen) {
-              tRefs.screen.sender.replaceTrack(null).catch(console.error)
-              tRefs.screen.direction = 'inactive'
-            }
-            void pc // reference to avoid lint
-          })
-        }
+        if (videoTrack) await addCameraTransceiverForAll(videoTrack)
       }
       if (localVideoRef.current && localStreamRef.current) {
         localVideoRef.current.srcObject = localStreamRef.current
@@ -612,16 +749,13 @@ export default function VideoMeeting() {
     } else {
       try {
         if (!navigator.mediaDevices?.getDisplayMedia) {
-          console.error('getDisplayMedia 不可用，需要 HTTPS 或 localhost')
           setMediaError({ type: 'camera', reason: 'unknown', message: '屏幕共享需要 HTTPS 或 localhost 环境' })
           setShowPermissionGuide(true)
           return
         }
-
         const res = settings?.resolution ?? screenShareSettings.resolution
         const fps = settings?.frameRate ?? screenShareSettings.frameRate
         const { width, height } = RESOLUTION_MAP[res]
-
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
             frameRate: { ideal: fps, max: fps },
@@ -632,25 +766,10 @@ export default function VideoMeeting() {
         })
         screenStreamRef.current = screenStream
         const videoTrack = screenStream.getVideoTracks()[0]
-
-        // 设置 contentHint 优先动态内容
         if ('contentHint' in videoTrack) {
           (videoTrack as MediaStreamTrack & { contentHint: string }).contentHint = 'motion'
         }
-
-        // 通过 transceiver 发送屏幕共享
-        Object.entries(peerConnectionsRef.current).forEach(([peerId, pc]) => {
-          const tRefs = transceiverMapRef.current.get(peerId)
-          if (tRefs?.screen) {
-            tRefs.screen.sender.replaceTrack(videoTrack).catch(console.error)
-            tRefs.screen.direction = 'sendrecv'
-          } else {
-            const transceiver = pc.addTransceiver(videoTrack, { direction: 'sendrecv' })
-            if (tRefs) tRefs.screen = transceiver
-            waitForMidAndBroadcast(transceiver, peerId, 'screen')
-          }
-        })
-
+        await addScreenTransceiverForAll(videoTrack)
         if (localVideoRef.current) localVideoRef.current.srcObject = screenStream
         videoTrack.onended = () => toggleScreenShare()
         setIsScreenSharing(true)
@@ -678,11 +797,18 @@ export default function VideoMeeting() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  // 本地展示流：投屏时用屏幕流，否则用摄像头/麦克风流
   const localDisplayStream = isScreenSharing ? screenStreamRef.current : localStreamRef.current
   const allStreams = [
-    { id: 'local', isLocal: true, stream: localDisplayStream ?? localStreamRef.current, name: displayName, isSpeaking, isCreator: isCreatorRef.current },
-    ...remoteStreams.map(rs => ({ id: rs.peerId, isLocal: false, stream: rs.stream, name: rs.participant.name, isSpeaking: rs.isSpeaking, isCreator: rs.participant.is_creator })),
+    { id: 'local', isLocal: true, stream: localDisplayStream ?? localStreamRef.current, name: displayName, isSpeaking, isCreator: isCreatorRef.current, audioStream: null as MediaStream | null },
+    ...remoteStreams.map(rs => ({
+      id: rs.peerId,
+      isLocal: false,
+      stream: rs.screenStream || rs.cameraStream || rs.stream,
+      audioStream: rs.stream,
+      name: rs.participant.name,
+      isSpeaking: rs.isSpeaking,
+      isCreator: rs.participant.is_creator,
+    })),
   ]
 
   // =============================================
@@ -808,9 +934,12 @@ export default function VideoMeeting() {
                   } ${item.isSpeaking ? 'ring-2 ring-teal-400/40 shadow-[0_0_24px_rgba(20,184,166,0.15)]' : ''}`}
                   style={item.isSpeaking ? { animation: 'meeting-speaking 2s ease-in-out infinite' } : undefined}
                 >
+                  {!isLocal && 'audioStream' in item && item.audioStream && (
+                    <audio autoPlay playsInline ref={el => { if (el && item.audioStream) el.srcObject = item.audioStream }} style={{ display: 'none' }} />
+                  )}
                   {hasVideo ? (
                     <video
-                      ref={isLocal ? localVideoRef : undefined}
+                      ref={isLocal ? localVideoRef : (el => { if (el && !isLocal && item.stream) el.srcObject = item.stream })}
                       autoPlay
                       muted={isLocal}
                       playsInline
