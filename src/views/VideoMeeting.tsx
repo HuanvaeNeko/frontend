@@ -3,15 +3,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  ArrowLeft, 
+import {
+  ArrowLeft,
   Mic,
   MicOff,
   Video,
   VideoOff,
   PhoneOff,
   Users,
-  User,
   Monitor,
   Maximize,
   Minimize,
@@ -23,7 +22,6 @@ import {
   AlertTriangle,
   ShieldAlert,
 } from 'lucide-react'
-import { GlassButton, BackgroundOrbs } from '@/components/ui/glass'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
@@ -147,6 +145,7 @@ export default function VideoMeeting() {
   const myIdRef = useRef<string>('')
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const negotiationLockRef = useRef<Set<string>>(new Set())
+  const participantsRef = useRef<Participant[]>([])
   
   // 发言检测
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -190,6 +189,10 @@ export default function VideoMeeting() {
     const timer = setInterval(() => setMeetingDuration(prev => prev + 1), 1000)
     return () => clearInterval(timer)
   }, [isConnected])
+
+  useEffect(() => {
+    participantsRef.current = participants
+  }, [participants])
 
   // 权限错误时显示引导
   useEffect(() => {
@@ -353,18 +356,21 @@ export default function VideoMeeting() {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const hasVideo = devices.some(d => d.kind === 'videoinput')
       const hasAudio = devices.some(d => d.kind === 'audioinput')
+      if (!hasVideo && !hasAudio) {
+        setMediaError({ type: 'camera', reason: 'not_found', message: '未检测到摄像头或麦克风' })
+        setIsVideoEnabled(false)
+        setIsMuted(true)
+        return
+      }
       const constraints: MediaStreamConstraints = {}
       if (hasVideo) constraints.video = true
       if (hasAudio) constraints.audio = true
-      if (hasVideo || hasAudio) {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-        localStreamRef.current = stream
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream
-        setIsVideoEnabled(hasVideo)
-        setIsMuted(!hasAudio)
-        // 启动发言检测
-        if (hasAudio) startVolumeDetection(stream)
-      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      localStreamRef.current = stream
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream
+      setIsVideoEnabled(hasVideo)
+      setIsMuted(!hasAudio)
+      if (hasAudio) startVolumeDetection(stream)
     } catch (err) {
       const mediaErr = parseMediaError(err, 'camera')
       console.warn('获取媒体流失败:', mediaErr.message)
@@ -465,7 +471,7 @@ export default function VideoMeeting() {
     }
 
     pc.ontrack = (event) => {
-      const participant = participants.find(p => p.id === peerId)
+      const participant = participantsRef.current.find(p => p.id === peerId)
       if (participant && event.streams[0]) {
         setRemoteStreams(prev => {
           const existing = prev.find(s => s.peerId === peerId)
@@ -673,22 +679,26 @@ export default function VideoMeeting() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900 flex items-center justify-center relative overflow-hidden">
-        <BackgroundOrbs count={3} className="opacity-20" />
+      <div className="min-h-screen bg-[#0c0e12] flex items-center justify-center p-6">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative z-10 text-center p-8"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="text-center max-w-sm"
         >
-          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-red-500/20 to-red-600/20 backdrop-blur-xl border border-red-500/30 flex items-center justify-center">
-            <PhoneOff size={36} className="text-red-400" />
+          <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <PhoneOff size={28} className="text-red-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-3">出错了</h2>
-          <p className="text-gray-400 mb-8 max-w-md">{error}</p>
-          <GlassButton onClick={() => router.push('/chat')}>
-            <ArrowLeft size={18} />
+          <h1 className="text-xl font-semibold text-white mb-2">无法加入会议</h1>
+          <p className="text-[13px] text-zinc-400 mb-8 leading-relaxed">{error}</p>
+          <button
+            type="button"
+            onClick={() => router.push('/chat')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-white/90 text-sm font-medium hover:bg-white/10 transition-colors"
+          >
+            <ArrowLeft size={16} />
             返回聊天
-          </GlassButton>
+          </button>
         </motion.div>
       </div>
     )
@@ -700,20 +710,19 @@ export default function VideoMeeting() {
 
   if (isConnecting) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900 flex items-center justify-center relative overflow-hidden">
-        <BackgroundOrbs count={3} className="opacity-20" />
+      <div className="min-h-screen bg-[#0c0e12] flex items-center justify-center p-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="relative z-10 text-center"
+          className="text-center"
         >
           <motion.div
             animate={{ rotate: 360 }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-            className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-blue-500/30 border-t-blue-500"
+            transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+            className="w-10 h-10 mx-auto mb-5 rounded-full border-2 border-zinc-600/80 border-t-teal-400"
           />
-          <p className="text-white text-lg">正在加入会议...</p>
-          <p className="text-gray-500 text-sm mt-2">房间: {roomId}</p>
+          <p className="text-white/90 text-sm font-medium">正在加入会议</p>
+          <p className="text-zinc-500 text-xs font-mono mt-1.5">{roomId}</p>
         </motion.div>
       </div>
     )
@@ -724,126 +733,98 @@ export default function VideoMeeting() {
   // =============================================
 
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900 flex flex-col relative overflow-hidden`}>
-      <BackgroundOrbs count={3} className="opacity-10" />
-
-      {/* 顶部导航栏 */}
+    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-[#0c0e12] flex flex-col overflow-hidden`}>
       <AnimatePresence>
         {showControls && (
           <motion.header
-            initial={{ y: -80, opacity: 0 }}
+            initial={{ y: -56, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -80, opacity: 0 }}
-            className="relative z-20 h-16 px-6 flex items-center justify-between"
-            style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)' }}
+            exit={{ y: -56, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex-shrink-0 z-20 h-14 px-4 flex items-center justify-between border-b border-white/[0.06]"
           >
-            <div className="flex items-center gap-4">
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={leaveMeeting}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 backdrop-blur-lg border border-white/10 text-white text-sm hover:bg-white/20 transition-colors">
-                <ArrowLeft size={16} /> 离开
-              </motion.button>
-              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 backdrop-blur-lg border border-white/10">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-white/80 text-sm">房间: {roomId}</span>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={leaveMeeting}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-400 text-sm font-medium hover:text-white hover:bg-white/[0.06] transition-colors">
+                <ArrowLeft size={18} /> 离开
+              </button>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                <span className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-pulse" />
+                <span className="text-zinc-300 text-xs font-mono">{roomId}</span>
               </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={copyShareLink}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 backdrop-blur-lg border border-white/10 text-white text-sm hover:bg-white/20 transition-colors">
-                {copied ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
-                {copied ? '已复制' : '复制链接'}
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowParticipants(!showParticipants)}
-                className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 backdrop-blur-lg border border-white/10 text-white hover:bg-white/20 transition-colors">
-                <Users size={16} className="text-white/60" />
-                <span className="text-white/80 text-sm">{participants.length + 1}</span>
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={toggleFullscreen}
-                className="p-2 rounded-xl bg-white/10 backdrop-blur-lg border border-white/10 text-white hover:bg-white/20 transition-colors">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={copyShareLink}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-zinc-400 text-sm hover:text-white hover:bg-white/[0.06] transition-colors">
+                {copied ? <Check size={16} className="text-teal-400" /> : <Copy size={16} />}
+                <span className="hidden sm:inline">{copied ? '已复制' : '复制链接'}</span>
+              </button>
+              <button type="button" onClick={() => setShowParticipants(!showParticipants)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-zinc-400 text-sm hover:text-white hover:bg-white/[0.06] transition-colors">
+                <Users size={18} /><span>{participants.length + 1}</span>
+              </button>
+              <button type="button" onClick={toggleFullscreen}
+                className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors">
                 {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-              </motion.button>
+              </button>
             </div>
           </motion.header>
         )}
       </AnimatePresence>
 
-      {/* 视频网格 + 参与者侧边栏 */}
-      <div className="flex-1 flex overflow-hidden relative z-10">
-        {/* 视频网格 */}
-        <div className="flex-1 p-3 overflow-auto">
-          <div className={`grid gap-3 h-full ${
-            allStreams.length === 1 ? 'grid-cols-1 max-w-2xl mx-auto' :
-            allStreams.length === 2 ? 'grid-cols-2 max-w-4xl mx-auto' :
-            allStreams.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 p-4 overflow-auto">
+          <div className={`grid gap-4 h-full content-center ${
+            allStreams.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' :
+            allStreams.length === 2 ? 'grid-cols-2 max-w-3xl mx-auto' :
+            allStreams.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'
           }`}>
             {allStreams.map((item, index) => {
               const videoTracks = item.stream?.getVideoTracks() || []
               const hasVideo = videoTracks.length > 0 && videoTracks[0]?.enabled
               const isActive = activeVideoId === item.id
-              
+              const isLocal = item.isLocal
               return (
                 <motion.div
                   key={item.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.08 }}
+                  transition={{ delay: index * 0.05, duration: 0.2 }}
                   onClick={() => setActiveVideoId(isActive ? null : item.id)}
-                  className={`relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300 min-h-[180px] ${
-                    isActive ? 'ring-2 ring-blue-500/70 shadow-lg shadow-blue-500/15' : ''
-                  } ${item.isSpeaking ? 'ring-2 ring-green-500/70 shadow-lg shadow-green-500/20' : ''}`}
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    animation: item.isSpeaking ? 'speaking-pulse 1.5s ease-in-out infinite' : undefined,
-                  }}
+                  className={`relative rounded-2xl overflow-hidden bg-zinc-900/80 border min-h-[200px] transition-all duration-200 cursor-pointer ${
+                    isActive ? 'ring-2 ring-teal-400/50 border-teal-400/30' : 'border-white/[0.06]'
+                  } ${item.isSpeaking ? 'ring-2 ring-teal-400/40 shadow-[0_0_24px_rgba(20,184,166,0.15)]' : ''}`}
+                  style={item.isSpeaking ? { animation: 'meeting-speaking 2s ease-in-out infinite' } : undefined}
                 >
                   {hasVideo ? (
                     <video
-                      ref={item.isLocal ? localVideoRef : undefined}
+                      ref={isLocal ? localVideoRef : undefined}
                       autoPlay
-                      muted={item.isLocal}
+                      muted={isLocal}
                       playsInline
-                      className="w-full h-full object-cover"
+                      className="w-full h-full min-h-[200px] object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800/40 to-gray-900/40">
+                    <div className="w-full h-full min-h-[200px] flex items-center justify-center bg-zinc-900/60">
                       <div className="text-center">
-                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
-                          className="w-16 h-16 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500/25 to-purple-500/25 backdrop-blur-xl border border-white/10 flex items-center justify-center">
-                          <span className="text-2xl font-bold text-white/90">{item.name[0]?.toUpperCase()}</span>
-                        </motion.div>
-                        <p className="text-white/70 text-sm font-medium">{item.name}</p>
+                        <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center">
+                          <span className="text-lg font-semibold text-teal-300/90">{(item.name?.[0] || '?').toUpperCase()}</span>
+                        </div>
+                        <p className="text-zinc-400 text-sm">{item.name}</p>
                       </div>
                     </div>
                   )}
-
-                  {/* 底部信息 */}
-                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/50 to-transparent">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/30 backdrop-blur-sm">
-                        <User size={12} className="text-white/60" />
-                        <span className="text-white text-xs font-medium">{item.name}</span>
-                        {item.isLocal && <span className="text-[10px] text-blue-400">(我)</span>}
-                        {item.isCreator && <span className="text-[10px] text-yellow-400 ml-1">主持人</span>}
+                  <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/70 to-transparent">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-white text-xs font-medium truncate">{item.name}</span>
+                        {item.isLocal && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">我</span>}
+                        {item.isCreator && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">主持</span>}
                       </div>
-                      <div className="flex gap-1">
-                        {item.isSpeaking && (
-                          <div className="p-1 rounded-md bg-green-500/70">
-                            <Mic size={10} className="text-white" />
-                          </div>
-                        )}
-                        {item.isLocal && isMuted && (
-                          <div className="p-1 rounded-md bg-red-500/70">
-                            <MicOff size={10} className="text-white" />
-                          </div>
-                        )}
-                        {item.isLocal && !isVideoEnabled && (
-                          <div className="p-1 rounded-md bg-yellow-500/70">
-                            <VideoOff size={10} className="text-white" />
-                          </div>
-                        )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {item.isSpeaking && <span className="p-1 rounded bg-teal-500/30" title="正在说话"><Mic size={10} className="text-teal-300" /></span>}
+                        {item.isLocal && isMuted && <span className="p-1 rounded bg-red-500/20"><MicOff size={10} className="text-red-400" /></span>}
+                        {item.isLocal && !isVideoEnabled && <span className="p-1 rounded bg-amber-500/20"><VideoOff size={10} className="text-amber-400" /></span>}
                       </div>
                     </div>
                   </div>
@@ -853,133 +834,114 @@ export default function VideoMeeting() {
           </div>
         </div>
 
-        {/* 参与者侧边栏 */}
         <AnimatePresence>
           {showParticipants && (
             <motion.aside
-              initial={{ x: 280, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 280, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-[280px] shrink-0 h-full overflow-y-auto p-4"
-              style={{
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-                backdropFilter: 'blur(16px)',
-                borderLeft: '1px solid rgba(255,255,255,0.08)',
-              }}
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 260, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="shrink-0 h-full overflow-hidden border-l border-white/[0.06] bg-black/20"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-medium text-sm">参与者 ({participants.length + 1})</h3>
-                <button onClick={() => setShowParticipants(false)} className="text-white/40 hover:text-white/80 transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-              <ul className="space-y-2">
-                {/* 本地用户 */}
-                <li className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
-                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center shrink-0">
-                    <span className="text-sm font-bold text-white/90">{displayName[0]?.toUpperCase()}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm truncate">{displayName}</p>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-blue-400">我</span>
-                      {isCreatorRef.current && <span className="text-[10px] text-yellow-400">主持人</span>}
-                    </div>
-                  </div>
-                  {isSpeaking && <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
-                </li>
-                {/* 远程参与者 */}
-                {remoteStreams.map(rs => (
-                  <li key={rs.peerId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center shrink-0">
-                      {rs.participant.user_info.avatar_url ? (
-                        <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full rounded-lg object-cover" />
-                      ) : (
-                        <span className="text-sm font-bold text-white/90">{rs.participant.name[0]?.toUpperCase()}</span>
-                      )}
+              <div className="w-[260px] h-full overflow-y-auto p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-zinc-300 text-sm font-medium">参与者 · {participants.length + 1}</h3>
+                  <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06]">
+                    <X size={16} />
+                  </button>
+                </div>
+                <ul className="space-y-1">
+                  <li className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.04]">
+                    <div className="w-9 h-9 rounded-full bg-teal-500/20 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-semibold text-teal-300">{(displayName?.[0] || '?').toUpperCase()}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm truncate">{rs.participant.name}</p>
-                      {rs.participant.is_creator && <span className="text-[10px] text-yellow-400">主持人</span>}
+                      <p className="text-white text-sm truncate">{displayName}</p>
+                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
+                        <span className="text-teal-400">我</span>
+                        {isCreatorRef.current && <span className="text-amber-400">主持人</span>}
+                      </div>
                     </div>
-                    {rs.isSpeaking && <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+                    {isSpeaking && <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />}
                   </li>
-                ))}
-              </ul>
+                  {remoteStreams.map(rs => (
+                    <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-colors">
+                      <div className="w-9 h-9 rounded-full bg-zinc-600/40 flex items-center justify-center shrink-0 overflow-hidden">
+                        {rs.participant.user_info.avatar_url ? (
+                          <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-sm font-semibold text-zinc-400">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm truncate">{rs.participant.name}</p>
+                        {rs.participant.is_creator && <span className="text-[10px] text-amber-400">主持人</span>}
+                      </div>
+                      {rs.isSpeaking && <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </motion.aside>
           )}
         </AnimatePresence>
       </div>
 
-      {/* 底部控制栏 */}
       <AnimatePresence>
         {showControls && (
           <motion.footer
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="relative z-20 py-6 px-8"
-            style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 100%)' }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex-shrink-0 z-20 py-4 px-4 border-t border-white/[0.06] bg-black/30 relative"
           >
-            <div className="flex items-center justify-center gap-3">
-              {/* 静音 */}
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }} onClick={toggleMute}
-                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                  isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
+            <div className="flex items-center justify-center gap-2 max-w-lg mx-auto">
+              <button type="button" onClick={toggleMute}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
+                  isMuted ? 'bg-red-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
                 }`}>
                 {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-              </motion.button>
-
-              {/* 视频 */}
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }} onClick={toggleVideo}
-                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                  !isVideoEnabled ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
+              </button>
+              <button type="button" onClick={toggleVideo}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
+                  !isVideoEnabled ? 'bg-amber-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
                 }`}>
                 {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-              </motion.button>
-
-              {/* 挂断 */}
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }} onClick={leaveMeeting}
-                className="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white flex items-center justify-center shadow-lg shadow-red-500/35">
-                <PhoneOff size={22} />
-              </motion.button>
-
-              {/* 屏幕共享 */}
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}
+              </button>
+              <button type="button" onClick={leaveMeeting}
+                className="w-12 h-12 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors">
+                <PhoneOff size={20} />
+              </button>
+              <button type="button"
                 onClick={() => isScreenSharing ? toggleScreenShare() : setShowScreenShareSettings(true)}
-                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                  isScreenSharing ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20'
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
+                  isScreenSharing ? 'bg-teal-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
                 }`}>
                 <Monitor size={20} />
-              </motion.button>
-
-              {/* 设置 */}
-              <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}
-                className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-xl border border-white/15 text-white hover:bg-white/20 flex items-center justify-center">
-                <Settings size={20} />
-              </motion.button>
+              </button>
+              <button type="button"
+                className="w-11 h-11 rounded-full bg-white/[0.08] text-zinc-400 hover:bg-white/[0.12] flex items-center justify-center">
+                <Settings size={18} />
+              </button>
             </div>
-
-            {/* 会议时长 */}
-            <div className="absolute right-8 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 backdrop-blur-lg border border-white/10">
-              <Clock size={16} className="text-white/60" />
-              <span className="text-white/80 text-sm font-mono">{formatDuration(meetingDuration)}</span>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-zinc-500 text-xs font-mono">
+              <Clock size={14} />
+              {formatDuration(meetingDuration)}
             </div>
           </motion.footer>
         )}
       </AnimatePresence>
 
-      {/* 屏幕共享设置弹窗 */}
       <Dialog open={showScreenShareSettings} onOpenChange={setShowScreenShareSettings}>
-        <DialogContent className="max-w-sm bg-gray-900/95 border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#111318] border-white/[0.08] text-white">
           <DialogHeader>
-            <DialogTitle>屏幕共享设置</DialogTitle>
-            <DialogDescription className="text-gray-400">选择分辨率和帧率</DialogDescription>
+            <DialogTitle className="text-zinc-100">屏幕共享设置</DialogTitle>
+            <DialogDescription className="text-zinc-400">选择分辨率和帧率</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
-              <label className="text-sm text-gray-300 mb-2 block">分辨率</label>
+              <label className="text-xs text-zinc-500 mb-2 block">分辨率</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['1080p', '2k', '4k'] as ScreenShareResolution[]).map(res => {
                   const available = availableResolutions.includes(res)
@@ -987,75 +949,78 @@ export default function VideoMeeting() {
                   return (
                     <button key={res} disabled={!available}
                       onClick={() => setScreenShareSettings(s => ({ ...s, resolution: res }))}
-                      className={`p-2 rounded-lg text-center text-sm transition-all ${
+                      className={`p-2.5 rounded-xl text-center text-sm transition-colors ${
                         screenShareSettings.resolution === res
-                          ? 'bg-blue-500/30 border-blue-500/60 border text-blue-300'
+                          ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
                           : available
-                            ? 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
-                            : 'bg-white/5 border border-white/5 text-white/20 cursor-not-allowed'
+                            ? 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08]'
+                            : 'bg-white/[0.03] border border-white/[0.04] text-zinc-600 cursor-not-allowed'
                       }`}>
                       <div className="font-medium">{res}</div>
-                      <div className="text-[10px] text-white/40">{width}×{height}</div>
+                      <div className="text-[10px] text-zinc-500 mt-0.5">{width}×{height}</div>
                     </button>
                   )
                 })}
               </div>
             </div>
             <div>
-              <label className="text-sm text-gray-300 mb-2 block">帧率</label>
+              <label className="text-xs text-zinc-500 mb-2 block">帧率</label>
               <div className="grid grid-cols-2 gap-2">
                 {([60, 120] as ScreenShareFrameRate[]).map(fps => (
                   <button key={fps}
                     onClick={() => setScreenShareSettings(s => ({ ...s, frameRate: fps }))}
-                    className={`p-2 rounded-lg text-center text-sm transition-all ${
+                    className={`p-2.5 rounded-xl text-center text-sm transition-colors ${
                       screenShareSettings.frameRate === fps
-                        ? 'bg-blue-500/30 border-blue-500/60 border text-blue-300'
-                        : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                        ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
+                        : 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08]'
                     }`}>
                     {fps} FPS
                   </button>
                 ))}
               </div>
             </div>
-            <Button className="w-full" onClick={() => { setShowScreenShareSettings(false); toggleScreenShare(screenShareSettings) }}>
+            <Button className="w-full rounded-xl bg-teal-500 hover:bg-teal-600 text-white" onClick={() => { setShowScreenShareSettings(false); toggleScreenShare(screenShareSettings) }}>
               开始共享
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* 权限引导弹窗 */}
       <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
-        <DialogContent className="max-w-md bg-gray-900/95 border-white/10 text-white">
+        <DialogContent className="max-w-md bg-[#111318] border-white/[0.08] text-white">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldAlert size={20} className="text-yellow-400" />
+            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+              <ShieldAlert size={20} className="text-amber-400" />
               媒体权限被拒绝
             </DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className="text-zinc-400">
               {mediaError?.message || '需要授权才能使用摄像头和麦克风'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
               <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-yellow-400 shrink-0 mt-0.5" />
-                <div className="text-sm text-gray-300 space-y-2">
+                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-sm text-zinc-300 space-y-2">
                   <p>请按照以下步骤开启权限：</p>
-                  <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                  <ol className="list-decimal list-inside space-y-1 text-zinc-400">
                     <li>点击浏览器地址栏左侧的锁定图标</li>
-                    <li>找到"摄像头"和"麦克风"选项</li>
-                    <li>将权限设置为"允许"</li>
+                    <li>找到「摄像头」和「麦克风」选项</li>
+                    <li>将权限设置为「允许」</li>
                     <li>刷新页面</li>
                   </ol>
+                  <p className="text-zinc-500 text-xs mt-2">
+                    若部署在 Cloudflare Pages，请确认站点 <code className="bg-white/10 px-1 rounded">_headers</code> 中
+                    Permissions-Policy 包含 <code className="bg-white/10 px-1 rounded">camera=(self), microphone=(self)</code>。
+                  </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 border-white/10 text-white hover:bg-white/10" onClick={() => setShowPermissionGuide(false)}>
+              <Button variant="outline" className="flex-1 rounded-xl border-white/[0.1] text-zinc-300 hover:bg-white/[0.06]" onClick={() => setShowPermissionGuide(false)}>
                 暂不开启
               </Button>
-              <Button className="flex-1" onClick={() => { window.location.reload() }}>
+              <Button className="flex-1 rounded-xl bg-teal-500 hover:bg-teal-600 text-white" onClick={() => { window.location.reload() }}>
                 刷新页面
               </Button>
             </div>
@@ -1063,11 +1028,10 @@ export default function VideoMeeting() {
         </DialogContent>
       </Dialog>
 
-      {/* 发言脉冲动画 CSS */}
       <style>{`
-        @keyframes speaking-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3); }
-          50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+        @keyframes meeting-speaking {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.25); }
+          50% { box-shadow: 0 0 0 6px rgba(20, 184, 166, 0); }
         }
       `}</style>
     </div>

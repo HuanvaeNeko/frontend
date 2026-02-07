@@ -15,9 +15,38 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope
 
+// 过滤掉部署后可能 404 的 URL，避免 bad-precaching-response 导致 SW 安装失败
+// （/~offline 有对应页面且需被 fallback 使用，故不排除）
+const PRECACHE_SKIP_PATTERNS = [
+  '/_global-error',
+  '/_headers',
+  '/version.json',
+  '_clientMiddlewareManifest.json',
+  '_buildManifest.js',
+  '_ssgManifest.js',
+]
+
+function getPath(entry: PrecacheEntry | string): string {
+  const url = typeof entry === 'string' ? entry : entry.url
+  try {
+    return url.startsWith('http') ? new URL(url).pathname : url
+  } catch {
+    return url
+  }
+}
+
+function shouldSkipPrecache(entry: PrecacheEntry | string): boolean {
+  const path = getPath(entry)
+  return PRECACHE_SKIP_PATTERNS.some((p) => path.includes(p))
+}
+
+const precacheEntries = (self.__SW_MANIFEST ?? []).filter(
+  (e) => !shouldSkipPrecache(e)
+)
+
 // 创建 Serwist 实例
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  precacheEntries,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,

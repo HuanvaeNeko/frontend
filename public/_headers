@@ -13,8 +13,8 @@
   # 引用来源策略
   Referrer-Policy: strict-origin-when-cross-origin
 
-  # 权限策略
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  # 权限策略（同源允许摄像头/麦克风，用于视频会议；地理定位仍禁止）
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=()
 
 # Service Worker 不缓存
 /sw.js
