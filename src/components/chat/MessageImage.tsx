@@ -102,17 +102,17 @@ export function MessageImage({
 
   if (loading) {
     return (
-      <div className={`${className} bg-slate-100 flex items-center justify-center min-h-[100px]`}>
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className={`${className} bg-muted flex items-center justify-center min-h-[100px]`}>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (error || !imageSrc) {
     return (
-      <div className={`${className} bg-slate-100 flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
-        <AlertCircle className="h-6 w-6 text-slate-400" />
-        <span className="text-xs text-slate-500">图片加载失败</span>
+      <div className={`${className} bg-muted flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
+        <AlertCircle className="h-6 w-6 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">图片加载失败</span>
       </div>
     )
   }

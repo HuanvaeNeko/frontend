@@ -347,17 +347,17 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         )
       case 'file':
         return (
-          <div className={`flex items-center gap-3 p-3 rounded-xl min-w-[200px] ${isOwn ? 'bg-white/20' : 'bg-primary/10'}`}>
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-white/30' : 'bg-primary/20'}`}>
-              <FileText className={`h-5 w-5 ${isOwn ? 'text-white' : 'text-primary'}`} />
+          <div className={`flex items-center gap-3 p-3 rounded-xl min-w-[200px] ${isOwn ? 'bg-primary/20' : 'bg-primary/10'}`}>
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-primary/30' : 'bg-primary/20'}`}>
+              <FileText className={`h-5 w-5 ${isOwn ? 'text-primary-foreground' : 'text-primary'}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium truncate ${isOwn ? 'text-white' : 'text-foreground'}`}>{message.message_content || '文件'}</p>
-              {message.file_size && <p className={`text-xs ${isOwn ? 'text-white/70' : 'text-muted-foreground'}`}>{formatFileSize(message.file_size)}</p>}
+              <p className={`text-sm font-medium truncate ${isOwn ? 'text-primary-foreground' : 'text-foreground'}`}>{message.message_content || '文件'}</p>
+              {message.file_size && <p className={`text-xs ${isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{formatFileSize(message.file_size)}</p>}
             </div>
             {(message.file_url || message.file_uuid) && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleFileDownload(message)}>
-                <Download className={`h-4 w-4 ${isOwn ? 'text-white' : 'text-primary'}`} />
+                <Download className={`h-4 w-4 ${isOwn ? 'text-primary-foreground' : 'text-primary'}`} />
               </Button>
             )}
           </div>
@@ -396,7 +396,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary rounded-xl flex items-center justify-center"
+            className="absolute inset-0 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10"
           >
             <div className="text-center">
               <Upload className="h-12 w-12 text-primary mx-auto mb-3" />
@@ -538,7 +538,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           {selectedFile && (
             <motion.div className="mb-3 p-3 rounded-xl flex items-center gap-3 bg-muted border border-border" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                {selectedFile.type.startsWith('image/') ? <ImageIcon className="h-5 w-5 text-primary" /> : selectedFile.type.startsWith('video/') ? <Video className="h-5 w-5 text-purple-500" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
+                {selectedFile.type.startsWith('image/') ? <ImageIcon className="h-5 w-5 text-primary" /> : selectedFile.type.startsWith('video/') ? <Video className="h-5 w-5 text-primary" /> : <FileText className="h-5 w-5 text-muted-foreground" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{selectedFile.name}</p>

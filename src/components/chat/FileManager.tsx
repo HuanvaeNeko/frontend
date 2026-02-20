@@ -251,11 +251,11 @@ export default function FileManager({ subTab }: FileManagerProps) {
                 return (
                   <div
                     key={file.file_uuid}
-                    className="p-3 hover:bg-gray-50 transition-colors"
+                    className="p-3 transition-colors hover:bg-accent"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                        <FileIcon className="h-5 w-5 text-blue-500" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                        <FileIcon className="h-5 w-5 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{file.filename}</p>
@@ -329,7 +329,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
             {/* 上传进度 */}
             {uploading && (
               <div className="mb-6">
-                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                <div className="mb-2 h-2 w-full rounded-full bg-muted">
                   <div
                     className="bg-primary h-2 rounded-full transition-all"
                     style={{ width: `${uploadProgress}%` }}
@@ -396,7 +396,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
           </div>
 
           {/* 上传提示 */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+          <div className="mt-6 rounded-lg bg-muted p-4">
             <h4 className="font-medium text-sm mb-2">上传说明</h4>
             <ul className="text-xs text-muted-foreground space-y-1">
               <li>• 相同文件支持秒传，无需重复上传</li>

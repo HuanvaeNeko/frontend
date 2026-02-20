@@ -56,8 +56,8 @@ const ToolbarButton = ({
     title={title}
     className={`p-1.5 rounded-md transition-colors ${
       isActive 
-        ? 'bg-blue-100 text-blue-600' 
-        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+        ? 'bg-primary/10 text-primary' 
+        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     whileHover={{ scale: disabled ? 1 : 1.05 }}
     whileTap={{ scale: disabled ? 1 : 0.95 }}
@@ -246,8 +246,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
     <div className={`markdown-editor ${className}`}>
       {/* 工具栏 */}
       <div 
-        className="flex items-center gap-0.5 px-2 py-1.5 border-b border-slate-200/50"
-        style={{ background: 'rgba(248, 250, 252, 0.8)' }}
+        className="flex items-center gap-0.5 border-b bg-muted/40 px-2 py-1.5"
       >
         <ToolbarButton onClick={insertBold} disabled={disabled} title="粗体 **text** (Ctrl+B)">
           <Bold className="h-4 w-4" />
@@ -259,7 +258,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
           <Strikethrough className="h-4 w-4" />
         </ToolbarButton>
         
-        <div className="w-px h-4 bg-slate-200 mx-1" />
+        <div className="mx-1 h-4 w-px bg-border" />
         
         <ToolbarButton onClick={insertCode} disabled={disabled} title="行内代码 `code`">
           <Code className="h-4 w-4" />
@@ -301,11 +300,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
         style={{ minHeight, maxHeight }}
       >
         {showPreview ? (
-          <div className="prose prose-sm max-w-none text-slate-700">
+          <div className="prose prose-sm max-w-none text-foreground">
             {value.trim() ? (
               <Markdown className="text-sm">{value}</Markdown>
             ) : (
-              <span className="text-slate-400 text-sm">无内容预览</span>
+              <span className="text-sm text-muted-foreground">无内容预览</span>
             )}
           </div>
         ) : (
@@ -316,7 +315,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled}
-            className="w-full h-full resize-none bg-transparent outline-none text-sm text-slate-700 placeholder:text-slate-400"
+            className="h-full w-full resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             style={{ minHeight: 'inherit' }}
           />
         )}
@@ -325,15 +324,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
       {/* 样式 */}
       <style jsx global>{`
         .markdown-editor {
-          background: rgba(255, 255, 255, 0.6);
-          border: 1px solid rgba(147, 197, 253, 0.3);
+          background: hsl(var(--card));
+          border: 1px solid hsl(var(--border));
           border-radius: 0.75rem;
           transition: all 0.2s;
         }
         
         .markdown-editor:focus-within {
-          border-color: rgba(59, 130, 246, 0.5);
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+          border-color: hsl(var(--ring));
+          box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15);
         }
       `}</style>
     </div>

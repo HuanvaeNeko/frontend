@@ -2,16 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Download, Globe, ShieldCheck, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   RELEASE_PAGE_URL,
   type DownloadTarget,
   fetchInstallTargets,
 } from '@/lib/appInstall'
+
 const DISMISS_STORAGE_KEY = 'huanvae.install_prompt_hidden_until'
 
 function shouldSkipPrompt(): boolean {
@@ -46,20 +47,12 @@ export default function AppInstallPrompt() {
     if (shouldSkipPrompt()) return
 
     const hiddenUntil = Number(localStorage.getItem(DISMISS_STORAGE_KEY) || 0)
-    if (hiddenUntil <= Date.now()) {
-      setVisible(true)
-    }
+    if (hiddenUntil <= Date.now()) setVisible(true)
 
     void fetchInstallTargets().then((targets) => {
       if (!targets) return
-      setNormalTarget({
-        version: targets.version,
-        downloadUrl: targets.normalUrl,
-      })
-      setProxyTarget({
-        version: targets.version,
-        downloadUrl: targets.proxyUrl,
-      })
+      setNormalTarget({ version: targets.version, downloadUrl: targets.normalUrl })
+      setProxyTarget({ version: targets.version, downloadUrl: targets.proxyUrl })
     })
   }, [])
 
@@ -76,11 +69,11 @@ export default function AppInstallPrompt() {
         >
           <Button
             size="sm"
-            className="rounded-full shadow-lg"
+            className="h-11 rounded-full border border-primary/20 bg-primary text-primary-foreground shadow-lg shadow-primary/20"
             onClick={() => setVisible(true)}
           >
             <Download size={14} />
-            下载 APP
+            安装客户端
           </Button>
         </motion.div>
       )}
@@ -88,59 +81,63 @@ export default function AppInstallPrompt() {
       {visible && (
         <motion.div
           key="app-install-prompt"
-          initial={{ opacity: 0, y: 20, scale: 0.96 }}
+          initial={{ opacity: 0, y: 24, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 20, scale: 0.96 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="fixed bottom-4 right-4 z-[9998] w-[calc(100%-32px)] max-w-[360px]"
+          exit={{ opacity: 0, y: 24, scale: 0.96 }}
+          transition={{ duration: 0.24, ease: 'easeOut' }}
+          className="fixed bottom-4 right-4 z-[9998] w-[calc(100%-32px)] max-w-[380px]"
         >
-          <Card className="relative border-border/70 bg-card/95 backdrop-blur-xl shadow-xl gap-0 py-0">
+          <Card className="relative overflow-hidden border-border/80 bg-card shadow-lg ">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-primary/20" />
+
             <Button
               variant="ghost"
-              size="icon-sm"
-              className="absolute right-2 top-2 text-muted-foreground"
+              size="icon"
+              className="absolute right-2 top-2 h-8 w-8 text-muted-foreground"
               onClick={() => dismissForDays(1)}
               aria-label="关闭"
             >
-              <X size={16} />
+              <X size={15} />
             </Button>
 
-            <CardHeader className="px-4 py-4 pr-12">
-              <CardTitle className="text-sm">安装 Huanvae Chat 客户端</CardTitle>
-              <CardDescription className="text-xs leading-relaxed">
-                桌面版连接更稳定，通知更及时。
+            <CardHeader className="space-y-2 pr-12 pb-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-primary/30 text-primary">桌面版</Badge>
+                {versionText && <Badge variant="secondary">v{versionText}</Badge>}
+              </div>
+              <CardTitle className="text-base">安装 Huanvae Chat 客户端</CardTitle>
+              <CardDescription className="leading-relaxed">
+                桌面客户端连接更稳定，消息通知更及时，支持更完整的文件传输能力。
               </CardDescription>
-              {versionText && (
-                <Badge variant="secondary" className="w-fit">v{versionText}</Badge>
-              )}
             </CardHeader>
 
-            <CardContent className="px-4 pb-4 space-y-3">
+            <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <Button asChild size="sm">
+                <Button asChild className="h-10 justify-between px-3">
                   <a href={normalTarget.downloadUrl} target="_blank" rel="noreferrer">
-                    <Download size={13} />
-                    普通线路
+                    <span className="flex items-center gap-1.5"><Download size={14} />普通线路</span>
+                    <Globe size={14} />
                   </a>
                 </Button>
-                <Button asChild size="sm" variant="secondary">
+                <Button asChild className="h-10 justify-between px-3" variant="secondary">
                   <a href={proxyTarget.downloadUrl} target="_blank" rel="noreferrer">
-                    <Download size={13} />
-                    代理线路
+                    <span className="flex items-center gap-1.5"><Download size={14} />代理线路</span>
+                    <ShieldCheck size={14} />
                   </a>
                 </Button>
               </div>
 
               <Separator />
 
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>关闭后仍可通过侧边栏「安装 APP」入口下载</span>
                 <Button
                   variant="ghost"
-                  size="xs"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
                   onClick={() => dismissForDays(7)}
-                  className="text-muted-foreground"
                 >
-                  7 天内不再提示
+                  7 天不再提示
                 </Button>
               </div>
             </CardContent>

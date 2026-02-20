@@ -2,12 +2,26 @@
 
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Bot, MessageCircle, Video, Settings, LogOut, User, Laptop, Users, IdCard, ArrowRight } from 'lucide-react'
+import {
+  Bot,
+  MessageCircle,
+  Video,
+  Settings,
+  LogOut,
+  User,
+  Laptop,
+  Users,
+  IdCard,
+  ArrowRight,
+  Sparkles,
+  Activity,
+} from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Separator } from '@/components/ui/separator'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
 
@@ -25,158 +39,134 @@ export default function Home() {
     }
   }
 
-  if (!isAuthenticated) {
-    return null
-  }
+  if (!isAuthenticated) return null
 
   const features = [
-    { icon: Bot, title: 'AI 聊天', description: '与智能助手进行对话', path: '/ai-chat' },
-    { icon: MessageCircle, title: '即时通讯', description: '好友与群组聊天', path: '/chat' },
-    { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting' },
-    { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends' },
-    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', onClick: openProfileModal },
-    { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings' },
+    { icon: MessageCircle, title: '即时消息', description: '好友与群组沟通', path: '/chat', badge: '核心' },
+    { icon: Bot, title: 'AI 助手', description: '多轮上下文问答', path: '/ai-chat', badge: '效率' },
+    { icon: Video, title: '视频会议', description: '在线语音与视频沟通', path: '/video-meeting', badge: '协作' },
+    { icon: Users, title: '好友管理', description: '联系人与请求管理', path: '/friends', badge: '关系' },
+    { icon: Settings, title: '系统设置', description: '通知、主题与偏好', path: '/settings', badge: '配置' },
   ]
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden bg-background">
-      {/* 顶部导航栏 */}
-      <motion.header
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border"
-      >
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <Avatar className="h-11 w-11">
-              <AvatarImage src={user?.avatar_url} />
-              <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                {user?.nickname?.[0]?.toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="text-base font-semibold text-foreground">{user?.nickname || user?.user_id || '用户'}</h2>
-              <p className="text-[13px] text-muted-foreground">{user?.email}</p>
+    <div className="relative h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 pb-8 md:p-6">
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="relative overflow-hidden rounded-2xl border bg-card"
+        >
+          <div className="absolute inset-x-0 top-0 h-1 bg-primary/20" />
+          <div className="grid gap-6 p-5 md:grid-cols-[1fr_auto] md:p-7">
+            <div className="space-y-3">
+              <Badge variant="secondary" className="gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                全新控制台
+              </Badge>
+              <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+                欢迎回来，{user?.nickname || user?.user_id || '用户'}
+              </h1>
+              <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
+                这是新的工作台布局。你可以在这里快速进入聊天、AI 助手、会议和设置，减少路径跳转。
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button onClick={() => router.push('/chat')} className="gap-2">
+                  <MessageCircle className="h-4 w-4" />进入聊天
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/ai-chat')} className="gap-2">
+                  <Bot className="h-4 w-4" />打开 AI
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-start justify-end">
+              <Card className="w-full min-w-[260px] max-w-[320px]">
+                <CardContent className="space-y-4 pt-5">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={user?.avatar_url} />
+                      <AvatarFallback>{user?.nickname?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{user?.nickname || '用户'}</div>
+                      <div className="truncate text-xs text-muted-foreground">{user?.user_id}</div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>当前状态</span>
+                    <span className="inline-flex items-center gap-1 text-primary"><Activity className="h-3.5 w-3.5" />在线</span>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
+        </motion.section>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target" onClick={() => router.push('/devices')} title="设备管理">
-              <Laptop size={18} />
-            </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target" onClick={() => router.push('/settings')} title="设置">
-              <Settings size={18} />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 touch-target">
-                  <User size={18} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={openProfileModal}>
-                  <IdCard size={16} className="mr-2" />
-                  个人资料
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push('/friends')}>
-                  <Users size={16} className="mr-2" />
-                  好友管理
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLogout}>
-                  <LogOut size={16} className="mr-2" />
-                  退出登录
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </motion.header>
-
-      {/* 主内容区 */}
-      <main className="relative z-[1] max-w-[1200px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-12 sm:pb-16">
-        {/* 欢迎区 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-center mb-12"
-        >
-          <Badge variant="secondary" className="mb-3">控制台</Badge>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-3 text-foreground">Huanvae Chat</h1>
-          <p className="text-base sm:text-lg text-muted-foreground">
-            欢迎回来，<span className="text-primary">{user?.nickname || '用户'}</span>！开始您的智能通讯之旅
-          </p>
-        </motion.div>
-
-        {/* 功能卡片网格 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {features.map((feature, index) => (
             <motion.div
               key={feature.title}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 + index * 0.08 }}
+              transition={{ delay: 0.05 + index * 0.04, duration: 0.25 }}
             >
-              <Card 
-                className="cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md group"
-                onClick={feature.onClick ?? (() => router.push(feature.path!))}
+              <Card
+                className="group cursor-pointer border-border/80 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                onClick={() => router.push(feature.path)}
               >
-                <CardContent className="flex items-center gap-4 p-5">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-muted text-primary">
-                    <feature.icon size={24} />
+                <CardHeader className="pb-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="rounded-xl border bg-muted p-2.5 text-primary">
+                      <feature.icon className="h-5 w-5" />
+                    </div>
+                    <Badge variant="outline">{feature.badge}</Badge>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground mb-1">{feature.title}</h3>
-                    <p className="text-[13px] text-muted-foreground">{feature.description}</p>
+                  <CardTitle className="text-base">{feature.title}</CardTitle>
+                  <CardDescription>{feature.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors group-hover:text-primary">
+                    打开
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
-                  <ArrowRight size={18} className="text-muted-foreground shrink-0 transition-all group-hover:translate-x-1 group-hover:text-primary" />
                 </CardContent>
               </Card>
             </motion.div>
           ))}
-        </div>
+        </section>
 
-        {/* 快速操作区 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">快速开始</CardTitle>
-              <CardDescription>常用操作入口</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3 max-sm:flex-col">
-                <Button onClick={() => router.push('/ai-chat')} className="gap-2">
-                  <Bot size={18} />
-                  新建 AI 对话
-                </Button>
-                <Button variant="outline" onClick={() => router.push('/chat')} className="gap-2">
-                  <MessageCircle size={18} />
-                  开始聊天
-                </Button>
-                <Button variant="outline" onClick={() => router.push('/video-meeting')} className="gap-2">
-                  <Video size={18} />
-                  发起会议
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* 底部版本信息 */}
-        <motion.footer
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="text-center text-[13px] text-muted-foreground mt-10"
-        >
-          Huanvae Chat - 智能通讯平台 v1.0.0
-        </motion.footer>
-      </main>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">账户与设备</CardTitle>
+            <CardDescription>常用管理操作</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={openProfileModal} className="gap-2">
+              <IdCard className="h-4 w-4" />个人资料
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/devices')} className="gap-2">
+              <Laptop className="h-4 w-4" />设备管理
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2"><User className="h-4 w-4" />更多</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => router.push('/friends')}>
+                  <Users className="mr-2 h-4 w-4" />好友管理
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

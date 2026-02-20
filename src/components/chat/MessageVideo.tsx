@@ -100,17 +100,17 @@ export function MessageVideo({
 
   if (loading) {
     return (
-      <div className={`${className} bg-slate-100 flex items-center justify-center min-h-[100px]`}>
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className={`${className} bg-muted flex items-center justify-center min-h-[100px]`}>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (error || !videoSrc) {
     return (
-      <div className={`${className} bg-slate-100 flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
-        <AlertCircle className="h-6 w-6 text-slate-400" />
-        <span className="text-xs text-slate-500">视频加载失败</span>
+      <div className={`${className} bg-muted flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
+        <AlertCircle className="h-6 w-6 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">视频加载失败</span>
       </div>
     )
   }
@@ -129,11 +129,11 @@ export function MessageVideo({
       />
       {showPlayButton && (
         <button
-          className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl transition-opacity hover:bg-black/40"
+          className="absolute inset-0 flex items-center justify-center bg-foreground/30 rounded-xl transition-opacity hover:bg-foreground/40"
           onClick={handlePlay}
         >
-          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
-            <Play className="h-6 w-6 text-slate-700 ml-1" />
+          <div className="w-12 h-12 rounded-full bg-background/90 flex items-center justify-center">
+            <Play className="h-6 w-6 text-foreground ml-1" />
           </div>
         </button>
       )}

@@ -358,7 +358,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         <div className="flex-1 overflow-y-auto px-2">
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : filteredGroups.length === 0 ? (
             <motion.div
@@ -378,7 +378,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               {filteredGroups.map((group, index) => (
                 <motion.button
                   key={group.group_id}
-                  className={`flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-accent active:bg-accent/80 w-full ${selectedConversation?.id === group.group_id ? 'bg-accent' : ''}`}
+                  className={`group w-full rounded-xl border p-3 text-left transition-all hover:border-primary/30 hover:bg-accent/60 ${
+                    selectedConversation?.id === group.group_id ? 'border-primary/40 bg-accent' : 'border-transparent bg-card'
+                  }`}
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
@@ -387,35 +389,35 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   layout
                   onClick={() => handleSelectGroup(group)}
                 >
-                  <div className="conv-avatar">
-                    <Avatar className="h-full w-full">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10 shrink-0">
                       <AvatarImage src={group.group_avatar_url} />
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {group.group_name[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                  </div>
-                  <div className="conv-info">
-                    <div className="conv-header">
-                      <span className="conv-name">
-                        {group.role === 'owner' && <Crown className="h-3 w-3 text-yellow-500 mr-1 inline" />}
-                        {group.group_name}
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center text-sm font-medium text-foreground">
+                          {group.role === 'owner' && <Crown className="mr-1 h-3.5 w-3.5 shrink-0 text-primary" />}
+                          <span className="truncate">{group.group_name}</span>
+                        </span>
                       {group.last_message_time && (
-                        <span className="conv-time">
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
                           {new Date(group.last_message_time).toLocaleDateString()}
                         </span>
                       )}
-                    </div>
-                    <div className="conv-footer">
-                      <span className="conv-preview">
-                        {group.last_message_content || group.group_description || `${group.member_count || 0} 名成员`}
-                      </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-muted-foreground">
+                          {group.last_message_content || group.group_description || `${group.member_count || 0} 名成员`}
+                        </span>
                       {(group.unread_count ?? 0) > 0 && (
-                        <span className="conv-unread visible">
-                          {group.unread_count}
+                        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground">
+                          {(group.unread_count ?? 0) > 99 ? '99+' : group.unread_count}
                         </span>
                       )}
+                      </div>
                     </div>
                   </div>
                 </motion.button>
@@ -431,7 +433,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               <>
                 {/* 遮罩层 */}
                 <motion.div
-                  className="fixed inset-0 z-[9998] bg-black/45 backdrop-blur-sm"
+                  className="fixed inset-0 z-[9998] bg-foreground/45"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -594,14 +596,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               animate={{ opacity: 1, y: 0 }}
             >
               <div className="flex items-center gap-3">
-                <div className="conv-avatar">
-                  <Avatar className="h-full w-full">
+                <Avatar className="h-10 w-10 shrink-0">
                     <AvatarImage src={searchResult.group_avatar_url} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {searchResult.group_name[0]?.toUpperCase()}
                     </AvatarFallback>
-                  </Avatar>
-                </div>
+                </Avatar>
                 <div className="flex-1">
                   <div className="font-medium text-foreground">{searchResult.group_name}</div>
                   <div className="text-sm text-muted-foreground">
@@ -675,7 +675,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
         {loadingInvites ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : invitations.length === 0 ? (
           <motion.div
@@ -702,14 +702,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   exit="exit"
                   custom={index}
                 >
-                  <div className="conv-avatar">
-                    <Avatar className="h-full w-full">
+                  <Avatar className="h-10 w-10 shrink-0">
                       <AvatarImage src={invitation.group_avatar_url} />
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {invitation.group_name[0]?.toUpperCase()}
                       </AvatarFallback>
-                    </Avatar>
-                  </div>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-foreground truncate">{invitation.group_name}</div>
                     <div className="text-sm text-muted-foreground">
@@ -722,7 +720,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   <div className="flex gap-2">
                     <Button
                       size="icon-sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={() => handleAcceptInvite(invitation.request_id)}
                       disabled={processingInvite === invitation.request_id}
                     >

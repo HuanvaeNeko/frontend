@@ -93,12 +93,30 @@ export default function ChatPage() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [mobileView, setMobileView] = useState<MobileView>('list')
   const [isMobile, setIsMobile] = useState(false)
+  const [isLandscape, setIsLandscape] = useState(false)
+  const [isCompactHeight, setIsCompactHeight] = useState(false)
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    const updateViewportFlags = () => {
+      const width = window.innerWidth
+      const height = window.innerHeight
+      const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+      const landscape = width > height
+      const mobileWidth = width < 768
+      const compactLandscape = coarsePointer && landscape && height < 640
+
+      setIsLandscape(landscape)
+      setIsCompactHeight(height < 560)
+      setIsMobile(mobileWidth || compactLandscape)
+    }
+
+    updateViewportFlags()
+    window.addEventListener('resize', updateViewportFlags)
+    window.addEventListener('orientationchange', updateViewportFlags)
+    return () => {
+      window.removeEventListener('resize', updateViewportFlags)
+      window.removeEventListener('orientationchange', updateViewportFlags)
+    }
   }, [])
 
   useEffect(() => {
@@ -335,7 +353,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="w-full h-screen flex relative overflow-hidden bg-background">
+    <div className={cn("app-screen w-full flex relative overflow-hidden bg-background", isMobile && isLandscape && "mobile-landscape-chat")}>
       {/* 左侧图标栏 */}
       <TooltipProvider>
         <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-card border-r border-border hidden md:flex">
@@ -352,7 +370,7 @@ export default function ChatPage() {
               )}
             </button>
             {connected && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-card rounded-full animate-pulse-online" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary border-2 border-card rounded-full animate-pulse-online" />
             )}
           </div>
 
@@ -387,7 +405,7 @@ export default function ChatPage() {
                       const summary = useChatStore.getState().unreadSummary
                       const total = summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
                       if (total > 0) return (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-destructive-foreground bg-destructive rounded-full">
                           {total > 99 ? '99+' : total}
                         </span>
                       )
@@ -397,7 +415,7 @@ export default function ChatPage() {
                       const summary = useChatStore.getState().unreadSummary
                       const total = summary?.group_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
                       if (total > 0) return (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-destructive-foreground bg-destructive rounded-full">
                           {total > 99 ? '99+' : total}
                         </span>
                       )
@@ -448,13 +466,17 @@ export default function ChatPage() {
         <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-card md:border-r border-border">
           {/* 子标签头部 */}
           {activeTab !== 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border">
+          <div className={cn(
+            "p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border",
+            isMobile && isLandscape && "landscape-compact-header"
+          )}>
               <div className="flex gap-1">
                 {getSubTabs().map((tab) => (
                   <button
                     key={tab.id}
                     className={cn(
                       "flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1",
+                      isMobile && isLandscape && "landscape-compact-button",
                       subTab === tab.id
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent"
@@ -462,7 +484,7 @@ export default function ChatPage() {
                     onClick={() => setSubTab(tab.id)}
                   >
                     <tab.icon className="w-3.5 h-3.5" />
-                    {tab.label}
+                    {!(isMobile && isCompactHeight) && tab.label}
                   </button>
                 ))}
               </div>
@@ -525,7 +547,10 @@ export default function ChatPage() {
       )}>
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
-          <div className="md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top">
+          <div className={cn(
+            "md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top",
+            isLandscape && "landscape-compact-header"
+          )}>
             <Button
               variant="ghost"
               size="icon"
@@ -564,27 +589,34 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card/95 backdrop-blur-xl border-t border-border pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-2">
+        <div className={cn(
+          "md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-2",
+          isLandscape && "pt-1"
+        )}>
           <div className="flex justify-around items-stretch">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl transition-all touch-target",
+                  isCompactHeight && "min-h-[48px] min-w-[48px]",
                   activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground active:bg-muted/50"
                 )}
                 onClick={() => { setActiveTab(tab.id); setSubTab('main') }}
               >
                 <tab.icon className="w-6 h-6 shrink-0" />
-                <span className="text-xs font-medium">{tab.label}</span>
+                {!isCompactHeight && <span className="text-xs font-medium">{tab.label}</span>}
               </button>
             ))}
             <button
-              className="flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target"
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target",
+                isCompactHeight && "min-h-[48px] min-w-[48px]"
+              )}
               onClick={settingsModal.open}
             >
               <Settings className="w-6 h-6 shrink-0" />
-              <span className="text-xs font-medium">设置</span>
+              {!isCompactHeight && <span className="text-xs font-medium">设置</span>}
             </button>
           </div>
         </div>

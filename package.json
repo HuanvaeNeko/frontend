@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@serwist/cli": "^9.5.4",
     "@serwist/next": "^9.5.4",
     "@tailwindcss/postcss": "^4.1.18",

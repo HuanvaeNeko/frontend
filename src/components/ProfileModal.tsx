@@ -98,7 +98,7 @@ function SettingRow({
 }
 
 // 玻璃态输入框
-function GlassInput({
+function FormInput({
   icon: Icon,
   label,
   type = 'text',
@@ -145,7 +145,7 @@ function GlassInput({
 }
 
 // 玻璃态文本区域
-function GlassTextarea({
+function FormTextarea({
   label,
   value,
   onChange,
@@ -274,7 +274,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
       {/* 头像区域 */}
       <div className="flex flex-col items-center py-4">
         <div className="relative group mb-3">
-          <Avatar className="h-24 w-24 ring-4 ring-white dark:ring-slate-700 shadow-xl">
+          <Avatar className="h-24 w-24 border-4 border-background shadow-lg">
             <AvatarImage src={profile?.user_avatar_url || ''} alt={displayName} />
             <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
               {displayName[0]?.toUpperCase() || 'U'}
@@ -283,14 +283,14 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           <motion.button
             onClick={handleAvatarClick}
             disabled={uploadingAvatar}
-            className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            className="absolute inset-0 flex items-center justify-center bg-foreground/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             {uploadingAvatar ? (
-              <Loader2 className="h-6 w-6 text-white animate-spin" />
+              <Loader2 className="h-6 w-6 text-background animate-spin" />
             ) : (
-              <Camera className="h-6 w-6 text-white" />
+              <Camera className="h-6 w-6 text-background" />
             )}
           </motion.button>
         </div>
@@ -307,7 +307,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
 
       {/* 表单 */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <GlassInput
+        <FormInput
           icon={UserIcon}
           label="昵称"
           value={displayName}
@@ -315,7 +315,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           disabled
         />
 
-        <GlassInput
+        <FormInput
           icon={Mail}
           label="邮箱"
           type="email"
@@ -324,7 +324,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           placeholder="your@email.com"
         />
 
-        <GlassTextarea
+        <FormTextarea
           label="个性签名"
           value={formData.signature}
           onChange={(v) => setFormData({ ...formData, signature: v })}
@@ -425,12 +425,12 @@ function PasswordSettings() {
 
   return (
     <form onSubmit={handleChangePassword} className="space-y-4">
-      <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200/50 dark:border-amber-800/30">
+      <div className="rounded-xl border border-primary/20 bg-primary/10 p-4">
         <div className="flex gap-3">
-          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800 dark:text-amber-200">
+          <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div className="text-sm text-foreground">
             <p className="font-medium mb-1">密码安全提示</p>
-            <ul className="text-xs space-y-0.5 text-amber-700 dark:text-amber-300">
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
               <li>• 新密码长度至少 6 位</li>
               <li>• 建议使用字母、数字和符号的组合</li>
             </ul>
@@ -438,7 +438,7 @@ function PasswordSettings() {
         </div>
       </div>
 
-      <GlassInput
+      <FormInput
         icon={Lock}
         label="当前密码"
         type={showPasswords.old ? 'text' : 'password'}
@@ -456,7 +456,7 @@ function PasswordSettings() {
         }
       />
 
-      <GlassInput
+      <FormInput
         icon={Lock}
         label="新密码"
         type={showPasswords.new ? 'text' : 'password'}
@@ -474,7 +474,7 @@ function PasswordSettings() {
         }
       />
 
-      <GlassInput
+      <FormInput
         icon={Lock}
         label="确认新密码"
         type={showPasswords.confirm ? 'text' : 'password'}
@@ -529,19 +529,19 @@ function AccountSettings() {
       />
       <SettingRow
         icon={Shield}
-        iconClass={profile?.admin === 'true' ? 'text-violet-500' : 'text-muted-foreground'}
+        iconClass={profile?.admin === 'true' ? 'text-primary' : 'text-muted-foreground'}
         label="账户类型"
         value={profile?.admin === 'true' ? '管理员' : '普通用户'}
       />
       <SettingRow
         icon={Calendar}
-        iconClass="text-emerald-500"
+        iconClass="text-primary"
         label="注册时间"
         value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN') : '-'}
       />
       <SettingRow
         icon={Calendar}
-        iconClass="text-amber-500"
+        iconClass="text-primary"
         label="最后更新"
         value={profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString('zh-CN') : '-'}
       />

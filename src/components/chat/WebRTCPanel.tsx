@@ -74,10 +74,10 @@ export default function WebRTCPanel() {
   }
 
   const features = [
-    { icon: Users, text: '无需登录即可加入房间', color: 'text-green-500' },
-    { icon: Globe, text: '自动分配最优 TURN 服务器', color: 'text-blue-500' },
-    { icon: Video, text: '支持多人视频通话', color: 'text-purple-500' },
-    { icon: Shield, text: '端到端加密传输', color: 'text-orange-500' },
+    { icon: Users, text: '无需登录即可加入房间', color: 'text-primary' },
+    { icon: Globe, text: '自动分配最优 TURN 服务器', color: 'text-primary' },
+    { icon: Video, text: '支持多人视频通话', color: 'text-primary' },
+    { icon: Shield, text: '端到端加密传输', color: 'text-primary' },
   ]
 
   return (
@@ -87,8 +87,8 @@ export default function WebRTCPanel() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-violet-500 to-purple-600">
-                <Video className="h-6 w-6 text-white" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+                <Video className="h-6 w-6 text-background" />
               </div>
               <div>
                 <CardTitle>WebRTC 视频通话</CardTitle>
@@ -111,13 +111,13 @@ export default function WebRTCPanel() {
         {/* 操作按钮 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <Button className="h-32 w-full text-lg gap-3 flex-col bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700" onClick={() => setShowCreateDialog(true)}>
+            <Button className="h-32 w-full flex-col gap-3 text-lg" onClick={() => setShowCreateDialog(true)}>
               <Video className="h-8 w-8" />
               创建房间
             </Button>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <Button variant="outline" className="h-32 w-full text-lg gap-3 flex-col border-2 border-violet-300 text-violet-600 hover:bg-violet-50" onClick={() => setShowJoinDialog(true)}>
+            <Button variant="outline" className="h-32 w-full flex-col gap-3 text-lg" onClick={() => setShowJoinDialog(true)}>
               <Phone className="h-8 w-8" />
               加入房间
             </Button>
@@ -128,28 +128,28 @@ export default function WebRTCPanel() {
         <AnimatePresence>
           {currentRoom && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <Card className="border-violet-200">
+              <Card>
                 <CardHeader><CardTitle className="text-lg">当前房间</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-violet-50">
+                  <div className="flex items-center justify-between rounded-xl bg-muted p-3">
                     <span className="text-sm font-medium">房间号:</span>
                     <div className="flex items-center gap-2">
-                      <code className="text-sm font-mono px-2 py-1 rounded-lg bg-white">{currentRoom.roomId}</code>
+                      <code className="text-sm font-mono px-2 py-1 rounded-lg bg-background">{currentRoom.roomId}</code>
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.roomId, '房间号')}>
-                        <Copy className="h-4 w-4 text-violet-500" />
+                        <Copy className="h-4 w-4 text-primary" />
                       </Button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-violet-50">
+                  <div className="flex items-center justify-between rounded-xl bg-muted p-3">
                     <span className="text-sm font-medium">密码:</span>
                     <div className="flex items-center gap-2">
-                      <code className="text-sm font-mono px-2 py-1 rounded-lg bg-white">{currentRoom.password}</code>
+                      <code className="text-sm font-mono px-2 py-1 rounded-lg bg-background">{currentRoom.password}</code>
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.password, '密码')}>
-                        <Copy className="h-4 w-4 text-violet-500" />
+                        <Copy className="h-4 w-4 text-primary" />
                       </Button>
                     </div>
                   </div>
-                  <Button className="w-full gap-2 bg-gradient-to-br from-violet-500 to-purple-600" onClick={() => copyToClipboard(`房间号: ${currentRoom.roomId}\n密码: ${currentRoom.password}\n链接: ${currentRoom.shareLink}`, '全部信息')}>
+                  <Button className="w-full gap-2" onClick={() => copyToClipboard(`房间号: ${currentRoom.roomId}\n密码: ${currentRoom.password}\n链接: ${currentRoom.shareLink}`, '全部信息')}>
                     <Copy className="h-4 w-4" />复制全部信息
                   </Button>
                 </CardContent>

@@ -424,16 +424,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const getAvatarColor = (name: string) => {
     const colors = [
-      'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500',
-      'bg-teal-500', 'bg-blue-500', 'bg-indigo-500', 'bg-purple-500'
+      'bg-primary', 'bg-primary/90', 'bg-primary/80', 'bg-primary/70',
+      'bg-primary/60', 'bg-primary/50', 'bg-primary/40', 'bg-primary/30'
     ]
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
     return colors[index]
   }
 
   const getRoleIcon = (role: string) => {
-    if (role === 'owner') return <Crown className="h-4 w-4 text-yellow-500" />
-    if (role === 'admin') return <Shield className="h-4 w-4 text-blue-500" />
+    if (role === 'owner') return <Crown className="h-4 w-4 text-primary" />
+    if (role === 'admin') return <Shield className="h-4 w-4 text-primary" />
     return null
   }
 
@@ -479,7 +479,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             <tab.icon className="h-4 w-4" />
             {tab.label}
             {tab.badge && tab.badge > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-5 text-center">
+              <span className="bg-destructive text-destructive-foreground text-xs rounded-full px-1.5 py-0.5 min-w-5 text-center">
                 {tab.badge}
               </span>
             )}
@@ -497,7 +497,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <div className="relative">
                 <Avatar className="h-20 w-20">
                   <AvatarImage src={group?.group_avatar_url} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-2xl">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                     {group?.group_name?.[0]?.toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -511,7 +511,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       onChange={handleUploadAvatar}
                     />
                     <button
-                      className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-1.5 shadow-lg"
+                      className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadingAvatar}
                     >
@@ -629,16 +629,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             </Card>
 
             {/* 危险操作 */}
-            <Card className="border-red-200">
+            <Card className="border-destructive/30">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-red-600">危险操作</CardTitle>
+                <CardTitle className="text-sm text-destructive">危险操作</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {/* 普通成员可以退出群聊 */}
                 {!isOwner && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="w-full gap-2 text-red-600 border-red-200 hover:bg-red-50">
+                      <Button variant="outline" className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/10">
                         <UserMinus className="h-4 w-4" />
                         退出群聊
                       </Button>
@@ -721,11 +721,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                 {members.map(member => (
                   <div
                     key={member.user_id}
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent"
                   >
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={member.user_avatar_url} />
-                      <AvatarFallback className={getAvatarColor(member.user_nickname) + ' text-white'}>
+                      <AvatarFallback className={getAvatarColor(member.user_nickname) + ' text-primary-foreground'}>
                         {member.user_nickname[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -736,7 +736,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         </span>
                         {getRoleIcon(member.role)}
                         {member.muted_until && new Date(member.muted_until) > new Date() && (
-                          <VolumeX className="h-4 w-4 text-red-500" />
+                          <VolumeX className="h-4 w-4 text-destructive" />
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
@@ -754,7 +754,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             onClick={() => handleUnmuteMember(member.user_id)}
                             disabled={operating}
                           >
-                            <Volume2 className="h-4 w-4 text-green-500" />
+                            <Volume2 className="h-4 w-4 text-primary" />
                           </Button>
                         ) : (
                           <Button
@@ -766,7 +766,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             }}
                             disabled={operating}
                           >
-                            <VolumeX className="h-4 w-4 text-orange-500" />
+                            <VolumeX className="h-4 w-4 text-primary" />
                           </Button>
                         )}
 
@@ -779,7 +779,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                                 onClick={() => handleRemoveAdmin(member.user_id)}
                                 disabled={operating}
                               >
-                                <Shield className="h-4 w-4 text-gray-400" />
+                                <Shield className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             ) : (
                               <Button
@@ -788,7 +788,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                                 onClick={() => handleSetAdmin(member.user_id)}
                                 disabled={operating}
                               >
-                                <Shield className="h-4 w-4 text-blue-500" />
+                                <Shield className="h-4 w-4 text-primary" />
                               </Button>
                             )}
                             <Button
@@ -797,7 +797,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                               onClick={() => handleTransferOwner(member.user_id)}
                               disabled={operating}
                             >
-                              <Crown className="h-4 w-4 text-yellow-500" />
+                              <Crown className="h-4 w-4 text-primary" />
                             </Button>
                           </>
                         )}
@@ -808,7 +808,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                           onClick={() => handleRemoveMember(member.user_id)}
                           disabled={operating}
                         >
-                          <UserMinus className="h-4 w-4 text-red-500" />
+                          <UserMinus className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     )}
@@ -861,7 +861,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             size="icon"
                             onClick={() => handleDeleteNotice(notice.id)}
                           >
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                            <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
                       </div>
@@ -897,7 +897,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-lg font-bold">{code.code}</span>
                             <span className={`text-xs px-2 py-0.5 rounded ${
-                              code.code_type === 'direct' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              code.code_type === 'direct' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
                             }`}>
                               {code.code_type === 'direct' ? '直接入群' : '需审核'}
                             </span>
@@ -913,7 +913,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             onClick={() => copyCode(code.code)}
                           >
                             {copiedCode === code.code ? (
-                              <Check className="h-4 w-4 text-green-500" />
+                              <Check className="h-4 w-4 text-primary" />
                             ) : (
                               <Copy className="h-4 w-4" />
                             )}
@@ -924,7 +924,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                               size="icon"
                               onClick={() => handleRevokeCode(code.id)}
                             >
-                              <Trash2 className="h-4 w-4 text-red-500" />
+                              <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
                         </div>
@@ -972,7 +972,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       <div className="flex items-start gap-3">
                         <Avatar className="h-10 w-10">
                           <AvatarImage src={request.user_avatar_url} />
-                          <AvatarFallback className={getAvatarColor(request.user_nickname) + ' text-white'}>
+                          <AvatarFallback className={getAvatarColor(request.user_nickname) + ' text-primary-foreground'}>
                             {request.user_nickname[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
@@ -980,7 +980,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                           <div className="font-medium">{request.user_nickname}</div>
                           <div className="text-xs text-muted-foreground">{request.user_id}</div>
                           {request.reason && (
-                            <div className="text-sm text-muted-foreground mt-1 p-2 bg-gray-50 rounded">
+                            <div className="mt-1 rounded bg-muted p-2 text-sm text-muted-foreground">
                               {request.reason}
                             </div>
                           )}
