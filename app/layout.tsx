@@ -6,7 +6,21 @@ import { SerwistProvider } from './serwist'
 const APP_NAME = 'Huanvae Chat'
 const APP_DEFAULT_TITLE = 'Huanvae Chat - AI聊天、群聊与视频会议'
 const APP_DESCRIPTION = '智能通讯平台 - AI聊天、群组协作、视频会议，支持实时消息、文件共享、视频通话'
-const APP_URL = 'https://web.huanvae.cn'
+const APP_URL = 'https://huanvae.cn'
+const themeInitScript = `
+(() => {
+  try {
+    const raw = localStorage.getItem('app-settings')
+    const parsed = raw ? JSON.parse(raw) : null
+    const state = parsed?.state || {}
+    const theme = state.theme || 'light'
+    const root = document.documentElement
+    const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    root.classList.toggle('dark', isDark)
+    root.style.colorScheme = isDark ? 'dark' : 'light'
+  } catch {}
+})();
+`
 
 export const metadata: Metadata = {
   // 基础元数据
@@ -16,10 +30,25 @@ export const metadata: Metadata = {
     template: '%s | Huanvae Chat',
   },
   description: APP_DESCRIPTION,
-  keywords: ['聊天', 'AI', '即时通讯', '视频会议', '群聊', 'WebRTC', 'PWA'],
+  keywords: [
+    'Huanvae Chat',
+    '聊天',
+    'AI',
+    'AI聊天',
+    '即时通讯',
+    '视频会议',
+    '群聊',
+    'WebRTC',
+    'PWA',
+    'instant messaging',
+    'video meeting',
+    'team collaboration',
+  ],
   authors: [{ name: 'Huanvae Team' }],
   creator: 'Huanvae',
   publisher: 'Huanvae',
+  category: 'communication',
+  referrer: 'origin-when-cross-origin',
 
   // PWA
   manifest: '/manifest.json',
@@ -82,6 +111,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   alternates: {
     canonical: '/',
+    languages: {
+      'zh-CN': '/',
+      'x-default': '/',
+    },
   },
 }
 
@@ -100,11 +133,18 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh-CN" data-theme="light" className="h-full">
+    <html lang="zh-CN" className="h-full" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: themeInitScript,
+          }}
+        />
+      </head>
       <body className="h-full overflow-hidden">
         <SerwistProvider swUrl="/sw.js" disable={process.env.NODE_ENV === 'development'}>
           <ClientProviders>
-            <div className="h-full overflow-hidden">
+            <div className="relative z-10 h-full overflow-hidden">
               {children}
             </div>
           </ClientProviders>

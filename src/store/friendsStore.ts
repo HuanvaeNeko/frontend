@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
 import { isAuthError } from '../api/apiClient'
 import { useAuthStore } from './authStore'
+import { ROUTES } from '@/lib/routes'
 
 interface FriendsState {
   friends: Friend[]
@@ -31,8 +32,8 @@ const silentRedirectToLogin = () => {
   const authStore = useAuthStore.getState()
   authStore.clearAuth()
   
-  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-    window.location.replace('/login')
+  if (typeof window !== 'undefined' && window.location.pathname !== ROUTES.auth.login) {
+    window.location.replace(ROUTES.auth.login)
   }
 }
 

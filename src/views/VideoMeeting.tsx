@@ -26,6 +26,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
 import { useAuthStore } from '../store/authStore'
+import { ROUTES } from '@/lib/routes'
+import { MOBILE_INTERACTIONS } from '@/lib/mobileInteractions'
 
 // =============================================
 // 类型定义
@@ -131,6 +133,10 @@ export default function VideoMeeting() {
   const [availableResolutions, setAvailableResolutions] = useState<ScreenShareResolution[]>(['1080p'])
   const [mediaError, setMediaError] = useState<MediaError | null>(null)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
+  const [isTouchLandscape, setIsTouchLandscape] = useState(false)
+  const [isCompactViewport, setIsCompactViewport] = useState(false)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -182,19 +188,53 @@ export default function VideoMeeting() {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
       controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
     }
+
+    if (isTouchDevice) {
+      setShowControls(true)
+      return
+    }
+
     window.addEventListener('mousemove', resetTimer)
     resetTimer()
     return () => {
       window.removeEventListener('mousemove', resetTimer)
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
     }
-  }, [])
+  }, [isTouchDevice])
 
   useEffect(() => {
     if (!isConnected) return
     const timer = setInterval(() => setMeetingDuration(prev => prev + 1), 1000)
     return () => clearInterval(timer)
   }, [isConnected])
+
+  useEffect(() => {
+    const updateViewportMode = () => {
+      const width = window.innerWidth
+      const height = window.innerHeight
+      const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+      const isLandscape = width > height
+      const mobileViewport = width < 768
+      const touchLandscape = coarsePointer && isLandscape && height < 760
+
+      setIsTouchDevice(coarsePointer)
+      setIsMobileViewport(mobileViewport)
+      setIsTouchLandscape(touchLandscape)
+      setIsCompactViewport(height < 560)
+
+      if (!mobileViewport && !touchLandscape) {
+        setShowParticipants(false)
+      }
+    }
+
+    updateViewportMode()
+    window.addEventListener('resize', updateViewportMode)
+    window.addEventListener('orientationchange', updateViewportMode)
+    return () => {
+      window.removeEventListener('resize', updateViewportMode)
+      window.removeEventListener('orientationchange', updateViewportMode)
+    }
+  }, [])
 
   useEffect(() => {
     participantsRef.current = participants
@@ -784,7 +824,7 @@ export default function VideoMeeting() {
     else { document.exitFullscreen(); setIsFullscreen(false) }
   }, [])
 
-  const leaveMeeting = () => { cleanup(); router.push('/chat') }
+  const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.chat) }
 
   const copyShareLink = () => {
     navigator.clipboard.writeText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)
@@ -810,6 +850,15 @@ export default function VideoMeeting() {
       isCreator: rs.participant.is_creator,
     })),
   ]
+  const gridLayoutClass = isTouchLandscape && allStreams.length >= 3
+    ? 'grid-cols-3'
+    : allStreams.length === 1
+      ? 'grid-cols-1 max-w-xl mx-auto'
+      : allStreams.length === 2
+        ? 'grid-cols-2 max-w-3xl mx-auto'
+        : allStreams.length <= 4
+          ? 'grid-cols-2'
+          : 'grid-cols-2 sm:grid-cols-3'
 
   // =============================================
   // 错误页面
@@ -817,22 +866,22 @@ export default function VideoMeeting() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0c0e12] flex items-center justify-center p-6">
+      <div className="app-screen bg-background flex items-center justify-center p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25 }}
           className="text-center max-w-sm"
         >
-          <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-            <PhoneOff size={28} className="text-red-400" />
+          <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+            <PhoneOff size={28} className="text-destructive" />
           </div>
-          <h1 className="text-xl font-semibold text-white mb-2">无法加入会议</h1>
-          <p className="text-[13px] text-zinc-400 mb-8 leading-relaxed">{error}</p>
+          <h1 className="text-xl font-semibold text-foreground mb-2">无法加入会议</h1>
+          <p className="text-[13px] text-muted-foreground mb-8 leading-relaxed">{error}</p>
           <button
             type="button"
-            onClick={() => router.push('/chat')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-white/90 text-sm font-medium hover:bg-white/10 transition-colors"
+            onClick={() => router.push(ROUTES.app.chat)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent/50 border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
           >
             <ArrowLeft size={16} />
             返回聊天
@@ -848,7 +897,7 @@ export default function VideoMeeting() {
 
   if (isConnecting) {
     return (
-      <div className="min-h-screen bg-[#0c0e12] flex items-center justify-center p-6">
+      <div className="app-screen bg-background flex items-center justify-center p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -857,10 +906,10 @@ export default function VideoMeeting() {
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-            className="w-10 h-10 mx-auto mb-5 rounded-full border-2 border-zinc-600/80 border-t-teal-400"
+            className="mx-auto mb-5 h-10 w-10 rounded-full border-2 border-border border-t-primary"
           />
-          <p className="text-white/90 text-sm font-medium">正在加入会议</p>
-          <p className="text-zinc-500 text-xs font-mono mt-1.5">{roomId}</p>
+          <p className="text-foreground text-sm font-medium">正在加入会议</p>
+          <p className="text-muted-foreground text-xs font-mono mt-1.5">{roomId}</p>
         </motion.div>
       </div>
     )
@@ -871,7 +920,7 @@ export default function VideoMeeting() {
   // =============================================
 
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0' : 'min-h-screen'} bg-[#0c0e12] flex flex-col overflow-hidden`}>
+    <div className={`${isFullscreen ? 'fixed inset-0' : 'app-screen'} bg-background flex flex-col overflow-hidden`}>
       <AnimatePresence>
         {showControls && (
           <motion.header
@@ -879,30 +928,30 @@ export default function VideoMeeting() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -56, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="flex-shrink-0 z-20 h-14 px-4 flex items-center justify-between border-b border-white/[0.06]"
+            className={`mobile-top-safe flex-shrink-0 z-20 h-14 px-3 sm:px-4 flex items-center justify-between border-b border-border ${isCompactViewport ? 'h-12' : ''}`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
               <button type="button" onClick={leaveMeeting}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-400 text-sm font-medium hover:text-white hover:bg-white/[0.06] transition-colors">
+                className="flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-muted-foreground text-sm font-medium hover:text-foreground hover:bg-accent/60 transition-colors">
                 <ArrowLeft size={18} /> 离开
               </button>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06]">
-                <span className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-pulse" />
-                <span className="text-zinc-300 text-xs font-mono">{roomId}</span>
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/50 border border-border">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-foreground text-xs font-mono">{roomId}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button type="button" onClick={copyShareLink}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-zinc-400 text-sm hover:text-white hover:bg-white/[0.06] transition-colors">
-                {copied ? <Check size={16} className="text-teal-400" /> : <Copy size={16} />}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-muted-foreground text-sm hover:text-foreground hover:bg-accent/60 transition-colors">
+                {copied ? <Check size={16} className="text-primary" /> : <Copy size={16} />}
                 <span className="hidden sm:inline">{copied ? '已复制' : '复制链接'}</span>
               </button>
               <button type="button" onClick={() => setShowParticipants(!showParticipants)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-zinc-400 text-sm hover:text-white hover:bg-white/[0.06] transition-colors">
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-muted-foreground text-sm hover:text-foreground hover:bg-accent/60 transition-colors">
                 <Users size={18} /><span>{participants.length + 1}</span>
               </button>
               <button type="button" onClick={toggleFullscreen}
-                className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors">
+                className="hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors sm:block">
                 {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
               </button>
             </div>
@@ -910,13 +959,9 @@ export default function VideoMeeting() {
         )}
       </AnimatePresence>
 
-      <div className="flex-1 flex min-h-0">
-        <div className="flex-1 p-4 overflow-auto">
-          <div className={`grid gap-4 h-full content-center ${
-            allStreams.length === 1 ? 'grid-cols-1 max-w-xl mx-auto' :
-            allStreams.length === 2 ? 'grid-cols-2 max-w-3xl mx-auto' :
-            allStreams.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'
-          }`}>
+      <div className="relative flex-1 flex min-h-0">
+        <div className="flex-1 p-2 sm:p-4 overflow-auto">
+          <div className={`grid gap-2 sm:gap-4 h-full content-center ${gridLayoutClass}`}>
             {allStreams.map((item, index) => {
               const videoTracks = item.stream?.getVideoTracks() || []
               const hasVideo = videoTracks.length > 0 && videoTracks[0]?.enabled
@@ -929,9 +974,9 @@ export default function VideoMeeting() {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: index * 0.05, duration: 0.2 }}
                   onClick={() => setActiveVideoId(isActive ? null : item.id)}
-                  className={`relative rounded-2xl overflow-hidden bg-zinc-900/80 border min-h-[200px] transition-all duration-200 cursor-pointer ${
-                    isActive ? 'ring-2 ring-teal-400/50 border-teal-400/30' : 'border-white/[0.06]'
-                  } ${item.isSpeaking ? 'ring-2 ring-teal-400/40 shadow-[0_0_24px_rgba(20,184,166,0.15)]' : ''}`}
+                  className={`relative rounded-2xl overflow-hidden bg-card border min-h-[200px] transition-all duration-200 cursor-pointer ${
+                    isActive ? 'ring-2 ring-primary/40 border-primary/30' : 'border-border'
+                  } ${item.isSpeaking ? 'ring-2 ring-primary/30 shadow-lg' : ''}`}
                   style={item.isSpeaking ? { animation: 'meeting-speaking 2s ease-in-out infinite' } : undefined}
                 >
                   {!isLocal && 'audioStream' in item && item.audioStream && (
@@ -946,26 +991,26 @@ export default function VideoMeeting() {
                       className="w-full h-full min-h-[200px] object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full min-h-[200px] flex items-center justify-center bg-zinc-900/60">
+                    <div className="w-full h-full min-h-[200px] flex items-center justify-center bg-muted/50">
                       <div className="text-center">
-                        <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center">
-                          <span className="text-lg font-semibold text-teal-300/90">{(item.name?.[0] || '?').toUpperCase()}</span>
+                        <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center">
+                          <span className="text-lg font-semibold text-primary">{(item.name?.[0] || '?').toUpperCase()}</span>
                         </div>
-                        <p className="text-zinc-400 text-sm">{item.name}</p>
+                        <p className="text-muted-foreground text-sm">{item.name}</p>
                       </div>
                     </div>
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 p-2.5 bg-gradient-to-t from-black/70 to-transparent">
+                  <div className="absolute bottom-0 left-0 right-0 bg-card/85 p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-white text-xs font-medium truncate">{item.name}</span>
-                        {item.isLocal && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">我</span>}
-                        {item.isCreator && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">主持</span>}
+                        <span className="text-foreground text-xs font-medium truncate">{item.name}</span>
+                        {item.isLocal && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary">我</span>}
+                        {item.isCreator && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">主持</span>}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        {item.isSpeaking && <span className="p-1 rounded bg-teal-500/30" title="正在说话"><Mic size={10} className="text-teal-300" /></span>}
-                        {item.isLocal && isMuted && <span className="p-1 rounded bg-red-500/20"><MicOff size={10} className="text-red-400" /></span>}
-                        {item.isLocal && !isVideoEnabled && <span className="p-1 rounded bg-amber-500/20"><VideoOff size={10} className="text-amber-400" /></span>}
+                        {item.isSpeaking && <span className="p-1 rounded bg-primary/20" title="正在说话"><Mic size={10} className="text-primary" /></span>}
+                        {item.isLocal && isMuted && <span className="p-1 rounded bg-destructive/20"><MicOff size={10} className="text-destructive" /></span>}
+                        {item.isLocal && !isVideoEnabled && <span className="rounded bg-primary/15 p-1"><VideoOff size={10} className="text-primary" /></span>}
                       </div>
                     </div>
                   </div>
@@ -977,53 +1022,106 @@ export default function VideoMeeting() {
 
         <AnimatePresence>
           {showParticipants && (
-            <motion.aside
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 260, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="shrink-0 h-full overflow-hidden border-l border-white/[0.06] bg-black/20"
-            >
-              <div className="w-[260px] h-full overflow-y-auto p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-zinc-300 text-sm font-medium">参与者 · {participants.length + 1}</h3>
-                  <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.06]">
-                    <X size={16} />
-                  </button>
-                </div>
-                <ul className="space-y-1">
-                  <li className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.04]">
-                    <div className="w-9 h-9 rounded-full bg-teal-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-teal-300">{(displayName?.[0] || '?').toUpperCase()}</span>
+            <>
+              {(isTouchLandscape || isMobileViewport) && (
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="absolute inset-0 z-20 bg-background/40 backdrop-blur-[1px]"
+                  onClick={() => setShowParticipants(false)}
+                  aria-label="关闭参与者面板"
+                />
+              )}
+              <motion.aside
+                drag={isMobileViewport && !isTouchLandscape ? 'y' : false}
+                dragDirectionLock
+                dragElastic={MOBILE_INTERACTIONS.drawerDragElastic}
+                dragConstraints={{ top: 0, bottom: 0 }}
+                onDragEnd={(_, info) => {
+                  if (!isMobileViewport || isTouchLandscape) return
+                  if (info.offset.y > MOBILE_INTERACTIONS.drawerCloseOffsetY || info.velocity.y > MOBILE_INTERACTIONS.drawerCloseVelocityY) {
+                    setShowParticipants(false)
+                  }
+                }}
+                initial={
+                  isTouchLandscape
+                    ? { x: '100%', opacity: 0 }
+                    : isMobileViewport
+                      ? { y: '100%', opacity: 0 }
+                      : { width: 0, opacity: 0 }
+                }
+                animate={
+                  isTouchLandscape
+                    ? { x: 0, opacity: 1 }
+                    : isMobileViewport
+                      ? { y: 0, opacity: 1 }
+                      : { width: 260, opacity: 1 }
+                }
+                exit={
+                  isTouchLandscape
+                    ? { x: '100%', opacity: 0 }
+                    : isMobileViewport
+                      ? { y: '100%', opacity: 0 }
+                      : { width: 0, opacity: 0 }
+                }
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                className={
+                  isTouchLandscape
+                    ? 'absolute right-0 top-0 bottom-0 z-30 w-[min(80vw,300px)] border-l border-border bg-card/95 overflow-hidden'
+                    : isMobileViewport
+                      ? 'absolute inset-x-0 bottom-0 z-30 h-[min(70dvh,520px)] rounded-t-2xl border-t border-border bg-card/97 shadow-2xl overflow-hidden'
+                      : 'shrink-0 h-full border-l border-border bg-card/70 overflow-hidden'
+                }
+              >
+                <div className={isTouchLandscape || isMobileViewport ? 'h-full w-full overflow-y-auto p-3 sm:p-4' : 'h-full w-[260px] overflow-y-auto p-3 sm:p-4'}>
+                  {isMobileViewport && !isTouchLandscape && (
+                    <div className="mb-3 flex justify-center">
+                      <div className="mobile-drawer-handle" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm truncate">{displayName}</p>
-                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
-                        <span className="text-teal-400">我</span>
-                        {isCreatorRef.current && <span className="text-amber-400">主持人</span>}
-                      </div>
-                    </div>
-                    {isSpeaking && <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />}
-                  </li>
-                  {remoteStreams.map(rs => (
-                    <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-colors">
-                      <div className="w-9 h-9 rounded-full bg-zinc-600/40 flex items-center justify-center shrink-0 overflow-hidden">
-                        {rs.participant.user_info.avatar_url ? (
-                          <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-sm font-semibold text-zinc-400">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
-                        )}
+                  )}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-foreground text-sm font-medium">参与者 · {participants.length + 1}</h3>
+                    <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <ul className="space-y-1">
+                    <li className="flex items-center gap-3 px-3 py-2 rounded-xl bg-accent/50">
+                      <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-semibold text-primary">{(displayName?.[0] || '?').toUpperCase()}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm truncate">{rs.participant.name}</p>
-                        {rs.participant.is_creator && <span className="text-[10px] text-amber-400">主持人</span>}
+                        <p className="text-foreground text-sm truncate">{displayName}</p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="text-primary">我</span>
+                          {isCreatorRef.current && <span className="text-primary">主持人</span>}
+                        </div>
                       </div>
-                      {rs.isSpeaking && <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />}
+                      {isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                     </li>
-                  ))}
-                </ul>
-              </div>
-            </motion.aside>
+                    {remoteStreams.map(rs => (
+                      <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-accent/50 transition-colors">
+                        <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                          {rs.participant.user_info.avatar_url ? (
+                            <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-semibold text-muted-foreground">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-foreground text-sm truncate">{rs.participant.name}</p>
+                          {rs.participant.is_creator && <span className="text-[10px] text-primary">主持人</span>}
+                        </div>
+                        {rs.isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </motion.aside>
+            </>
           )}
         </AnimatePresence>
       </div>
@@ -1035,54 +1133,59 @@ export default function VideoMeeting() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="flex-shrink-0 z-20 py-4 px-4 border-t border-white/[0.06] bg-black/30 relative"
+            className={`mobile-bottom-safe flex-shrink-0 z-20 py-3 px-2 sm:px-4 border-t border-border bg-card/80 relative ${isCompactViewport ? 'py-2' : 'py-4'}`}
           >
-            <div className="flex items-center justify-center gap-2 max-w-lg mx-auto">
+            <div className="flex items-center justify-center gap-2 max-w-lg mx-auto overflow-x-auto px-1">
               <button type="button" onClick={toggleMute}
                 className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
-                  isMuted ? 'bg-red-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
+                  isMuted ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-accent/60 text-foreground hover:bg-accent'
                 }`}>
                 {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
               </button>
               <button type="button" onClick={toggleVideo}
                 className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
-                  !isVideoEnabled ? 'bg-amber-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
+                  !isVideoEnabled ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-foreground hover:bg-accent'
                 }`}>
                 {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
               </button>
               <button type="button" onClick={leaveMeeting}
-                className="w-12 h-12 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors">
+                className="w-12 h-12 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90 transition-colors">
                 <PhoneOff size={20} />
               </button>
               <button type="button"
                 onClick={() => isScreenSharing ? toggleScreenShare() : setShowScreenShareSettings(true)}
                 className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${
-                  isScreenSharing ? 'bg-teal-500/90 text-white' : 'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.12]'
+                  isScreenSharing ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-foreground hover:bg-accent'
                 }`}>
                 <Monitor size={20} />
               </button>
               <button type="button"
-                className="w-11 h-11 rounded-full bg-white/[0.08] text-zinc-400 hover:bg-white/[0.12] flex items-center justify-center">
+                className="w-11 h-11 rounded-full bg-accent/60 text-muted-foreground hover:bg-accent flex items-center justify-center">
                 <Settings size={18} />
               </button>
             </div>
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-zinc-500 text-xs font-mono">
-              <Clock size={14} />
+            <div className="mt-2 text-center text-[11px] font-mono text-muted-foreground md:hidden">
               {formatDuration(meetingDuration)}
             </div>
+            {!isCompactViewport && (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1.5 text-muted-foreground text-xs font-mono">
+              <Clock size={14} />
+              {formatDuration(meetingDuration)}
+              </div>
+            )}
           </motion.footer>
         )}
       </AnimatePresence>
 
       <Dialog open={showScreenShareSettings} onOpenChange={setShowScreenShareSettings}>
-        <DialogContent className="max-w-sm bg-[#111318] border-white/[0.08] text-white">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-zinc-100">屏幕共享设置</DialogTitle>
-            <DialogDescription className="text-zinc-400">选择分辨率和帧率</DialogDescription>
+            <DialogTitle className="text-foreground">屏幕共享设置</DialogTitle>
+            <DialogDescription className="text-muted-foreground">选择分辨率和帧率</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
-              <label className="text-xs text-zinc-500 mb-2 block">分辨率</label>
+              <label className="text-xs text-muted-foreground mb-2 block">分辨率</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['1080p', '2k', '4k'] as ScreenShareResolution[]).map(res => {
                   const available = availableResolutions.includes(res)
@@ -1092,35 +1195,35 @@ export default function VideoMeeting() {
                       onClick={() => setScreenShareSettings(s => ({ ...s, resolution: res }))}
                       className={`p-2.5 rounded-xl text-center text-sm transition-colors ${
                         screenShareSettings.resolution === res
-                          ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
+                          ? 'bg-primary/15 border border-primary/40 text-primary'
                           : available
-                            ? 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08]'
-                            : 'bg-white/[0.03] border border-white/[0.04] text-zinc-600 cursor-not-allowed'
+                            ? 'bg-accent/60 border border-border text-foreground hover:bg-accent/60'
+                            : 'bg-muted/40 border border-border text-muted-foreground cursor-not-allowed'
                       }`}>
                       <div className="font-medium">{res}</div>
-                      <div className="text-[10px] text-zinc-500 mt-0.5">{width}×{height}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{width}×{height}</div>
                     </button>
                   )
                 })}
               </div>
             </div>
             <div>
-              <label className="text-xs text-zinc-500 mb-2 block">帧率</label>
+              <label className="text-xs text-muted-foreground mb-2 block">帧率</label>
               <div className="grid grid-cols-2 gap-2">
                 {([60, 120] as ScreenShareFrameRate[]).map(fps => (
                   <button key={fps}
                     onClick={() => setScreenShareSettings(s => ({ ...s, frameRate: fps }))}
                     className={`p-2.5 rounded-xl text-center text-sm transition-colors ${
                       screenShareSettings.frameRate === fps
-                        ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
-                        : 'bg-white/[0.06] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08]'
+                        ? 'bg-primary/15 border border-primary/40 text-primary'
+                        : 'bg-accent/60 border border-border text-foreground hover:bg-accent/60'
                     }`}>
                     {fps} FPS
                   </button>
                 ))}
               </div>
             </div>
-            <Button className="w-full rounded-xl bg-teal-500 hover:bg-teal-600 text-white" onClick={() => { setShowScreenShareSettings(false); toggleScreenShare(screenShareSettings) }}>
+            <Button className="w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => { setShowScreenShareSettings(false); toggleScreenShare(screenShareSettings) }}>
               开始共享
             </Button>
           </div>
@@ -1128,40 +1231,40 @@ export default function VideoMeeting() {
       </Dialog>
 
       <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
-        <DialogContent className="max-w-md bg-[#111318] border-white/[0.08] text-white">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto max-w-md bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-zinc-100">
-              <ShieldAlert size={20} className="text-amber-400" />
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <ShieldAlert size={20} className="text-primary" />
               媒体权限被拒绝
             </DialogTitle>
-            <DialogDescription className="text-zinc-400">
+            <DialogDescription className="text-muted-foreground">
               {mediaError?.message || '需要授权才能使用摄像头和麦克风'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
               <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" />
-                <div className="text-sm text-zinc-300 space-y-2">
+                <AlertTriangle size={20} className="text-primary shrink-0 mt-0.5" />
+                <div className="text-sm text-foreground space-y-2">
                   <p>请按照以下步骤开启权限：</p>
-                  <ol className="list-decimal list-inside space-y-1 text-zinc-400">
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                     <li>点击浏览器地址栏左侧的锁定图标</li>
                     <li>找到「摄像头」和「麦克风」选项</li>
                     <li>将权限设置为「允许」</li>
                     <li>刷新页面</li>
                   </ol>
-                  <p className="text-zinc-500 text-xs mt-2">
-                    若部署在 Cloudflare Pages，请确认站点 <code className="bg-white/10 px-1 rounded">_headers</code> 中
-                    Permissions-Policy 包含 <code className="bg-white/10 px-1 rounded">camera=(self), microphone=(self)</code>。
+                  <p className="text-muted-foreground text-xs mt-2">
+                    若部署在 Cloudflare Pages，请确认站点 <code className="bg-accent px-1 rounded">_headers</code> 中
+                    Permissions-Policy 包含 <code className="bg-accent px-1 rounded">camera=(self), microphone=(self)</code>。
                   </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 rounded-xl border-white/[0.1] text-zinc-300 hover:bg-white/[0.06]" onClick={() => setShowPermissionGuide(false)}>
+              <Button variant="outline" className="flex-1 rounded-xl border-border text-foreground hover:bg-accent/60" onClick={() => setShowPermissionGuide(false)}>
                 暂不开启
               </Button>
-              <Button className="flex-1 rounded-xl bg-teal-500 hover:bg-teal-600 text-white" onClick={() => { window.location.reload() }}>
+              <Button className="flex-1 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => { window.location.reload() }}>
                 刷新页面
               </Button>
             </div>
@@ -1171,8 +1274,8 @@ export default function VideoMeeting() {
 
       <style>{`
         @keyframes meeting-speaking {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.25); }
-          50% { box-shadow: 0 0 0 6px rgba(20, 184, 166, 0); }
+          0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.25); }
+          50% { box-shadow: 0 0 0 6px hsl(var(--primary) / 0); }
         }
       `}</style>
     </div>

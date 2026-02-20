@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/profile'
 import { isAuthError } from '../api/apiClient'
 import { useAuthStore } from './authStore'
+import { ROUTES } from '@/lib/routes'
 
 interface ProfileState {
   profile: UserProfile | null
@@ -25,8 +26,8 @@ const silentRedirectToLogin = () => {
   const authStore = useAuthStore.getState()
   authStore.clearAuth()
   
-  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-    window.location.replace('/login')
+  if (typeof window !== 'undefined' && window.location.pathname !== ROUTES.auth.login) {
+    window.location.replace(ROUTES.auth.login)
   }
 }
 

@@ -1,50 +1,39 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { 
-  MessageSquare, 
-  Users, 
-  Settings, 
-  User, 
+import {
+  Bot,
+  ChevronRight,
+  Globe,
+  Home,
   Laptop,
   LogOut,
-  Bot,
-  Video,
-  ChevronRight,
-  Home,
   Menu,
-  Download,
+  MessageSquare,
+  Settings,
+  User,
+  Users,
+  Video,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useAuthStore } from '../../store/authStore'
-import { useProfileStore } from '../../store/profileStore'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/authStore'
+import { useProfileStore } from '@/store/profileStore'
 import { useUIStore } from '@/store/uiStore'
 import { playTap } from '@/hooks/useSound'
-import { RELEASE_PAGE_URL, fetchInstallTargets } from '@/lib/appInstall'
+import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getRouteBreadcrumbs, isRouteActive } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface NavItem {
   path: string
   label: string
   icon: React.ElementType
 }
-
-const mainNavItems: NavItem[] = [
-  { path: '/', label: '消息', icon: MessageSquare },
-  { path: '/friends', label: '好友', icon: Users },
-  { path: '/ai-chat', label: 'AI 助手', icon: Bot },
-  { path: '/video-meeting', label: '视频会议', icon: Video },
-]
-
-const settingsNavItems: NavItem[] = [
-  { path: '/devices', label: '设备管理', icon: Laptop },
-  { path: '/settings', label: '设置', icon: Settings },
-]
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -53,35 +42,30 @@ interface MainLayoutProps {
 export default function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { t } = useI18n()
   const { user, clearAuth } = useAuthStore()
   const { profile } = useProfileStore()
   const { openProfileModal } = useUIStore()
-  const [installUrl, setInstallUrl] = useState(RELEASE_PAGE_URL)
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
   const avatarUrl = profile?.user_avatar_url || ''
 
-  // 路由变化时关闭移动端菜单
-  useEffect(() => {
-    // Sheet 自动处理关闭，不需要额外状态
-  }, [pathname])
+  const immersiveRouteBases = [
+    ROUTES.app.chat,
+    ROUTES.app.chatFriends,
+    ROUTES.app.chatGroups,
+    ROUTES.app.chatFiles,
+    ROUTES.app.chatWebrtc,
+    ROUTES.app.videoMeeting,
+  ]
 
-  useEffect(() => {
-    let cancelled = false
-
-    void fetchInstallTargets().then((targets) => {
-      if (!targets || cancelled) return
-      setInstallUrl(targets.normalUrl)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const isImmersiveRoute = !!pathname && immersiveRouteBases.some((route) => (
+    pathname === route || pathname.startsWith(`${route}/`)
+  ))
 
   const handleLogout = () => {
     clearAuth()
-    router.push('/login')
+    router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
   }
 
   const handleNavigation = (path: string) => {
@@ -89,42 +73,38 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   const isActive = (path: string) => {
-    if (path === '/') {
-      return pathname === '/' || pathname === '/chat'
-    }
-    return pathname?.startsWith(path) ?? false
+    return isRouteActive(pathname, path)
   }
 
-  const getBreadcrumbs = () => {
-    const pathSegments = pathname?.split('/').filter(Boolean) || []
-    const breadcrumbs: { label: string; path: string }[] = [
-      { label: '首页', path: '/' }
-    ]
+  const mainNavItems: NavItem[] = [
+    { path: ROUTES.app.chat, label: t('nav.messages'), icon: MessageSquare },
+    { path: ROUTES.app.friends, label: t('nav.friends'), icon: Users },
+    { path: ROUTES.app.aiChat, label: t('nav.aiAssistant'), icon: Bot },
+    { path: ROUTES.app.videoMeeting, label: t('nav.videoMeeting'), icon: Video },
+  ]
 
-    const pathLabels: Record<string, string> = {
-      'chat': '消息',
-      'friends': '好友',
-      'ai-chat': 'AI 助手',
-      'video-meeting': '视频会议',
-      'profile': '个人资料',
-      'devices': '设备管理',
-      'settings': '设置',
-      'group-chat': '群聊',
-      'home': '首页',
+  const settingsNavItems: NavItem[] = [
+    { path: ROUTES.app.devices, label: t('nav.devices'), icon: Laptop },
+    { path: ROUTES.app.settings, label: t('nav.settings'), icon: Settings },
+  ]
+
+  const breadcrumbs = getRouteBreadcrumbs(pathname, (segment) => {
+    const keyMap: Record<string, string> = {
+      home: 'nav.home',
+      chat: 'nav.messages',
+      friends: 'nav.friends',
+      'ai-chat': 'nav.aiAssistant',
+      'video-meeting': 'nav.videoMeeting',
+      devices: 'nav.devices',
+      settings: 'nav.settings',
+      profile: 'nav.profile',
+      groups: 'nav.groups',
+      files: 'nav.files',
+      webrtc: 'nav.webrtc',
     }
-
-    let currentPath = ''
-    pathSegments.forEach(segment => {
-      currentPath += `/${segment}`
-      if (pathLabels[segment]) {
-        breadcrumbs.push({ label: pathLabels[segment], path: currentPath })
-      }
-    })
-
-    return breadcrumbs
-  }
-
-  const breadcrumbs = getBreadcrumbs()
+    const key = keyMap[segment]
+    return key ? t(key) : segment
+  })
 
   const handleOpenProfile = () => {
     playTap()
@@ -133,156 +113,133 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const SidebarContent = () => (
     <>
-      {/* 用户信息 */}
-      <div className="p-4 border-b border-border">
-        <div 
-          className="flex items-center gap-3 cursor-pointer hover:bg-accent rounded-lg p-2 -m-2 transition-colors"
-          onClick={handleOpenProfile}
-        >
+      <div className="border-b p-4">
+        <button className="flex w-full items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-accent" onClick={handleOpenProfile}>
           <Avatar className="h-10 w-10">
             <AvatarImage src={avatarUrl} alt={displayName} />
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              {displayName[0]?.toUpperCase() || 'U'}
-            </AvatarFallback>
+            <AvatarFallback>{displayName[0]?.toUpperCase() || 'U'}</AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium truncate text-foreground">{displayName}</p>
-            <p className="text-xs text-muted-foreground truncate">
-              {user?.user_id}
-            </p>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{displayName}</div>
+            <div className="truncate text-xs text-muted-foreground">{user?.user_id}</div>
           </div>
-        </div>
+          <Badge variant="secondary" className="text-[10px]">{t('layout.online')}</Badge>
+        </button>
       </div>
 
-      {/* 主导航 */}
       <ScrollArea className="flex-1">
-        <nav className="p-4 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground px-3 mb-2">主菜单</p>
-          {mainNavItems.map(item => (
-            <Button
-              key={item.path}
-              variant={isActive(item.path) ? 'secondary' : 'ghost'}
-              className={cn(
-                'w-full justify-start gap-3',
-                isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15'
-              )}
-              onClick={() => handleNavigation(item.path)}
-            >
-              <item.icon size={18} />
-              {item.label}
+        <nav className="space-y-4 p-4">
+          <div className="space-y-1">
+            <div className="px-2 text-xs font-medium text-muted-foreground">{t('layout.mainMenu')}</div>
+            {mainNavItems.map((item) => (
+              <Button
+                key={item.path}
+                variant={isActive(item.path) ? 'secondary' : 'ghost'}
+                className={cn('w-full justify-start gap-2.5', isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15')}
+                onClick={() => handleNavigation(item.path)}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </Button>
+            ))}
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1">
+            <div className="px-2 text-xs font-medium text-muted-foreground">{t('layout.accountAndSystem')}</div>
+            <Button variant="ghost" className="w-full justify-start gap-2.5" onClick={handleOpenProfile}>
+              <User className="h-4 w-4" />{t('nav.profile')}
             </Button>
-          ))}
-
-          <Separator className="my-4" />
-
-          <p className="text-xs font-medium text-muted-foreground px-3 mb-2">账户设置</p>
-          
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3"
-            onClick={handleOpenProfile}
-          >
-            <User size={18} />
-            个人资料
-          </Button>
-          
-          {settingsNavItems.map(item => (
-            <Button
-              key={item.path}
-              variant={isActive(item.path) ? 'secondary' : 'ghost'}
-              className={cn(
-                'w-full justify-start gap-3',
-                isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15'
-              )}
-              onClick={() => handleNavigation(item.path)}
-            >
-              <item.icon size={18} />
-              {item.label}
-            </Button>
-          ))}
-
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3"
-            onClick={() => window.open(installUrl, '_blank', 'noopener,noreferrer')}
-          >
-            <Download size={18} />
-            安装 APP
-          </Button>
+            {settingsNavItems.map((item) => (
+              <Button
+                key={item.path}
+                variant={isActive(item.path) ? 'secondary' : 'ghost'}
+                className={cn('w-full justify-start gap-2.5', isActive(item.path) && 'bg-primary/10 text-primary hover:bg-primary/15')}
+                onClick={() => handleNavigation(item.path)}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </Button>
+            ))}
+          </div>
         </nav>
       </ScrollArea>
 
-      {/* 底部登出 */}
-      <div className="p-4 border-t border-border">
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
-          onClick={handleLogout}
-        >
-          <LogOut size={18} />
-          退出登录
+      <div className="border-t p-4 space-y-1.5">
+        <Button variant="ghost" className="w-full justify-start gap-2.5 text-muted-foreground hover:text-foreground" onClick={() => router.push(ROUTES.root)}>
+          <Globe className="h-4 w-4" />{t('layout.officialSite')}
+        </Button>
+        <Button variant="ghost" className="w-full justify-start gap-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleLogout}>
+          <LogOut className="h-4 w-4" />{t('layout.logout')}
         </Button>
       </div>
     </>
   )
 
+  if (isImmersiveRoute) {
+    return (
+      <div className="app-screen bg-transparent">
+        {children}
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-muted/50 flex">
-      {/* 桌面端侧边栏 */}
-      <aside className="w-64 bg-card border-r border-border flex-col fixed h-full z-10 hidden md:flex">
+    <div className="app-screen flex bg-transparent md:gap-3 md:p-3">
+      <aside className="fixed hidden md:inset-y-3 md:left-3 md:flex md:w-72 md:flex-col md:rounded-2xl md:border md:bg-card/95 md:shadow-sm md:backdrop-blur">
         <SidebarContent />
       </aside>
 
-      {/* 主内容区 */}
-      <div className="flex-1 md:ml-64 min-h-0 flex flex-col">
-        {/* 面包屑导航 */}
-        <header className="bg-card border-b border-border px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 sticky top-0 z-10 safe-area-inset-top">
-          <nav className="flex items-center gap-2 text-sm">
-            {/* 移动端菜单 */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-9 w-9 min-h-[44px] min-w-[44px] p-0 md:hidden touch-target">
-                  <Menu size={22} />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-[85vw] max-w-[320px] flex flex-col">
-                <SidebarContent />
-              </SheetContent>
-            </Sheet>
+      <div className="flex min-h-0 flex-1 flex-col md:ml-[18.75rem]">
+        <header className="mobile-top-safe sticky top-0 z-30 border-b bg-card/90 px-3 py-2.5 backdrop-blur sm:px-4 md:rounded-2xl md:border md:px-6">
+          <nav className="flex items-center justify-between gap-2 text-sm">
+            <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[88vw] max-w-[340px] p-0">
+                  <div className="flex h-full flex-col"><SidebarContent /></div>
+                </SheetContent>
+              </Sheet>
 
-            {breadcrumbs.map((crumb, index) => (
-              <div key={crumb.path} className="flex items-center gap-1">
-                {index > 0 && (
-                  <ChevronRight size={14} className="text-muted-foreground" />
-                )}
-                {index === 0 ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 gap-1"
-                    onClick={() => handleNavigation(crumb.path)}
-                  >
-                    <Home size={14} />
-                    <span className="hidden sm:inline">{crumb.label}</span>
-                  </Button>
-                ) : index === breadcrumbs.length - 1 ? (
-                  <span className="text-muted-foreground px-2">{crumb.label}</span>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={() => handleNavigation(crumb.path)}
-                  >
-                    {crumb.label}
-                  </Button>
-                )}
-              </div>
-            ))}
+              {breadcrumbs.map((crumb, index) => (
+                <div key={`${crumb.path}-${index}`} className="flex items-center gap-1">
+                  {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                  {index === 0 ? (
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={() => handleNavigation(crumb.path)}>
+                      <Home className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">{crumb.label}</span>
+                    </Button>
+                  ) : index === breadcrumbs.length - 1 ? (
+                    <span className="px-2 text-muted-foreground">{crumb.label}</span>
+                  ) : (
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleNavigation(crumb.path)}>
+                      {crumb.label}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+              onClick={() => router.push(ROUTES.root)}
+            >
+              <Globe className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('layout.officialSite')}</span>
+            </Button>
           </nav>
         </header>
 
-        <main className="flex-1 min-h-0 overflow-auto">{children}</main>
+        <main className="app-page-scroll min-h-0 flex-1 mobile-bottom-safe md:rounded-2xl md:border md:bg-card/35 md:shadow-sm">
+          {children}
+        </main>
       </div>
     </div>
   )

@@ -3,101 +3,79 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowRight, Check, Eye, EyeOff, Globe, Loader2, Lock, Mail, Smile, Sparkles, User, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
-import { 
-  ArrowRight, 
-  Check, 
-  Loader2, 
-  User, 
-  Lock, 
-  Mail, 
-  Smile,
-  Eye,
-  EyeOff,
-  Sparkles,
-  Zap,
-  Globe,
-  Heart,
-  X
-} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
+import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
+import { getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
 
+function parseServer(baseUrl: string): { protocol: 'https://' | 'http://'; host: string } {
+  try {
+    const normalized = normalizeApiBaseUrl(baseUrl)
+    const parsed = new URL(normalized)
+    return {
+      protocol: parsed.protocol === 'http:' ? 'http://' : 'https://',
+      host: parsed.host,
+    }
+  } catch {
+    return {
+      protocol: 'https://',
+      host: 'api.huanvae.cn',
+    }
+  }
+}
 
-// 密码强度指示器
-const PasswordStrengthIndicator = ({ password }: { password: string }) => {
+function PasswordStrengthIndicator({ password }: { password: string }) {
+  const { t } = useI18n()
   const strength = {
     length: password.length >= 8,
     hasLetter: /[a-zA-Z]/.test(password),
     hasNumber: /[0-9]/.test(password),
   }
   const score = Object.values(strength).filter(Boolean).length
-
   if (!password) return null
 
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      className="mt-2 p-3 rounded-lg bg-muted space-y-2"
-    >
-      <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">密码强度</span>
-        <span className={
-          score === 3 ? 'text-emerald-600 font-medium' : 
-          score === 2 ? 'text-amber-600 font-medium' : 'text-red-500 font-medium'
-        }>
-          {score === 3 ? '强' : score === 2 ? '中' : '弱'}
+    <div className="space-y-2 rounded-lg border bg-muted/50 p-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{t('common.passwordStrength')}</span>
+        <span className={score === 3 ? 'text-primary' : score === 2 ? 'text-muted-foreground' : 'text-destructive'}>
+          {score === 3 ? t('common.passwordStrong') : score === 2 ? t('common.passwordMedium') : t('common.passwordWeak')}
         </span>
       </div>
-      <Progress 
-        value={(score / 3) * 100} 
-        className={`h-1.5 ${
-          score === 3 ? '[&>div]:bg-emerald-500' : 
-          score === 2 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'
-        }`}
-      />
-      <div className="flex flex-wrap gap-3 text-xs">
-        <span className={`flex items-center gap-1 ${strength.length ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-          {strength.length ? <Check size={12} /> : <X size={12} />}
-          8+ 字符
-        </span>
-        <span className={`flex items-center gap-1 ${strength.hasLetter ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-          {strength.hasLetter ? <Check size={12} /> : <X size={12} />}
-          包含字母
-        </span>
-        <span className={`flex items-center gap-1 ${strength.hasNumber ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-          {strength.hasNumber ? <Check size={12} /> : <X size={12} />}
-          包含数字
-        </span>
+      <Progress value={(score / 3) * 100} className="h-1.5" />
+      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+        <span className={`inline-flex items-center gap-1 ${strength.length ? 'text-primary' : ''}`}>{strength.length ? <Check size={12} /> : <X size={12} />}{t('common.passwordRuleLength')}</span>
+        <span className={`inline-flex items-center gap-1 ${strength.hasLetter ? 'text-primary' : ''}`}>{strength.hasLetter ? <Check size={12} /> : <X size={12} />}{t('common.passwordRuleLetter')}</span>
+        <span className={`inline-flex items-center gap-1 ${strength.hasNumber ? 'text-primary' : ''}`}>{strength.hasNumber ? <Check size={12} /> : <X size={12} />}{t('common.passwordRuleNumber')}</span>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
 export default function Register() {
   const router = useRouter()
+  const { t } = useI18n()
   const register = useAuthStore((state) => state.register)
-  
-  const [formData, setFormData] = useState({
-    user_id: '',
-    nickname: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  })
+
+  const [formData, setFormData] = useState({ user_id: '', nickname: '', email: '', password: '', confirmPassword: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [agreeTerms, setAgreeTerms] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const initialServer = parseServer(getApiBaseUrl())
+  const [serverProtocol, setServerProtocol] = useState<'https://' | 'http://'>(initialServer.protocol)
+  const [serverHost, setServerHost] = useState(initialServer.host)
 
   useEffect(() => {
     setMounted(true)
@@ -116,19 +94,17 @@ export default function Register() {
     setError('')
 
     if (!agreeTerms) {
-      setError('请阅读并同意服务条款和隐私政策')
+      setError(t('auth.register.agreeTerms'))
       playError()
       return
     }
-
     if (formData.password !== formData.confirmPassword) {
-      setError('两次输入的密码不一致')
+      setError(t('common.passwordNotMatch'))
       playError()
       return
     }
-
     if (!passwordStrength.length || !passwordStrength.hasLetter || !passwordStrength.hasNumber) {
-      setError('密码必须至少8位，包含字母和数字')
+      setError(t('auth.register.passwordPlaceholder'))
       playError()
       return
     }
@@ -137,17 +113,12 @@ export default function Register() {
     playButton()
 
     try {
-      await register({
-        user_id: formData.user_id,
-        nickname: formData.nickname,
-        email: formData.email,
-        password: formData.password,
-      })
+      setApiBaseUrl(`${serverProtocol}${serverHost.trim()}`)
+      await register({ user_id: formData.user_id, nickname: formData.nickname, email: formData.email, password: formData.password })
       playSuccess()
-      router.push('/')
+      router.push(DEFAULT_AUTHENTICATED_ROUTE)
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : '注册失败，请稍后重试'
-      setError(errorMsg)
+      setError(err instanceof Error ? err.message : 'Register failed, please try again later')
       playError()
     } finally {
       setLoading(false)
@@ -157,264 +128,90 @@ export default function Register() {
   if (!mounted) return null
 
   return (
-    <div className="min-h-screen w-full flex">
-      {/* 左侧注册表单 */}
-      <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-background overflow-y-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-[440px] py-8"
-        >
-          {/* 移动端 Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">Huanvae Chat</h1>
-            <p className="text-muted-foreground mt-1">智能通讯平台</p>
-          </div>
-
-          <Card className="border-0 shadow-none bg-transparent">
-            <CardHeader className="px-0">
-              <CardTitle className="text-2xl">创建账户 ✨</CardTitle>
-              <CardDescription>加入我们，开启智能通讯之旅</CardDescription>
+    <div className="relative app-min-screen overflow-hidden bg-background/80">
+      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_35%),radial-gradient(circle_at_100%_0%,hsl(162_70%_42%/0.12),transparent_30%)]" />
+      <div className="relative z-10 mx-auto grid app-min-screen w-full max-w-6xl gap-6 p-4 md:grid-cols-2 md:p-8">
+        <div className="flex items-center justify-center">
+          <Card className="w-full max-w-md border-border/80 bg-card ">
+            <CardHeader>
+              <CardTitle className="text-2xl">{t('auth.register.title')}</CardTitle>
+              <CardDescription>{t('auth.register.description')}</CardDescription>
             </CardHeader>
-            <CardContent className="px-0">
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
-                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm overflow-hidden"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <CardContent>
+              {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="user_id">用户 ID</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="user_id"
-                      type="text"
-                      required
-                      minLength={3}
-                      value={formData.user_id}
-                      onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-                      placeholder="至少 3 个字符"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="nickname">昵称</Label>
-                  <div className="relative">
-                    <Smile className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="nickname"
-                      type="text"
-                      required
-                      value={formData.nickname}
-                      onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
-                      placeholder="您的显示名称"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">邮箱</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="your@email.com"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">密码</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      minLength={8}
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="至少 8 位，包含字母和数字"
-                      className="pl-10 pr-10"
-                    />
-                    <button
+                  <Label htmlFor="server_host">服务器</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      variant="outline"
+                      className="w-24 shrink-0 justify-center text-xs"
+                      onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                      {serverProtocol}
+                    </Button>
+                    <div className="relative flex-1">
+                      <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="server_host"
+                        required
+                        value={serverHost}
+                        onChange={(e) => setServerHost(e.target.value)}
+                        className="pl-9"
+                        placeholder="api.huanvae.cn"
+                      />
+                    </div>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('auth.register.userId')}</Label>
+                  <div className="relative"><User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required minLength={3} value={formData.user_id} onChange={(e) => setFormData({ ...formData, user_id: e.target.value })} className="pl-9" placeholder={t('auth.register.userIdPlaceholder')} /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('auth.register.nickname')}</Label>
+                  <div className="relative"><Smile className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required value={formData.nickname} onChange={(e) => setFormData({ ...formData, nickname: e.target.value })} className="pl-9" placeholder={t('auth.register.nicknamePlaceholder')} /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('auth.register.email')}</Label>
+                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="pl-9" placeholder={t('auth.register.emailPlaceholder')} /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('auth.register.password')}</Label>
+                  <div className="relative"><Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required minLength={8} type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.register.passwordPlaceholder')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
                   <PasswordStrengthIndicator password={formData.password} />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">确认密码</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="confirmPassword"
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      required
-                      value={formData.confirmPassword}
-                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                      placeholder="再次输入密码"
-                      className="pl-10 pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {formData.confirmPassword && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className={`text-xs flex items-center gap-1 mt-1 ${
-                        passwordMatch ? 'text-emerald-600' : 'text-destructive'
-                      }`}
-                    >
-                      {passwordMatch ? <Check size={14} /> : <X size={14} />}
-                      {passwordMatch ? '密码匹配' : '密码不匹配'}
-                    </motion.div>
-                  )}
+                  <Label>{t('auth.register.confirmPassword')}</Label>
+                  <div className="relative"><Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.register.confirmPasswordPlaceholder')} /><button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">{showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
+                  {formData.confirmPassword && <div className={`text-xs ${passwordMatch ? 'text-primary' : 'text-destructive'}`}>{passwordMatch ? t('common.passwordMatch') : t('common.passwordNotMatch')}</div>}
                 </div>
 
-                <div className="pt-1">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={agreeTerms}
-                      onChange={(e) => {
-                        setAgreeTerms(e.target.checked)
-                        playTap()
-                      }}
-                      className="w-4 h-4 mt-0.5 rounded border-input text-primary focus:ring-ring focus:ring-offset-0"
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      我已阅读并同意{' '}
-                      <a href="#" className="text-primary hover:underline">服务条款</a>
-                      {' '}和{' '}
-                      <a href="#" className="text-primary hover:underline">隐私政策</a>
-                    </span>
-                  </label>
-                </div>
+                <label className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Checkbox checked={agreeTerms} onCheckedChange={(v) => { setAgreeTerms(Boolean(v)); playTap() }} />
+                  <span>{t('auth.register.agreeTerms')}</span>
+                </label>
 
-                <Button type="submit" disabled={loading} className="w-full" size="lg">
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      注册中...
-                    </>
-                  ) : (
-                    <>
-                      创建账户
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                <Button type="submit" disabled={loading} className="w-full gap-1.5">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.register.submit')}<ArrowRight className="h-4 w-4" /></>}
                 </Button>
               </form>
 
-              <div className="flex items-center gap-4 my-6">
-                <Separator className="flex-1" />
-                <span className="text-muted-foreground text-sm">或</span>
-                <Separator className="flex-1" />
-              </div>
-
-              <div className="text-center">
-                <p className="text-muted-foreground mb-3 text-sm">已有账户？</p>
-                <Link href="/login">
-                  <Button variant="outline" className="w-full" size="lg">
-                    立即登录
-                  </Button>
-                </Link>
-              </div>
+              <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-xs text-muted-foreground">{t('common.or')}</span><Separator className="flex-1" /></div>
+              <Link href={ROUTES.auth.login}><Button variant="outline" className="w-full">{t('auth.register.toLogin')}</Button></Link>
             </CardContent>
           </Card>
-        </motion.div>
-      </div>
+        </div>
 
-      {/* 右侧品牌区域 */}
-      <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-slate-900" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent" />
-        
-        <div className="relative z-10 flex flex-col justify-center items-center px-12 xl:px-20 w-full">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
-          >
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-2xl shadow-blue-500/40 mx-auto mb-6">
-              <Sparkles className="w-10 h-10 text-white" />
-            </div>
-            <h1 className="text-5xl font-bold text-white mb-3">Huanvae</h1>
-            <p className="text-xl text-blue-200">开启全新通讯体验</p>
-          </motion.div>
-
-          <div className="flex flex-wrap justify-center gap-3 max-w-md">
-            {[
-              { icon: Zap, text: '即时通讯', delay: 0.2 },
-              { icon: Globe, text: '全球连接', delay: 0.3 },
-              { icon: Heart, text: '社区互动', delay: 0.4 },
-            ].map(({ icon: Icon, text, delay }) => (
-              <motion.div
-                key={text}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay, duration: 0.4 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20"
-              >
-                <Icon className="w-4 h-4 text-blue-300" />
-                <span className="text-sm text-white/90">{text}</span>
-              </motion.div>
-            ))}
+        <div className="hidden rounded-2xl border bg-card p-8  md:flex md:flex-col md:justify-between">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl border bg-muted text-primary"><Sparkles className="h-6 w-6" /></div>
+          <div className="space-y-4">
+            <h1 className="text-3xl font-semibold tracking-tight">{t('common.joinTitle')}</h1>
+            <p className="text-sm text-muted-foreground">{t('common.joinSubtitle')}</p>
           </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
-            className="mt-16 grid grid-cols-3 gap-8 text-center"
-          >
-            <div>
-              <div className="text-4xl font-bold text-white mb-1">10K+</div>
-              <div className="text-blue-300 text-sm">活跃用户</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold text-white mb-1">99.9%</div>
-              <div className="text-blue-300 text-sm">在线率</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold text-white mb-1">24/7</div>
-              <div className="text-blue-300 text-sm">全天候服务</div>
-            </div>
-          </motion.div>
+          <div className="text-xs text-muted-foreground">{t('common.joinFooter')}</div>
         </div>
       </div>
     </div>

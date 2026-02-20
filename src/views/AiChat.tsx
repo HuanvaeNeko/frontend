@@ -3,38 +3,45 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  ArrowLeft, 
-  Send, 
-  Settings,
-  User,
+import {
+  AlertCircle,
+  ArrowLeft,
   Bot,
-  Wand2,
-  Trash,
   Download,
   Loader2,
-  AlertCircle,
+  Send,
+  Settings,
   Sparkles,
-  X
+  Trash,
+  User,
+  Wand2,
+  X,
 } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { useApiConfigStore } from '../store/apiConfig'
 import { useAuthStore } from '../store/authStore'
 import { useToast } from '../hooks/use-toast'
-import { BackgroundOrbs } from '@/components/ui/glass'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { ROUTES } from '@/lib/routes'
 
 export default function AiChat() {
   const router = useRouter()
   const { toast } = useToast()
   const { accessToken } = useAuthStore()
   const apiConfigStore = useApiConfigStore()
-  
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
       content: '您好！我是 AI 聊天助手。有什么可以帮助您的吗？',
-      timestamp: Date.now()
-    }
+      timestamp: Date.now(),
+    },
   ])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -47,9 +54,7 @@ export default function AiChat() {
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       const container = messagesContainerRef.current
-      if (container) {
-        container.scrollTop = container.scrollHeight
-      }
+      if (container) container.scrollTop = container.scrollHeight
     })
   }
 
@@ -58,19 +63,15 @@ export default function AiChat() {
   }, [messages])
 
   const formatTime = (timestamp: number): string => {
-    return new Date(timestamp).toLocaleTimeString('zh-CN', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
     })
   }
 
-  // 发送消息到 AI API
   const sendToAI = async (userMessage: string): Promise<string> => {
-    const apiUrl = apiConfigStore.useCustomApi 
-      ? apiConfigStore.aiApiUrl 
-      : `${apiConfigStore.aiApiUrl}`
+    const apiUrl = apiConfigStore.useCustomApi ? apiConfigStore.aiApiUrl : `${apiConfigStore.aiApiUrl}`
 
-    // 创建 AbortController 用于取消请求
     abortControllerRef.current = new AbortController()
 
     try {
@@ -78,31 +79,16 @@ export default function AiChat() {
         'Content-Type': 'application/json',
       }
 
-      // 添加认证头
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+      if (apiConfigStore.useCustomApi && apiConfigStore.aiApiKey) headers['X-API-Key'] = apiConfigStore.aiApiKey
 
-      // 如果配置了 API Key
-      if (apiConfigStore.useCustomApi && apiConfigStore.aiApiKey) {
-        headers['X-API-Key'] = apiConfigStore.aiApiKey
-      }
-
-      // 构建消息历史
-      const messageHistory = messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }))
+      const messageHistory = messages.map((msg) => ({ role: msg.role, content: msg.content }))
       messageHistory.push({ role: 'user', content: userMessage })
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          messages: messageHistory,
-          message: userMessage,
-          stream: false,
-        }),
+        body: JSON.stringify({ messages: messageHistory, message: userMessage, stream: false }),
         signal: abortControllerRef.current.signal,
       })
 
@@ -112,10 +98,14 @@ export default function AiChat() {
       }
 
       const data = await response.json()
-      
-      // 支持多种响应格式
-      return data.content || data.message || data.response || data.reply || 
-             (data.choices?.[0]?.message?.content) || '收到您的消息，但我暂时无法回复。'
+      return (
+        data.content ||
+        data.message ||
+        data.response ||
+        data.reply ||
+        data.choices?.[0]?.message?.content ||
+        '收到您的消息，但我暂时无法回复。'
+      )
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error('请求已取消', { cause: err })
@@ -130,10 +120,10 @@ export default function AiChat() {
     const userMessage: ChatMessage = {
       role: 'user',
       content: inputMessage,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }
 
-    setMessages(prev => [...prev, userMessage])
+    setMessages((prev) => [...prev, userMessage])
     const currentInput = inputMessage
     setInputMessage('')
     setIsLoading(true)
@@ -141,30 +131,23 @@ export default function AiChat() {
 
     try {
       const aiResponse = await sendToAI(currentInput)
-      
-      const aiMessage: ChatMessage = {
-        role: 'assistant',
-        content: aiResponse,
-        timestamp: Date.now()
-      }
-      setMessages(prev => [...prev, aiMessage])
+      setMessages((prev) => [...prev, { role: 'assistant', content: aiResponse, timestamp: Date.now() }])
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '发送失败，请稍后重试'
       setError(errorMessage)
-      
-      // 添加错误消息
-      const errorAiMessage: ChatMessage = {
-        role: 'assistant',
-        content: `抱歉，发生了错误：${errorMessage}\n\n您可以尝试：\n1. 检查网络连接\n2. 在设置中配置正确的 API 地址\n3. 稍后重试`,
-        timestamp: Date.now()
-      }
-      setMessages(prev => [...prev, errorAiMessage])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `抱歉，发生了错误：${errorMessage}\n\n您可以尝试：\n1. 检查网络连接\n2. 在设置中配置正确的 API 地址\n3. 稍后重试`,
+          timestamp: Date.now(),
+        },
+      ])
     } finally {
       setIsLoading(false)
     }
   }
 
-  // 取消正在进行的请求
   const cancelRequest = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -174,22 +157,25 @@ export default function AiChat() {
 
   const clearChat = () => {
     if (confirm('确定要清空聊天记录吗？')) {
-      setMessages([{
-        role: 'assistant',
-        content: '聊天记录已清空。有什么可以帮助您的吗？',
-        timestamp: Date.now()
-      }])
+      setMessages([
+        {
+          role: 'assistant',
+          content: '聊天记录已清空。有什么可以帮助您的吗？',
+          timestamp: Date.now(),
+        },
+      ])
       setError(null)
     }
   }
 
-  // 导出聊天记录
   const exportChat = () => {
-    const chatContent = messages.map(msg => {
-      const role = msg.role === 'user' ? '我' : 'AI'
-      const time = formatTime(msg.timestamp)
-      return `[${time}] ${role}: ${msg.content}`
-    }).join('\n\n')
+    const chatContent = messages
+      .map((msg) => {
+        const role = msg.role === 'user' ? '我' : 'AI'
+        const time = formatTime(msg.timestamp)
+        return `[${time}] ${role}: ${msg.content}`
+      })
+      .join('\n\n')
 
     const blob = new Blob([chatContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -201,10 +187,7 @@ export default function AiChat() {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    toast({
-      title: '导出成功',
-      description: '聊天记录已保存',
-    })
+    toast({ title: '导出成功', description: '聊天记录已保存' })
   }
 
   const quickPrompts = [
@@ -215,288 +198,179 @@ export default function AiChat() {
   ]
 
   return (
-    <div className="w-full h-full flex flex-col relative overflow-hidden bg-gradient-to-br from-blue-100 via-blue-50 via-25% via-white via-50% via-purple-50 via-75% to-purple-100">
-      {/* 背景装饰球 */}
-      <BackgroundOrbs count={3} />
-
-      {/* 顶部导航栏 */}
-      <header className="sticky top-0 z-50 shrink-0 flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 bg-white/70 backdrop-blur-xl border-b border-blue-200/30 safe-area-inset-top">
-        <div className="flex items-center gap-3">
-          <motion.button 
-            className="w-9 h-9 rounded-[10px] bg-white/60 border border-blue-200/30 flex items-center justify-center cursor-pointer text-slate-600 transition-all hover:bg-white/90 hover:-translate-x-0.5"
-            onClick={() => router.push('/chat')}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <ArrowLeft size={20} />
-          </motion.button>
-          <div className="w-11 h-11 rounded-[14px] bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-            <Bot size={24} />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold text-slate-800">AI 聊天助手</h1>
-            <span className="flex items-center gap-1 text-xs text-emerald-500">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-              在线
-            </span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button 
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] bg-white/50 border border-blue-200/30 cursor-pointer text-sm text-slate-600 transition-all hover:bg-white/90 hover:border-blue-500/50 hover:text-blue-500"
-            onClick={exportChat}
-            title="导出聊天"
-          >
-            <Download size={18} />
-            <span className="hidden sm:inline">导出</span>
-          </button>
-          <button 
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] bg-white/50 border border-blue-200/30 cursor-pointer text-sm text-slate-600 transition-all hover:bg-white/90 hover:border-blue-500/50 hover:text-blue-500"
-            onClick={clearChat}
-            title="清空聊天"
-          >
-            <Trash size={18} />
-            <span className="hidden sm:inline">清空</span>
-          </button>
-          <button 
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] bg-white/50 border border-blue-200/30 cursor-pointer text-sm text-slate-600 transition-all hover:bg-white/90 hover:border-blue-500/50 hover:text-blue-500"
-            onClick={() => setShowSettings(true)}
-            title="设置"
-          >
-            <Settings size={18} />
-            <span className="hidden sm:inline">设置</span>
-          </button>
-        </div>
-      </header>
-
-      {/* 错误提示 */}
-      <AnimatePresence>
-        {error && (
-          <motion.div 
-            className="sticky top-[65px] z-40 mx-5 my-3 px-4 py-3 bg-red-100/90 backdrop-blur-lg border border-red-300 rounded-xl flex items-center gap-2.5 text-red-600 text-sm"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-          >
-            <AlertCircle size={16} />
-            <span>{error}</span>
-            <button 
-              className="ml-auto p-1 bg-transparent border-none cursor-pointer text-red-600 opacity-70 hover:opacity-100"
-              onClick={() => setError(null)}
-            >
-              <X size={14} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 聊天消息区域 */}
-      <main ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-5 pt-20 flex flex-col gap-4 z-[1]">
-        <AnimatePresence>
-          {messages.map((message, index) => (
-            <motion.div
-              key={index}
-              className={`flex gap-3 max-w-[85%] ${message.role === 'user' ? 'flex-row-reverse ml-auto' : ''}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                message.role === 'user' 
-                  ? 'bg-gradient-to-br from-blue-500 to-blue-400 text-white' 
-                  : 'bg-gradient-to-br from-purple-500 to-purple-400 text-white'
-              }`}>
-                {message.role === 'user' ? <User size={18} /> : <Sparkles size={18} />}
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className={`flex items-center gap-1.5 text-xs text-slate-500 ${message.role === 'user' ? 'justify-end' : ''}`}>
-                  {message.role === 'assistant' && <Wand2 size={12} className="text-purple-500" />}
-                  <span className="font-medium text-slate-600">
-                    {message.role === 'user' ? '我' : 'AI 助手'}
-                  </span>
-                  <time>{formatTime(message.timestamp)}</time>
+    <div className="relative h-full overflow-hidden">
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col p-3 md:p-5">
+        <Card className="flex h-full flex-col overflow-hidden border-border/80">
+          <CardHeader className="space-y-3 border-b pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted text-primary">
+                  <Bot className="h-5 w-5" />
                 </div>
-                <div className={`py-3.5 px-4 rounded-2xl max-w-full shadow-sm ${
-                  message.role === 'user'
-                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-[6px] shadow-lg shadow-blue-500/30'
-                    : 'bg-white/[0.88] backdrop-blur-xl border-[1.5px] border-white/90 rounded-bl-[6px] text-slate-800 shadow-blue-200/10'
-                }`}>
-                  <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-          
-        {/* 加载状态 */}
-        {isLoading && (
-          <motion.div 
-            className="flex gap-3 max-w-[85%]"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br from-purple-500 to-purple-400 text-white">
-              <Sparkles size={18} className="animate-pulse" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Wand2 size={12} className="text-purple-500" />
-                <span className="font-medium text-slate-600">AI 助手</span>
-              </div>
-              <div className="py-3.5 px-4 rounded-2xl bg-white/[0.88] backdrop-blur-xl border-[1.5px] border-white/90 rounded-bl-[6px] flex items-center gap-2 text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>思考中...</span>
-                <button 
-                  onClick={cancelRequest} 
-                  className="ml-2 text-xs text-red-500 bg-transparent border-none cursor-pointer hover:underline"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-        <div ref={messagesEndRef} />
-      </main>
-
-      {/* 输入区域 */}
-      <footer className="shrink-0 z-50 px-6 pt-5 pb-6 bg-gradient-to-t from-white/[0.85] to-white/75 backdrop-blur-2xl border-t border-blue-200/20 shadow-[0_-4px_20px_rgba(147,197,253,0.08)]">
-        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-3 max-w-[800px] mx-auto">
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="输入您的问题..."
-              disabled={isLoading}
-              maxLength={2000}
-              className="w-full py-3.5 pl-4 pr-20 rounded-[14px] border border-blue-200/40 bg-white/70 text-[15px] outline-none transition-all focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] focus:bg-white disabled:bg-slate-100/80 disabled:cursor-not-allowed"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-              {inputMessage.length}/2000
-            </span>
-          </div>
-          <motion.button
-            type="submit"
-            disabled={!inputMessage.trim() || isLoading}
-            className="flex items-center gap-2 px-6 py-3.5 rounded-[14px] bg-gradient-to-br from-blue-500 to-blue-400 text-white border-none cursor-pointer text-[15px] font-medium transition-all shadow-lg shadow-blue-500/30 hover:enabled:-translate-y-0.5 hover:enabled:shadow-xl hover:enabled:shadow-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            whileHover={{ scale: isLoading ? 1 : 1.02 }}
-            whileTap={{ scale: isLoading ? 1 : 0.98 }}
-          >
-            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send size={18} />}
-            <span>发送</span>
-          </motion.button>
-        </form>
-          
-        {/* 快捷提示 */}
-        <div className="flex flex-wrap gap-2.5 mt-3.5 max-w-[800px] mx-auto">
-          {quickPrompts.map((prompt, index) => (
-            <motion.button 
-              key={index}
-              onClick={() => setInputMessage(prompt.text)}
-              disabled={isLoading}
-              className="py-2.5 px-4 rounded-full bg-white/75 border-[1.5px] border-blue-200/35 text-[13px] font-medium text-slate-600 cursor-pointer transition-all shadow-sm hover:enabled:bg-white hover:enabled:border-blue-500 hover:enabled:text-blue-500 hover:enabled:-translate-y-0.5 hover:enabled:shadow-md hover:enabled:shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              whileHover={{ scale: isLoading ? 1 : 1.02 }}
-              whileTap={{ scale: isLoading ? 1 : 0.98 }}
-            >
-              {prompt.label}
-            </motion.button>
-          ))}
-        </div>
-      </footer>
-
-      {/* API 设置对话框 */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div 
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-5"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowSettings(false)}
-          >
-            <motion.div 
-              className="w-full max-w-[480px] bg-white/95 backdrop-blur-xl rounded-[20px] shadow-2xl overflow-hidden"
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-6 py-5 border-b border-blue-200/30">
-                <div className="flex items-center gap-2.5 text-lg font-semibold text-slate-800">
-                  <Settings size={20} className="text-blue-500" />
-                  <span>API 配置</span>
-                </div>
-                <button 
-                  onClick={() => setShowSettings(false)} 
-                  className="w-8 h-8 rounded-lg bg-slate-100/80 border-none flex items-center justify-center cursor-pointer text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              
-              <div className="px-6 py-5 flex flex-col gap-4">
-                <div className="flex items-center justify-between py-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium text-slate-800">使用自定义 API</span>
-                    <span className="text-xs text-slate-500">启用后可配置自己的 AI 服务</span>
+                <div>
+                  <CardTitle className="text-lg">AI 聊天助手</CardTitle>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="h-5 px-2">在线</Badge>
+                    <span>上下文对话模式</span>
                   </div>
-                  <label className="relative inline-block w-11 h-6">
-                    <input
-                      type="checkbox"
-                      checked={apiConfigStore.useCustomApi}
-                      onChange={(e) => apiConfigStore.setApiConfig({ useCustomApi: e.target.checked })}
-                      className="opacity-0 w-0 h-0 peer"
-                    />
-                    <span className="absolute cursor-pointer inset-0 bg-slate-300 transition-all rounded-full peer-checked:bg-gradient-to-r peer-checked:from-blue-500 peer-checked:to-blue-400 before:content-[''] before:absolute before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:transition-all before:rounded-full before:shadow-md peer-checked:before:translate-x-5"></span>
-                  </label>
-                </div>
-
-                <div className="h-px bg-blue-200/30"></div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-600">AI API URL</label>
-                  <input
-                    type="text"
-                    value={apiConfigStore.aiApiUrl}
-                    onChange={(e) => apiConfigStore.setApiConfig({ aiApiUrl: e.target.value })}
-                    placeholder="https://api.huanvae.cn/api/chat"
-                    disabled={!apiConfigStore.useCustomApi}
-                    className="py-2.5 px-3.5 rounded-[10px] border border-blue-200/40 bg-white/80 text-sm outline-none transition-all focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] disabled:bg-slate-100 disabled:text-slate-400"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-600">AI API Key</label>
-                  <input
-                    type="password"
-                    value={apiConfigStore.aiApiKey}
-                    onChange={(e) => apiConfigStore.setApiConfig({ aiApiKey: e.target.value })}
-                    placeholder="输入 API Key（可选）"
-                    disabled={!apiConfigStore.useCustomApi}
-                    className="py-2.5 px-3.5 rounded-[10px] border border-blue-200/40 bg-white/80 text-sm outline-none transition-all focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)] disabled:bg-slate-100 disabled:text-slate-400"
-                  />
                 </div>
               </div>
 
-              <div className="flex gap-3 px-6 py-4 border-t border-blue-200/30">
-                <button
-                  onClick={() => apiConfigStore.resetToDefault()}
-                  className="flex-1 py-3 rounded-xl border border-blue-200/40 bg-white text-slate-600 cursor-pointer transition-all hover:bg-slate-50"
-                >
-                  重置
-                </button>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="flex-1 py-3 rounded-xl border-none bg-gradient-to-r from-blue-500 to-blue-400 text-white cursor-pointer font-medium transition-all hover:-translate-y-px hover:shadow-lg hover:shadow-blue-500/30"
-                >
-                  完成
-                </button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={exportChat} className="gap-1.5"><Download className="h-4 w-4" />导出</Button>
+                <Button variant="outline" size="sm" onClick={clearChat} className="gap-1.5"><Trash className="h-4 w-4" />清空</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5"><Settings className="h-4 w-4" />设置</Button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          </CardHeader>
+
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3 md:p-4">
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="flex-1">{error}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setError(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div ref={messagesContainerRef} className="flex-1 space-y-4 overflow-y-auto rounded-xl border bg-muted/30 p-3 md:p-4">
+              {messages.map((message, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex gap-2.5 ${message.role === 'user' ? 'justify-end' : ''}`}
+                >
+                  {message.role !== 'user' && (
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-card text-primary">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                  )}
+
+                  <div className={`max-w-[88%] space-y-1 ${message.role === 'user' ? 'items-end' : ''}`}>
+                    <div className={`flex items-center gap-1.5 text-[11px] text-muted-foreground ${message.role === 'user' ? 'justify-end' : ''}`}>
+                      {message.role === 'assistant' ? <Wand2 className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                      <span>{message.role === 'user' ? '我' : 'AI 助手'}</span>
+                      <span>{formatTime(message.timestamp)}</span>
+                    </div>
+                    <div className={`rounded-xl border px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${message.role === 'user' ? 'bg-primary text-primary-foreground border-primary/30' : 'bg-card'}`}>
+                      {message.content}
+                    </div>
+                  </div>
+
+                  {message.role === 'user' && (
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-card text-muted-foreground">
+                      <User className="h-4 w-4" />
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+
+              {isLoading && (
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border bg-card text-primary">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    思考中...
+                    <Button variant="ghost" size="sm" onClick={cancelRequest} className="h-6 px-2 text-xs text-destructive">取消</Button>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); sendMessage() }} className="space-y-3">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    placeholder="输入你的问题..."
+                    disabled={isLoading}
+                    maxLength={2000}
+                    className="pr-16"
+                  />
+                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+                    {inputMessage.length}/2000
+                  </span>
+                </div>
+                <Button type="submit" disabled={!inputMessage.trim() || isLoading} className="gap-1.5">
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  发送
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {quickPrompts.map((prompt) => (
+                  <Button key={prompt.label} type="button" variant="outline" size="sm" disabled={isLoading} onClick={() => setInputMessage(prompt.text)}>
+                    {prompt.label}
+                  </Button>
+                ))}
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>API 配置</DialogTitle>
+            <DialogDescription>配置 AI 接口地址和密钥</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <div className="text-sm font-medium">使用自定义 API</div>
+                <div className="text-xs text-muted-foreground">启用后使用你配置的接口</div>
+              </div>
+              <Switch checked={apiConfigStore.useCustomApi} onCheckedChange={(checked) => apiConfigStore.setApiConfig({ useCustomApi: checked })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>AI API URL</Label>
+              <Input
+                type="text"
+                value={apiConfigStore.aiApiUrl}
+                onChange={(e) => apiConfigStore.setApiConfig({ aiApiUrl: e.target.value })}
+                placeholder="https://api.huanvae.cn/api/chat"
+                disabled={!apiConfigStore.useCustomApi}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>AI API Key</Label>
+              <Input
+                type="password"
+                value={apiConfigStore.aiApiKey}
+                onChange={(e) => apiConfigStore.setApiConfig({ aiApiKey: e.target.value })}
+                placeholder="输入 API Key（可选）"
+                disabled={!apiConfigStore.useCustomApi}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => apiConfigStore.resetToDefault()}>重置</Button>
+            <Button onClick={() => setShowSettings(false)}>完成</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

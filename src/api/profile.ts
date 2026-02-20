@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { useAuthStore } from '../store/authStore'
+import { ROUTES } from '@/lib/routes'
 
 const PROFILE_BASE_URL = `${getApiBaseUrl()}/api/profile`
 
@@ -53,7 +54,7 @@ const fetchWithAuth = async (
     } catch (error) {
       console.error('Token refresh failed, redirecting to login')
       authStore.clearAuth()
-      window.location.href = '/login'
+      window.location.href = ROUTES.auth.login
       throw error
     }
   }

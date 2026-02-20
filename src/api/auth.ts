@@ -1,7 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 import { getAuthApiUrl } from '../lib/apiConfig'
-
-const AUTH_BASE_URL = getAuthApiUrl()
+import { ROUTES } from '@/lib/routes'
 
 // 获取认证头
 const getAuthHeaders = (): HeadersInit => {
@@ -53,7 +52,7 @@ const fetchWithAuth = async (
     } catch (error) {
       console.error('Token refresh failed, redirecting to login')
       authStore.clearAuth()
-      window.location.href = '/login'
+      window.location.href = ROUTES.auth.login
       throw error
     }
   }
@@ -78,6 +77,7 @@ export interface GetDevicesResponse {
 export const authApi = {
   // 登录
   login: async (credentials: { user_id: string; password: string; device_info?: string; mac_address?: string }) => {
+    const authBaseUrl = getAuthApiUrl()
     const requestBody = {
       user_id: credentials.user_id,  // 使用下划线，不是连字符
       password: credentials.password,
@@ -87,7 +87,7 @@ export const authApi = {
     
     console.log('登录请求:', { ...requestBody, password: '***' })
     
-    const response = await fetch(`${AUTH_BASE_URL}/login`, {
+    const response = await fetch(`${authBaseUrl}/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -115,6 +115,7 @@ export const authApi = {
 
   // 注册
   register: async (data: { user_id: string; nickname: string; email: string; password: string }) => {
+    const authBaseUrl = getAuthApiUrl()
     const requestBody = {
       user_id: data.user_id,  // 使用下划线，不是连字符
       nickname: data.nickname,
@@ -124,7 +125,7 @@ export const authApi = {
     
     console.log('注册请求:', requestBody)
     
-    const response = await fetch(`${AUTH_BASE_URL}/register`, {
+    const response = await fetch(`${authBaseUrl}/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -152,7 +153,8 @@ export const authApi = {
 
   // 刷新 Token
   refreshToken: async (refreshToken: string) => {
-    const response = await fetch(`${AUTH_BASE_URL}/refresh`, {
+    const authBaseUrl = getAuthApiUrl()
+    const response = await fetch(`${authBaseUrl}/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -169,7 +171,8 @@ export const authApi = {
 
   // 登出
   logout: async () => {
-    const response = await fetchWithAuth(`${AUTH_BASE_URL}/logout`, {
+    const authBaseUrl = getAuthApiUrl()
+    const response = await fetchWithAuth(`${authBaseUrl}/logout`, {
       method: 'POST',
     })
 
@@ -183,7 +186,8 @@ export const authApi = {
   // 获取设备列表
   // GET /api/auth/devices，响应 { devices: DeviceInfo[] }
   getDevices: async (): Promise<GetDevicesResponse> => {
-    const response = await fetchWithAuth(`${AUTH_BASE_URL}/devices`, {
+    const authBaseUrl = getAuthApiUrl()
+    const response = await fetchWithAuth(`${authBaseUrl}/devices`, {
       method: 'GET',
     })
 
@@ -201,7 +205,8 @@ export const authApi = {
   // 撤销设备
   // DELETE /api/auth/devices/{device_id}
   revokeDevice: async (deviceId: string): Promise<void> => {
-    const response = await fetchWithAuth(`${AUTH_BASE_URL}/devices/${deviceId}`, {
+    const authBaseUrl = getAuthApiUrl()
+    const response = await fetchWithAuth(`${authBaseUrl}/devices/${deviceId}`, {
       method: 'DELETE',
     })
 

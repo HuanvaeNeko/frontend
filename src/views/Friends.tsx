@@ -2,41 +2,46 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  ArrowLeft, 
-  Users, 
-  UserPlus, 
-  UserMinus, 
+import { motion } from 'framer-motion'
+import {
+  ArrowLeft,
+  Users,
+  UserPlus,
+  UserMinus,
   Loader2,
   Search,
   MessageCircle,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
-  Clock
+  Clock,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { GlassPage, GlassCard, GlassButton, GlassInput, GlassBadge } from '@/components/ui/glass'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useFriendsStore } from '../store/friendsStore'
 import { useToast } from '@/hooks/use-toast'
+import { ROUTES } from '@/lib/routes'
 
 export default function Friends() {
   const router = useRouter()
   const { toast } = useToast()
-  const { 
-    friends, 
-    pendingRequests, 
+  const {
+    friends,
+    pendingRequests,
     sentRequests,
     isLoading,
-    loadFriends, 
+    loadFriends,
     loadPendingRequests,
     loadSentRequests,
-    sendFriendRequest, 
-    approveFriendRequest, 
-    rejectFriendRequest, 
+    sendFriendRequest,
+    approveFriendRequest,
+    rejectFriendRequest,
     removeFriend,
   } = useFriendsStore()
-  
+
   const [searchTerm, setSearchTerm] = useState('')
   const [newFriendId, setNewFriendId] = useState('')
   const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'sent'>('friends')
@@ -58,10 +63,10 @@ export default function Friends() {
       toast({ title: '好友请求已发送', description: '等待对方确认' })
       setNewFriendId('')
     } catch (error) {
-      toast({ 
-        title: '发送失败', 
+      toast({
+        title: '发送失败',
         description: error instanceof Error ? error.message : '请稍后重试',
-        variant: 'destructive' 
+        variant: 'destructive',
       })
     }
   }
@@ -72,10 +77,10 @@ export default function Friends() {
       await approveFriendRequest(applicantUserId)
       toast({ title: '已添加好友' })
     } catch (error) {
-      toast({ 
-        title: '操作失败', 
+      toast({
+        title: '操作失败',
         description: error instanceof Error ? error.message : '请稍后重试',
-        variant: 'destructive' 
+        variant: 'destructive',
       })
     } finally {
       setProcessingId(null)
@@ -88,10 +93,10 @@ export default function Friends() {
       await rejectFriendRequest(applicantUserId)
       toast({ title: '已拒绝请求' })
     } catch (error) {
-      toast({ 
+      toast({
         title: '操作失败',
         description: error instanceof Error ? error.message : '请稍后重试',
-        variant: 'destructive' 
+        variant: 'destructive',
       })
     } finally {
       setProcessingId(null)
@@ -105,323 +110,189 @@ export default function Friends() {
       await removeFriend(friendUserId)
       toast({ title: '已删除好友' })
     } catch (error) {
-      toast({ 
+      toast({
         title: '删除失败',
         description: error instanceof Error ? error.message : '请稍后重试',
-        variant: 'destructive' 
+        variant: 'destructive',
       })
     } finally {
       setProcessingId(null)
     }
   }
 
-  const filteredFriends = friends.filter(friend =>
+  const filteredFriends = friends.filter((friend) =>
     friend.nickname.toLowerCase().includes(searchTerm.toLowerCase()) ||
     friend.user_id.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const tabs = [
-    { id: 'friends' as const, label: '我的好友', count: friends.length, icon: Users },
-    { id: 'requests' as const, label: '好友请求', count: pendingRequests.length, icon: MessageCircle },
-    { id: 'sent' as const, label: '已发送', count: sentRequests.length, icon: Clock },
-  ]
-
   return (
-    <GlassPage orbCount={4}>
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* 顶部导航 */}
+    <div className="relative h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="flex items-center justify-between"
         >
-          <GlassButton variant="ghost" onClick={() => router.push('/chat')}>
-            <ArrowLeft size={18} />
-            返回聊天
-          </GlassButton>
-        </motion.div>
-
-        {/* 页面标题 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8 flex items-center gap-4"
-        >
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/30">
-            <Users size={28} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-              好友管理
-            </h1>
-            <p className="text-gray-500">管理您的好友关系</p>
-          </div>
-        </motion.div>
-
-        {/* 添加好友 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-6"
-        >
-          <GlassCard className="p-4">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <GlassInput
-                  placeholder="输入用户ID添加好友"
-                  value={newFriendId}
-                  onChange={(e) => setNewFriendId(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddFriend()}
-                  icon={<UserPlus size={18} />}
-                  disabled={isLoading}
-                />
-              </div>
-              <GlassButton onClick={handleAddFriend} loading={isLoading}>
-                发送请求
-              </GlassButton>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">好友管理</h1>
+              <p className="text-sm text-muted-foreground">管理联系人与请求</p>
             </div>
-          </GlassCard>
-        </motion.div>
-
-        {/* 标签切换 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-6"
-        >
-          <div className="flex gap-2 p-1 bg-white/40 backdrop-blur-lg rounded-xl border border-white/50">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? 'bg-white shadow-md text-blue-600'
-                    : 'text-gray-600 hover:bg-white/50'
-                }`}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-                {tab.count > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${
-                    activeTab === tab.id 
-                      ? 'bg-blue-100 text-blue-600' 
-                      : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
           </div>
+          <Badge variant="secondary" className="gap-1.5"><Users className="h-3.5 w-3.5" />{friends.length} 位好友</Badge>
         </motion.div>
 
-        {/* 好友列表 */}
-        <AnimatePresence mode="wait">
-          {activeTab === 'friends' && (
-            <motion.div
-              key="friends"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              {/* 搜索框 */}
-              <GlassCard className="mb-4 p-4">
-                <GlassInput
-                  placeholder="搜索好友..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  icon={<Search size={18} />}
-                />
-              </GlassCard>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">添加好友</CardTitle>
+            <CardDescription>输入用户 ID 发送好友请求</CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-2 max-sm:flex-col">
+            <Input
+              placeholder="例如: user_1234"
+              value={newFriendId}
+              onChange={(e) => setNewFriendId(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddFriend()}
+              disabled={isLoading}
+            />
+            <Button onClick={handleAddFriend} disabled={isLoading} className="gap-2">
+              <UserPlus className="h-4 w-4" />发送请求
+            </Button>
+          </CardContent>
+        </Card>
 
-              <GlassCard>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'friends' | 'requests' | 'sent')}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="friends" className="gap-1.5">好友 ({friends.length})</TabsTrigger>
+            <TabsTrigger value="requests" className="gap-1.5">请求 ({pendingRequests.length})</TabsTrigger>
+            <TabsTrigger value="sent" className="gap-1.5">已发送 ({sentRequests.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="friends" className="space-y-3">
+            <Card>
+              <CardContent className="pt-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="搜索昵称或用户 ID"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-3">
                 {isLoading && friends.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 size={40} className="animate-spin text-blue-500 mb-4" />
-                    <p className="text-gray-500">加载中...</p>
-                  </div>
+                  <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : filteredFriends.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                    <Users size={48} className="mb-4 opacity-50" />
-                    <p>{searchTerm ? '未找到匹配的好友' : '暂无好友'}</p>
-                    <p className="text-sm mt-1">发送好友请求添加新朋友</p>
+                  <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <Users className="h-8 w-8" />
+                    <span>{searchTerm ? '未找到匹配好友' : '暂无好友'}</span>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100/50">
-                    {filteredFriends.map((friend, index) => (
-                      <motion.div
-                        key={friend.user_id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="flex items-center justify-between p-4 hover:bg-white/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-12 w-12 ring-2 ring-white shadow-md">
+                  <div className="divide-y">
+                    {filteredFriends.map((friend) => (
+                      <div key={friend.user_id} className="flex items-center justify-between gap-3 py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Avatar className="h-10 w-10">
                             <AvatarImage src={friend.avatar_url} />
-                            <AvatarFallback className="bg-gradient-to-br from-green-400 to-emerald-500 text-white font-medium">
-                              {friend.nickname[0]?.toUpperCase()}
-                            </AvatarFallback>
+                            <AvatarFallback>{friend.nickname[0]?.toUpperCase()}</AvatarFallback>
                           </Avatar>
-                          <div>
-                            <p className="font-semibold text-gray-800">{friend.nickname}</p>
-                            <p className="text-sm text-gray-500">ID: {friend.user_id}</p>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{friend.nickname}</div>
+                            <div className="truncate text-xs text-muted-foreground">{friend.user_id}</div>
                           </div>
                         </div>
-                        <GlassButton
-                          variant="danger"
+                        <Button
+                          variant="destructive"
                           size="sm"
                           onClick={() => handleRemoveFriend(friend.user_id, friend.nickname)}
-                          loading={processingId === friend.user_id}
+                          disabled={processingId === friend.user_id}
+                          className="gap-1.5"
                         >
-                          <UserMinus size={16} />
+                          {processingId === friend.user_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserMinus className="h-3.5 w-3.5" />}
                           删除
-                        </GlassButton>
-                      </motion.div>
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 )}
-              </GlassCard>
-            </motion.div>
-          )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {activeTab === 'requests' && (
-            <motion.div
-              key="requests"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <GlassCard>
+          <TabsContent value="requests">
+            <Card>
+              <CardContent className="pt-3">
                 {isLoading && pendingRequests.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 size={40} className="animate-spin text-blue-500 mb-4" />
-                    <p className="text-gray-500">加载中...</p>
-                  </div>
+                  <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : pendingRequests.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                    <MessageCircle size={48} className="mb-4 opacity-50" />
-                    <p>暂无好友请求</p>
+                  <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <MessageCircle className="h-8 w-8" />
+                    <span>暂无好友请求</span>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100/50">
-                    {pendingRequests.map((request, index) => (
-                      <motion.div
-                        key={request.applicant_user_id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="p-4"
-                      >
-                        <div className="flex items-start gap-4">
-                          <Avatar className="h-12 w-12 ring-2 ring-white shadow-md">
-                            <AvatarFallback className="bg-gradient-to-br from-purple-400 to-pink-500 text-white font-medium">
-                              {request.nickname[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <p className="font-semibold text-gray-800">{request.nickname}</p>
-                            <p className="text-sm text-gray-500">ID: {request.applicant_user_id}</p>
-                            {request.reason && (
-                              <p className="text-sm text-gray-600 mt-1 bg-gray-50/50 rounded-lg px-3 py-2">
-                                "{request.reason}"
-                              </p>
-                            )}
-                            <div className="flex gap-2 mt-3">
-                              <GlassButton
-                                size="sm"
-                                onClick={() => handleAcceptRequest(request.applicant_user_id)}
-                                loading={processingId === request.applicant_user_id}
-                              >
-                                <CheckCircle size={16} />
-                                接受
-                              </GlassButton>
-                              <GlassButton
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleRejectRequest(request.applicant_user_id)}
-                                disabled={processingId === request.applicant_user_id}
-                              >
-                                <XCircle size={16} />
-                                拒绝
-                              </GlassButton>
-                            </div>
-                          </div>
+                  <div className="divide-y">
+                    {pendingRequests.map((request) => (
+                      <div key={request.applicant_user_id} className="flex items-start justify-between gap-3 py-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="font-medium">{request.nickname}</div>
+                          <div className="text-xs text-muted-foreground">{request.applicant_user_id}</div>
+                          {request.reason && <div className="text-xs text-muted-foreground">“{request.reason}”</div>}
                         </div>
-                      </motion.div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => handleAcceptRequest(request.applicant_user_id)} disabled={processingId === request.applicant_user_id} className="gap-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5" />接受
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleRejectRequest(request.applicant_user_id)} disabled={processingId === request.applicant_user_id} className="gap-1.5">
+                            <XCircle className="h-3.5 w-3.5" />拒绝
+                          </Button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
-              </GlassCard>
-            </motion.div>
-          )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {activeTab === 'sent' && (
-            <motion.div
-              key="sent"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <GlassCard>
+          <TabsContent value="sent">
+            <Card>
+              <CardContent className="pt-3">
                 {isLoading && sentRequests.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <Loader2 size={40} className="animate-spin text-blue-500 mb-4" />
-                    <p className="text-gray-500">加载中...</p>
-                  </div>
+                  <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : sentRequests.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                    <Clock size={48} className="mb-4 opacity-50" />
-                    <p>暂无已发送的请求</p>
+                  <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <Clock className="h-8 w-8" />
+                    <span>暂无已发送请求</span>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100/50">
-                    {sentRequests.map((request, index) => (
-                      <motion.div
-                        key={request.target_user_id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        className="flex items-center justify-between p-4"
-                      >
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-12 w-12 ring-2 ring-white shadow-md">
-                            <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white font-medium">
-                              {request.target_user_id[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-semibold text-gray-800">{request.target_user_id}</p>
-                            {request.reason && (
-                              <p className="text-sm text-gray-500">"{request.reason}"</p>
-                            )}
-                            <p className="text-xs text-gray-400 mt-1">
-                              {new Date(request.request_time).toLocaleDateString('zh-CN')}
-                            </p>
-                          </div>
+                  <div className="divide-y">
+                    {sentRequests.map((request) => (
+                      <div key={request.target_user_id} className="flex items-center justify-between gap-3 py-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="font-medium">{request.target_user_id}</div>
+                          {request.reason && <div className="text-xs text-muted-foreground">“{request.reason}”</div>}
+                          <div className="text-xs text-muted-foreground">{new Date(request.request_time).toLocaleDateString('zh-CN')}</div>
                         </div>
-                        <GlassBadge
-                          variant={
-                            request.status === 'pending' ? 'warning' :
-                            request.status === 'approved' ? 'success' : 'error'
-                          }
-                        >
-                          {request.status === 'pending' ? '等待确认' :
-                           request.status === 'approved' ? '已通过' : '已拒绝'}
-                        </GlassBadge>
-                      </motion.div>
+                        <Badge variant={request.status === 'approved' ? 'default' : request.status === 'rejected' ? 'destructive' : 'secondary'}>
+                          {request.status === 'pending' ? '等待确认' : request.status === 'approved' ? '已通过' : '已拒绝'}
+                        </Badge>
+                      </div>
                     ))}
                   </div>
                 )}
-              </GlassCard>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
-    </GlassPage>
+    </div>
   )
 }

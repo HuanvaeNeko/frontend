@@ -4,8 +4,6 @@ import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
 import { getAuthApiUrl } from '../lib/apiConfig'
 
-const AUTH_BASE_URL = getAuthApiUrl()
-
 // 仅在客户端使用 localStorage，避免 Next.js SSR 报错并保证刷新后正确恢复登录状态
 const safeStorage = {
   getItem: (name: string): string | null => {
@@ -45,6 +43,7 @@ export const useAuthStore = create<AuthStore>()(
 
       login: async (credentials: LoginRequest) => {
         try {
+          const authBaseUrl = getAuthApiUrl()
           const requestBody = {
             user_id: credentials.user_id,
             password: credentials.password,
@@ -52,7 +51,7 @@ export const useAuthStore = create<AuthStore>()(
             mac_address: credentials.mac_address || 'unknown',
           }
 
-          console.log('🔐 登录请求 URL:', `${AUTH_BASE_URL}/login`)
+          console.log('🔐 登录请求 URL:', `${authBaseUrl}/login`)
           console.log('🔐 登录请求数据:', { ...requestBody, password: '***' })
 
           // 添加超时控制
@@ -60,7 +59,7 @@ export const useAuthStore = create<AuthStore>()(
           const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时
 
           try {
-            const response = await fetch(`${AUTH_BASE_URL}/login`, {
+            const response = await fetch(`${authBaseUrl}/login`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -119,6 +118,7 @@ export const useAuthStore = create<AuthStore>()(
 
       register: async (data: RegisterRequest) => {
         try {
+          const authBaseUrl = getAuthApiUrl()
           const requestBody = {
             user_id: data.user_id,
             nickname: data.nickname,
@@ -126,7 +126,7 @@ export const useAuthStore = create<AuthStore>()(
             password: data.password,
           }
 
-          console.log('📝 注册请求 URL:', `${AUTH_BASE_URL}/register`)
+          console.log('📝 注册请求 URL:', `${authBaseUrl}/register`)
           console.log('📝 注册请求数据:', { ...requestBody, password: '***' })
 
           // 添加超时控制
@@ -134,7 +134,7 @@ export const useAuthStore = create<AuthStore>()(
           const timeoutId = setTimeout(() => controller.abort(), 30000)
 
           try {
-            const response = await fetch(`${AUTH_BASE_URL}/register`, {
+            const response = await fetch(`${authBaseUrl}/register`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -198,13 +198,14 @@ export const useAuthStore = create<AuthStore>()(
 
       refreshAccessToken: async () => {
         const { refreshToken } = get()
+        const authBaseUrl = getAuthApiUrl()
         
         if (!refreshToken) {
           throw new Error('No refresh token available')
         }
 
         try {
-          const response = await fetch(`${AUTH_BASE_URL}/refresh`, {
+          const response = await fetch(`${authBaseUrl}/refresh`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

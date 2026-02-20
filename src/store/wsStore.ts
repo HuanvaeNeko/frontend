@@ -55,6 +55,8 @@ export interface WSSystemNotification {
     | 'admin_removed'
     | 'member_muted'
     | 'member_unmuted'
+    | 'group_info_updated'
+    | 'group_avatar_updated'
   data: Record<string, unknown>
 }
 

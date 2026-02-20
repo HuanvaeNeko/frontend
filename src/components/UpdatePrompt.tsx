@@ -73,6 +73,15 @@ export function UpdatePrompt({
       return
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          void registration.unregister()
+        })
+      })
+      return
+    }
+
     // 存储事件处理函数引用，以便清理
     let updateFoundHandler: (() => void) | null = null
     let stateChangeHandler: (() => void) | null = null
@@ -170,7 +179,7 @@ export function UpdatePrompt({
       }
     }
 
-    registerSW()
+    void registerSW()
 
     // 监听 SW 控制权变化
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)

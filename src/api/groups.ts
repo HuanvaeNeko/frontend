@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { useAuthStore } from '../store/authStore'
+import { ROUTES } from '@/lib/routes'
 
 const GROUPS_BASE_URL = `${getApiBaseUrl()}/api/groups`
 
@@ -51,7 +52,7 @@ const fetchWithAuth = async (
     } catch (error) {
       console.error('Token refresh failed, redirecting to login')
       authStore.clearAuth()
-      window.location.href = '/login'
+      window.location.href = ROUTES.auth.login
       throw error
     }
   }
@@ -864,4 +865,3 @@ export const groupsApi = {
     console.log('✅ 公告已删除')
   },
 }
-

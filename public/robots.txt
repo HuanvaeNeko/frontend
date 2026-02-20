@@ -1,2 +1,26 @@
-User-Agent: *
-Disallow:
+User-agent: *
+Allow: /
+
+# Private and auth-only areas
+Disallow: /app/
+Disallow: /login/
+Disallow: /register/
+
+# AI crawlers (policy aligned with public marketing pages)
+User-agent: GPTBot
+Allow: /
+Disallow: /app/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /app/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /app/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /app/
+
+Sitemap: https://huanvae.cn/sitemap.xml

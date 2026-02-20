@@ -1,17 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Smile } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useI18n } from '@/i18n/I18nProvider'
 
-// 常用表情列表
 const EMOJI_CATEGORIES = {
-  '常用': ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😋', '😎', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '🥱', '🤤', '😛', '😜', '🤪', '😝', '🤑'],
-  '表情': ['😤', '😠', '😡', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊'],
-  '手势': ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
-  '爱心': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️', '💌', '💋', '🫶', '🥹', '🥺', '😢', '😭', '🥲', '😇', '🤗'],
-  '物品': ['🎉', '🎊', '🎁', '🎈', '🔥', '⭐', '✨', '💫', '🌟', '💥', '💢', '💦', '💨', '🕳️', '💣', '💬', '👁️‍🗨️', '🗨️', '🗯️', '💭', '💤', '🎵', '🎶', '🔔', '🔕', '📢', '📣', '💡', '🔑', '🔒'],
+  frequently: ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😋', '😎', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '🥱', '🤤', '😛', '😜', '🤪', '😝', '🤑'],
+  faces: ['😤', '😠', '😡', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊'],
+  gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
+  hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️', '💌', '💋', '🫶', '🥹', '🥺', '😢', '😭', '🥲', '😇', '🤗'],
+  items: ['🎉', '🎊', '🎁', '🎈', '🔥', '⭐', '✨', '💫', '🌟', '💥', '💢', '💦', '💨', '🕳️', '💣', '💬', '👁️‍🗨️', '🗨️', '🗯️', '💭', '💤', '🎵', '🎶', '🔔', '🔕', '📢', '📣', '💡', '🔑', '🔒'],
 }
 
 interface EmojiPickerProps {
@@ -20,69 +21,52 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ onSelect, disabled }: EmojiPickerProps) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<string>('常用')
-
-  const handleSelect = (emoji: string) => {
-    onSelect(emoji)
-    setOpen(false)
-  }
+  const [activeCategory, setActiveCategory] = useState<keyof typeof EMOJI_CATEGORIES>('frequently')
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>
-        <motion.button 
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500 disabled:opacity-50"
-          style={{
-            background: 'rgba(255, 255, 255, 0.6)',
-            border: '1px solid rgba(147, 197, 253, 0.3)',
-          }}
-          whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-          whileTap={{ scale: 0.95 }}
-          type="button"
-        >
+        <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-xl" aria-label={t('chat.window.emoji')}>
           <Smile className="h-5 w-5" />
-        </motion.button>
+        </Button>
       </PopoverTrigger>
-      
-      <PopoverContent
-        className="w-[320px] max-h-[360px] rounded-2xl bg-white/95 backdrop-blur-xl border border-blue-200/30 shadow-lg shadow-blue-500/10 overflow-hidden p-0"
-        sideOffset={8}
-        align="start"
-      >
-        {/* 分类标签 */}
-        <div className="flex border-b border-blue-200/20 px-2 pt-2 gap-1 overflow-x-auto">
+
+      <PopoverContent className="w-[320px] p-0" sideOffset={8} align="start">
+        <div className="flex gap-1 overflow-x-auto border-b p-2">
           {Object.keys(EMOJI_CATEGORIES).map((category) => (
-            <button
+            <Button
               key={category}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
-                activeCategory === category
-                  ? 'bg-blue-500/10 text-blue-600'
-                  : 'text-slate-500 hover:bg-slate-100'
-              }`}
-              onClick={() => setActiveCategory(category)}
+              type="button"
+              size="sm"
+              variant={activeCategory === category ? 'secondary' : 'ghost'}
+              className="h-7 px-2 text-xs"
+              onClick={() => setActiveCategory(category as keyof typeof EMOJI_CATEGORIES)}
             >
-              {category}
-            </button>
+              {t(`chat.emoji.${category}`)}
+            </Button>
           ))}
         </div>
-        
-        {/* 表情网格 */}
-        <div className="p-3 max-h-[280px] overflow-y-auto">
+
+        <ScrollArea className="max-h-[280px] p-3">
           <div className="grid grid-cols-8 gap-1">
-            {EMOJI_CATEGORIES[activeCategory as keyof typeof EMOJI_CATEGORIES].map((emoji, index) => (
+            {EMOJI_CATEGORIES[activeCategory].map((emoji, index) => (
               <button
                 key={`${emoji}-${index}`}
-                className="w-8 h-8 flex items-center justify-center text-xl rounded-lg hover:bg-blue-100/50 transition-colors"
-                onClick={() => handleSelect(emoji)}
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-xl transition-colors hover:bg-accent"
+                onClick={() => {
+                  onSelect(emoji)
+                  setOpen(false)
+                }}
               >
                 {emoji}
               </button>
             ))}
           </div>
-        </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   )
 }
-

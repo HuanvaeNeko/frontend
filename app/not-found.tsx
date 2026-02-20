@@ -4,9 +4,12 @@ import { Home, ArrowLeft, Ghost } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { ROUTES } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 export default function NotFound() {
   const router = useRouter()
+  const { t } = useI18n()
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50">
@@ -77,10 +80,10 @@ export default function NotFound() {
         </motion.div>
         
         <h1 className="text-2xl font-bold text-slate-700 mb-2">
-          页面未找到
+          {t('notFound.title')}
         </h1>
         <p className="text-slate-500 mb-8">
-          抱歉，您访问的页面不存在或已被移除
+          {t('notFound.description')}
         </p>
         
         {/* 按钮组 */}
@@ -99,10 +102,10 @@ export default function NotFound() {
             whileTap={{ scale: 0.98 }}
           >
             <ArrowLeft size={18} />
-            返回上页
+            {t('notFound.back')}
           </motion.button>
           
-          <Link href="/chat">
+          <Link href={ROUTES.app.chat}>
             <motion.button
               className="flex items-center gap-2 px-5 py-3 rounded-xl font-medium text-white"
               style={{
@@ -116,7 +119,7 @@ export default function NotFound() {
               whileTap={{ scale: 0.98 }}
             >
               <Home size={18} />
-              返回首页
+              {t('notFound.home')}
             </motion.button>
           </Link>
         </div>

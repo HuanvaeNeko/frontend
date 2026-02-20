@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { 
   MessageCircle, 
@@ -14,6 +14,7 @@ import {
   Plus,
   Settings,
   LogOut,
+  Globe,
   User,
   ArrowLeft
 } from 'lucide-react'
@@ -37,16 +38,12 @@ import SettingsModal, { useSettingsModal } from '../components/SettingsModal'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
+import { CHAT_TAB_ROUTE_MAP, DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getChatTabFromPath } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
+import { MOBILE_INTERACTIONS, triggerMobileHaptic } from '@/lib/mobileInteractions'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 type MobileView = 'list' | 'chat'
-
-function getTabFromPath(pathname: string): TabType {
-  if (pathname.startsWith('/chat/groups')) return 'groups'
-  if (pathname.startsWith('/chat/files')) return 'files'
-  if (pathname.startsWith('/chat/webrtc')) return 'webrtc'
-  return 'friends'
-}
 
 let chatPageInitialized = false
 
@@ -59,7 +56,7 @@ const STORAGE_KEY = 'huanvae_chat_state'
 function saveStateToStorage(tab: TabType, conversationId?: string, conversationType?: 'friend' | 'group') {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ tab, conversationId, conversationType, timestamp: Date.now() }))
-  } catch (e) { console.warn('无法保存状态到 localStorage:', e) }
+  } catch (e) { console.warn('Failed to save state to localStorage:', e) }
 }
 
 function loadStateFromStorage(): { tab: TabType; conversationId?: string; conversationType?: 'friend' | 'group' } | null {
@@ -69,18 +66,19 @@ function loadStateFromStorage(): { tab: TabType; conversationId?: string; conver
       const parsed = JSON.parse(data)
       if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) return parsed
     }
-  } catch (e) { console.warn('无法从 localStorage 加载状态:', e) }
+  } catch (e) { console.warn('Failed to load state from localStorage:', e) }
   return null
 }
 
 export default function ChatPage() {
+  const { t } = useI18n()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const settingsModal = useSettingsModal()
   const { openProfileModal } = useUIStore()
-  const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
-  const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
+  const friendId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatFriends) ? searchParams.get('id') : null
+  const groupId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatGroups) ? searchParams.get('id') : null
   const { user, logout, accessToken } = useAuthStore()
   const { profile, loadProfile } = useProfileStore()
   const { activeTab, setActiveTab, setSelectedConversation, selectedConversation } = useChatStore()
@@ -93,12 +91,65 @@ export default function ChatPage() {
   const [isInitialized, setIsInitialized] = useState(false)
   const [mobileView, setMobileView] = useState<MobileView>('list')
   const [isMobile, setIsMobile] = useState(false)
+  const [isLandscape, setIsLandscape] = useState(false)
+  const [isCompactHeight, setIsCompactHeight] = useState(false)
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [swipeHintProgress, setSwipeHintProgress] = useState(0)
+  const chatSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const resolveSubTabFromRoute = (tab: TabType): SubTab => {
+    const view = searchParams.get('view')
+    if (tab === 'friends') {
+      if (view === 'new' || view === 'sent') return view
+      return 'main'
+    }
+    if (tab === 'groups') {
+      if (view === 'invites') return 'invites'
+      return 'main'
+    }
+    if (tab === 'files') {
+      if (view === 'upload') return 'upload'
+      return 'main'
+    }
+    return 'main'
+  }
+
+  const getRouteWithSubTab = (tab: TabType, targetSubTab: SubTab) => {
+    const params = new URLSearchParams(searchParams.toString())
+    const basePath = CHAT_TAB_ROUTE_MAP[tab]
+
+    if (targetSubTab === 'main') {
+      params.delete('view')
+    } else {
+      params.set('view', targetSubTab)
+      params.delete('id')
+    }
+
+    const query = params.toString()
+    return query ? `${basePath}?${query}` : basePath
+  }
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    const updateViewportFlags = () => {
+      const width = window.innerWidth
+      const height = window.innerHeight
+      const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+      const landscape = width > height
+      const mobileWidth = width < 768
+      const compactLandscape = coarsePointer && landscape && height < 640
+
+      setIsLandscape(landscape)
+      setIsCompactHeight(height < 560)
+      setIsMobile(mobileWidth || compactLandscape)
+    }
+
+    updateViewportFlags()
+    window.addEventListener('resize', updateViewportFlags)
+    window.addEventListener('orientationchange', updateViewportFlags)
+    return () => {
+      window.removeEventListener('resize', updateViewportFlags)
+      window.removeEventListener('orientationchange', updateViewportFlags)
+    }
   }, [])
 
   useEffect(() => {
@@ -106,8 +157,33 @@ export default function ChatPage() {
   }, [selectedConversation, isMobile])
 
   useEffect(() => {
-    const tabFromPath = getTabFromPath(pathname || '/chat')
-    if (pathname !== '/chat' && pathname !== '/chat/') {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const handleViewportChange = () => {
+      const keyboardGap = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setIsKeyboardOpen(keyboardGap > 120)
+    }
+
+    handleViewportChange()
+    viewport.addEventListener('resize', handleViewportChange)
+    viewport.addEventListener('scroll', handleViewportChange)
+
+    return () => {
+      viewport.removeEventListener('resize', handleViewportChange)
+      viewport.removeEventListener('scroll', handleViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile) {
+      setIsKeyboardOpen(false)
+    }
+  }, [isMobile])
+
+  useEffect(() => {
+    const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
+    if (pathname !== ROUTES.app.chat && pathname !== `${ROUTES.app.chat}/`) {
       setActiveTab(tabFromPath)
     } else {
       const savedState = loadStateFromStorage()
@@ -115,6 +191,14 @@ export default function ChatPage() {
     }
     setIsInitialized(true)
   }, [pathname, setActiveTab, isInitialized])
+
+  useEffect(() => {
+    const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
+    const nextSubTab = resolveSubTabFromRoute(tabFromPath)
+    setSubTab((prev) => (prev === nextSubTab ? prev : nextSubTab))
+    // searchParams 对象本身每次可能变化，使用 toString 保持稳定依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams.toString()])
 
   useEffect(() => {
     if (friendId && friends.length > 0) {
@@ -298,36 +382,95 @@ export default function ChatPage() {
       useWSStore.getState().disconnect()
       resetChatPageInit()
       await logout()
-      router.push('/login')
+      router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
     } catch (error) {
-      console.error('登出失败:', error)
+      console.error('Logout failed:', error)
     }
   }
 
   const tabs = [
-    { id: 'friends' as const, icon: MessageCircle, label: '好友' },
-    { id: 'groups' as const, icon: Users, label: '群聊' },
-    { id: 'files' as const, icon: FileText, label: '文件' },
-    { id: 'webrtc' as const, icon: Video, label: '视频' },
+    { id: 'friends' as const, icon: MessageCircle, label: t('chat.page.tabs.friends') },
+    { id: 'groups' as const, icon: Users, label: t('chat.page.tabs.groups') },
+    { id: 'files' as const, icon: FileText, label: t('chat.page.tabs.files') },
+    { id: 'webrtc' as const, icon: Video, label: t('chat.page.tabs.webrtc') },
   ]
+  const isFilesTab = activeTab === 'files'
+
+  const handleMobileBackToList = () => {
+    saveStateToStorage(activeTab)
+    setSelectedConversation(null)
+    setMobileView('list')
+    triggerMobileHaptic(10)
+  }
+
+  const handleChatPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const touch = event.touches[0]
+    chatSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+    if (touch.clientX <= MOBILE_INTERACTIONS.edgeSwipeStartX) {
+      setSwipeHintProgress(0.08)
+    } else {
+      setSwipeHintProgress(0)
+    }
+  }
+
+  const handleChatPanelTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const start = chatSwipeStartRef.current
+    if (!start) return
+
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - start.x
+    const deltaY = Math.abs(touch.clientY - start.y)
+    const startsFromLeftEdge = start.x <= MOBILE_INTERACTIONS.edgeSwipeStartX
+
+    if (!startsFromLeftEdge || deltaY > MOBILE_INTERACTIONS.edgeSwipeMaxVerticalDelta || deltaX <= 0) {
+      setSwipeHintProgress(0)
+      return
+    }
+
+    const progress = Math.min(1, deltaX / MOBILE_INTERACTIONS.edgeSwipeProgressDistance)
+    setSwipeHintProgress(progress)
+  }
+
+  const handleChatPanelTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const start = chatSwipeStartRef.current
+    if (!start) return
+
+    const touch = event.changedTouches[0]
+    const deltaX = touch.clientX - start.x
+    const deltaY = Math.abs(touch.clientY - start.y)
+    const startsFromLeftEdge = start.x <= MOBILE_INTERACTIONS.edgeSwipeStartX
+
+    chatSwipeStartRef.current = null
+
+    if (startsFromLeftEdge && deltaX > MOBILE_INTERACTIONS.edgeSwipeTriggerX && deltaY < MOBILE_INTERACTIONS.edgeSwipeMaxVerticalDelta) {
+      setSwipeHintProgress(0)
+      handleMobileBackToList()
+      return
+    }
+
+    setSwipeHintProgress(0)
+  }
 
   const getSubTabs = () => {
     switch (activeTab) {
       case 'friends':
         return [
-          { id: 'main' as const, label: '好友', icon: MessageCircle },
-          { id: 'new' as const, label: '新朋友', icon: UserPlus },
-          { id: 'sent' as const, label: '已发送', icon: Send },
+          { id: 'main' as const, label: t('chat.page.subTabs.friends.main'), icon: MessageCircle },
+          { id: 'new' as const, label: t('chat.page.subTabs.friends.new'), icon: UserPlus },
+          { id: 'sent' as const, label: t('chat.page.subTabs.friends.sent'), icon: Send },
         ]
       case 'groups':
         return [
-          { id: 'main' as const, label: '我的群聊', icon: Users },
-          { id: 'invites' as const, label: '群邀请', icon: UserCheck },
+          { id: 'main' as const, label: t('chat.page.subTabs.groups.main'), icon: Users },
+          { id: 'invites' as const, label: t('chat.page.subTabs.groups.invites'), icon: UserCheck },
         ]
       case 'files':
         return [
-          { id: 'main' as const, label: '我的文件', icon: FileText },
-          { id: 'upload' as const, label: '上传文件', icon: Plus },
+          { id: 'main' as const, label: t('chat.page.subTabs.files.main'), icon: FileText },
+          { id: 'upload' as const, label: t('chat.page.subTabs.files.upload'), icon: Plus },
         ]
       default:
         return []
@@ -335,10 +478,15 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="w-full h-screen flex relative overflow-hidden bg-background">
+    <div
+      className={cn(
+        "app-screen relative flex w-full overflow-hidden bg-background/70 md:gap-3 md:p-3",
+        isMobile && isLandscape && "mobile-landscape-chat"
+      )}
+    >
       {/* 左侧图标栏 */}
       <TooltipProvider>
-        <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-card border-r border-border hidden md:flex">
+        <aside className="z-10 hidden h-full w-[74px] flex-col items-center rounded-2xl border border-border bg-card/95 py-5 shadow-sm backdrop-blur md:flex">
           {/* 用户头像 */}
           <div className="relative mb-7">
             <button
@@ -346,13 +494,13 @@ export default function ChatPage() {
               onClick={openProfileModal}
             >
               {profile?.user_avatar_url || user?.avatar_url ? (
-                <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" className="w-full h-full object-cover" />
+                <img src={profile?.user_avatar_url || user?.avatar_url} alt={t('chat.page.avatarAlt')} className="w-full h-full object-cover" />
               ) : (
                 <User className="w-5 h-5 text-muted-foreground" />
               )}
             </button>
             {connected && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-card rounded-full animate-pulse-online" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary border-2 border-card rounded-full animate-pulse-online" />
             )}
           </div>
 
@@ -363,7 +511,7 @@ export default function ChatPage() {
                 <TooltipTrigger asChild>
                   <button
                     className={cn(
-                      "w-11 h-11 rounded-xl flex items-center justify-center transition-all relative",
+                      "relative flex h-11 w-11 items-center justify-center rounded-xl transition-all",
                       activeTab === tab.id
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -371,11 +519,7 @@ export default function ChatPage() {
                     onClick={() => {
                       setActiveTab(tab.id)
                       setSubTab('main')
-                      const pathMap: Record<TabType, string> = {
-                        friends: '/chat/friends', groups: '/chat/groups',
-                        files: '/chat/files', webrtc: '/chat/webrtc',
-                      }
-                      router.push(pathMap[tab.id])
+                      router.push(getRouteWithSubTab(tab.id, 'main'))
                     }}
                   >
                     <tab.icon className="w-[22px] h-[22px]" />
@@ -387,7 +531,7 @@ export default function ChatPage() {
                       const summary = useChatStore.getState().unreadSummary
                       const total = summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
                       if (total > 0) return (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-destructive-foreground bg-destructive rounded-full">
                           {total > 99 ? '99+' : total}
                         </span>
                       )
@@ -397,7 +541,7 @@ export default function ChatPage() {
                       const summary = useChatStore.getState().unreadSummary
                       const total = summary?.group_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0
                       if (total > 0) return (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full">
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-destructive-foreground bg-destructive rounded-full">
                           {total > 99 ? '99+' : total}
                         </span>
                       )
@@ -421,7 +565,18 @@ export default function ChatPage() {
                   <Settings className="w-[22px] h-[22px]" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">设置</TooltipContent>
+              <TooltipContent side="right">{t('chat.page.settings')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+                  onClick={() => router.push(ROUTES.root)}
+                >
+                  <Globe className="w-[22px] h-[22px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t('layout.officialSite')}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -432,7 +587,7 @@ export default function ChatPage() {
                   <LogOut className="w-[22px] h-[22px]" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">退出</TooltipContent>
+              <TooltipContent side="right">{t('chat.page.logout')}</TooltipContent>
             </Tooltip>
           </div>
         </aside>
@@ -440,29 +595,35 @@ export default function ChatPage() {
 
       {/* 中间会话列表 */}
       <div className={cn(
-        "relative h-full flex z-10 shrink-0",
-        "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
-        "max-md:absolute max-md:inset-0 max-md:w-full max-md:max-w-none",
-        isMobile && mobileView === 'chat' && "max-md:hidden"
+        "relative z-10 flex h-full w-full shrink-0 md:w-auto",
+        isFilesTab ? "md:min-w-0 md:max-w-none md:w-auto md:flex-1" : "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
+        isMobile && mobileView === 'chat' && "hidden md:flex"
       )}>
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-card md:border-r border-border">
+        <div className="z-10 flex h-full min-h-0 w-full flex-col overflow-hidden bg-card md:rounded-2xl md:border md:shadow-sm">
           {/* 子标签头部 */}
           {activeTab !== 'webrtc' && (
-            <div className="p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border">
-              <div className="flex gap-1">
+          <div className={cn(
+            "p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border",
+            isMobile && isLandscape && "landscape-compact-header"
+          )}>
+              <div className="flex gap-1 rounded-xl bg-muted/50 p-1">
                 {getSubTabs().map((tab) => (
                   <button
                     key={tab.id}
                     className={cn(
-                      "flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1",
+                      "flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-all",
+                      isMobile && isLandscape && "landscape-compact-button",
                       subTab === tab.id
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-card text-primary shadow-sm"
                         : "text-muted-foreground hover:bg-accent"
                     )}
-                    onClick={() => setSubTab(tab.id)}
+                    onClick={() => {
+                      setSubTab(tab.id)
+                      router.push(getRouteWithSubTab(activeTab, tab.id))
+                    }}
                   >
                     <tab.icon className="w-3.5 h-3.5" />
-                    {tab.label}
+                    {!(isMobile && isCompactHeight) && tab.label}
                   </button>
                 ))}
               </div>
@@ -471,7 +632,11 @@ export default function ChatPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
+                    placeholder={activeTab === 'friends'
+                      ? t('chat.page.searchFriends')
+                      : activeTab === 'groups'
+                        ? t('chat.page.searchGroups')
+                        : t('chat.page.searchFiles')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -483,7 +648,7 @@ export default function ChatPage() {
 
           {activeTab === 'webrtc' && (
             <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-border">
-              <h2 className="font-semibold text-foreground">视频会议</h2>
+              <h2 className="font-semibold text-foreground">{t('chat.page.tabs.webrtc')}</h2>
             </div>
           )}
 
@@ -508,7 +673,7 @@ export default function ChatPage() {
                 )}
                 {activeTab === 'webrtc' && (
                   <motion.div key="webrtc-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="p-4 text-center text-sm text-muted-foreground">
-                    请在右侧创建或加入视频房间
+                    {t('chat.page.webrtcHint')}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -518,23 +683,34 @@ export default function ChatPage() {
       </div>
 
       {/* 右侧聊天窗口 */}
-      <div className={cn(
-        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-background",
-        "max-md:absolute max-md:inset-0 max-md:w-full",
-        isMobile && mobileView === 'list' && "max-md:hidden"
-      )}>
+      <div
+        className={cn(
+          "relative z-10 flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background md:w-auto md:rounded-2xl md:border md:shadow-sm",
+          isFilesTab && "md:hidden",
+          isMobile && mobileView === 'list' && "hidden md:flex"
+        )}
+        onTouchStart={handleChatPanelTouchStart}
+        onTouchMove={handleChatPanelTouchMove}
+        onTouchEnd={handleChatPanelTouchEnd}
+      >
+        {isMobile && mobileView === 'chat' && swipeHintProgress > 0 && (
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-30 w-12 bg-gradient-to-r from-primary/30 to-transparent transition-opacity duration-150"
+            style={{ opacity: Math.min(0.9, swipeHintProgress), transform: 'translateX(' + Math.max(-14, -16 + swipeHintProgress * 16) + 'px)' }}
+          />
+        )}
+
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
-          <div className="md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top">
+          <div className={cn(
+            "md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top",
+            isLandscape && "landscape-compact-header"
+          )}>
             <Button
               variant="ghost"
               size="icon"
               className="h-10 w-10 min-h-[44px] min-w-[44px] touch-target"
-              onClick={() => {
-                saveStateToStorage(activeTab)
-                setSelectedConversation(null)
-                setMobileView('list')
-              }}
+              onClick={handleMobileBackToList}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -542,7 +718,7 @@ export default function ChatPage() {
               <div className="flex-1 min-w-0">
                 <h2 className="font-semibold text-foreground truncate">{selectedConversation.name}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {selectedConversation.type === 'friend' ? '好友' : '群聊'}
+                  {selectedConversation.type === 'friend' ? t('chat.page.tabs.friends') : t('chat.page.tabs.groups')}
                 </span>
               </div>
             )}
@@ -564,27 +740,35 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card/95 backdrop-blur-xl border-t border-border pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-2">
+        <div className={cn(
+          "fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-2 right-2 z-20 rounded-2xl border border-border bg-card/95 px-2 pt-2 pb-2 shadow-lg backdrop-blur transition-all duration-200 md:hidden",
+          isLandscape && "pt-1",
+          isKeyboardOpen && "translate-y-24 opacity-0 pointer-events-none"
+        )}>
           <div className="flex justify-around items-stretch">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl transition-all touch-target",
+                  isCompactHeight && "min-h-[48px] min-w-[48px]",
                   activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground active:bg-muted/50"
                 )}
                 onClick={() => { setActiveTab(tab.id); setSubTab('main') }}
               >
                 <tab.icon className="w-6 h-6 shrink-0" />
-                <span className="text-xs font-medium">{tab.label}</span>
+                {!isCompactHeight && <span className="text-xs font-medium">{tab.label}</span>}
               </button>
             ))}
             <button
-              className="flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target"
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target",
+                isCompactHeight && "min-h-[48px] min-w-[48px]"
+              )}
               onClick={settingsModal.open}
             >
               <Settings className="w-6 h-6 shrink-0" />
-              <span className="text-xs font-medium">设置</span>
+              {!isCompactHeight && <span className="text-xs font-medium">{t('chat.page.settings')}</span>}
             </button>
           </div>
         </div>

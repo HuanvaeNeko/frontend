@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useFriendsStore } from '../../store/friendsStore'
 import { useChatStore } from '../../store/chatStore'
 import { useToast } from '@/hooks/use-toast'
+import { useI18n } from '@/i18n/I18nProvider'
 
 // 列表项动画配置
 const listItemVariants: Variants = {
@@ -64,6 +65,7 @@ interface FriendListProps {
 }
 
 export default function FriendList({ subTab, searchQuery }: FriendListProps) {
+  const { t } = useI18n()
   const { toast } = useToast()
   const {
     friends,
@@ -100,8 +102,8 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   const handleSendRequest = async () => {
     if (!targetUserId.trim()) {
       toast({
-        title: '错误',
-        description: '请输入用户ID',
+        title: t('chat.friendList.error'),
+        description: t('chat.friendList.enterUserId'),
         variant: 'destructive',
       })
       return
@@ -111,16 +113,16 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     try {
       await sendFriendRequest(targetUserId.trim(), reason.trim() || undefined)
       toast({
-        title: '成功',
-        description: '好友请求已发送',
+        title: t('chat.friendList.success'),
+        description: t('chat.friendList.requestSent'),
       })
       setShowAddDialog(false)
       setTargetUserId('')
       setReason('')
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '发送请求失败',
+        title: t('chat.friendList.failed'),
+        description: error instanceof Error ? error.message : t('chat.friendList.requestSendFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -133,13 +135,13 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     try {
       await approveFriendRequest(applicantUserId)
       toast({
-        title: '成功',
-        description: '已添加好友',
+        title: t('chat.friendList.success'),
+        description: t('chat.friendList.friendAdded'),
       })
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '操作失败',
+        title: t('chat.friendList.failed'),
+        description: error instanceof Error ? error.message : t('chat.friendList.operationFailed'),
         variant: 'destructive',
       })
     }
@@ -150,13 +152,13 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     try {
       await rejectFriendRequest(applicantUserId)
       toast({
-        title: '已拒绝',
-        description: '已拒绝该好友请求',
+        title: t('chat.friendList.rejected'),
+        description: t('chat.friendList.requestRejected'),
       })
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '操作失败',
+        title: t('chat.friendList.failed'),
+        description: error instanceof Error ? error.message : t('chat.friendList.operationFailed'),
         variant: 'destructive',
       })
     }
@@ -164,7 +166,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
 
   // 删除好友
   const handleDeleteFriend = async (friendUserId: string, nickname: string) => {
-    if (!confirm(`确定要删除好友 ${nickname} 吗？删除后将无法互相发送消息。`)) {
+    if (!confirm(t('chat.friendList.deleteConfirm', { name: nickname }))) {
       return
     }
     
@@ -172,8 +174,8 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     try {
       await removeFriend(friendUserId)
       toast({
-        title: '已删除',
-        description: `${nickname} 已从好友列表移除`,
+        title: t('chat.friendList.deleted'),
+        description: t('chat.friendList.friendRemoved', { name: nickname }),
       })
       // 如果当前正在查看被删除的好友的会话，清空选中
       if (selectedConversation?.id === friendUserId) {
@@ -181,8 +183,8 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
       }
     } catch (error) {
       toast({
-        title: '删除失败',
-        description: error instanceof Error ? error.message : '操作失败',
+        title: t('chat.friendList.deleteFailed'),
+        description: error instanceof Error ? error.message : t('chat.friendList.operationFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -210,7 +212,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
         <div className="p-3">
           <Button className="w-full h-11 gap-2" onClick={() => setShowAddDialog(true)}>
             <UserPlus className="h-4 w-4" />
-            添加好友
+            {t('chat.friendList.addFriend')}
           </Button>
         </div>
 
@@ -218,7 +220,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
         <div className="flex-1 overflow-y-auto px-2">
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : filteredFriends.length === 0 ? (
             <motion.div
@@ -230,15 +232,17 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
                 <Users className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm text-muted-foreground">暂无好友</p>
-              {searchQuery && <p className="text-xs text-muted-foreground mt-1">试试其他搜索条件</p>}
+              <p className="text-sm text-muted-foreground">{t('chat.friendList.noFriends')}</p>
+              {searchQuery && <p className="text-xs text-muted-foreground mt-1">{t('chat.friendList.tryOtherSearch')}</p>}
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredFriends.map((friend, index) => (
                 <motion.div
                   key={friend.user_id}
-                  className={`flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-accent active:bg-accent/80 ${selectedConversation?.id === friend.user_id ? 'bg-accent' : ''}`}
+                  className={`rounded-xl border p-3 transition-all hover:border-primary/30 hover:bg-accent/60 ${
+                    selectedConversation?.id === friend.user_id ? 'border-primary/40 bg-accent' : 'border-transparent bg-card'
+                  }`}
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
@@ -247,44 +251,42 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   layout
                 >
                   <button
-                    className="flex items-center gap-3 flex-1 min-w-0"
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     onClick={() => handleSelectFriend(friend)}
                   >
                     <div className="relative">
-                      <div className="conv-avatar">
-                        <Avatar className="h-full w-full">
-                          <AvatarImage src={friend.avatar_url} />
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            {friend.nickname[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
+                      <Avatar className="h-10 w-10 shrink-0">
+                        <AvatarImage src={friend.avatar_url} />
+                        <AvatarFallback className="bg-primary text-primary-foreground">
+                          {friend.nickname[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
                       {/* 在线状态指示器 */}
                       <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-background ${isOnline(friend.user_id) ? 'bg-emerald-500 shadow-sm' : 'bg-muted-foreground'}`}
-                        title={isOnline(friend.user_id) ? '在线' : '离线'}
+                        className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-background ${isOnline(friend.user_id) ? 'bg-primary shadow-sm' : 'bg-muted-foreground'}`}
+                        title={isOnline(friend.user_id) ? t('chat.friendList.online') : t('chat.friendList.offline')}
                       />
                     </div>
-                    <div className="conv-info">
-                      <div className="conv-header">
-                        <span className="conv-name">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">
                           {friend.nickname}
                           {isOnline(friend.user_id) && (
-                            <span className="text-xs text-green-500 ml-1">在线</span>
+                            <span className="ml-1 text-xs text-primary">{t('chat.friendList.online')}</span>
                           )}
                         </span>
                         {/* 未读计数角标 */}
                         {(() => {
                           const unread = useChatStore.getState().getFriendUnread(friend.user_id)
                           if (unread > 0) return (
-                            <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold text-white bg-red-500 rounded-full">
+                            <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-destructive text-[11px] font-bold text-destructive-foreground">
                               {unread > 99 ? '99+' : unread}
                             </span>
                           )
                           return null
                         })()}
                       </div>
-                      <div className="conv-preview">
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
                         {(() => {
                           const summary = useChatStore.getState().unreadSummary
                           const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.user_id)
@@ -307,7 +309,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        className="text-red-500 focus:text-red-500"
+                        className="text-destructive focus:text-destructive"
                         onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
                         disabled={deletingFriend === friend.user_id}
                       >
@@ -316,7 +318,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}
-                        删除好友
+                        {t('chat.friendList.deleteFriend')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -333,7 +335,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               <>
                 {/* 遮罩层 */}
                 <motion.div
-                  className="fixed inset-0 z-[9998] bg-black/45 backdrop-blur-sm"
+                  className="fixed inset-0 z-[9998] bg-foreground/45"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -354,14 +356,14 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   exit="exit"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-xl font-semibold mb-6 text-foreground">添加好友</h3>
+                  <h3 className="text-xl font-semibold mb-6 text-foreground">{t('chat.friendList.addFriend')}</h3>
                   
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">用户ID</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.friendList.userId')}</label>
                       <Input
                         type="text"
-                        placeholder="输入用户ID"
+                        placeholder={t('chat.friendList.enterUserIdPlaceholder')}
                         value={targetUserId}
                         onChange={(e) => setTargetUserId(e.target.value)}
                         className="h-10"
@@ -369,10 +371,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                     </div>
                     
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">验证消息（可选）</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.friendList.verifyMessageOptional')}</label>
                       <Input
                         type="text"
-                        placeholder="我是..."
+                        placeholder={t('chat.friendList.verifyPlaceholder')}
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                         className="h-10"
@@ -391,7 +393,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       }}
                       disabled={submitting}
                     >
-                      取消
+                      {t('chat.friendList.cancel')}
                     </Button>
                     <Button
                       className="flex-1 h-10"
@@ -401,10 +403,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       {submitting ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          发送中...
+                          {t('chat.friendList.sending')}
                         </>
                       ) : (
-                        '发送请求'
+                        t('chat.friendList.sendRequest')
                       )}
                     </Button>
                   </div>
@@ -425,7 +427,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : pendingArray.length === 0 ? (
           <motion.div
@@ -437,7 +439,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
               <Clock className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground">暂无新的好友请求</p>
+            <p className="text-sm text-muted-foreground">{t('chat.friendList.noNewRequests')}</p>
           </motion.div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -452,13 +454,11 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 custom={index}
               >
                 <div className="flex items-start gap-3">
-                  <div className="conv-avatar">
-                    <Avatar className="h-full w-full">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {request.nickname[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarFallback className="bg-primary text-primary-foreground">
+                      {request.nickname[0]?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-foreground">{request.nickname}</div>
                     <div className="text-xs text-muted-foreground">
@@ -475,11 +475,11 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                     <div className="flex gap-2 mt-3">
                       <Button
                         size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground"
                         onClick={() => handleApprove(request.applicant_user_id)}
                       >
                         <Check className="h-3 w-3" />
-                        同意
+                        {t('chat.friendList.approve')}
                       </Button>
                       <Button
                         variant="outline"
@@ -488,7 +488,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                         className="hover:text-destructive"
                       >
                         <X className="h-3 w-3" />
-                        拒绝
+                        {t('chat.friendList.reject')}
                       </Button>
                     </div>
                   </div>
@@ -507,7 +507,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : sentArray.length === 0 ? (
           <motion.div
@@ -519,7 +519,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
               <Send className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground">暂无已发送的请求</p>
+            <p className="text-sm text-muted-foreground">{t('chat.friendList.noSentRequests')}</p>
           </motion.div>
         ) : (
           <AnimatePresence mode="popLayout">
@@ -534,13 +534,11 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 custom={index}
               >
                 <div className="flex items-start gap-3">
-                  <div className="conv-avatar">
-                    <Avatar className="h-full w-full">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {request.target_user_id[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarFallback className="bg-primary text-primary-foreground">
+                      {request.target_user_id[0]?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-foreground">{request.target_user_id}</div>
                     {request.reason && (
@@ -549,12 +547,12 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${request.status === 'approved' ? 'bg-emerald-500/15 text-emerald-600' : request.status === 'rejected' ? 'bg-destructive/15 text-destructive' : 'bg-amber-500/15 text-amber-600'}`}>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${request.status === 'approved' ? 'bg-primary/15 text-primary' : request.status === 'rejected' ? 'bg-destructive/15 text-destructive' : 'bg-muted text-muted-foreground'}`}>
                         {request.status === 'approved'
-                          ? '已同意'
+                          ? t('chat.friendList.statusApproved')
                           : request.status === 'rejected'
-                          ? '已拒绝'
-                          : '待处理'}
+                          ? t('chat.friendList.statusRejected')
+                          : t('chat.friendList.statusPending')}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {new Date(request.request_time).toLocaleString()}

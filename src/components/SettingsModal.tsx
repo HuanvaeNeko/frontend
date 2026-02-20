@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playTap, playButton, playPop } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
+import type { LanguagePreference } from '@/i18n/messages'
 
 // ============================================
 // 类型定义
@@ -62,10 +63,9 @@ const THEMES = [
 ] as const
 
 const LANGUAGES = [
+  { value: 'auto', label: '跟随系统', flag: '🌐' },
   { value: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
-  { value: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
-  { value: 'en', label: 'English', flag: '🇺🇸' },
-  { value: 'ja', label: '日本語', flag: '🇯🇵' },
+  { value: 'en-US', label: 'English', flag: '🇺🇸' },
 ]
 
 // 多语言文本
@@ -105,42 +105,7 @@ const i18n: Record<string, Record<string, string>> = {
     notifFailed: '无法开启通知',
     notifFailedDesc: '请在浏览器设置中允许通知权限',
   },
-  'zh-TW': {
-    settings: '設定',
-    autoSave: '自動儲存',
-    general: '一般',
-    appearance: '外觀',
-    notifications: '通知',
-    reset: '重設設定',
-    language: '介面語言',
-    hour24: '24 小時制',
-    hour24Desc: '使用 24 小時時間格式',
-    theme: '主題',
-    light: '淺色',
-    dark: '深色',
-    auto: '跟隨系統',
-    animations: '動畫效果',
-    animationsDesc: '啟用介面動畫和過渡效果',
-    particles: '3D 粒子背景',
-    particlesDesc: '登入註冊頁顯示 Three.js 動態背景',
-    pushNotif: '推送通知',
-    pushNotifDesc: '接收新訊息推送通知',
-    sound: '訊息提示音',
-    soundDesc: '新訊息時播放提示音',
-    volume: '音效音量',
-    testNotif: '測試通知',
-    info: '資訊',
-    success: '成功',
-    warning: '警告',
-    error: '錯誤',
-    resetSuccess: '設定已重設',
-    resetSuccessDesc: '所有設定已恢復預設值',
-    notifEnabled: '通知已開啟',
-    notifEnabledDesc: '您將收到新訊息提醒',
-    notifFailed: '無法開啟通知',
-    notifFailedDesc: '請在瀏覽器設定中允許通知權限',
-  },
-  'en': {
+  'en-US': {
     settings: 'Settings',
     autoSave: 'Auto-save',
     general: 'General',
@@ -175,41 +140,6 @@ const i18n: Record<string, Record<string, string>> = {
     notifFailed: 'Cannot Enable Notifications',
     notifFailedDesc: 'Please allow notification permissions in browser settings',
   },
-  'ja': {
-    settings: '設定',
-    autoSave: '自動保存',
-    general: '一般',
-    appearance: '外観',
-    notifications: '通知',
-    reset: '設定をリセット',
-    language: '言語',
-    hour24: '24時間表示',
-    hour24Desc: '24時間形式を使用',
-    theme: 'テーマ',
-    light: 'ライト',
-    dark: 'ダーク',
-    auto: 'システム',
-    animations: 'アニメーション',
-    animationsDesc: 'UIアニメーションを有効にする',
-    particles: '3Dパーティクル背景',
-    particlesDesc: 'ログイン/登録ページにThree.js背景を表示',
-    pushNotif: 'プッシュ通知',
-    pushNotifDesc: '新しいメッセージの通知を受け取る',
-    sound: '通知音',
-    soundDesc: '新しいメッセージの時に音を再生',
-    volume: '音量',
-    testNotif: '通知をテスト',
-    info: '情報',
-    success: '成功',
-    warning: '警告',
-    error: 'エラー',
-    resetSuccess: '設定がリセットされました',
-    resetSuccessDesc: 'すべての設定がデフォルトに戻りました',
-    notifEnabled: '通知が有効になりました',
-    notifEnabledDesc: '新しいメッセージの通知を受け取ります',
-    notifFailed: '通知を有効にできません',
-    notifFailedDesc: 'ブラウザ設定で通知を許可してください',
-  },
 }
 
 // ============================================
@@ -231,8 +161,8 @@ function SettingRow({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between py-3">
-      <div className="flex items-center gap-3">
+    <div className="flex items-start justify-between gap-3 py-3 sm:items-center">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted">
           <Icon className={`h-4 w-4 ${iconClass ?? 'text-primary'}`} />
         </div>
@@ -243,7 +173,7 @@ function SettingRow({
           )}
         </div>
       </div>
-      {children}
+      <div className="shrink-0">{children}</div>
     </div>
   )
 }
@@ -278,7 +208,7 @@ function OptionCard({
     >
       {selected && (
         <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-          <Check className="w-3 h-3 text-white" />
+          <Check className="w-3 h-3 text-primary-foreground" />
         </div>
       )}
       {Icon && <Icon className={`w-6 h-6 mb-2 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />}
@@ -299,6 +229,10 @@ function OptionCard({
 // 获取当前语言文本
 function useI18n() {
   const { language } = useSettingsStore()
+  if (language === 'auto') {
+    const browserLang = typeof navigator !== 'undefined' ? navigator.language : 'zh-CN'
+    return i18n[browserLang] || i18n[browserLang.startsWith('en') ? 'en-US' : 'zh-CN']
+  }
   return i18n[language] || i18n['zh-CN']
 }
 
@@ -317,7 +251,7 @@ function GeneralSettings() {
         <Select
           value={settings.language}
           onValueChange={(value) => {
-            settings.setSetting('language', value)
+            settings.setSetting('language', value as LanguagePreference)
             playTap()
           }}
         >
@@ -336,7 +270,7 @@ function GeneralSettings() {
 
       <SettingRow 
         icon={Clock} 
-        iconClass="text-violet-500"
+        iconClass="text-primary"
         label={t.hour24}
         description={t.hour24Desc}
       >
@@ -389,7 +323,7 @@ function AppearanceSettings() {
       <div className="space-y-1">
         <SettingRow 
           icon={Zap} 
-          iconClass="text-amber-500"
+          iconClass="text-primary"
           label={t.animations}
           description={t.animationsDesc}
         >
@@ -404,7 +338,7 @@ function AppearanceSettings() {
 
         <SettingRow 
           icon={Box} 
-          iconClass="text-violet-500"
+          iconClass="text-primary"
           label={t.particles}
           description={t.particlesDesc}
         >
@@ -446,7 +380,7 @@ function NotificationSettings() {
       <div className="space-y-1">
         <SettingRow 
           icon={Bell} 
-          iconClass="text-red-500"
+          iconClass="text-primary"
           label={t.pushNotif}
           description={t.pushNotifDesc}
         >
@@ -500,10 +434,10 @@ function NotificationSettings() {
         <div className="text-sm font-medium mb-3">{t.testNotif}</div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: t.info, fn: () => notifyInfo(t.info, t.info), color: 'bg-blue-500' },
-            { label: t.success, fn: () => notifySuccess(t.success, t.success), color: 'bg-emerald-500' },
-            { label: t.warning, fn: () => notifyWarning(t.warning, t.warning), color: 'bg-amber-500' },
-            { label: t.error, fn: () => notifyError(t.error, t.error), color: 'bg-red-500' },
+            { label: t.info, fn: () => notifyInfo(t.info, t.info), color: 'bg-primary text-primary-foreground' },
+            { label: t.success, fn: () => notifySuccess(t.success, t.success), color: 'bg-primary text-primary-foreground' },
+            { label: t.warning, fn: () => notifyWarning(t.warning, t.warning), color: 'bg-secondary text-secondary-foreground' },
+            { label: t.error, fn: () => notifyError(t.error, t.error), color: 'bg-destructive text-destructive-foreground' },
           ].map(item => (
             <Button
               key={item.label}
@@ -511,7 +445,7 @@ function NotificationSettings() {
                 playButton()
                 item.fn()
               }}
-              className={`${item.color} text-white hover:opacity-90`}
+              className={` hover:opacity-90`}
               size="sm"
             >
               {item.label}
@@ -569,7 +503,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
-      <DialogContent showCloseButton={false} className="max-w-[680px] p-0 overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        className="h-[min(92dvh,780px)] max-h-[92dvh] w-[calc(100%-1rem)] max-w-[680px] p-0 overflow-hidden"
+      >
         <DialogHeader className="border-b px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -588,7 +525,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             setActiveTab(value as TabId)
             playTap()
           }}
-          className="flex h-[min(80vh,620px)] flex-row max-md:flex-col"
+          className="flex h-full min-h-0 flex-col md:flex-row"
           orientation="vertical"
         >
           <div className="hidden h-full w-52 border-r p-3 md:block">
@@ -623,7 +560,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </TabsList>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
             <TabsContent value="general"><GeneralSettings /></TabsContent>
             <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
             <TabsContent value="notifications"><NotificationSettings /></TabsContent>
