@@ -1,10 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import { 
-  X,
   Settings,
   Globe,
   Palette,
@@ -20,8 +17,15 @@ import {
   Box,
   RotateCcw
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSettingsStore } from '@/store/settingsStore'
-import { playTap, playToggle, playButton, playPop } from '@/hooks/useSound'
+import { playTap, playButton, playPop } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
 
 // ============================================
@@ -39,7 +43,6 @@ interface Tab {
   id: TabId
   label: string
   icon: React.ElementType
-  color: string
 }
 
 // ============================================
@@ -47,9 +50,9 @@ interface Tab {
 // ============================================
 
 const TABS: Tab[] = [
-  { id: 'general', label: '通用', icon: Globe, color: '#6366f1' },
-  { id: 'appearance', label: '外观', icon: Palette, color: '#8b5cf6' },
-  { id: 'notifications', label: '通知', icon: Bell, color: '#ef4444' },
+  { id: 'general', label: '通用', icon: Globe },
+  { id: 'appearance', label: '外观', icon: Palette },
+  { id: 'notifications', label: '通知', icon: Bell },
 ]
 
 const THEMES = [
@@ -213,56 +216,16 @@ const i18n: Record<string, Record<string, string>> = {
 // 子组件
 // ============================================
 
-// 开关组件
-function Toggle({ 
-  checked, 
-  onChange, 
-  disabled 
-}: { 
-  checked: boolean
-  onChange: (checked: boolean) => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => {
-        onChange(!checked)
-        playToggle()
-      }}
-      className={`
-        relative w-11 h-6 rounded-full transition-all duration-200
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        ${checked 
-          ? 'bg-gradient-to-r from-indigo-500 to-purple-500 shadow-lg shadow-indigo-500/25' 
-          : 'bg-slate-200 dark:bg-slate-700'
-        }
-      `}
-    >
-      <span
-        className={`
-          absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md
-          transition-transform duration-200 ease-out
-          ${checked ? 'translate-x-5' : 'translate-x-0'}
-        `}
-      />
-    </button>
-  )
-}
-
 // 设置项行
 function SettingRow({
   icon: Icon,
-  iconColor,
+  iconClass,
   label,
   description,
   children,
 }: {
   icon: React.ElementType
-  iconColor: string
+  iconClass?: string
   label: string
   description?: string
   children: React.ReactNode
@@ -270,18 +233,13 @@ function SettingRow({
   return (
     <div className="flex items-center justify-between py-3">
       <div className="flex items-center gap-3">
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ 
-            background: `linear-gradient(135deg, ${iconColor}20 0%, ${iconColor}10 100%)`,
-          }}
-        >
-          <Icon className="w-4.5 h-4.5" style={{ color: iconColor }} />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted">
+          <Icon className={`h-4 w-4 ${iconClass ?? 'text-primary'}`} />
         </div>
         <div>
-          <div className="text-sm font-medium text-slate-800 dark:text-white">{label}</div>
+          <div className="text-sm font-medium">{label}</div>
           {description && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
           )}
         </div>
       </div>
@@ -313,73 +271,24 @@ function OptionCard({
       className={`
         relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all
         ${selected 
-          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' 
-          : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800'
+          ? 'border-primary bg-primary/5' 
+          : 'border-border hover:border-ring/40 bg-card'
         }
       `}
     >
       {selected && (
-        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
           <Check className="w-3 h-3 text-white" />
         </div>
       )}
-      {Icon && <Icon className={`w-6 h-6 mb-2 ${selected ? 'text-indigo-600' : 'text-slate-500'}`} />}
-      <span className={`text-sm font-medium ${selected ? 'text-indigo-600' : 'text-slate-700 dark:text-slate-300'}`}>
+      {Icon && <Icon className={`w-6 h-6 mb-2 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />}
+      <span className={`text-sm font-medium ${selected ? 'text-primary' : 'text-foreground'}`}>
         {label}
       </span>
       {description && (
-        <span className="text-xs text-slate-400 mt-0.5">{description}</span>
+        <span className="text-xs text-muted-foreground mt-0.5">{description}</span>
       )}
     </button>
-  )
-}
-
-// 滑块组件
-function Slider({
-  value,
-  onChange,
-  min = 0,
-  max = 1,
-  step = 0.1,
-}: {
-  value: number
-  onChange: (value: number) => void
-  min?: number
-  max?: number
-  step?: number
-}) {
-  const percentage = ((value - min) / (max - min)) * 100
-
-  return (
-    <div className="relative w-full">
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => {
-          onChange(parseFloat(e.target.value))
-          playTap()
-        }}
-        className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer
-          [&::-webkit-slider-thumb]:appearance-none
-          [&::-webkit-slider-thumb]:w-5
-          [&::-webkit-slider-thumb]:h-5
-          [&::-webkit-slider-thumb]:rounded-full
-          [&::-webkit-slider-thumb]:bg-white
-          [&::-webkit-slider-thumb]:shadow-lg
-          [&::-webkit-slider-thumb]:border-2
-          [&::-webkit-slider-thumb]:border-indigo-500
-          [&::-webkit-slider-thumb]:cursor-pointer
-          [&::-webkit-slider-thumb]:transition-transform
-          [&::-webkit-slider-thumb]:hover:scale-110
-        "
-        style={{
-          background: `linear-gradient(to right, #6366f1 ${percentage}%, #e2e8f0 ${percentage}%)`,
-        }}
-      />
-    </div>
   )
 }
 
@@ -402,34 +311,41 @@ function GeneralSettings() {
     <div className="space-y-1">
       <SettingRow 
         icon={Languages} 
-        iconColor="#6366f1" 
+        iconClass="text-primary"
         label={t.language}
       >
-        <select
+        <Select
           value={settings.language}
-          onChange={(e) => {
-            settings.setSetting('language', e.target.value)
+          onValueChange={(value) => {
+            settings.setSetting('language', value)
             playTap()
           }}
-          className="px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 border-0 rounded-lg text-slate-700 dark:text-slate-300 cursor-pointer focus:ring-2 focus:ring-indigo-500"
         >
-          {LANGUAGES.map(lang => (
-            <option key={lang.value} value={lang.value}>
-              {lang.flag} {lang.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LANGUAGES.map((lang) => (
+              <SelectItem key={lang.value} value={lang.value}>
+                {lang.flag} {lang.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingRow>
 
       <SettingRow 
         icon={Clock} 
-        iconColor="#8b5cf6" 
+        iconClass="text-violet-500"
         label={t.hour24}
         description={t.hour24Desc}
       >
-        <Toggle
+        <Switch
           checked={settings.use24HourFormat}
-          onChange={(checked) => settings.setSetting('use24HourFormat', checked)}
+          onCheckedChange={(checked) => {
+            settings.setSetting('use24HourFormat', checked)
+            playTap()
+          }}
         />
       </SettingRow>
     </div>
@@ -456,7 +372,7 @@ function AppearanceSettings() {
     <div className="space-y-6">
       {/* 主题选择 */}
       <div>
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{t.theme}</div>
+        <div className="mb-3 text-sm font-medium">{t.theme}</div>
         <div className="grid grid-cols-3 gap-3">
           {THEMES.map(theme => (
             <OptionCard
@@ -473,25 +389,31 @@ function AppearanceSettings() {
       <div className="space-y-1">
         <SettingRow 
           icon={Zap} 
-          iconColor="#f59e0b" 
+          iconClass="text-amber-500"
           label={t.animations}
           description={t.animationsDesc}
         >
-          <Toggle
+          <Switch
             checked={settings.animationsEnabled}
-            onChange={(checked) => settings.setSetting('animationsEnabled', checked)}
+            onCheckedChange={(checked) => {
+              settings.setSetting('animationsEnabled', checked)
+              playTap()
+            }}
           />
         </SettingRow>
 
         <SettingRow 
           icon={Box} 
-          iconColor="#8b5cf6" 
+          iconClass="text-violet-500"
           label={t.particles}
           description={t.particlesDesc}
         >
-          <Toggle
+          <Switch
             checked={settings.particleBackground}
-            onChange={(checked) => settings.setSetting('particleBackground', checked)}
+            onCheckedChange={(checked) => {
+              settings.setSetting('particleBackground', checked)
+              playTap()
+            }}
           />
         </SettingRow>
       </div>
@@ -524,46 +446,58 @@ function NotificationSettings() {
       <div className="space-y-1">
         <SettingRow 
           icon={Bell} 
-          iconColor="#ef4444" 
+          iconClass="text-red-500"
           label={t.pushNotif}
           description={t.pushNotifDesc}
         >
-          <Toggle
+          <Switch
             checked={settings.notificationsEnabled}
-            onChange={handleNotificationToggle}
+            onCheckedChange={handleNotificationToggle}
           />
         </SettingRow>
 
         <SettingRow 
           icon={Volume2} 
-          iconColor="#6366f1" 
+          iconClass="text-primary"
           label={t.sound}
           description={t.soundDesc}
         >
-          <Toggle
+          <Switch
             checked={settings.soundEnabled}
-            onChange={(checked) => settings.setSetting('soundEnabled', checked)}
+            onCheckedChange={(checked) => {
+              settings.setSetting('soundEnabled', checked)
+              playTap()
+            }}
             disabled={!settings.notificationsEnabled}
           />
         </SettingRow>
       </div>
 
       {settings.soundEnabled && (
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+        <Card>
+          <CardContent className="space-y-3 pt-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.volume}</span>
-            <span className="text-sm text-indigo-600 font-medium">{Math.round(settings.soundVolume * 100)}%</span>
+            <span className="text-sm font-medium">{t.volume}</span>
+            <span className="text-sm text-primary font-medium">{Math.round(settings.soundVolume * 100)}%</span>
           </div>
           <Slider
-            value={settings.soundVolume}
-            onChange={(value) => settings.setSetting('soundVolume', value)}
+            min={0}
+            max={1}
+            step={0.1}
+            value={[settings.soundVolume]}
+            onValueChange={(value) => {
+              settings.setSetting('soundVolume', value[0] ?? 0)
+              playTap()
+            }}
           />
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* 测试通知 */}
-      <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl">
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">{t.testNotif}</div>
+      <Card className="bg-muted/50">
+        <CardContent className="pt-4">
+        <div className="text-sm font-medium mb-3">{t.testNotif}</div>
         <div className="flex flex-wrap gap-2">
           {[
             { label: t.info, fn: () => notifyInfo(t.info, t.info), color: 'bg-blue-500' },
@@ -571,19 +505,21 @@ function NotificationSettings() {
             { label: t.warning, fn: () => notifyWarning(t.warning, t.warning), color: 'bg-amber-500' },
             { label: t.error, fn: () => notifyError(t.error, t.error), color: 'bg-red-500' },
           ].map(item => (
-            <button
+            <Button
               key={item.label}
               onClick={() => {
                 playButton()
                 item.fn()
               }}
-              className={`px-3 py-1.5 text-xs font-medium text-white rounded-lg ${item.color} hover:opacity-90 transition-opacity`}
+              className={`${item.color} text-white hover:opacity-90`}
+              size="sm"
             >
               {item.label}
-            </button>
+            </Button>
           ))}
         </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -631,166 +567,77 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     notifications: t.notifications,
   }
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'general':
-        return <GeneralSettings />
-      case 'appearance':
-        return <AppearanceSettings />
-      case 'notifications':
-        return <NotificationSettings />
-      default:
-        return null
-    }
-  }
-
-  if (typeof document === 'undefined') return null
-
-  return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* 背景遮罩 */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={handleClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9998]"
-          />
-
-          {/* 模态框 */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[680px] md:max-h-[85vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[9999] flex flex-col overflow-hidden"
-          >
-            {/* 头部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                  <Settings className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{t.settings}</h2>
-                  <p className="text-xs text-slate-500">{t.autoSave}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
+      <DialogContent showCloseButton={false} className="max-w-[680px] p-0 overflow-hidden">
+        <DialogHeader className="border-b px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <Settings className="h-5 w-5 text-primary" />
             </div>
-
-            {/* 内容区 */}
-            <div className="flex flex-1 overflow-hidden">
-              {/* 侧边栏 */}
-              <div className="w-48 shrink-0 border-r border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/50 max-md:hidden">
-                <nav className="space-y-1">
-                  {TABS.map(tab => {
-                    const Icon = tab.icon
-                    const isActive = activeTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveTab(tab.id)
-                          playTap()
-                        }}
-                        className={`
-                          w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                          ${isActive 
-                            ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' 
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'
-                          }
-                        `}
-                      >
-                        <Icon 
-                          className="w-4.5 h-4.5" 
-                          style={{ color: isActive ? tab.color : undefined }} 
-                        />
-                        {tabLabels[tab.id]}
-                      </button>
-                    )
-                  })}
-                </nav>
-
-                {/* 重置按钮 */}
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <button
-                    onClick={handleReset}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    {t.reset}
-                  </button>
-                </div>
-              </div>
-
-              {/* 移动端 Tab 栏 */}
-              <div className="md:hidden w-full border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 overflow-x-auto">
-                <div className="flex p-2 gap-1">
-                  {TABS.map(tab => {
-                    const Icon = tab.icon
-                    const isActive = activeTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveTab(tab.id)
-                          playTap()
-                        }}
-                        className={`
-                          flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                          ${isActive 
-                            ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' 
-                            : 'text-slate-600 dark:text-slate-400'
-                          }
-                        `}
-                      >
-                        <Icon className="w-4 h-4" style={{ color: isActive ? tab.color : undefined }} />
-                        {tabLabels[tab.id]}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* 设置内容 */}
-              <div className="flex-1 overflow-y-auto p-6 max-md:p-4">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {renderContent()}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
+            <div>
+              <DialogTitle>{t.settings}</DialogTitle>
+              <DialogDescription>{t.autoSave}</DialogDescription>
             </div>
+          </div>
+        </DialogHeader>
 
-            {/* 移动端底部重置按钮 */}
-            <div className="md:hidden px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-              <button
-                onClick={handleReset}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-xl transition-colors"
-              >
-                <RotateCcw className="w-4 h-4" />
-                {t.reset}
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            setActiveTab(value as TabId)
+            playTap()
+          }}
+          className="flex h-[min(80vh,620px)] flex-row max-md:flex-col"
+          orientation="vertical"
+        >
+          <div className="hidden h-full w-52 border-r p-3 md:block">
+            <TabsList className="h-auto w-full flex-col bg-transparent p-0">
+              {TABS.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <TabsTrigger key={tab.id} value={tab.id} className="w-full justify-start gap-2 px-3 py-2.5">
+                    <Icon className="h-4 w-4" />
+                    {tabLabels[tab.id]}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+            <Button variant="outline" className="mt-4 w-full justify-start gap-2 text-destructive" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4" />
+              {t.reset}
+            </Button>
+          </div>
+
+          <div className="border-b p-2 md:hidden">
+            <TabsList className="grid w-full grid-cols-3">
+              {TABS.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs">
+                    <Icon className="h-4 w-4" />
+                    {tabLabels[tab.id]}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <TabsContent value="general"><GeneralSettings /></TabsContent>
+            <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
+            <TabsContent value="notifications"><NotificationSettings /></TabsContent>
+          </div>
+
+          <div className="border-t p-4 md:hidden">
+            <Button variant="outline" className="w-full justify-center gap-2 text-destructive" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4" />
+              {t.reset}
+            </Button>
+          </div>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users, Clock, Send } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useFriendsStore } from '../../store/friendsStore'
 import { useChatStore } from '../../store/chatStore'
@@ -206,22 +208,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
       <div className="flex flex-col h-full">
         {/* 添加好友按钮 */}
         <div className="p-3">
-          <motion.button
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium text-white"
-            style={{
-              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)',
-            }}
-            onClick={() => setShowAddDialog(true)}
-            whileHover={{ 
-              scale: 1.02,
-              boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)',
-            }}
-            whileTap={{ scale: 0.98 }}
-          >
+          <Button className="w-full h-11 gap-2" onClick={() => setShowAddDialog(true)}>
             <UserPlus className="h-4 w-4" />
             添加好友
-          </motion.button>
+          </Button>
         </div>
 
         {/* 好友列表 */}
@@ -237,32 +227,24 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               initial="hidden"
               animate="visible"
             >
-              <div 
-                className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-                style={{ background: 'rgba(147, 197, 253, 0.2)' }}
-              >
-                <Users className="h-8 w-8 text-blue-400" />
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
+                <Users className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm text-slate-500">暂无好友</p>
-              {searchQuery && <p className="text-xs text-slate-400 mt-1">试试其他搜索条件</p>}
+              <p className="text-sm text-muted-foreground">暂无好友</p>
+              {searchQuery && <p className="text-xs text-muted-foreground mt-1">试试其他搜索条件</p>}
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredFriends.map((friend, index) => (
                 <motion.div
                   key={friend.user_id}
-                  className="flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-blue-100/20 active:bg-blue-100/30"
+                  className={`flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-accent active:bg-accent/80 ${selectedConversation?.id === friend.user_id ? 'bg-accent' : ''}`}
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   custom={index}
                   layout
-                  style={{
-                    background: selectedConversation?.id === friend.user_id 
-                      ? 'linear-gradient(135deg, rgba(147, 197, 253, 0.25) 0%, rgba(147, 197, 253, 0.15) 100%)'
-                      : 'transparent',
-                  }}
                 >
                   <button
                     className="flex items-center gap-3 flex-1 min-w-0"
@@ -272,22 +254,14 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       <div className="conv-avatar">
                         <Avatar className="h-full w-full">
                           <AvatarImage src={friend.avatar_url} />
-                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white">
+                          <AvatarFallback className="bg-primary text-primary-foreground">
                             {friend.nickname[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                       </div>
                       {/* 在线状态指示器 */}
-                      <span 
-                        className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white"
-                        style={{
-                          background: isOnline(friend.user_id) 
-                            ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                            : '#94a3b8',
-                          boxShadow: isOnline(friend.user_id) 
-                            ? '0 2px 6px rgba(34, 197, 94, 0.4)'
-                            : 'none',
-                        }}
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-background ${isOnline(friend.user_id) ? 'bg-emerald-500 shadow-sm' : 'bg-muted-foreground'}`}
                         title={isOnline(friend.user_id) ? '在线' : '离线'}
                       />
                     </div>
@@ -324,11 +298,11 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   {/* 操作菜单 */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button 
-                        className="p-2 rounded-lg hover:bg-white/50 transition-colors"
+                      <button
+                        className="p-2 rounded-lg hover:bg-accent transition-colors"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <MoreVertical className="h-4 w-4 text-slate-400" />
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -359,8 +333,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
               <>
                 {/* 遮罩层 */}
                 <motion.div
-                  className="fixed inset-0 z-[9998]"
-                  style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+                  className="fixed inset-0 z-[9998] bg-black/45 backdrop-blur-sm"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -374,102 +347,56 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                   exit={{ opacity: 0 }}
                 >
                 <motion.div
-                  className="w-[400px] max-w-full pointer-events-auto"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
-                    backdropFilter: 'blur(20px) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(147, 197, 253, 0.3)',
-                    boxShadow: '0 25px 50px -12px rgba(59, 130, 246, 0.25)',
-                    padding: '24px',
-                  }}
+                  className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-card p-6 shadow-xl"
                   variants={dialogVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-xl font-semibold mb-6 text-slate-700">添加好友</h3>
+                  <h3 className="text-xl font-semibold mb-6 text-foreground">添加好友</h3>
                   
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">用户ID</label>
-                      <input
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">用户ID</label>
+                      <Input
                         type="text"
                         placeholder="输入用户ID"
                         value={targetUserId}
                         onChange={(e) => setTargetUserId(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(147, 197, 253, 0.3)',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)'
-                          e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(147, 197, 253, 0.3)'
-                          e.target.style.boxShadow = 'none'
-                        }}
+                        className="h-10"
                       />
                     </div>
                     
                     <div>
-                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">验证消息（可选）</label>
-                      <input
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">验证消息（可选）</label>
+                      <Input
                         type="text"
                         placeholder="我是..."
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(147, 197, 253, 0.3)',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)'
-                          e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(147, 197, 253, 0.3)'
-                          e.target.style.boxShadow = 'none'
-                        }}
+                        className="h-10"
                       />
                     </div>
                   </div>
 
                   <div className="flex gap-3 mt-6">
-                    <motion.button
-                      className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.6)',
-                        border: '1px solid rgba(147, 197, 253, 0.3)',
-                      }}
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10"
                       onClick={() => {
                         setShowAddDialog(false)
                         setTargetUserId('')
                         setReason('')
                       }}
                       disabled={submitting}
-                      whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       取消
-                    </motion.button>
-                    <motion.button
-                      className="flex-1 py-3 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                      style={{
-                        background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                        boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)',
-                      }}
+                    </Button>
+                    <Button
+                      className="flex-1 h-10"
                       onClick={handleSendRequest}
                       disabled={submitting}
-                      whileHover={{ 
-                        boxShadow: '0 6px 20px rgba(59, 130, 246, 0.4)',
-                      }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       {submitting ? (
                         <>
@@ -479,7 +406,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       ) : (
                         '发送请求'
                       )}
-                    </motion.button>
+                    </Button>
                   </div>
                 </motion.div>
                 </motion.div>
@@ -507,24 +434,17 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
             initial="hidden"
             animate="visible"
           >
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-              style={{ background: 'rgba(147, 197, 253, 0.2)' }}
-            >
-              <Clock className="h-8 w-8 text-blue-400" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
+              <Clock className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-slate-500">暂无新的好友请求</p>
+            <p className="text-sm text-muted-foreground">暂无新的好友请求</p>
           </motion.div>
         ) : (
           <AnimatePresence mode="popLayout">
             {pendingArray.map((request, index) => (
               <motion.div
                 key={request.applicant_user_id}
-                className="p-4 mb-2 rounded-xl"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.5)',
-                  border: '1px solid rgba(147, 197, 253, 0.2)',
-                }}
+                className="p-4 mb-2 rounded-xl border bg-card"
                 variants={listItemVariants}
                 initial="hidden"
                 animate="visible"
@@ -534,50 +454,42 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <div className="flex items-start gap-3">
                   <div className="conv-avatar">
                     <Avatar className="h-full w-full">
-                      <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
                         {request.nickname[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-700">{request.nickname}</div>
-                    <div className="text-xs text-slate-400">
+                    <div className="font-medium text-foreground">{request.nickname}</div>
+                    <div className="text-xs text-muted-foreground">
                       {request.applicant_user_id}
                     </div>
                     {request.reason && (
-                      <div className="text-sm text-slate-500 mt-1 p-2 rounded-lg" style={{ background: 'rgba(147, 197, 253, 0.1)' }}>
+                      <div className="text-sm text-muted-foreground mt-1 p-2 rounded-lg bg-muted/60">
                         &quot;{request.reason}&quot;
                       </div>
                     )}
-                    <div className="text-xs text-slate-400 mt-2">
+                    <div className="text-xs text-muted-foreground mt-2">
                       {new Date(request.request_time).toLocaleString()}
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <motion.button
-                        className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-white text-sm"
-                        style={{
-                          background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                        }}
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={() => handleApprove(request.applicant_user_id)}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                       >
                         <Check className="h-3 w-3" />
                         同意
-                      </motion.button>
-                      <motion.button
-                        className="flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-slate-600 text-sm"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(147, 197, 253, 0.3)',
-                        }}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleReject(request.applicant_user_id)}
-                        whileHover={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-                        whileTap={{ scale: 0.98 }}
+                        className="hover:text-destructive"
                       >
                         <X className="h-3 w-3" />
                         拒绝
-                      </motion.button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -604,24 +516,17 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
             initial="hidden"
             animate="visible"
           >
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-              style={{ background: 'rgba(147, 197, 253, 0.2)' }}
-            >
-              <Send className="h-8 w-8 text-blue-400" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
+              <Send className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-slate-500">暂无已发送的请求</p>
+            <p className="text-sm text-muted-foreground">暂无已发送的请求</p>
           </motion.div>
         ) : (
           <AnimatePresence mode="popLayout">
             {sentArray.map((request, index) => (
               <motion.div
                 key={request.target_user_id}
-                className="p-4 mb-2 rounded-xl"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.5)',
-                  border: '1px solid rgba(147, 197, 253, 0.2)',
-                }}
+                className="p-4 mb-2 rounded-xl border bg-card"
                 variants={listItemVariants}
                 initial="hidden"
                 animate="visible"
@@ -631,41 +536,27 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <div className="flex items-start gap-3">
                   <div className="conv-avatar">
                     <Avatar className="h-full w-full">
-                      <AvatarFallback className="bg-gradient-to-br from-indigo-400 to-indigo-500 text-white">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
                         {request.target_user_id[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-700">{request.target_user_id}</div>
+                    <div className="font-medium text-foreground">{request.target_user_id}</div>
                     {request.reason && (
-                      <div className="text-sm text-slate-500 mt-1">
+                      <div className="text-sm text-muted-foreground mt-1">
                         {request.reason}
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <span 
-                        className="text-xs px-2.5 py-1 rounded-full font-medium"
-                        style={{
-                          background: request.status === 'approved'
-                            ? 'rgba(34, 197, 94, 0.15)'
-                            : request.status === 'rejected'
-                            ? 'rgba(239, 68, 68, 0.15)'
-                            : 'rgba(234, 179, 8, 0.15)',
-                          color: request.status === 'approved'
-                            ? '#16a34a'
-                            : request.status === 'rejected'
-                            ? '#dc2626'
-                            : '#ca8a04',
-                        }}
-                      >
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${request.status === 'approved' ? 'bg-emerald-500/15 text-emerald-600' : request.status === 'rejected' ? 'bg-destructive/15 text-destructive' : 'bg-amber-500/15 text-amber-600'}`}>
                         {request.status === 'approved'
                           ? '已同意'
                           : request.status === 'rejected'
                           ? '已拒绝'
                           : '待处理'}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-muted-foreground">
                         {new Date(request.request_time).toLocaleString()}
                       </span>
                     </div>

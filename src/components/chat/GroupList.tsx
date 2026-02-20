@@ -16,6 +16,8 @@ import {
   Mail
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useGroupStore } from '../../store/groupStore'
 import { useChatStore } from '../../store/chatStore'
 import { groupsApi, type GroupInvitation } from '../../api/groups'
@@ -334,35 +336,22 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       <div className="flex flex-col h-full">
         {/* 创建群聊按钮 */}
         <div className="p-3 flex gap-2">
-          <motion.button
-            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium text-white"
-            style={{
-              background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
-            }}
+          <Button
+            className="flex-1 h-12 gap-2"
             onClick={() => setShowCreateDialog(true)}
-            whileHover={{ 
-              scale: 1.02,
-              boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
-            }}
-            whileTap={{ scale: 0.98 }}
           >
             <Plus className="h-4 w-4" />
             创建群聊
-          </motion.button>
-          <motion.button
-            className="w-12 h-12 flex items-center justify-center rounded-xl"
-            style={{
-              background: 'rgba(255, 255, 255, 0.6)',
-              border: '1px solid rgba(147, 197, 253, 0.3)',
-            }}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-12 w-12 rounded-xl"
             onClick={() => loadMyGroups()}
             disabled={isLoading}
-            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-            whileTap={{ scale: 0.95 }}
           >
-            <RefreshCw className={`h-4 w-4 text-slate-500 ${isLoading ? 'animate-spin' : ''}`} />
-          </motion.button>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         {/* 群聊列表 */}
@@ -378,21 +367,18 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               initial="hidden"
               animate="visible"
             >
-              <div 
-                className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-                style={{ background: 'rgba(167, 139, 250, 0.2)' }}
-              >
-                <Users className="h-8 w-8 text-violet-400" />
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
+                <Users className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm text-slate-500">暂无群聊</p>
-              {searchQuery && <p className="text-xs text-slate-400 mt-1">试试其他搜索条件</p>}
+              <p className="text-sm text-muted-foreground">暂无群聊</p>
+              {searchQuery && <p className="text-xs text-muted-foreground mt-1">试试其他搜索条件</p>}
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredGroups.map((group, index) => (
                 <motion.button
                   key={group.group_id}
-                  className="flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-blue-100/20 active:bg-blue-100/30 w-full"
+                  className={`flex items-center gap-3 p-3 min-h-[52px] rounded-xl cursor-pointer transition-colors hover:bg-accent active:bg-accent/80 w-full ${selectedConversation?.id === group.group_id ? 'bg-accent' : ''}`}
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
@@ -400,16 +386,11 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   custom={index}
                   layout
                   onClick={() => handleSelectGroup(group)}
-                  style={{
-                    background: selectedConversation?.id === group.group_id 
-                      ? 'linear-gradient(135deg, rgba(167, 139, 250, 0.25) 0%, rgba(167, 139, 250, 0.15) 100%)'
-                      : 'transparent',
-                  }}
                 >
                   <div className="conv-avatar">
                     <Avatar className="h-full w-full">
                       <AvatarImage src={group.group_avatar_url} />
-                      <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
                         {group.group_name[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -450,8 +431,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               <>
                 {/* 遮罩层 */}
                 <motion.div
-                  className="fixed inset-0 z-[9998]"
-                  style={{ background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)' }}
+                  className="fixed inset-0 z-[9998] bg-black/45 backdrop-blur-sm"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -465,81 +445,44 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   exit={{ opacity: 0 }}
                 >
                 <motion.div
-                  className="w-[400px] max-w-full pointer-events-auto"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
-                    backdropFilter: 'blur(20px) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                    borderRadius: '24px',
-                    border: '1px solid rgba(167, 139, 250, 0.3)',
-                    boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.25)',
-                    padding: '24px',
-                  }}
+                  className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-card p-6 shadow-xl"
                   variants={dialogVariants}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-xl font-semibold mb-6 text-slate-700">创建群聊</h3>
+                  <h3 className="text-xl font-semibold mb-6 text-foreground">创建群聊</h3>
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">群名称 *</label>
-                      <input
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">群名称 *</label>
+                      <Input
                         type="text"
                         placeholder="输入群名称"
                         value={groupName}
                         onChange={(e) => setGroupName(e.target.value)}
                         maxLength={30}
-                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(167, 139, 250, 0.3)',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'
-                          e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1)'
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(167, 139, 250, 0.3)'
-                          e.target.style.boxShadow = 'none'
-                        }}
+                        className="h-10"
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">群描述（可选）</label>
-                      <input
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">群描述（可选）</label>
+                      <Input
                         type="text"
                         placeholder="简单介绍一下这个群..."
                         value={groupDescription}
                         onChange={(e) => setGroupDescription(e.target.value)}
                         maxLength={200}
-                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(167, 139, 250, 0.3)',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'
-                          e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1)'
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(167, 139, 250, 0.3)'
-                          e.target.style.boxShadow = 'none'
-                        }}
+                        className="h-10"
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-600 mb-1.5 block">加群方式</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">加群方式</label>
                       <select
-                        className="w-full px-4 py-3 rounded-xl text-slate-700 outline-none transition-all cursor-pointer"
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.6)',
-                          border: '1px solid rgba(167, 139, 250, 0.3)',
-                        }}
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] cursor-pointer"
                         value={joinMode}
                         onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
                       >
@@ -551,12 +494,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   </div>
 
                   <div className="flex gap-3 mt-6">
-                    <motion.button
-                      className="flex-1 py-3 px-4 rounded-xl font-medium text-slate-600"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.6)',
-                        border: '1px solid rgba(167, 139, 250, 0.3)',
-                      }}
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10"
                       onClick={() => {
                         setShowCreateDialog(false)
                         setGroupName('')
@@ -564,24 +504,13 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                         setJoinMode('open')
                       }}
                       disabled={submitting}
-                      whileHover={{ background: 'rgba(167, 139, 250, 0.2)' }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       取消
-                    </motion.button>
-                    <motion.button
-                      className="flex-1 py-3 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                      style={{
-                        background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                        boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
-                        opacity: (!groupName.trim() || submitting) ? 0.6 : 1,
-                      }}
+                    </Button>
+                    <Button
+                      className="flex-1 h-10"
                       onClick={handleCreateGroup}
                       disabled={submitting || !groupName.trim()}
-                      whileHover={groupName.trim() && !submitting ? { 
-                        boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
-                      } : {}}
-                      whileTap={groupName.trim() && !submitting ? { scale: 0.98 } : {}}
                     >
                       {submitting ? (
                         <>
@@ -591,7 +520,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       ) : (
                         '创建'
                       )}
-                    </motion.button>
+                    </Button>
                   </div>
                 </motion.div>
                 </motion.div>
@@ -609,94 +538,58 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     return (
       <div className="flex flex-col h-full p-4 space-y-6">
         {/* 通过邀请码加入 */}
-        <div 
-          className="p-4 rounded-xl space-y-3"
-          style={{
-            background: 'rgba(255, 255, 255, 0.5)',
-            border: '1px solid rgba(147, 197, 253, 0.2)',
-          }}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+        <div className="p-4 rounded-xl space-y-3 border bg-card">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Link className="h-4 w-4" />
             通过邀请码加入
           </div>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               placeholder="输入邀请码"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-              className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 font-mono outline-none transition-all"
-              style={{
-                background: 'rgba(255, 255, 255, 0.6)',
-                border: '1px solid rgba(147, 197, 253, 0.3)',
-              }}
+              className="flex-1 h-10 font-mono"
               maxLength={10}
             />
-            <motion.button
-              className="px-5 py-2.5 rounded-xl font-medium text-white"
-              style={{
-                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                opacity: (joiningByCode || !inviteCode.trim()) ? 0.6 : 1,
-              }}
+            <Button
+              className="h-10 px-5"
               onClick={handleJoinByCode}
               disabled={joiningByCode || !inviteCode.trim()}
-              whileHover={inviteCode.trim() && !joiningByCode ? { scale: 1.02 } : {}}
-              whileTap={inviteCode.trim() && !joiningByCode ? { scale: 0.98 } : {}}
             >
               {joiningByCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '加入'}
-            </motion.button>
+            </Button>
           </div>
         </div>
 
         {/* 搜索群聊 */}
-        <div 
-          className="p-4 rounded-xl space-y-3"
-          style={{
-            background: 'rgba(255, 255, 255, 0.5)',
-            border: '1px solid rgba(147, 197, 253, 0.2)',
-          }}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+        <div className="p-4 rounded-xl space-y-3 border bg-card">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Search className="h-4 w-4" />
             搜索群聊
           </div>
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               placeholder="输入群ID"
               value={searchGroupId}
               onChange={(e) => setSearchGroupId(e.target.value)}
-              className="flex-1 px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
-              style={{
-                background: 'rgba(255, 255, 255, 0.6)',
-                border: '1px solid rgba(147, 197, 253, 0.3)',
-              }}
+              className="flex-1 h-10"
             />
-            <motion.button
-              className="px-5 py-2.5 rounded-xl font-medium text-slate-600"
-              style={{
-                background: 'rgba(255, 255, 255, 0.6)',
-                border: '1px solid rgba(147, 197, 253, 0.3)',
-                opacity: (searchingGroup || !searchGroupId.trim()) ? 0.6 : 1,
-              }}
+            <Button
+              variant="outline"
+              className="h-10 px-5"
               onClick={handleSearchGroup}
               disabled={searchingGroup || !searchGroupId.trim()}
-              whileHover={searchGroupId.trim() && !searchingGroup ? { background: 'rgba(147, 197, 253, 0.2)' } : {}}
-              whileTap={searchGroupId.trim() && !searchingGroup ? { scale: 0.98 } : {}}
             >
               {searchingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : '搜索'}
-            </motion.button>
+            </Button>
           </div>
 
           {/* 搜索结果 */}
           {searchResult && (
             <motion.div
-              className="p-4 rounded-xl space-y-3"
-              style={{
-                background: 'rgba(147, 197, 253, 0.1)',
-                border: '1px solid rgba(147, 197, 253, 0.3)',
-              }}
+              className="p-4 rounded-xl space-y-3 border bg-accent/30"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
             >
@@ -704,14 +597,14 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <div className="conv-avatar">
                   <Avatar className="h-full w-full">
                     <AvatarImage src={searchResult.group_avatar_url} />
-                    <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                    <AvatarFallback className="bg-primary text-primary-foreground">
                       {searchResult.group_name[0]?.toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium text-slate-700">{searchResult.group_name}</div>
-                  <div className="text-sm text-slate-500">
+                  <div className="font-medium text-foreground">{searchResult.group_name}</div>
+                  <div className="text-sm text-muted-foreground">
                     {searchResult.member_count ?? 0} 成员 · {getJoinModeText(searchResult.join_mode || 'approval_required')}
                   </div>
                 </div>
@@ -719,49 +612,34 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
               {(searchResult.join_mode || 'approval_required') !== 'open' && (
                 <div>
-                  <label className="text-sm text-slate-500 mb-1 block">申请理由</label>
-                  <input
+                  <label className="text-sm text-muted-foreground mb-1 block">申请理由</label>
+                  <Input
                     type="text"
                     placeholder="说明加群原因（可选）"
                     value={applyReason}
                     onChange={(e) => setApplyReason(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl text-slate-700 outline-none transition-all"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.6)',
-                      border: '1px solid rgba(147, 197, 253, 0.3)',
-                    }}
+                    className="h-10"
                     maxLength={100}
                   />
                 </div>
               )}
 
               <div className="flex gap-2">
-                <motion.button
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-slate-600"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.6)',
-                    border: '1px solid rgba(147, 197, 253, 0.3)',
-                  }}
+                <Button
+                  variant="outline"
+                  className="flex-1 h-10"
                   onClick={() => {
                     setSearchResult(null)
                     setSearchGroupId('')
                     setApplyReason('')
                   }}
-                  whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-                  whileTap={{ scale: 0.98 }}
                 >
                   取消
-                </motion.button>
-                <motion.button
-                  className="flex-1 py-2.5 px-4 rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                  style={{
-                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                    opacity: applying ? 0.6 : 1,
-                  }}
+                </Button>
+                <Button
+                  className="flex-1 h-10"
                   onClick={handleApplyJoin}
                   disabled={applying}
-                  whileHover={!applying ? { scale: 1.02 } : {}}
-                  whileTap={!applying ? { scale: 0.98 } : {}}
                 >
                   {applying ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -770,7 +648,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   ) : (
                     '申请加入'
                   )}
-                </motion.button>
+                </Button>
               </div>
             </motion.div>
           )}
@@ -783,18 +661,16 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   if (subTab === 'invites') {
     return (
       <div className="flex-1 overflow-y-auto">
-        <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: 'rgba(147, 197, 253, 0.2)' }}>
-          <span className="font-medium text-slate-700">群邀请</span>
-          <motion.button
-            className="w-8 h-8 flex items-center justify-center rounded-lg"
-            style={{ background: 'rgba(255, 255, 255, 0.6)' }}
+        <div className="p-4 flex items-center justify-between border-b border-border">
+          <span className="font-medium text-foreground">群邀请</span>
+          <Button
+            variant="outline"
+            size="icon-sm"
             onClick={loadInvitations}
             disabled={loadingInvites}
-            whileHover={{ background: 'rgba(147, 197, 253, 0.2)' }}
-            whileTap={{ scale: 0.95 }}
           >
-            <RefreshCw className={`h-4 w-4 text-slate-500 ${loadingInvites ? 'animate-spin' : ''}`} />
-          </motion.button>
+            <RefreshCw className={`h-4 w-4 ${loadingInvites ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         {loadingInvites ? (
@@ -808,13 +684,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             initial="hidden"
             animate="visible"
           >
-            <div 
-              className="w-16 h-16 rounded-full flex items-center justify-center mb-3"
-              style={{ background: 'rgba(167, 139, 250, 0.2)' }}
-            >
-              <Mail className="h-8 w-8 text-violet-400" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
+              <Mail className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-slate-500">暂无群邀请</p>
+            <p className="text-sm text-muted-foreground">暂无群邀请</p>
           </motion.div>
         ) : (
           <div className="px-2 py-2">
@@ -822,11 +695,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               {invitations.map((invitation, index) => (
                 <motion.div
                   key={invitation.request_id}
-                  className="p-4 mb-2 rounded-xl flex items-center gap-3"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.5)',
-                    border: '1px solid rgba(167, 139, 250, 0.2)',
-                  }}
+                  className="p-4 mb-2 rounded-xl flex items-center gap-3 border bg-card"
                   variants={listItemVariants}
                   initial="hidden"
                   animate="visible"
@@ -836,48 +705,42 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   <div className="conv-avatar">
                     <Avatar className="h-full w-full">
                       <AvatarImage src={invitation.group_avatar_url} />
-                      <AvatarFallback className="bg-gradient-to-br from-violet-400 to-purple-500 text-white">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
                         {invitation.group_name[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-700 truncate">{invitation.group_name}</div>
-                    <div className="text-sm text-slate-500">
+                    <div className="font-medium text-foreground truncate">{invitation.group_name}</div>
+                    <div className="text-sm text-muted-foreground">
                       {invitation.inviter_nickname} 邀请你加入
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-muted-foreground">
                       {new Date(invitation.created_at).toLocaleDateString()}
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <motion.button
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-white"
-                      style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
+                    <Button
+                      size="icon-sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={() => handleAcceptInvite(invitation.request_id)}
                       disabled={processingInvite === invitation.request_id}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
                     >
                       {processingInvite === invitation.request_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Check className="h-4 w-4" />
                       )}
-                    </motion.button>
-                    <motion.button
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.6)',
-                        border: '1px solid rgba(147, 197, 253, 0.3)',
-                      }}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
                       onClick={() => handleDeclineInvite(invitation.request_id)}
                       disabled={processingInvite === invitation.request_id}
-                      whileHover={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
-                      whileTap={{ scale: 0.95 }}
+                      className="hover:text-destructive"
                     >
                       <X className="h-4 w-4" />
-                    </motion.button>
+                    </Button>
                   </div>
                 </motion.div>
               ))}

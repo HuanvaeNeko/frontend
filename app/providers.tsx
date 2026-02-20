@@ -11,6 +11,10 @@ const UpdatePrompt = dynamic(
   () => import('@/components/UpdatePrompt').then(mod => ({ default: mod.UpdatePrompt })),
   { ssr: false }
 )
+const AppInstallPrompt = dynamic(
+  () => import('@/components/AppInstallPrompt'),
+  { ssr: false }
+)
 
 // 全局设置同步组件
 function SettingsSync() {
@@ -73,6 +77,7 @@ export default function ClientProviders({
       {children}
       <Toaster />
       <UpdatePrompt autoUpdateDelay={3000} />
+      <AppInstallPrompt />
     </SoundProvider>
   )
 }
