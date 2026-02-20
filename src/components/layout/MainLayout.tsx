@@ -28,6 +28,7 @@ import { useUIStore } from '@/store/uiStore'
 import { playTap } from '@/hooks/useSound'
 import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getRouteBreadcrumbs, isRouteActive } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
+import { MobileBottomNav } from './MobileBottomNav'
 
 interface NavItem {
   path: string
@@ -62,6 +63,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const isImmersiveRoute = !!pathname && immersiveRouteBases.some((route) => (
     pathname === route || pathname.startsWith(`${route}/`)
   ))
+
+  const isVideoMeeting = pathname === ROUTES.app.videoMeeting || pathname?.startsWith(`${ROUTES.app.videoMeeting}/`)
 
   const handleLogout = () => {
     clearAuth()
@@ -181,6 +184,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
     return (
       <div className="app-screen bg-transparent">
         {children}
+        {!isVideoMeeting && <MobileBottomNav />}
       </div>
     )
   }
@@ -237,9 +241,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
           </nav>
         </header>
 
-        <main className="app-page-scroll min-h-0 flex-1 mobile-bottom-safe md:rounded-2xl md:border md:bg-card/35 md:shadow-sm">
+        <main className="app-page-scroll min-h-0 flex-1 mobile-bottom-safe pb-20 md:pb-[max(0.5rem,env(safe-area-inset-bottom))] md:rounded-2xl md:border md:bg-card/35 md:shadow-sm">
           {children}
         </main>
+        <MobileBottomNav />
       </div>
     </div>
   )

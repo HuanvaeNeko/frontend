@@ -90,7 +90,7 @@ export default function Settings() {
 
   return (
     <div className="relative h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-24 md:p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>

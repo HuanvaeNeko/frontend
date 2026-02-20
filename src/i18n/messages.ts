@@ -226,6 +226,7 @@ const zhCN = {
       searchGroups: '搜索群聊...',
       searchFiles: '搜索文件...',
       webrtcHint: '请在右侧创建或加入视频房间',
+      webrtcHintMobile: '请点击创建或加入视频房间',
     },
     window: {
       error: '错误',
@@ -722,6 +723,7 @@ const enUS = {
       searchGroups: 'Search groups...',
       searchFiles: 'Search files...',
       webrtcHint: 'Create or join a room on the right panel',
+      webrtcHintMobile: 'Tap to create or join a video room',
     },
     window: {
       error: 'Error',

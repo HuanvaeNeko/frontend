@@ -93,7 +93,6 @@ export default function ChatPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
   const [isCompactHeight, setIsCompactHeight] = useState(false)
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
   const [swipeHintProgress, setSwipeHintProgress] = useState(0)
   const chatSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -155,31 +154,6 @@ export default function ChatPage() {
   useEffect(() => {
     if (isMobile && selectedConversation) setMobileView('chat')
   }, [selectedConversation, isMobile])
-
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const handleViewportChange = () => {
-      const keyboardGap = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-      setIsKeyboardOpen(keyboardGap > 120)
-    }
-
-    handleViewportChange()
-    viewport.addEventListener('resize', handleViewportChange)
-    viewport.addEventListener('scroll', handleViewportChange)
-
-    return () => {
-      viewport.removeEventListener('resize', handleViewportChange)
-      viewport.removeEventListener('scroll', handleViewportChange)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!isMobile) {
-      setIsKeyboardOpen(false)
-    }
-  }, [isMobile])
 
   useEffect(() => {
     const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
@@ -597,9 +571,45 @@ export default function ChatPage() {
       <div className={cn(
         "relative z-10 flex h-full w-full shrink-0 md:w-auto",
         isFilesTab ? "md:min-w-0 md:max-w-none md:w-auto md:flex-1" : "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
-        isMobile && mobileView === 'chat' && "hidden md:flex"
+        isMobile && mobileView === 'chat' && "hidden md:flex",
+        activeTab === 'webrtc' && isMobile && "hidden"
       )}>
         <div className="z-10 flex h-full min-h-0 w-full flex-col overflow-hidden bg-card md:rounded-2xl md:border md:shadow-sm">
+          {/* Mobile Top Tabs for Main Categories */}
+          {isMobile && (
+            <div className="flex items-center p-2 border-b bg-card/95 backdrop-blur shrink-0 overflow-x-auto no-scrollbar gap-2 mobile-top-safe">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={cn(
+                    "flex-1 min-w-[60px] flex flex-col items-center justify-center gap-1 py-1.5 rounded-lg transition-colors",
+                    activeTab === tab.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+                  )}
+                  onClick={() => {
+                    setActiveTab(tab.id)
+                    setSubTab('main')
+                    if (tab.id === 'webrtc') {
+                      setMobileView('chat')
+                    } else {
+                      setMobileView('list')
+                    }
+                  }}
+                >
+                  <tab.icon className="w-5 h-5" />
+                  <span className="text-[10px] font-medium whitespace-nowrap">{tab.label}</span>
+                </button>
+              ))}
+              <div className="w-px h-6 bg-border mx-1" />
+              <button
+                className="flex flex-col items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-muted-foreground hover:bg-accent"
+                onClick={settingsModal.open}
+              >
+                <Settings className="w-5 h-5" />
+                <span className="text-[10px] font-medium">{t('chat.page.settings')}</span>
+              </button>
+            </div>
+          )}
+
           {/* 子标签头部 */}
           {activeTab !== 'webrtc' && (
           <div className={cn(
@@ -654,7 +664,7 @@ export default function ChatPage() {
 
           {/* 列表内容 */}
           <ScrollArea className="flex-1 min-h-0">
-            <div className="p-2 max-md:pb-28">
+            <div className="p-2">
               <AnimatePresence mode="wait">
                 {activeTab === 'friends' && (
                   <motion.div key="friends" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -673,7 +683,7 @@ export default function ChatPage() {
                 )}
                 {activeTab === 'webrtc' && (
                   <motion.div key="webrtc-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="p-4 text-center text-sm text-muted-foreground">
-                    {t('chat.page.webrtcHint')}
+                    {isMobile ? t('chat.page.webrtcHintMobile') : t('chat.page.webrtcHint')}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -687,7 +697,9 @@ export default function ChatPage() {
         className={cn(
           "relative z-10 flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background md:w-auto md:rounded-2xl md:border md:shadow-sm",
           isFilesTab && "md:hidden",
-          isMobile && mobileView === 'list' && "hidden md:flex"
+          isMobile && mobileView === 'list' && "hidden md:flex",
+          isMobile && mobileView === 'chat' && "fixed inset-0 z-50",
+          activeTab === 'webrtc' && isMobile && "flex fixed inset-0 z-10 w-full h-full"
         )}
         onTouchStart={handleChatPanelTouchStart}
         onTouchMove={handleChatPanelTouchMove}
@@ -700,8 +712,36 @@ export default function ChatPage() {
           />
         )}
 
-        {/* 移动端顶部返回栏 */}
-        {isMobile && mobileView === 'chat' && (
+        {isMobile && (mobileView === 'chat' || activeTab === 'webrtc') && (
+          <div className={cn(
+            "md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top",
+            isLandscape && "landscape-compact-header"
+          )}>
+            <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar flex items-center gap-2">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={cn(
+                    "flex-1 min-w-[60px] flex flex-col items-center justify-center gap-1 py-1.5 rounded-lg transition-colors",
+                    activeTab === tab.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+                  )}
+                  onClick={() => {
+                    setActiveTab(tab.id)
+                    setSubTab('main')
+                    if (tab.id !== 'webrtc') {
+                      setMobileView('list')
+                    }
+                  }}
+                >
+                  <tab.icon className="w-5 h-5" />
+                  <span className="text-[10px] font-medium whitespace-nowrap">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {isMobile && mobileView === 'chat' && activeTab !== 'webrtc' && (
           <div className={cn(
             "md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top",
             isLandscape && "landscape-compact-header"
@@ -739,41 +779,7 @@ export default function ChatPage() {
       </div>
 
       {/* 移动端底部导航栏 */}
-      {isMobile && mobileView === 'list' && (
-        <div className={cn(
-          "fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-2 right-2 z-20 rounded-2xl border border-border bg-card/95 px-2 pt-2 pb-2 shadow-lg backdrop-blur transition-all duration-200 md:hidden",
-          isLandscape && "pt-1",
-          isKeyboardOpen && "translate-y-24 opacity-0 pointer-events-none"
-        )}>
-          <div className="flex justify-around items-stretch">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl transition-all touch-target",
-                  isCompactHeight && "min-h-[48px] min-w-[48px]",
-                  activeTab === tab.id ? "text-primary bg-primary/10" : "text-muted-foreground active:bg-muted/50"
-                )}
-                onClick={() => { setActiveTab(tab.id); setSubTab('main') }}
-              >
-                <tab.icon className="w-6 h-6 shrink-0" />
-                {!isCompactHeight && <span className="text-xs font-medium">{tab.label}</span>}
-              </button>
-            ))}
-            <button
-              className={cn(
-                "flex flex-col items-center justify-center gap-0.5 min-h-[56px] min-w-[56px] flex-1 max-w-[80px] rounded-xl text-muted-foreground active:bg-muted/50 touch-target",
-                isCompactHeight && "min-h-[48px] min-w-[48px]"
-              )}
-              onClick={settingsModal.open}
-            >
-              <Settings className="w-6 h-6 shrink-0" />
-              {!isCompactHeight && <span className="text-xs font-medium">{t('chat.page.settings')}</span>}
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* 已迁移至 MainLayout 的 MobileBottomNav */}
       <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} />
     </div>
   )

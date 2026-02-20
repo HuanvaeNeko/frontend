@@ -199,7 +199,7 @@ export default function AiChat() {
 
   return (
     <div className="relative h-full overflow-hidden">
-      <div className="mx-auto flex h-full w-full max-w-6xl flex-col p-3 md:p-5">
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col p-3 pb-20 md:p-5">
         <Card className="flex h-full flex-col overflow-hidden border-border/80">
           <CardHeader className="space-y-3 border-b pb-4">
             <div className="flex items-center justify-between gap-3">

@@ -920,7 +920,7 @@ export default function VideoMeeting() {
   // =============================================
 
   return (
-    <div className={`${isFullscreen ? 'fixed inset-0' : 'app-screen'} bg-background flex flex-col overflow-hidden`}>
+    <div className="fixed inset-0 z-50 bg-background flex flex-col overflow-hidden">
       <AnimatePresence>
         {showControls && (
           <motion.header
