@@ -165,29 +165,27 @@ export default function Friends() {
         </Card>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'friends' | 'requests' | 'sent')}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="friends" className="gap-1.5">好友 ({friends.length})</TabsTrigger>
-            <TabsTrigger value="requests" className="gap-1.5">请求 ({pendingRequests.length})</TabsTrigger>
-            <TabsTrigger value="sent" className="gap-1.5">已发送 ({sentRequests.length})</TabsTrigger>
-          </TabsList>
+          <div className="w-full overflow-x-auto pb-2 no-scrollbar">
+            <TabsList className="w-full justify-start md:grid md:w-full md:grid-cols-3">
+              <TabsTrigger value="friends" className="flex-1 min-w-[100px] gap-1.5">好友 ({friends.length})</TabsTrigger>
+              <TabsTrigger value="requests" className="flex-1 min-w-[100px] gap-1.5">请求 ({pendingRequests.length})</TabsTrigger>
+              <TabsTrigger value="sent" className="flex-1 min-w-[100px] gap-1.5">已发送 ({sentRequests.length})</TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="friends" className="space-y-3">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    placeholder="搜索昵称或用户 ID"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+          <TabsContent value="friends" className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9 bg-card"
+                placeholder="搜索昵称或用户 ID"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-            <Card>
-              <CardContent className="pt-3">
+            <Card className="border-0 shadow-none bg-transparent md:border md:shadow-sm md:bg-card">
+              <CardContent className="p-0 md:p-6 md:pt-6">
                 {isLoading && friends.length === 0 ? (
                   <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : filteredFriends.length === 0 ? (
@@ -228,8 +226,8 @@ export default function Friends() {
           </TabsContent>
 
           <TabsContent value="requests">
-            <Card>
-              <CardContent className="pt-3">
+            <Card className="border-0 shadow-none bg-transparent md:border md:shadow-sm md:bg-card">
+              <CardContent className="p-0 md:p-6 md:pt-6">
                 {isLoading && pendingRequests.length === 0 ? (
                   <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : pendingRequests.length === 0 ? (
@@ -263,8 +261,8 @@ export default function Friends() {
           </TabsContent>
 
           <TabsContent value="sent">
-            <Card>
-              <CardContent className="pt-3">
+            <Card className="border-0 shadow-none bg-transparent md:border md:shadow-sm md:bg-card">
+              <CardContent className="p-0 md:p-6 md:pt-6">
                 {isLoading && sentRequests.length === 0 ? (
                   <div className="flex h-48 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...</div>
                 ) : sentRequests.length === 0 ? (

@@ -100,97 +100,104 @@ export default function Login() {
   if (!mounted) return null
 
   return (
-    <div className="relative app-min-screen overflow-hidden bg-background/80">
-      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_35%),radial-gradient(circle_at_100%_0%,hsl(162_70%_42%/0.12),transparent_30%)]" />
-      <div className="relative z-10 mx-auto grid app-min-screen w-full max-w-6xl gap-6 p-4 md:grid-cols-2 md:p-8">
-        <div className="hidden rounded-2xl border bg-card p-8  md:flex md:flex-col md:justify-between">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl border bg-muted text-primary">
-            <Sparkles className="h-6 w-6" />
+    <div className="relative min-h-[100dvh] w-full overflow-y-auto bg-background/80">
+      <div className="fixed inset-0 pointer-events-none [background:radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_35%),radial-gradient(circle_at_100%_0%,hsl(162_70%_42%/0.12),transparent_30%)]" />
+      
+      <div className="relative z-10 flex min-h-[100dvh] w-full flex-col items-center justify-center p-4 md:p-8">
+        <div className="mx-auto grid w-full max-w-6xl gap-6 md:grid-cols-2">
+          <div className="hidden rounded-2xl border bg-card/50 p-8 backdrop-blur md:flex md:flex-col md:justify-between">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl border bg-muted text-primary">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div className="space-y-4">
+              <h1 className="text-3xl font-semibold tracking-tight">Huanvae Chat</h1>
+              <p className="text-sm text-muted-foreground">{t('common.appIntro')}</p>
+            </div>
+            <div className="text-xs text-muted-foreground">{t('common.appSecurity')}</div>
           </div>
-          <div className="space-y-4">
-            <h1 className="text-3xl font-semibold tracking-tight">Huanvae Chat</h1>
-            <p className="text-sm text-muted-foreground">{t('common.appIntro')}</p>
-          </div>
-          <div className="text-xs text-muted-foreground">{t('common.appSecurity')}</div>
-        </div>
 
-        <div className="flex items-center justify-center">
-          <Card className="w-full max-w-md border-border/80 bg-card ">
-            <CardHeader>
-              <CardTitle className="text-2xl">{t('auth.login.title')}</CardTitle>
-              <CardDescription>{t('auth.login.description')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+          <div className="flex w-full items-center justify-center">
+            <Card className="w-full max-w-md border-border/80 bg-card/95 backdrop-blur shadow-xl">
+              <CardHeader className="space-y-1">
+                <CardTitle className="text-2xl font-bold">{t('auth.login.title')}</CardTitle>
+                <CardDescription>{t('auth.login.description')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="server_host">服务器</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-24 shrink-0 justify-center text-xs"
-                      onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
-                    >
-                      {serverProtocol}
-                    </Button>
-                    <div className="relative flex-1">
-                      <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="server_host"
-                        required
-                        value={serverHost}
-                        onChange={(e) => setServerHost(e.target.value)}
-                        className="pl-9"
-                        placeholder="api.huanvae.cn"
-                      />
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="server_host">服务器</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-24 shrink-0 justify-center text-xs"
+                        onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
+                      >
+                        {serverProtocol}
+                      </Button>
+                      <div className="relative flex-1">
+                        <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="server_host"
+                          required
+                          value={serverHost}
+                          onChange={(e) => setServerHost(e.target.value)}
+                          className="pl-9"
+                          placeholder="api.huanvae.cn"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="user_id">{t('auth.login.userId')}</Label>
-                  <div className="relative">
-                    <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="user_id" required value={formData.user_id} onChange={(e) => setFormData({ ...formData, user_id: e.target.value })} className="pl-9" placeholder={t('auth.login.userIdPlaceholder')} />
+                  <div className="space-y-2">
+                    <Label htmlFor="user_id">{t('auth.login.userId')}</Label>
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input id="user_id" required value={formData.user_id} onChange={(e) => setFormData({ ...formData, user_id: e.target.value })} className="pl-9" placeholder={t('auth.login.userIdPlaceholder')} />
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password">{t('auth.login.password')}</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input id="password" type={showPassword ? 'text' : 'password'} required value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.login.passwordPlaceholder')} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">{t('auth.login.password')}</Label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input id="password" type={showPassword ? 'text' : 'password'} required value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.login.passwordPlaceholder')} />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
+
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Checkbox checked={rememberMe} onCheckedChange={(v) => { setRememberMe(Boolean(v)); playTap() }} />{t('auth.login.rememberMe')}
+                    </label>
+                    <button type="button" className="text-sm text-primary">{t('auth.login.forgotPassword')}</button>
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    disabled={loading} 
+                    className="w-full gap-2 font-medium shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.login.submit')}<ArrowRight className="h-4 w-4" /></>}
+                  </Button>
+                </form>
+
+                <div className="my-5 flex items-center gap-3">
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground">{t('common.or')}</span>
+                  <Separator className="flex-1" />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Checkbox checked={rememberMe} onCheckedChange={(v) => { setRememberMe(Boolean(v)); playTap() }} />{t('auth.login.rememberMe')}
-                  </label>
-                  <button type="button" className="text-sm text-primary">{t('auth.login.forgotPassword')}</button>
-                </div>
-
-                <Button type="submit" disabled={loading} className="w-full gap-1.5">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.login.submit')}<ArrowRight className="h-4 w-4" /></>}
-                </Button>
-              </form>
-
-              <div className="my-5 flex items-center gap-3">
-                <Separator className="flex-1" />
-                <span className="text-xs text-muted-foreground">{t('common.or')}</span>
-                <Separator className="flex-1" />
-              </div>
-
-              <Link href={ROUTES.auth.register}>
-                <Button variant="outline" className="w-full">{t('auth.login.createAccount')}</Button>
-              </Link>
-            </CardContent>
-          </Card>
+                <Link href={ROUTES.auth.register}>
+                  <Button variant="outline" className="w-full">{t('auth.login.createAccount')}</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

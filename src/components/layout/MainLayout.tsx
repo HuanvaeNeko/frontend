@@ -19,7 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -58,6 +58,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
     ROUTES.app.chatFiles,
     ROUTES.app.chatWebrtc,
     ROUTES.app.videoMeeting,
+    ROUTES.app.friends,
+    ROUTES.app.aiChat,
+    ROUTES.app.devices,
+    ROUTES.app.settings,
+    ROUTES.app.profile,
   ]
 
   const isImmersiveRoute = !!pathname && immersiveRouteBases.some((route) => (
@@ -206,6 +211,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-[88vw] max-w-[340px] p-0">
+                  <div className="sr-only">
+                    <SheetTitle>Navigation Menu</SheetTitle>
+                    <SheetDescription>Main navigation sidebar</SheetDescription>
+                  </div>
                   <div className="flex h-full flex-col"><SidebarContent /></div>
                 </SheetContent>
               </Sheet>

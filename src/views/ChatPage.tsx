@@ -34,7 +34,6 @@ import { TabType } from '../store/chatStore'
 import FriendList from '../components/chat/FriendList'
 import GroupList from '../components/chat/GroupList'
 import ChatWindow from '../components/chat/ChatWindow'
-import SettingsModal, { useSettingsModal } from '../components/SettingsModal'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
@@ -75,7 +74,6 @@ export default function ChatPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const settingsModal = useSettingsModal()
   const { openProfileModal } = useUIStore()
   const friendId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatFriends) ? searchParams.get('id') : null
   const groupId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatGroups) ? searchParams.get('id') : null
@@ -780,7 +778,6 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {/* 已迁移至 MainLayout 的 MobileBottomNav */}
-      {/* <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} /> */}
     </div>
   )
 }

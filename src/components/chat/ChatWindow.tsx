@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Trash2, RotateCcw, Download, X, Settings, MessageCircle, Copy, Upload } from 'lucide-react'
+import { Send, Paperclip, Loader2, MoreVertical, Image as ImageIcon, FileText, Video, Download, X, Settings, MessageCircle, Upload } from 'lucide-react'
 import { EmojiPicker } from './EmojiPicker'
 import { MessageImage } from './MessageImage'
 import { MessageVideo } from './MessageVideo'
@@ -10,10 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { useChatStore } from '../../store/chatStore'
 import { messagesApi, type Message, type MessageType } from '../../api/messages'
-import { groupMessagesApi, type GroupMessage } from '../../api/groupMessages'
+import { groupMessagesApi } from '../../api/groupMessages'
 import { storageApi, type FileType, type StorageLocation } from '../../api/storage'
 import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import GroupManagement from './GroupManagement'
@@ -22,6 +21,7 @@ import { useToast } from '../../hooks/use-toast'
 import { useRealtimeMessages } from '../../hooks/useRealtimeMessages'
 import MarkdownEditor, { type MarkdownEditorRef } from './MarkdownEditor'
 import { Markdown } from '@/components/ui/markdown'
+import { MessageItem } from './MessageItem'
 import { useI18n } from '@/i18n/I18nProvider'
 
 interface ChatWindowProps {
@@ -288,9 +288,9 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     }
   }
 
-  const canRecallMessage = (sendTime: string) => (Date.now() - new Date(sendTime).getTime()) <= 2 * 60 * 1000
+  const canRecallMessage = useCallback((sendTime: string) => (Date.now() - new Date(sendTime).getTime()) <= 2 * 60 * 1000, [])
 
-  const handleFilePreview = async (message: Message) => {
+  const handleFilePreview = useCallback(async (message: Message) => {
     try {
       let url = message.file_url
       if (message.file_uuid) {
@@ -306,9 +306,9 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     } catch (error) {
       toast({ title: t('chat.window.previewFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.previewFailedDesc'), variant: 'destructive' })
     }
-  }
+  }, [selectedConversation, t, toast])
 
-  const handleFileDownload = async (message: Message) => {
+  const handleFileDownload = useCallback(async (message: Message) => {
     try {
       let downloadUrl: string
       if (message.file_uuid) {
@@ -322,51 +322,13 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
     } catch (error) {
       toast({ title: t('chat.window.downloadFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.downloadFailedDesc'), variant: 'destructive' })
     }
-  }
+  }, [selectedConversation, t, toast])
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
     if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
     return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB'
-  }
-
-  const renderMessageContent = (message: Message, isOwn: boolean) => {
-    switch (message.message_type) {
-      case 'text':
-        return <Markdown className="text-sm chat-message-markdown">{message.message_content}</Markdown>
-      case 'image':
-        return (message.file_url || message.file_uuid) ? (
-          <MessageImage fileUrl={message.file_url} fileUuid={message.file_uuid} isFriendMessage={selectedConversation?.type === 'friend'} onClick={() => handleFilePreview(message)} />
-        ) : (
-          <div className="flex items-center gap-2 text-sm"><ImageIcon className="h-4 w-4" /><span>[{t('chat.window.image')}]</span></div>
-        )
-      case 'video':
-        return (message.file_url || message.file_uuid) ? (
-          <MessageVideo fileUrl={message.file_url} fileUuid={message.file_uuid} isFriendMessage={selectedConversation?.type === 'friend'} className="max-w-[240px] rounded-xl" />
-        ) : (
-          <div className="flex items-center gap-2 text-sm"><Video className="h-4 w-4" /><span>[{t('chat.window.video')}]</span></div>
-        )
-      case 'file':
-        return (
-          <div className={`flex items-center gap-3 p-3 rounded-xl min-w-[200px] ${isOwn ? 'bg-primary/20' : 'bg-primary/10'}`}>
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isOwn ? 'bg-primary/30' : 'bg-primary/20'}`}>
-              <FileText className={`h-5 w-5 ${isOwn ? 'text-primary-foreground' : 'text-primary'}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium truncate ${isOwn ? 'text-primary-foreground' : 'text-foreground'}`}>{message.message_content || t('chat.window.file')}</p>
-              {message.file_size && <p className={`text-xs ${isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{formatFileSize(message.file_size)}</p>}
-            </div>
-            {(message.file_url || message.file_uuid) && (
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleFileDownload(message)}>
-                <Download className={`h-4 w-4 ${isOwn ? 'text-primary-foreground' : 'text-primary'}`} />
-              </Button>
-            )}
-          </div>
-        )
-      default:
-        return <p className="text-sm">[{t('chat.window.unsupportedMessageType')}]</p>
-    }
   }
 
   if (!selectedConversation) {
@@ -448,68 +410,20 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             )}
             <AnimatePresence initial={false}>
               {messages.map((message) => {
-                const isOwn = message.sender_id === user?.user_id
-                const groupMessage = selectedConversation.type === 'group' ? (message as unknown as GroupMessage) : null
-                const canRecall = isOwn && canRecallMessage(message.send_time)
-                const isRecalled = (message as Message & { is_recalled?: boolean }).is_recalled
+                const canRecall = user?.user_id === message.sender_id && canRecallMessage(message.send_time)
+                
                 return (
-                  <motion.div key={message.message_uuid} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} group`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                    <Avatar className="h-10 w-10 shrink-0">
-                      {groupMessage && <AvatarImage src={groupMessage.sender_avatar_url} />}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                        {groupMessage ? (groupMessage.sender_nickname?.[0] || 'U').toUpperCase() : isOwn ? user?.nickname?.[0]?.toUpperCase() || 'U' : selectedConversation.name?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className={`flex flex-col gap-1 max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
-                      {groupMessage && !isOwn && <span className="text-xs text-muted-foreground px-2">{groupMessage.sender_nickname}</span>}
-
-                      {isRecalled ? (
-                        /* 已撤回的消息 */
-                        <div className="px-4 py-2 text-xs text-muted-foreground italic">
-                          {isOwn ? t('chat.window.youRecalled') : t('chat.window.someoneRecalled', { name: groupMessage?.sender_nickname || t('chat.window.otherSide') })}
-                        </div>
-                      ) : (
-                        /* 右键菜单包裹的消息气泡 */
-                        <ContextMenu>
-                          <ContextMenuTrigger asChild>
-                            <div className={`rounded-2xl px-4 py-2.5 cursor-pointer ${isOwn ? 'message-own bg-primary text-primary-foreground shadow-md' : 'bg-card border border-border text-foreground'}`}>
-                              {renderMessageContent(message, isOwn)}
-                            </div>
-                          </ContextMenuTrigger>
-                          <ContextMenuContent>
-                            {message.message_type === 'text' && (
-                              <ContextMenuItem onClick={() => handleCopyMessage(message.message_content)}>
-                                <Copy className="h-4 w-4 mr-2" />{t('chat.window.copy')}
-                              </ContextMenuItem>
-                            )}
-                            {(message.file_url || message.file_uuid) && (
-                              <ContextMenuItem onClick={() => handleFileDownload(message)}>
-                                <Download className="h-4 w-4 mr-2" />{t('chat.window.download')}
-                              </ContextMenuItem>
-                            )}
-                            {(message.message_type === 'image' || message.message_type === 'video') && (message.file_url || message.file_uuid) && (
-                              <ContextMenuItem onClick={() => handleFilePreview(message)}>
-                                <ImageIcon className="h-4 w-4 mr-2" />{t('chat.window.preview')}
-                              </ContextMenuItem>
-                            )}
-                            {canRecall && (
-                              <>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem onClick={() => handleRecallMessage(message.message_uuid)}>
-                                  <RotateCcw className="h-4 w-4 mr-2" />{t('chat.window.recall')}
-                                </ContextMenuItem>
-                              </>
-                            )}
-                            <ContextMenuSeparator />
-                            <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteMessage(message.message_uuid)}>
-                              <Trash2 className="h-4 w-4 mr-2" />{t('chat.window.delete')}
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      )}
-                      <span className="text-xs text-muted-foreground px-2">{new Date(message.send_time).toLocaleTimeString()}</span>
-                    </div>
-                  </motion.div>
+                  <MessageItem
+                    key={message.message_uuid}
+                    message={message}
+                    selectedConversationType={selectedConversation.type}
+                    onCopy={handleCopyMessage}
+                    onDelete={handleDeleteMessage}
+                    onRecall={handleRecallMessage}
+                    onDownload={handleFileDownload}
+                    onPreview={handleFilePreview}
+                    canRecall={canRecall}
+                  />
                 )
               })}
             </AnimatePresence>
