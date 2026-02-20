@@ -1,25 +1,26 @@
 export const ROUTES = {
   root: '/',
+  webAppRoot: '/app',
   auth: {
-    login: '/login',
-    register: '/register',
+    login: '/app/login',
+    register: '/app/register',
   },
   app: {
-    home: '/home',
-    chat: '/chat',
-    chatFriends: '/chat/friends',
-    chatGroups: '/chat/groups',
-    chatFiles: '/chat/files',
-    chatWebrtc: '/chat/webrtc',
-    friends: '/friends',
-    aiChat: '/ai-chat',
-    videoMeeting: '/video-meeting',
-    devices: '/devices',
-    settings: '/settings',
-    profile: '/profile',
+    home: '/app/home',
+    chat: '/app/chat',
+    chatFriends: '/app/chat/friends',
+    chatGroups: '/app/chat/groups',
+    chatFiles: '/app/chat/files',
+    chatWebrtc: '/app/chat/webrtc',
+    friends: '/app/friends',
+    aiChat: '/app/ai-chat',
+    videoMeeting: '/app/video-meeting',
+    devices: '/app/devices',
+    settings: '/app/settings',
+    profile: '/app/profile',
   },
   legacy: {
-    groupChat: '/group-chat',
+    groupChat: '/app/group-chat',
   },
 } as const
 
@@ -51,6 +52,7 @@ export function isRouteActive(pathname: string | null, targetPath: string): bool
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
+  app: '应用',
   chat: '消息',
   friends: '好友',
   'ai-chat': 'AI 助手',
@@ -64,9 +66,15 @@ const SEGMENT_LABELS: Record<string, string> = {
   webrtc: '音视频',
 }
 
-export function getRouteBreadcrumbs(pathname: string | null): Array<{ label: string; path: string }> {
+type BreadcrumbLabelResolver = (segment: string, path: string) => string
+
+export function getRouteBreadcrumbs(
+  pathname: string | null,
+  resolveLabel?: BreadcrumbLabelResolver
+): Array<{ label: string; path: string }> {
+  const getLabel: BreadcrumbLabelResolver = resolveLabel || ((segment) => SEGMENT_LABELS[segment] || segment)
   const crumbs: Array<{ label: string; path: string }> = [
-    { label: '首页', path: ROUTES.app.chat },
+    { label: getLabel('home', ROUTES.app.chat), path: ROUTES.app.chat },
   ]
 
   if (!pathname || pathname === ROUTES.root || pathname === ROUTES.app.chat) {
@@ -78,11 +86,12 @@ export function getRouteBreadcrumbs(pathname: string | null): Array<{ label: str
 
   for (const segment of segments) {
     currentPath += `/${segment}`
-    const label = SEGMENT_LABELS[segment]
+    if (currentPath === ROUTES.webAppRoot) continue
+    const label = getLabel(segment, currentPath)
     if (!label) continue
 
     if (currentPath === ROUTES.app.chat) {
-      crumbs.push({ label: '消息', path: currentPath })
+      crumbs.push({ label: getLabel('chat', currentPath), path: currentPath })
       continue
     }
 

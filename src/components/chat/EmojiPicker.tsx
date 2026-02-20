@@ -5,13 +5,14 @@ import { Smile } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useI18n } from '@/i18n/I18nProvider'
 
 const EMOJI_CATEGORIES = {
-  常用: ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😋', '😎', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '🥱', '🤤', '😛', '😜', '🤪', '😝', '🤑'],
-  表情: ['😤', '😠', '😡', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊'],
-  手势: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
-  爱心: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️', '💌', '💋', '🫶', '🥹', '🥺', '😢', '😭', '🥲', '😇', '🤗'],
-  物品: ['🎉', '🎊', '🎁', '🎈', '🔥', '⭐', '✨', '💫', '🌟', '💥', '💢', '💦', '💨', '🕳️', '💣', '💬', '👁️‍🗨️', '🗨️', '🗯️', '💭', '💤', '🎵', '🎶', '🔔', '🔕', '📢', '📣', '💡', '🔑', '🔒'],
+  frequently: ['😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😋', '😎', '🤔', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '🥱', '🤤', '😛', '😜', '🤪', '😝', '🤑'],
+  faces: ['😤', '😠', '😡', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🙈', '🙉', '🙊'],
+  gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝'],
+  hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️', '💌', '💋', '🫶', '🥹', '🥺', '😢', '😭', '🥲', '😇', '🤗'],
+  items: ['🎉', '🎊', '🎁', '🎈', '🔥', '⭐', '✨', '💫', '🌟', '💥', '💢', '💦', '💨', '🕳️', '💣', '💬', '👁️‍🗨️', '🗨️', '🗯️', '💭', '💤', '🎵', '🎶', '🔔', '🔕', '📢', '📣', '💡', '🔑', '🔒'],
 }
 
 interface EmojiPickerProps {
@@ -20,13 +21,14 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ onSelect, disabled }: EmojiPickerProps) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<keyof typeof EMOJI_CATEGORIES>('常用')
+  const [activeCategory, setActiveCategory] = useState<keyof typeof EMOJI_CATEGORIES>('frequently')
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>
-        <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-xl" aria-label="表情">
+        <Button type="button" variant="ghost" size="icon" className="h-10 w-10 rounded-xl" aria-label={t('chat.window.emoji')}>
           <Smile className="h-5 w-5" />
         </Button>
       </PopoverTrigger>
@@ -42,7 +44,7 @@ export function EmojiPicker({ onSelect, disabled }: EmojiPickerProps) {
               className="h-7 px-2 text-xs"
               onClick={() => setActiveCategory(category as keyof typeof EMOJI_CATEGORIES)}
             >
-              {category}
+              {t(`chat.emoji.${category}`)}
             </Button>
           ))}
         </div>

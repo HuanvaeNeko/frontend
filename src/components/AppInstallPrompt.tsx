@@ -65,11 +65,11 @@ export default function AppInstallPrompt() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="fixed bottom-4 right-4 z-[9997]"
+          className="fixed bottom-[max(12px,env(safe-area-inset-bottom))] right-3 z-[9997] sm:bottom-4 sm:right-4"
         >
           <Button
             size="sm"
-            className="h-11 rounded-full border border-primary/20 bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+            className="h-11 rounded-full border border-primary/20 bg-primary px-4 text-primary-foreground shadow-lg shadow-primary/20"
             onClick={() => setVisible(true)}
           >
             <Download size={14} />
@@ -81,13 +81,13 @@ export default function AppInstallPrompt() {
       {visible && (
         <motion.div
           key="app-install-prompt"
-          initial={{ opacity: 0, y: 24, scale: 0.96 }}
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 24, scale: 0.96 }}
+          exit={{ opacity: 0, y: 20, scale: 0.98 }}
           transition={{ duration: 0.24, ease: 'easeOut' }}
-          className="fixed bottom-4 right-4 z-[9998] w-[calc(100%-32px)] max-w-[380px]"
+          className="fixed inset-x-2 bottom-[max(8px,env(safe-area-inset-bottom))] z-[9998] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[calc(100%-32px)] sm:max-w-[380px]"
         >
-          <Card className="relative overflow-hidden border-border/80 bg-card shadow-lg ">
+          <Card className="relative overflow-hidden border-border/80 bg-card shadow-lg">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-primary/20" />
 
             <Button
@@ -112,7 +112,7 @@ export default function AppInstallPrompt() {
             </CardHeader>
 
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button asChild className="h-10 justify-between px-3">
                   <a href={normalTarget.downloadUrl} target="_blank" rel="noreferrer">
                     <span className="flex items-center gap-1.5"><Download size={14} />普通线路</span>
@@ -129,7 +129,7 @@ export default function AppInstallPrompt() {
 
               <Separator />
 
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex flex-col items-start gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <span>关闭后仍可通过侧边栏「安装 APP」入口下载</span>
                 <Button
                   variant="ghost"

@@ -25,9 +25,11 @@ import { Separator } from '@/components/ui/separator'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
 import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 export default function Home() {
   const router = useRouter()
+  const { t } = useI18n()
   const { user, logout, isAuthenticated } = useAuthStore()
   const { openProfileModal } = useUIStore()
 
@@ -43,11 +45,11 @@ export default function Home() {
   if (!isAuthenticated) return null
 
   const features = [
-    { icon: MessageCircle, title: '即时消息', description: '好友与群组沟通', path: ROUTES.app.chat, badge: '核心' },
-    { icon: Bot, title: 'AI 助手', description: '多轮上下文问答', path: ROUTES.app.aiChat, badge: '效率' },
-    { icon: Video, title: '视频会议', description: '在线语音与视频沟通', path: ROUTES.app.videoMeeting, badge: '协作' },
-    { icon: Users, title: '好友管理', description: '联系人与请求管理', path: ROUTES.app.friends, badge: '关系' },
-    { icon: Settings, title: '系统设置', description: '通知、主题与偏好', path: ROUTES.app.settings, badge: '配置' },
+    { icon: MessageCircle, title: t('home.feature.chat.title'), description: t('home.feature.chat.desc'), path: ROUTES.app.chat, badge: t('home.feature.chat.badge') },
+    { icon: Bot, title: t('home.feature.ai.title'), description: t('home.feature.ai.desc'), path: ROUTES.app.aiChat, badge: t('home.feature.ai.badge') },
+    { icon: Video, title: t('home.feature.video.title'), description: t('home.feature.video.desc'), path: ROUTES.app.videoMeeting, badge: t('home.feature.video.badge') },
+    { icon: Users, title: t('home.feature.friends.title'), description: t('home.feature.friends.desc'), path: ROUTES.app.friends, badge: t('home.feature.friends.badge') },
+    { icon: Settings, title: t('home.feature.settings.title'), description: t('home.feature.settings.desc'), path: ROUTES.app.settings, badge: t('home.feature.settings.badge') },
   ]
 
   return (
@@ -67,17 +69,17 @@ export default function Home() {
                 全新控制台
               </Badge>
               <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                欢迎回来，{user?.nickname || user?.user_id || '用户'}
+                {t('home.welcomeBack', { name: user?.nickname || user?.user_id || 'User' })}
               </h1>
               <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
-                这是新的工作台布局。你可以在这里快速进入聊天、AI 助手、会议和设置，减少路径跳转。
+                {t('home.subtitle')}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={() => router.push(ROUTES.app.chat)} className="gap-2">
-                  <MessageCircle className="h-4 w-4" />进入聊天
+                  <MessageCircle className="h-4 w-4" />{t('home.openChat')}
                 </Button>
                 <Button variant="outline" onClick={() => router.push(ROUTES.app.aiChat)} className="gap-2">
-                  <Bot className="h-4 w-4" />打开 AI
+                  <Bot className="h-4 w-4" />{t('home.openAi')}
                 </Button>
               </div>
             </div>
@@ -97,8 +99,8 @@ export default function Home() {
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>当前状态</span>
-                    <span className="inline-flex items-center gap-1 text-primary"><Activity className="h-3.5 w-3.5" />在线</span>
+                    <span>{t('home.currentStatus')}</span>
+                    <span className="inline-flex items-center gap-1 text-primary"><Activity className="h-3.5 w-3.5" />{t('home.online')}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -130,7 +132,7 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors group-hover:text-primary">
-                    打开
+                    {t('home.feature.open')}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
                 </CardContent>
@@ -141,8 +143,8 @@ export default function Home() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">账户与设备</CardTitle>
-            <CardDescription>常用管理操作</CardDescription>
+            <CardTitle className="text-base">{t('home.accountAndDevice')}</CardTitle>
+            <CardDescription>{t('home.commonActions')}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={openProfileModal} className="gap-2">
@@ -153,11 +155,11 @@ export default function Home() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2"><User className="h-4 w-4" />更多</Button>
+                <Button variant="outline" className="gap-2"><User className="h-4 w-4" />{t('home.more')}</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onClick={() => router.push(ROUTES.app.friends)}>
-                  <Users className="mr-2 h-4 w-4" />好友管理
+                  <Users className="mr-2 h-4 w-4" />{t('home.friendsManage')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLogout}>

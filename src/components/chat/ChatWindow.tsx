@@ -22,12 +22,14 @@ import { useToast } from '../../hooks/use-toast'
 import { useRealtimeMessages } from '../../hooks/useRealtimeMessages'
 import MarkdownEditor, { type MarkdownEditorRef } from './MarkdownEditor'
 import { Markdown } from '@/components/ui/markdown'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface ChatWindowProps {
   hideMobileHeader?: boolean
 }
 
 export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps) {
+  const { t } = useI18n()
   const { toast } = useToast()
   const { user } = useAuthStore()
   const { setActiveChat } = useRealtimeMessages()
@@ -84,8 +86,8 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         setMessages(response.messages as unknown as Message[]); setHasMore(response.has_more)
       }
     } catch (error) {
-      console.error('加载消息失败:', error)
-      toast({ title: '错误', description: '加载消息失败', variant: 'destructive' })
+      console.error('Failed to load messages:', error)
+      toast({ title: t('chat.window.error'), description: t('chat.window.loadFailed'), variant: 'destructive' })
     } finally { setLoading(false) }
   }
 
@@ -101,7 +103,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         const response = await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
         prependMessages(response.messages as unknown as Message[]); setHasMore(response.has_more)
       }
-    } catch (error) { console.error('加载更多消息失败:', error) }
+    } catch (error) { console.error('Failed to load more messages:', error) }
     finally { setLoading(false) }
   }
 
@@ -134,10 +136,10 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       // 更新消息预览
       useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, content, 'text', new Date().toISOString())
     } catch (error) {
-      console.error('发送消息失败:', error)
-      toast({ title: '发送失败', description: error instanceof Error ? error.message : '发送消息失败', variant: 'destructive' })
+      console.error('Failed to send message:', error)
+      toast({ title: t('chat.window.sendFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.sendFailedDesc'), variant: 'destructive' })
     } finally { setSending(false) }
-  }, [selectedConversation, sending, user, addMessage, toast])
+  }, [selectedConversation, sending, user, addMessage, toast, t])
 
   // =============================================
   // 文件处理
@@ -151,7 +153,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
 
   const processFileForUpload = (file: File) => {
     if (file.size > 100 * 1024 * 1024 * 1024) {
-      toast({ title: '文件太大', description: '文件大小不能超过 100GB', variant: 'destructive' })
+      toast({ title: t('chat.window.fileTooLargeTitle'), description: t('chat.window.fileTooLargeDesc'), variant: 'destructive' })
       return
     }
     setSelectedFile(file)
@@ -176,7 +178,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       const uploadResult = await storageApi.uploadFile(file, type, storageLocation, selectedConversation.id, (progress) => setUploadProgress(progress.percent))
       if (uploadResult.messageUuid) {
         await loadMessages()
-        toast({ title: '发送成功', description: uploadResult.isInstant ? '文件秒传成功' : '文件发送成功' })
+        toast({ title: t('chat.window.sendSuccessTitle'), description: uploadResult.isInstant ? t('chat.window.fileInstantSuccess') : t('chat.window.fileSendSuccess') })
       } else {
         const fileUuid = uploadResult.fileUrl.split('/').pop() || ''
         if (selectedConversation.type === 'friend') {
@@ -186,11 +188,11 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           const response = await groupMessagesApi.sendMessage({ group_id: selectedConversation.id, message_content: file.name, message_type: messageType, file_uuid: fileUuid, file_size: file.size })
           addMessage({ message_uuid: response.message_uuid, sender_id: user?.user_id || '', receiver_id: selectedConversation.id, message_content: file.name, message_type: messageType, file_uuid: fileUuid, file_url: uploadResult.fileUrl, file_size: file.size, file_hash: null, filename: file.name, content_type: file.type, image_width: null, image_height: null, seq: response.seq, send_time: response.send_time })
         }
-        toast({ title: '发送成功', description: '文件发送成功' })
+        toast({ title: t('chat.window.sendSuccessTitle'), description: t('chat.window.fileSendSuccess') })
       }
     } catch (error) {
-      console.error('发送文件失败:', error)
-      toast({ title: '发送失败', description: error instanceof Error ? error.message : '文件发送失败', variant: 'destructive' })
+      console.error('Failed to send file:', error)
+      toast({ title: t('chat.window.sendFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.fileSendFailed'), variant: 'destructive' })
     } finally { setSending(false); setUploadProgress(null) }
   }
 
@@ -253,9 +255,9 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
   const handleCopyMessage = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content)
-      toast({ title: '已复制', description: '消息内容已复制到剪贴板' })
+      toast({ title: t('chat.window.copiedTitle'), description: t('chat.window.copiedDesc') })
     } catch {
-      toast({ title: '复制失败', description: '无法复制到剪贴板', variant: 'destructive' })
+      toast({ title: t('chat.window.copyFailedTitle'), description: t('chat.window.copyFailedDesc'), variant: 'destructive' })
     }
   }
 
@@ -264,9 +266,9 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       if (selectedConversation?.type === 'friend') await messagesApi.deleteMessage(messageUuid)
       else if (selectedConversation?.type === 'group') await groupMessagesApi.deleteMessage(messageUuid)
       setMessages(messages.filter(m => m.message_uuid !== messageUuid))
-      toast({ title: '成功', description: '消息已删除' })
+      toast({ title: t('chat.window.successTitle'), description: t('chat.window.messageDeleted') })
     } catch (error) {
-      toast({ title: '删除失败', description: error instanceof Error ? error.message : '删除消息失败', variant: 'destructive' })
+      toast({ title: t('chat.window.deleteFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.deleteFailedDesc'), variant: 'destructive' })
     }
   }
 
@@ -277,12 +279,12 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       // 标记为已撤回而不是删除
       setMessages(messages.map(m =>
         m.message_uuid === messageUuid
-          ? { ...m, message_content: '你撤回了一条消息', message_type: 'text' as const }
+          ? { ...m, message_content: t('chat.window.youRecalled'), message_type: 'text' as const }
           : m
       ))
-      toast({ title: '成功', description: '消息已撤回' })
+      toast({ title: t('chat.window.successTitle'), description: t('chat.window.messageRecalled') })
     } catch (error) {
-      toast({ title: '撤回失败', description: error instanceof Error ? error.message : '撤回消息失败（可能超过2分钟）', variant: 'destructive' })
+      toast({ title: t('chat.window.recallFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.recallFailedDesc'), variant: 'destructive' })
     }
   }
 
@@ -297,12 +299,12 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           : await storageApi.getPresignedUrl(message.file_uuid, 'preview')
       }
       if (url) {
-        const name = message.message_type === 'image' ? '图片' : message.message_type === 'video' ? '视频' : message.message_type === 'file' ? '文件' : '未命名文件'
+        const name = message.message_type === 'image' ? t('chat.window.image') : message.message_type === 'video' ? t('chat.window.video') : message.message_type === 'file' ? t('chat.window.file') : t('chat.window.unnamedFile')
         const mimeType = message.message_type === 'image' ? 'image/*' : message.message_type === 'video' ? 'video/*' : 'application/octet-stream'
         setPreviewFile({ url, name, type: mimeType, size: message.file_size ?? undefined })
       }
     } catch (error) {
-      toast({ title: '预览失败', description: error instanceof Error ? error.message : '无法预览文件', variant: 'destructive' })
+      toast({ title: t('chat.window.previewFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.previewFailedDesc'), variant: 'destructive' })
     }
   }
 
@@ -314,11 +316,11 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           ? await storageApi.getFriendFilePresignedUrl(message.file_uuid, 'download')
           : await storageApi.getPresignedUrl(message.file_uuid, 'download')
       } else if (message.file_url) { downloadUrl = message.file_url }
-      else { throw new Error('文件不可用') }
-      const a = document.createElement('a'); a.href = downloadUrl; a.download = message.message_content || 'download'
+      else { throw new Error(t('chat.window.fileUnavailable')) }
+      const a = document.createElement('a'); a.href = downloadUrl; a.download = message.message_content || t('chat.window.downloadDefault')
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
     } catch (error) {
-      toast({ title: '下载失败', description: error instanceof Error ? error.message : '无法下载文件', variant: 'destructive' })
+      toast({ title: t('chat.window.downloadFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.downloadFailedDesc'), variant: 'destructive' })
     }
   }
 
@@ -337,13 +339,13 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         return (message.file_url || message.file_uuid) ? (
           <MessageImage fileUrl={message.file_url} fileUuid={message.file_uuid} isFriendMessage={selectedConversation?.type === 'friend'} onClick={() => handleFilePreview(message)} />
         ) : (
-          <div className="flex items-center gap-2 text-sm"><ImageIcon className="h-4 w-4" /><span>[图片]</span></div>
+          <div className="flex items-center gap-2 text-sm"><ImageIcon className="h-4 w-4" /><span>[{t('chat.window.image')}]</span></div>
         )
       case 'video':
         return (message.file_url || message.file_uuid) ? (
           <MessageVideo fileUrl={message.file_url} fileUuid={message.file_uuid} isFriendMessage={selectedConversation?.type === 'friend'} className="max-w-[240px] rounded-xl" />
         ) : (
-          <div className="flex items-center gap-2 text-sm"><Video className="h-4 w-4" /><span>[视频]</span></div>
+          <div className="flex items-center gap-2 text-sm"><Video className="h-4 w-4" /><span>[{t('chat.window.video')}]</span></div>
         )
       case 'file':
         return (
@@ -352,7 +354,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
               <FileText className={`h-5 w-5 ${isOwn ? 'text-primary-foreground' : 'text-primary'}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium truncate ${isOwn ? 'text-primary-foreground' : 'text-foreground'}`}>{message.message_content || '文件'}</p>
+              <p className={`text-sm font-medium truncate ${isOwn ? 'text-primary-foreground' : 'text-foreground'}`}>{message.message_content || t('chat.window.file')}</p>
               {message.file_size && <p className={`text-xs ${isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{formatFileSize(message.file_size)}</p>}
             </div>
             {(message.file_url || message.file_uuid) && (
@@ -363,7 +365,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           </div>
         )
       default:
-        return <p className="text-sm">[不支持的消息类型]</p>
+        return <p className="text-sm">[{t('chat.window.unsupportedMessageType')}]</p>
     }
   }
 
@@ -375,7 +377,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             <MessageCircle className="w-12 h-12 text-primary/50" />
           </div>
           <h3 className="text-2xl font-bold text-foreground mb-2">Huanvae Chat</h3>
-          <p className="text-muted-foreground">选择一个会话开始聊天</p>
+          <p className="text-muted-foreground">{t('chat.window.selectConversation')}</p>
         </motion.div>
       </div>
     )
@@ -400,8 +402,8 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           >
             <div className="text-center">
               <Upload className="h-12 w-12 text-primary mx-auto mb-3" />
-              <p className="text-lg font-medium text-primary">拖放文件到此处上传</p>
-              <p className="text-sm text-muted-foreground mt-1">支持图片、视频和文档</p>
+              <p className="text-lg font-medium text-primary">{t('chat.window.dragUploadTitle')}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t('chat.window.dragUploadDesc')}</p>
             </div>
           </motion.div>
         )}
@@ -416,12 +418,12 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           </Avatar>
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-semibold text-foreground">{selectedConversation.name}</h2>
-            <span className="text-xs text-muted-foreground">{selectedConversation.type === 'friend' ? '好友' : '群聊'}</span>
+            <span className="text-xs text-muted-foreground">{selectedConversation.type === 'friend' ? t('chat.window.friend') : t('chat.window.group')}</span>
           </div>
         </div>
         <div className="flex items-center gap-1">
           {selectedConversation.type === 'group' && (
-            <Button variant="ghost" size="icon" onClick={() => setShowGroupManagement(true)} title="群管理">
+            <Button variant="ghost" size="icon" onClick={() => setShowGroupManagement(true)} title={t('chat.window.groupManage')}>
               <Settings className="h-5 w-5" />
             </Button>
           )}
@@ -434,13 +436,13 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
         {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full"><p className="text-sm text-muted-foreground">暂无消息，开始聊天吧！</p></div>
+          <div className="flex items-center justify-center h-full"><p className="text-sm text-muted-foreground">{t('chat.window.noMessage')}</p></div>
         ) : (
           <>
             {hasMore && (
               <div className="text-center">
                 <Button variant="outline" size="sm" onClick={loadMoreMessages} disabled={loading}>
-                  {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />加载中...</> : '加载更多'}
+                  {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('chat.window.loading')}</> : t('chat.window.loadMore')}
                 </Button>
               </div>
             )}
@@ -464,7 +466,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                       {isRecalled ? (
                         /* 已撤回的消息 */
                         <div className="px-4 py-2 text-xs text-muted-foreground italic">
-                          {isOwn ? '你撤回了一条消息' : `${groupMessage?.sender_nickname || '对方'}撤回了一条消息`}
+                          {isOwn ? t('chat.window.youRecalled') : t('chat.window.someoneRecalled', { name: groupMessage?.sender_nickname || t('chat.window.otherSide') })}
                         </div>
                       ) : (
                         /* 右键菜单包裹的消息气泡 */
@@ -477,30 +479,30 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                           <ContextMenuContent>
                             {message.message_type === 'text' && (
                               <ContextMenuItem onClick={() => handleCopyMessage(message.message_content)}>
-                                <Copy className="h-4 w-4 mr-2" />复制
+                                <Copy className="h-4 w-4 mr-2" />{t('chat.window.copy')}
                               </ContextMenuItem>
                             )}
                             {(message.file_url || message.file_uuid) && (
                               <ContextMenuItem onClick={() => handleFileDownload(message)}>
-                                <Download className="h-4 w-4 mr-2" />下载
+                                <Download className="h-4 w-4 mr-2" />{t('chat.window.download')}
                               </ContextMenuItem>
                             )}
                             {(message.message_type === 'image' || message.message_type === 'video') && (message.file_url || message.file_uuid) && (
                               <ContextMenuItem onClick={() => handleFilePreview(message)}>
-                                <ImageIcon className="h-4 w-4 mr-2" />预览
+                                <ImageIcon className="h-4 w-4 mr-2" />{t('chat.window.preview')}
                               </ContextMenuItem>
                             )}
                             {canRecall && (
                               <>
                                 <ContextMenuSeparator />
                                 <ContextMenuItem onClick={() => handleRecallMessage(message.message_uuid)}>
-                                  <RotateCcw className="h-4 w-4 mr-2" />撤回
+                                  <RotateCcw className="h-4 w-4 mr-2" />{t('chat.window.recall')}
                                 </ContextMenuItem>
                               </>
                             )}
                             <ContextMenuSeparator />
                             <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteMessage(message.message_uuid)}>
-                              <Trash2 className="h-4 w-4 mr-2" />删除
+                              <Trash2 className="h-4 w-4 mr-2" />{t('chat.window.delete')}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -523,7 +525,11 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
                     ))}
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {selectedConversation.type === 'friend' ? '对方正在输入...' : typingList.length === 1 ? '有人正在输入...' : `${typingList.length} 人正在输入...`}
+                    {selectedConversation.type === 'friend'
+                      ? t('chat.window.friendTyping')
+                      : typingList.length === 1
+                        ? t('chat.window.someoneTyping')
+                        : t('chat.window.peopleTyping', { count: typingList.length })}
                   </span>
                 </motion.div>
               )
@@ -555,7 +561,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           {uploadProgress !== null && (
             <motion.div className="mb-3" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span>上传中...</span>
+                <span>{t('chat.window.uploading')}</span>
                 <span>{uploadProgress.toFixed(1)}%</span>
               </div>
               <Progress value={uploadProgress} className="h-2" />
@@ -569,7 +575,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
             <Paperclip className="h-5 w-5" />
           </Button>
           <EmojiPicker onSelect={(emoji) => editorRef.current?.insertText(emoji)} disabled={sending} />
-          <MarkdownEditor ref={editorRef} placeholder="输入消息... (支持 Markdown，Enter 发送)" onSubmit={handleSendMessage} onChange={() => setEditorHasContent(!(editorRef.current?.isEmpty() ?? true))} disabled={sending} className="flex-1" minHeight="42px" maxHeight="150px" />
+          <MarkdownEditor ref={editorRef} placeholder={t('chat.window.inputPlaceholder')} onSubmit={handleSendMessage} onChange={() => setEditorHasContent(!(editorRef.current?.isEmpty() ?? true))} disabled={sending} className="flex-1" minHeight="42px" maxHeight="150px" />
           <Button size="icon" className="h-10 w-10 shrink-0" onClick={selectedFile ? handleSendFile : handleSendMessage} disabled={(!editorHasContent && !selectedFile) || sending}>
             {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </Button>
@@ -580,8 +586,8 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
       <Dialog open={showGroupManagement && selectedConversation?.type === 'group'} onOpenChange={setShowGroupManagement}>
         <DialogContent className="max-w-2xl h-[80vh] max-h-[700px] flex flex-col p-0">
           <DialogHeader className="p-4 border-b border-border shrink-0">
-            <DialogTitle>群管理</DialogTitle>
-            <DialogDescription className="sr-only">管理群聊设置、成员和公告</DialogDescription>
+            <DialogTitle>{t('chat.window.groupManage')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('chat.window.groupManageDesc')}</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-hidden">
             <GroupManagement groupId={selectedConversation?.id || ''} onClose={() => setShowGroupManagement(false)} />

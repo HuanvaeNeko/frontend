@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import {
   ArrowLeft,
   Globe,
@@ -18,10 +19,15 @@ import { useNotification, requestNotificationPermission } from '@/hooks/useNotif
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { ROUTES } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
+import type { AppLocale } from '@/i18n/messages'
+import { clearApiBaseUrl, getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
+import { useAuthStore } from '@/store/authStore'
 
 function SettingRow({
   label,
@@ -45,16 +51,41 @@ function SettingRow({
 
 export default function Settings() {
   const router = useRouter()
+  const { t } = useI18n()
   const { toast } = useToast()
   const settings = useSettingsStore()
+  const clearAuth = useAuthStore((state) => state.clearAuth)
   const apiConfig = useApiConfigStore()
   const { notifyInfo, notifySuccess, notifyWarning, notifyError, notifyMessage } = useNotification()
+  const initialApiBaseUrl = getApiBaseUrl()
+  const [serverInput, setServerInput] = useState(initialApiBaseUrl)
 
   const handleReset = () => {
-    if (!confirm('确定要重置所有设置吗？')) return
+    if (!confirm(t('settings.resetConfirm'))) return
     settings.resetSettings()
     apiConfig.resetToDefault()
-    toast({ title: '已重置', description: '所有设置已恢复默认值' })
+    toast({ title: t('settings.resetDoneTitle'), description: t('settings.resetDoneDesc') })
+  }
+
+  const handleApplyServer = () => {
+    try {
+      const normalized = normalizeApiBaseUrl(serverInput)
+      setApiBaseUrl(normalized)
+      clearAuth()
+      window.location.href = ROUTES.auth.login
+    } catch (error) {
+      toast({
+        title: '服务器地址无效',
+        description: error instanceof Error ? error.message : '请检查输入格式',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleResetServer = () => {
+    clearApiBaseUrl()
+    clearAuth()
+    window.location.href = ROUTES.auth.login
   }
 
   return (
@@ -66,40 +97,40 @@ export default function Settings() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">设置中心</h1>
-              <p className="text-sm text-muted-foreground">修改外观、通知与隐私偏好</p>
+              <h1 className="text-2xl font-semibold tracking-tight">{t('settings.title')}</h1>
+              <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
             </div>
           </div>
           <Button variant="destructive" onClick={handleReset} className="gap-2">
-            <RotateCcw className="h-4 w-4" />重置
+            <RotateCcw className="h-4 w-4" />{t('settings.reset')}
           </Button>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Wand2 className="h-4 w-4 text-primary" />AI 配置</CardTitle>
-              <CardDescription>AI 助手与接口设置</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Wand2 className="h-4 w-4 text-primary" />{t('settings.aiConfig')}</CardTitle>
+              <CardDescription>{t('settings.aiConfigDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <SettingRow label="启用 AI 助手" description="在聊天中启用智能能力">
+              <SettingRow label={t('settings.aiEnabled')} description={t('settings.aiEnabledDesc')}>
                 <Switch checked={settings.aiEnabled} onCheckedChange={(v) => settings.setSetting('aiEnabled', v)} />
               </SettingRow>
 
               <div className="space-y-2">
-                <Label>AI 模型</Label>
+                <Label>{t('settings.aiModel')}</Label>
                 <Select value={settings.aiModel} onValueChange={(v) => settings.setSetting('aiModel', v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="gpt-4">GPT-4</SelectItem>
                     <SelectItem value="gpt-3.5">GPT-3.5</SelectItem>
                     <SelectItem value="claude">Claude</SelectItem>
-                    <SelectItem value="custom">自定义</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <SettingRow label="使用自定义 API" description="使用你自己的 AI 服务地址">
+              <SettingRow label={t('settings.customApi')} description={t('settings.customApiDesc')}>
                 <Switch checked={apiConfig.useCustomApi} onCheckedChange={(v) => apiConfig.setApiConfig({ useCustomApi: v })} disabled={!settings.aiEnabled} />
               </SettingRow>
             </CardContent>
@@ -107,23 +138,42 @@ export default function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4 text-primary" />语言与地区</CardTitle>
-              <CardDescription>界面语言和时间格式</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4 text-primary" />服务器设置</CardTitle>
+              <CardDescription>切换 API 与 WebSocket 服务器地址（切换后将重新登录）</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Label htmlFor="server_base_url">服务器地址</Label>
+              <Input
+                id="server_base_url"
+                value={serverInput}
+                onChange={(e) => setServerInput(e.target.value)}
+                placeholder="https://api.huanvae.cn"
+              />
+              <div className="text-xs text-muted-foreground">当前生效: {initialApiBaseUrl}</div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleApplyServer}>应用并重新登录</Button>
+                <Button variant="outline" onClick={handleResetServer}>恢复默认并重新登录</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4 text-primary" />{t('settings.languageRegion')}</CardTitle>
+              <CardDescription>{t('settings.languageRegionDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>界面语言</Label>
-                <Select value={settings.language} onValueChange={(v) => settings.setSetting('language', v)}>
+                <Label>{t('settings.language')}</Label>
+                <Select value={settings.language} onValueChange={(v) => settings.setSetting('language', v as AppLocale)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zh-CN">简体中文</SelectItem>
-                    <SelectItem value="zh-TW">繁体中文</SelectItem>
-                    <SelectItem value="en-US">English</SelectItem>
-                    <SelectItem value="ja-JP">日本語</SelectItem>
+                    <SelectItem value="zh-CN">{t('settings.languageOptions.zhCN')}</SelectItem>
+                    <SelectItem value="en-US">{t('settings.languageOptions.enUS')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <SettingRow label="24 小时制" description="时间显示格式">
+              <SettingRow label={t('settings.use24h')} description={t('settings.use24hDesc')}>
                 <Switch checked={settings.use24HourFormat} onCheckedChange={(v) => settings.setSetting('use24HourFormat', v)} />
               </SettingRow>
             </CardContent>
@@ -131,14 +181,14 @@ export default function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Shield className="h-4 w-4 text-primary" />隐私与安全</CardTitle>
-              <CardDescription>隐私可见性和消息保护</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Shield className="h-4 w-4 text-primary" />{t('settings.privacySecurity')}</CardTitle>
+              <CardDescription>{t('settings.privacySecurityDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
-              <SettingRow label="显示在线状态" description="让其他用户看到你的在线状态">
+              <SettingRow label={t('settings.showOnline')} description={t('settings.showOnlineDesc')}>
                 <Switch checked={settings.showOnlineStatus} onCheckedChange={(v) => settings.setSetting('showOnlineStatus', v)} />
               </SettingRow>
-              <SettingRow label="消息加密" description="启用消息传输加密">
+              <SettingRow label={t('settings.msgEncrypt')} description={t('settings.msgEncryptDesc')}>
                 <Switch checked={settings.messageEncryption} onCheckedChange={(v) => settings.setSetting('messageEncryption', v)} />
               </SettingRow>
             </CardContent>
@@ -146,31 +196,31 @@ export default function Settings() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Palette className="h-4 w-4 text-primary" />外观与通知</CardTitle>
-              <CardDescription>主题、动画与消息通知</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Palette className="h-4 w-4 text-primary" />{t('settings.appearanceNotify')}</CardTitle>
+              <CardDescription>{t('settings.appearanceNotifyDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>主题</Label>
+                <Label>{t('settings.theme')}</Label>
                 <Select value={settings.theme} onValueChange={(v) => settings.setSetting('theme', v as 'light' | 'dark' | 'auto')}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="light">浅色</SelectItem>
-                    <SelectItem value="dark">深色</SelectItem>
-                    <SelectItem value="auto">跟随系统</SelectItem>
+                    <SelectItem value="light">{t('settings.themeLight')}</SelectItem>
+                    <SelectItem value="dark">{t('settings.themeDark')}</SelectItem>
+                    <SelectItem value="auto">{t('settings.themeAuto')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <SettingRow label="界面动画" description="启用页面过渡和动效">
+              <SettingRow label={t('settings.uiAnimation')} description={t('settings.uiAnimationDesc')}>
                 <Switch checked={settings.animationsEnabled} onCheckedChange={(v) => settings.setSetting('animationsEnabled', v)} />
               </SettingRow>
-              <SettingRow label="粒子背景" description="登录和注册页的背景特效">
+              <SettingRow label={t('settings.particle')} description={t('settings.particleDesc')}>
                 <Switch checked={settings.particleBackground} onCheckedChange={(v) => settings.setSetting('particleBackground', v)} />
               </SettingRow>
               <SettingRow
-                label="推送通知"
-                description="浏览器消息通知"
+                label={t('settings.pushNotify')}
+                description={t('settings.pushNotifyDesc')}
               >
                 <Switch
                   checked={settings.notificationsEnabled}
@@ -184,14 +234,14 @@ export default function Settings() {
                   }}
                 />
               </SettingRow>
-              <SettingRow label="消息提示音" description="收到消息时播放音效">
+              <SettingRow label={t('settings.soundNotify')} description={t('settings.soundNotifyDesc')}>
                 <Switch checked={settings.soundEnabled} onCheckedChange={(v) => settings.setSetting('soundEnabled', v)} disabled={!settings.notificationsEnabled} />
               </SettingRow>
 
               {settings.soundEnabled && (
                 <div className="space-y-2 rounded-lg border bg-muted/50 p-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="inline-flex items-center gap-1.5"><Volume2 className="h-4 w-4" />音量</span>
+                    <span className="inline-flex items-center gap-1.5"><Volume2 className="h-4 w-4" />{t('settings.volume')}</span>
                     <span className="text-muted-foreground">{Math.round(settings.soundVolume * 100)}%</span>
                   </div>
                   <Slider
@@ -205,13 +255,13 @@ export default function Settings() {
               )}
 
               <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
-                <div className="inline-flex items-center gap-1.5 text-sm font-medium"><Zap className="h-4 w-4" />通知测试</div>
+                <div className="inline-flex items-center gap-1.5 text-sm font-medium"><Zap className="h-4 w-4" />{t('settings.notifyTest')}</div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => notifyInfo('信息', '这是一条信息通知')}>信息</Button>
-                  <Button size="sm" variant="outline" onClick={() => notifySuccess('成功', '设置已保存')}>成功</Button>
-                  <Button size="sm" variant="outline" onClick={() => notifyWarning('警告', '请检查设置')}>警告</Button>
-                  <Button size="sm" variant="outline" onClick={() => notifyError('错误', '操作失败')}>错误</Button>
-                  <Button size="sm" variant="outline" onClick={() => notifyMessage('新消息', '你收到一条消息')}>消息</Button>
+                  <Button size="sm" variant="outline" onClick={() => notifyInfo(t('settings.notifyInfoTitle'), t('settings.notifyInfoBody'))}>{t('settings.testInfo')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => notifySuccess(t('settings.notifySuccessTitle'), t('settings.notifySuccessBody'))}>{t('settings.testSuccess')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => notifyWarning(t('settings.notifyWarningTitle'), t('settings.notifyWarningBody'))}>{t('settings.testWarning')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => notifyError(t('settings.notifyErrorTitle'), t('settings.notifyErrorBody'))}>{t('settings.testError')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => notifyMessage(t('settings.notifyMessageTitle'), t('settings.notifyMessageBody'))}>{t('settings.testMessage')}</Button>
                 </div>
               </div>
             </CardContent>

@@ -29,24 +29,13 @@ import { useUIStore } from '@/store/uiStore'
 import { playTap } from '@/hooks/useSound'
 import { RELEASE_PAGE_URL, fetchInstallTargets } from '@/lib/appInstall'
 import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getRouteBreadcrumbs, isRouteActive } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface NavItem {
   path: string
   label: string
   icon: React.ElementType
 }
-
-const mainNavItems: NavItem[] = [
-  { path: ROUTES.app.chat, label: '消息', icon: MessageSquare },
-  { path: ROUTES.app.friends, label: '好友', icon: Users },
-  { path: ROUTES.app.aiChat, label: 'AI 助手', icon: Bot },
-  { path: ROUTES.app.videoMeeting, label: '视频会议', icon: Video },
-]
-
-const settingsNavItems: NavItem[] = [
-  { path: ROUTES.app.devices, label: '设备管理', icon: Laptop },
-  { path: ROUTES.app.settings, label: '设置', icon: Settings },
-]
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -55,6 +44,7 @@ interface MainLayoutProps {
 export default function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { t } = useI18n()
   const { user, clearAuth } = useAuthStore()
   const { profile } = useProfileStore()
   const { openProfileModal } = useUIStore()
@@ -87,7 +77,35 @@ export default function MainLayout({ children }: MainLayoutProps) {
     return isRouteActive(pathname, path)
   }
 
-  const breadcrumbs = getRouteBreadcrumbs(pathname)
+  const mainNavItems: NavItem[] = [
+    { path: ROUTES.app.chat, label: t('nav.messages'), icon: MessageSquare },
+    { path: ROUTES.app.friends, label: t('nav.friends'), icon: Users },
+    { path: ROUTES.app.aiChat, label: t('nav.aiAssistant'), icon: Bot },
+    { path: ROUTES.app.videoMeeting, label: t('nav.videoMeeting'), icon: Video },
+  ]
+
+  const settingsNavItems: NavItem[] = [
+    { path: ROUTES.app.devices, label: t('nav.devices'), icon: Laptop },
+    { path: ROUTES.app.settings, label: t('nav.settings'), icon: Settings },
+  ]
+
+  const breadcrumbs = getRouteBreadcrumbs(pathname, (segment) => {
+    const keyMap: Record<string, string> = {
+      home: 'nav.home',
+      chat: 'nav.messages',
+      friends: 'nav.friends',
+      'ai-chat': 'nav.aiAssistant',
+      'video-meeting': 'nav.videoMeeting',
+      devices: 'nav.devices',
+      settings: 'nav.settings',
+      profile: 'nav.profile',
+      groups: 'nav.groups',
+      files: 'nav.files',
+      webrtc: 'nav.webrtc',
+    }
+    const key = keyMap[segment]
+    return key ? t(key) : segment
+  })
 
   const handleOpenProfile = () => {
     playTap()
@@ -106,14 +124,14 @@ export default function MainLayout({ children }: MainLayoutProps) {
             <div className="truncate text-sm font-medium">{displayName}</div>
             <div className="truncate text-xs text-muted-foreground">{user?.user_id}</div>
           </div>
-          <Badge variant="secondary" className="text-[10px]">在线</Badge>
+          <Badge variant="secondary" className="text-[10px]">{t('layout.online')}</Badge>
         </button>
       </div>
 
       <ScrollArea className="flex-1">
         <nav className="space-y-4 p-4">
           <div className="space-y-1">
-            <div className="px-2 text-xs font-medium text-muted-foreground">主菜单</div>
+            <div className="px-2 text-xs font-medium text-muted-foreground">{t('layout.mainMenu')}</div>
             {mainNavItems.map((item) => (
               <Button
                 key={item.path}
@@ -130,9 +148,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
           <Separator />
 
           <div className="space-y-1">
-            <div className="px-2 text-xs font-medium text-muted-foreground">账户与系统</div>
+            <div className="px-2 text-xs font-medium text-muted-foreground">{t('layout.accountAndSystem')}</div>
             <Button variant="ghost" className="w-full justify-start gap-2.5" onClick={handleOpenProfile}>
-              <User className="h-4 w-4" />个人资料
+              <User className="h-4 w-4" />{t('nav.profile')}
             </Button>
             {settingsNavItems.map((item) => (
               <Button
@@ -146,7 +164,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
               </Button>
             ))}
             <Button variant="ghost" className="w-full justify-start gap-2.5" onClick={() => window.open(installUrl, '_blank', 'noopener,noreferrer')}>
-              <Download className="h-4 w-4" />安装 APP
+              <Download className="h-4 w-4" />{t('layout.installApp')}
             </Button>
           </div>
         </nav>
@@ -154,7 +172,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
       <div className="border-t p-4">
         <Button variant="ghost" className="w-full justify-start gap-2.5 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={handleLogout}>
-          <LogOut className="h-4 w-4" />退出登录
+          <LogOut className="h-4 w-4" />{t('layout.logout')}
         </Button>
       </div>
     </>

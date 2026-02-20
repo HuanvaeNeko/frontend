@@ -2,10 +2,12 @@
 
 import { useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { usePathname } from 'next/navigation'
 import SoundProvider from '@/components/SoundProvider'
 import { Toaster } from '@/components/ui/toaster'
 import { useSettingsStore } from '@/store/settingsStore'
 import { setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
+import { I18nProvider } from '@/i18n/I18nProvider'
 
 const UpdatePrompt = dynamic(
   () => import('@/components/UpdatePrompt').then(mod => ({ default: mod.UpdatePrompt })),
@@ -16,9 +18,33 @@ const AppInstallPrompt = dynamic(
   { ssr: false }
 )
 
+function DevServiceWorkerCleanup() {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+
+    void navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        void registration.unregister()
+      })
+    })
+
+    void caches.keys().then((keys) => {
+      keys
+        .filter((key) => key.includes('serwist') || key.includes('workbox'))
+        .forEach((key) => {
+          void caches.delete(key)
+        })
+    })
+  }, [])
+
+  return null
+}
+
 // 全局设置同步组件
 function SettingsSync() {
   const theme = useSettingsStore((s) => s.theme)
+  const language = useSettingsStore((s) => s.language)
   const soundEnabled = useSettingsStore((s) => s.soundEnabled)
   const soundVolume = useSettingsStore((s) => s.soundVolume)
   const animationsEnabled = useSettingsStore((s) => s.animationsEnabled)
@@ -63,6 +89,10 @@ function SettingsSync() {
     }
   }, [animationsEnabled])
 
+  useEffect(() => {
+    document.documentElement.lang = language || 'zh-CN'
+  }, [language])
+
   return null
 }
 
@@ -71,13 +101,19 @@ export default function ClientProviders({
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname()
+  const shouldShowInstallPrompt = pathname?.startsWith('/app') ?? false
+
   return (
-    <SoundProvider>
-      <SettingsSync />
-      {children}
-      <Toaster />
-      <UpdatePrompt autoUpdateDelay={3000} />
-      <AppInstallPrompt />
-    </SoundProvider>
+    <I18nProvider>
+      <SoundProvider>
+        <DevServiceWorkerCleanup />
+        <SettingsSync />
+        {children}
+        <Toaster />
+        <UpdatePrompt autoUpdateDelay={3000} />
+        {shouldShowInstallPrompt && <AppInstallPrompt />}
+      </SoundProvider>
+    </I18nProvider>
   )
 }

@@ -82,7 +82,7 @@ self.addEventListener('push', (event) => {
       badge: '/logo.svg',
       vibrate: [100, 50, 100],
       data: {
-        url: data.url || '/chat/',
+        url: data.url || '/app/chat/',
         ...data.data,
       },
       actions: data.actions || [
@@ -108,7 +108,7 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'dismiss') return
 
-  const url = (event.notification.data as { url?: string })?.url || '/chat/'
+  const url = (event.notification.data as { url?: string })?.url || '/app/chat/'
 
   event.waitUntil(
     self.clients

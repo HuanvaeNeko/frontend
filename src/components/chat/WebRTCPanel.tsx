@@ -14,8 +14,10 @@ import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
 import { ROUTES } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 export default function WebRTCPanel() {
+  const { t } = useI18n()
   const router = useRouter()
   const { toast } = useToast()
   const { accessToken: _accessToken } = useAuthStore()
@@ -44,41 +46,41 @@ export default function WebRTCPanel() {
         max_participants: parseInt(maxParticipants),
       })
       const shareLink = `${window.location.origin}/video-meeting?room=${response.room_id}&pwd=${roomPassword || ''}`
-      setCurrentRoom({ roomId: response.room_id, password: roomPassword || '无', shareLink })
-      toast({ title: '成功', description: '房间创建成功！正在跳转...' })
+      setCurrentRoom({ roomId: response.room_id, password: roomPassword || t('chat.webrtc.none'), shareLink })
+      toast({ title: t('chat.webrtc.success'), description: t('chat.webrtc.roomCreatedRedirecting') })
       setShowCreateDialog(false)
       const params = new URLSearchParams({ room: response.room_id, token: response.ws_token, creator: 'true' })
       if (roomPassword) params.set('pwd', roomPassword)
       router.push(`${ROUTES.app.videoMeeting}?${params.toString()}`)
     } catch (error) {
-      toast({ title: '创建失败', description: error instanceof Error ? error.message : '创建房间失败', variant: 'destructive' })
+      toast({ title: t('chat.webrtc.createFailedTitle'), description: error instanceof Error ? error.message : t('chat.webrtc.createFailedDesc'), variant: 'destructive' })
     } finally { setCreating(false) }
   }
 
   const handleJoinRoom = async () => {
-    if (!joinRoomId.trim()) { toast({ title: '错误', description: '请输入房间号', variant: 'destructive' }); return }
+    if (!joinRoomId.trim()) { toast({ title: t('chat.webrtc.error'), description: t('chat.webrtc.enterRoomId'), variant: 'destructive' }); return }
     setJoining(true)
     try {
       const response = await webrtcApi.joinRoom(joinRoomId, { password: joinPassword || '', display_name: joinNickname || 'Anonymous' })
-      toast({ title: '成功', description: '已加入房间！正在跳转...' })
+      toast({ title: t('chat.webrtc.success'), description: t('chat.webrtc.joinedRedirecting') })
       setShowJoinDialog(false)
       const params = new URLSearchParams({ room: joinRoomId, token: response.ws_token || '' })
       if (joinNickname) params.set('name', joinNickname)
       router.push(`${ROUTES.app.videoMeeting}?${params.toString()}`)
     } catch (error) {
-      toast({ title: '加入失败', description: error instanceof Error ? error.message : '加入房间失败', variant: 'destructive' })
+      toast({ title: t('chat.webrtc.joinFailedTitle'), description: error instanceof Error ? error.message : t('chat.webrtc.joinFailedDesc'), variant: 'destructive' })
     } finally { setJoining(false) }
   }
 
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => toast({ title: '已复制', description: `${label}已复制到剪贴板` }))
+    navigator.clipboard.writeText(text).then(() => toast({ title: t('chat.webrtc.copied'), description: t('chat.webrtc.copiedDesc', { label }) }))
   }
 
   const features = [
-    { icon: Users, text: '无需登录即可加入房间', color: 'text-primary' },
-    { icon: Globe, text: '自动分配最优 TURN 服务器', color: 'text-primary' },
-    { icon: Video, text: '支持多人视频通话', color: 'text-primary' },
-    { icon: Shield, text: '端到端加密传输', color: 'text-primary' },
+    { icon: Users, text: t('chat.webrtc.feature1'), color: 'text-primary' },
+    { icon: Globe, text: t('chat.webrtc.feature2'), color: 'text-primary' },
+    { icon: Video, text: t('chat.webrtc.feature3'), color: 'text-primary' },
+    { icon: Shield, text: t('chat.webrtc.feature4'), color: 'text-primary' },
   ]
 
   return (
@@ -92,8 +94,8 @@ export default function WebRTCPanel() {
                 <Video className="h-6 w-6 text-background" />
               </div>
               <div>
-                <CardTitle>WebRTC 视频通话</CardTitle>
-                <CardDescription>创建房间后，分享房间号和密码给朋友，即可开始视频通话</CardDescription>
+                <CardTitle>{t('chat.webrtc.title')}</CardTitle>
+                <CardDescription>{t('chat.webrtc.subtitle')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -114,13 +116,13 @@ export default function WebRTCPanel() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <Button className="h-32 w-full flex-col gap-3 text-lg" onClick={() => setShowCreateDialog(true)}>
               <Video className="h-8 w-8" />
-              创建房间
+              {t('chat.webrtc.createRoom')}
             </Button>
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <Button variant="outline" className="h-32 w-full flex-col gap-3 text-lg" onClick={() => setShowJoinDialog(true)}>
               <Phone className="h-8 w-8" />
-              加入房间
+              {t('chat.webrtc.joinRoom')}
             </Button>
           </motion.div>
         </div>
@@ -130,28 +132,28 @@ export default function WebRTCPanel() {
           {currentRoom && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
               <Card>
-                <CardHeader><CardTitle className="text-lg">当前房间</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-lg">{t('chat.webrtc.currentRoom')}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between rounded-xl bg-muted p-3">
-                    <span className="text-sm font-medium">房间号:</span>
+                    <span className="text-sm font-medium">{t('chat.webrtc.roomId')}:</span>
                     <div className="flex items-center gap-2">
                       <code className="text-sm font-mono px-2 py-1 rounded-lg bg-background">{currentRoom.roomId}</code>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.roomId, '房间号')}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.roomId, t('chat.webrtc.roomId'))}>
                         <Copy className="h-4 w-4 text-primary" />
                       </Button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between rounded-xl bg-muted p-3">
-                    <span className="text-sm font-medium">密码:</span>
+                    <span className="text-sm font-medium">{t('chat.webrtc.password')}:</span>
                     <div className="flex items-center gap-2">
                       <code className="text-sm font-mono px-2 py-1 rounded-lg bg-background">{currentRoom.password}</code>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.password, '密码')}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(currentRoom.password, t('chat.webrtc.password'))}>
                         <Copy className="h-4 w-4 text-primary" />
                       </Button>
                     </div>
                   </div>
-                  <Button className="w-full gap-2" onClick={() => copyToClipboard(`房间号: ${currentRoom.roomId}\n密码: ${currentRoom.password}\n链接: ${currentRoom.shareLink}`, '全部信息')}>
-                    <Copy className="h-4 w-4" />复制全部信息
+                  <Button className="w-full gap-2" onClick={() => copyToClipboard(`${t('chat.webrtc.roomId')}: ${currentRoom.roomId}\n${t('chat.webrtc.password')}: ${currentRoom.password}\n${t('chat.webrtc.link')}: ${currentRoom.shareLink}`, t('chat.webrtc.allInfo'))}>
+                    <Copy className="h-4 w-4" />{t('chat.webrtc.copyAll')}
                   </Button>
                 </CardContent>
               </Card>
@@ -163,47 +165,47 @@ export default function WebRTCPanel() {
       {/* 创建房间 Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>创建视频房间</DialogTitle><DialogDescription className="sr-only">设置房间名称、密码和参数</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t('chat.webrtc.createDialogTitle')}</DialogTitle><DialogDescription className="sr-only">{t('chat.webrtc.createDialogDesc')}</DialogDescription></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>房间名称（可选）</Label>
-              <Input placeholder="我的房间" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
+              <Label>{t('chat.webrtc.roomNameOptional')}</Label>
+              <Input placeholder={t('chat.webrtc.myRoom')} value={roomName} onChange={(e) => setRoomName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label className="flex items-center gap-1"><Lock className="h-3 w-3" />房间密码（可选）</Label>
-              <Input type="password" placeholder="不填自动生成" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+              <Label className="flex items-center gap-1"><Lock className="h-3 w-3" />{t('chat.webrtc.roomPasswordOptional')}</Label>
+              <Input type="password" placeholder={t('chat.webrtc.autoGenerateIfEmpty')} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>最大人数</Label>
+                <Label>{t('chat.webrtc.maxParticipants')}</Label>
                 <Select value={maxParticipants} onValueChange={setMaxParticipants}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2">2人</SelectItem>
-                    <SelectItem value="5">5人</SelectItem>
-                    <SelectItem value="10">10人</SelectItem>
-                    <SelectItem value="20">20人</SelectItem>
+                    <SelectItem value="2">{t('chat.webrtc.people', { count: 2 })}</SelectItem>
+                    <SelectItem value="5">{t('chat.webrtc.people', { count: 5 })}</SelectItem>
+                    <SelectItem value="10">{t('chat.webrtc.people', { count: 10 })}</SelectItem>
+                    <SelectItem value="20">{t('chat.webrtc.people', { count: 20 })}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>有效期</Label>
+                <Label>{t('chat.webrtc.duration')}</Label>
                 <Select value={durationMinutes} onValueChange={setDurationMinutes}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="30">30分钟</SelectItem>
-                    <SelectItem value="60">1小时</SelectItem>
-                    <SelectItem value="120">2小时</SelectItem>
-                    <SelectItem value="360">6小时</SelectItem>
+                    <SelectItem value="30">{t('chat.webrtc.minutes', { count: 30 })}</SelectItem>
+                    <SelectItem value="60">{t('chat.webrtc.hour', { count: 1 })}</SelectItem>
+                    <SelectItem value="120">{t('chat.webrtc.hour', { count: 2 })}</SelectItem>
+                    <SelectItem value="360">{t('chat.webrtc.hour', { count: 6 })}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </div>
           <div className="flex gap-3 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setShowCreateDialog(false)} disabled={creating}>取消</Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowCreateDialog(false)} disabled={creating}>{t('chat.webrtc.cancel')}</Button>
             <Button className="flex-1" onClick={handleCreateRoom} disabled={creating}>
-              {creating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />创建中...</> : '创建房间'}
+              {creating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t('chat.webrtc.creating')}</> : t('chat.webrtc.createRoom')}
             </Button>
           </div>
         </DialogContent>
@@ -212,25 +214,25 @@ export default function WebRTCPanel() {
       {/* 加入房间 Dialog */}
       <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
         <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader><DialogTitle>加入视频房间</DialogTitle><DialogDescription className="sr-only">输入房间号和密码加入会议</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t('chat.webrtc.joinDialogTitle')}</DialogTitle><DialogDescription className="sr-only">{t('chat.webrtc.joinDialogDesc')}</DialogDescription></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>房间号 *</Label>
-              <Input placeholder="输入房间号" value={joinRoomId} onChange={(e) => setJoinRoomId(e.target.value)} />
+              <Label>{t('chat.webrtc.roomIdRequired')}</Label>
+              <Input placeholder={t('chat.webrtc.enterRoomIdPlaceholder')} value={joinRoomId} onChange={(e) => setJoinRoomId(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>密码</Label>
-              <Input type="password" placeholder="如有密码请输入" value={joinPassword} onChange={(e) => setJoinPassword(e.target.value)} />
+              <Label>{t('chat.webrtc.password')}</Label>
+              <Input type="password" placeholder={t('chat.webrtc.enterPasswordIfAny')} value={joinPassword} onChange={(e) => setJoinPassword(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>您的昵称</Label>
-              <Input placeholder="可选" value={joinNickname} onChange={(e) => setJoinNickname(e.target.value)} />
+              <Label>{t('chat.webrtc.yourNickname')}</Label>
+              <Input placeholder={t('chat.webrtc.optional')} value={joinNickname} onChange={(e) => setJoinNickname(e.target.value)} />
             </div>
           </div>
           <div className="flex gap-3 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setShowJoinDialog(false)} disabled={joining}>取消</Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowJoinDialog(false)} disabled={joining}>{t('chat.webrtc.cancel')}</Button>
             <Button className="flex-1" onClick={handleJoinRoom} disabled={joining}>
-              {joining ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />加入中...</> : '加入房间'}
+              {joining ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />{t('chat.webrtc.joining')}</> : t('chat.webrtc.joinRoom')}
             </Button>
           </div>
         </DialogContent>

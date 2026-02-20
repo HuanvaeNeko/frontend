@@ -38,6 +38,7 @@ import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
 import { CHAT_TAB_ROUTE_MAP, DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getChatTabFromPath } from '@/lib/routes'
+import { useI18n } from '@/i18n/I18nProvider'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 type MobileView = 'list' | 'chat'
@@ -53,7 +54,7 @@ const STORAGE_KEY = 'huanvae_chat_state'
 function saveStateToStorage(tab: TabType, conversationId?: string, conversationType?: 'friend' | 'group') {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ tab, conversationId, conversationType, timestamp: Date.now() }))
-  } catch (e) { console.warn('无法保存状态到 localStorage:', e) }
+  } catch (e) { console.warn('Failed to save state to localStorage:', e) }
 }
 
 function loadStateFromStorage(): { tab: TabType; conversationId?: string; conversationType?: 'friend' | 'group' } | null {
@@ -63,11 +64,12 @@ function loadStateFromStorage(): { tab: TabType; conversationId?: string; conver
       const parsed = JSON.parse(data)
       if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) return parsed
     }
-  } catch (e) { console.warn('无法从 localStorage 加载状态:', e) }
+  } catch (e) { console.warn('Failed to load state from localStorage:', e) }
   return null
 }
 
 export default function ChatPage() {
+  const { t } = useI18n()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -312,34 +314,34 @@ export default function ChatPage() {
       await logout()
       router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
     } catch (error) {
-      console.error('登出失败:', error)
+      console.error('Logout failed:', error)
     }
   }
 
   const tabs = [
-    { id: 'friends' as const, icon: MessageCircle, label: '好友' },
-    { id: 'groups' as const, icon: Users, label: '群聊' },
-    { id: 'files' as const, icon: FileText, label: '文件' },
-    { id: 'webrtc' as const, icon: Video, label: '视频' },
+    { id: 'friends' as const, icon: MessageCircle, label: t('chat.page.tabs.friends') },
+    { id: 'groups' as const, icon: Users, label: t('chat.page.tabs.groups') },
+    { id: 'files' as const, icon: FileText, label: t('chat.page.tabs.files') },
+    { id: 'webrtc' as const, icon: Video, label: t('chat.page.tabs.webrtc') },
   ]
 
   const getSubTabs = () => {
     switch (activeTab) {
       case 'friends':
         return [
-          { id: 'main' as const, label: '好友', icon: MessageCircle },
-          { id: 'new' as const, label: '新朋友', icon: UserPlus },
-          { id: 'sent' as const, label: '已发送', icon: Send },
+          { id: 'main' as const, label: t('chat.page.subTabs.friends.main'), icon: MessageCircle },
+          { id: 'new' as const, label: t('chat.page.subTabs.friends.new'), icon: UserPlus },
+          { id: 'sent' as const, label: t('chat.page.subTabs.friends.sent'), icon: Send },
         ]
       case 'groups':
         return [
-          { id: 'main' as const, label: '我的群聊', icon: Users },
-          { id: 'invites' as const, label: '群邀请', icon: UserCheck },
+          { id: 'main' as const, label: t('chat.page.subTabs.groups.main'), icon: Users },
+          { id: 'invites' as const, label: t('chat.page.subTabs.groups.invites'), icon: UserCheck },
         ]
       case 'files':
         return [
-          { id: 'main' as const, label: '我的文件', icon: FileText },
-          { id: 'upload' as const, label: '上传文件', icon: Plus },
+          { id: 'main' as const, label: t('chat.page.subTabs.files.main'), icon: FileText },
+          { id: 'upload' as const, label: t('chat.page.subTabs.files.upload'), icon: Plus },
         ]
       default:
         return []
@@ -358,7 +360,7 @@ export default function ChatPage() {
               onClick={openProfileModal}
             >
               {profile?.user_avatar_url || user?.avatar_url ? (
-                <img src={profile?.user_avatar_url || user?.avatar_url} alt="头像" className="w-full h-full object-cover" />
+                <img src={profile?.user_avatar_url || user?.avatar_url} alt={t('chat.page.avatarAlt')} className="w-full h-full object-cover" />
               ) : (
                 <User className="w-5 h-5 text-muted-foreground" />
               )}
@@ -429,7 +431,7 @@ export default function ChatPage() {
                   <Settings className="w-[22px] h-[22px]" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">设置</TooltipContent>
+              <TooltipContent side="right">{t('chat.page.settings')}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -440,7 +442,7 @@ export default function ChatPage() {
                   <LogOut className="w-[22px] h-[22px]" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">退出</TooltipContent>
+              <TooltipContent side="right">{t('chat.page.logout')}</TooltipContent>
             </Tooltip>
           </div>
         </aside>
@@ -483,7 +485,11 @@ export default function ChatPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    placeholder={`搜索${activeTab === 'friends' ? '好友' : activeTab === 'groups' ? '群聊' : '文件'}...`}
+                    placeholder={activeTab === 'friends'
+                      ? t('chat.page.searchFriends')
+                      : activeTab === 'groups'
+                        ? t('chat.page.searchGroups')
+                        : t('chat.page.searchFiles')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -495,7 +501,7 @@ export default function ChatPage() {
 
           {activeTab === 'webrtc' && (
             <div className="p-4 pt-6 min-h-[90px] flex items-center border-b border-border">
-              <h2 className="font-semibold text-foreground">视频会议</h2>
+              <h2 className="font-semibold text-foreground">{t('chat.page.tabs.webrtc')}</h2>
             </div>
           )}
 
@@ -520,7 +526,7 @@ export default function ChatPage() {
                 )}
                 {activeTab === 'webrtc' && (
                   <motion.div key="webrtc-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="p-4 text-center text-sm text-muted-foreground">
-                    请在右侧创建或加入视频房间
+                    {t('chat.page.webrtcHint')}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -557,7 +563,7 @@ export default function ChatPage() {
               <div className="flex-1 min-w-0">
                 <h2 className="font-semibold text-foreground truncate">{selectedConversation.name}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {selectedConversation.type === 'friend' ? '好友' : '群聊'}
+                  {selectedConversation.type === 'friend' ? t('chat.page.tabs.friends') : t('chat.page.tabs.groups')}
                 </span>
               </div>
             )}
@@ -606,7 +612,7 @@ export default function ChatPage() {
               onClick={settingsModal.open}
             >
               <Settings className="w-6 h-6 shrink-0" />
-              {!isCompactHeight && <span className="text-xs font-medium">设置</span>}
+              {!isCompactHeight && <span className="text-xs font-medium">{t('chat.page.settings')}</span>}
             </button>
           </div>
         </div>

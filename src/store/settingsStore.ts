@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { AppLocale } from '@/i18n/messages'
 
 interface SettingsState {
   // AI 配置
@@ -7,7 +8,7 @@ interface SettingsState {
   aiModel: string
   
   // 语言和地区
-  language: string
+  language: AppLocale
   use24HourFormat: boolean
   
   // 隐私和安全

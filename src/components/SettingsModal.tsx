@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playTap, playButton, playPop } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
+import type { AppLocale } from '@/i18n/messages'
 
 // ============================================
 // 类型定义
@@ -63,9 +64,7 @@ const THEMES = [
 
 const LANGUAGES = [
   { value: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
-  { value: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
-  { value: 'en', label: 'English', flag: '🇺🇸' },
-  { value: 'ja', label: '日本語', flag: '🇯🇵' },
+  { value: 'en-US', label: 'English', flag: '🇺🇸' },
 ]
 
 // 多语言文本
@@ -105,42 +104,7 @@ const i18n: Record<string, Record<string, string>> = {
     notifFailed: '无法开启通知',
     notifFailedDesc: '请在浏览器设置中允许通知权限',
   },
-  'zh-TW': {
-    settings: '設定',
-    autoSave: '自動儲存',
-    general: '一般',
-    appearance: '外觀',
-    notifications: '通知',
-    reset: '重設設定',
-    language: '介面語言',
-    hour24: '24 小時制',
-    hour24Desc: '使用 24 小時時間格式',
-    theme: '主題',
-    light: '淺色',
-    dark: '深色',
-    auto: '跟隨系統',
-    animations: '動畫效果',
-    animationsDesc: '啟用介面動畫和過渡效果',
-    particles: '3D 粒子背景',
-    particlesDesc: '登入註冊頁顯示 Three.js 動態背景',
-    pushNotif: '推送通知',
-    pushNotifDesc: '接收新訊息推送通知',
-    sound: '訊息提示音',
-    soundDesc: '新訊息時播放提示音',
-    volume: '音效音量',
-    testNotif: '測試通知',
-    info: '資訊',
-    success: '成功',
-    warning: '警告',
-    error: '錯誤',
-    resetSuccess: '設定已重設',
-    resetSuccessDesc: '所有設定已恢復預設值',
-    notifEnabled: '通知已開啟',
-    notifEnabledDesc: '您將收到新訊息提醒',
-    notifFailed: '無法開啟通知',
-    notifFailedDesc: '請在瀏覽器設定中允許通知權限',
-  },
-  'en': {
+  'en-US': {
     settings: 'Settings',
     autoSave: 'Auto-save',
     general: 'General',
@@ -174,41 +138,6 @@ const i18n: Record<string, Record<string, string>> = {
     notifEnabledDesc: 'You will receive new message alerts',
     notifFailed: 'Cannot Enable Notifications',
     notifFailedDesc: 'Please allow notification permissions in browser settings',
-  },
-  'ja': {
-    settings: '設定',
-    autoSave: '自動保存',
-    general: '一般',
-    appearance: '外観',
-    notifications: '通知',
-    reset: '設定をリセット',
-    language: '言語',
-    hour24: '24時間表示',
-    hour24Desc: '24時間形式を使用',
-    theme: 'テーマ',
-    light: 'ライト',
-    dark: 'ダーク',
-    auto: 'システム',
-    animations: 'アニメーション',
-    animationsDesc: 'UIアニメーションを有効にする',
-    particles: '3Dパーティクル背景',
-    particlesDesc: 'ログイン/登録ページにThree.js背景を表示',
-    pushNotif: 'プッシュ通知',
-    pushNotifDesc: '新しいメッセージの通知を受け取る',
-    sound: '通知音',
-    soundDesc: '新しいメッセージの時に音を再生',
-    volume: '音量',
-    testNotif: '通知をテスト',
-    info: '情報',
-    success: '成功',
-    warning: '警告',
-    error: 'エラー',
-    resetSuccess: '設定がリセットされました',
-    resetSuccessDesc: 'すべての設定がデフォルトに戻りました',
-    notifEnabled: '通知が有効になりました',
-    notifEnabledDesc: '新しいメッセージの通知を受け取ります',
-    notifFailed: '通知を有効にできません',
-    notifFailedDesc: 'ブラウザ設定で通知を許可してください',
   },
 }
 
@@ -317,7 +246,7 @@ function GeneralSettings() {
         <Select
           value={settings.language}
           onValueChange={(value) => {
-            settings.setSetting('language', value)
+            settings.setSetting('language', value as AppLocale)
             playTap()
           }}
         >

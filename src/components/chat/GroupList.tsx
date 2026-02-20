@@ -22,6 +22,7 @@ import { useGroupStore } from '../../store/groupStore'
 import { useChatStore } from '../../store/chatStore'
 import { groupsApi, type GroupInvitation } from '../../api/groups'
 import { useToast } from '@/hooks/use-toast'
+import { useI18n } from '@/i18n/I18nProvider'
 
 // 列表项动画配置
 const listItemVariants: Variants = {
@@ -75,6 +76,7 @@ interface GroupListProps {
 }
 
 export default function GroupList({ subTab, searchQuery }: GroupListProps) {
+  const { t } = useI18n()
   const { toast } = useToast()
   const {
     myGroups,
@@ -135,7 +137,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       const data = await groupsApi.getInvitations()
       setInvitations(Array.isArray(data) ? data : [])
     } catch (error) {
-      console.error('加载群邀请失败:', error)
+      console.error('Failed to load group invitations:', error)
     } finally {
       setLoadingInvites(false)
     }
@@ -145,8 +147,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
       toast({
-        title: '错误',
-        description: '请输入群名称',
+        title: t('chat.groupList.error'),
+        description: t('chat.groupList.enterGroupName'),
         variant: 'destructive',
       })
       return
@@ -156,8 +158,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     try {
       await createGroup(groupName.trim(), groupDescription.trim() || undefined, joinMode)
       toast({
-        title: '成功',
-        description: '群聊创建成功',
+        title: t('chat.groupList.success'),
+        description: t('chat.groupList.createSuccess'),
       })
       setShowCreateDialog(false)
       setGroupName('')
@@ -165,8 +167,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       setJoinMode('open')
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '创建群聊失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.createFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -192,8 +194,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const handleJoinByCode = async () => {
     if (!inviteCode.trim()) {
       toast({
-        title: '错误',
-        description: '请输入邀请码',
+        title: t('chat.groupList.error'),
+        description: t('chat.groupList.enterInviteCode'),
         variant: 'destructive',
       })
       return
@@ -203,15 +205,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     try {
       await groupsApi.joinByCode(inviteCode.trim())
       toast({
-        title: '成功',
-        description: '加入群聊成功',
+        title: t('chat.groupList.success'),
+        description: t('chat.groupList.joinSuccess'),
       })
       setInviteCode('')
       loadMyGroups()
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '加入群聊失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.joinFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -223,8 +225,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const handleSearchGroup = async () => {
     if (!searchGroupId.trim()) {
       toast({
-        title: '错误',
-        description: '请输入群ID',
+        title: t('chat.groupList.error'),
+        description: t('chat.groupList.enterGroupId'),
         variant: 'destructive',
       })
       return
@@ -238,15 +240,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         setSearchResult(results[0])
       } else {
         toast({
-          title: '未找到',
-          description: '没有找到匹配的群聊',
+          title: t('chat.groupList.notFound'),
+          description: t('chat.groupList.noMatchedGroup'),
           variant: 'destructive',
         })
       }
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '搜索群聊失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.searchFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -262,8 +264,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     try {
       await groupsApi.applyToJoin(searchResult.group_id, applyReason)
       toast({
-        title: '成功',
-        description: (searchResult.join_mode || 'approval_required') === 'open' ? '加入成功' : '申请已提交，等待审核',
+        title: t('chat.groupList.success'),
+        description: (searchResult.join_mode || 'approval_required') === 'open' ? t('chat.groupList.joinSuccess') : t('chat.groupList.applySubmitted'),
       })
       setSearchResult(null)
       setSearchGroupId('')
@@ -273,8 +275,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       }
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '申请失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.applyFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -287,13 +289,13 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     setProcessingInvite(invitationId)
     try {
       await groupsApi.acceptInvitation(invitationId)
-      toast({ title: '成功', description: '已加入群聊' })
+      toast({ title: t('chat.groupList.success'), description: t('chat.groupList.joinedViaInvite') })
       setInvitations(prev => prev.filter(i => i.request_id !== invitationId))
       loadMyGroups()
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '接受邀请失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.acceptInviteFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -306,12 +308,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     setProcessingInvite(invitationId)
     try {
       await groupsApi.declineInvitation(invitationId)
-      toast({ title: '已拒绝', description: '已拒绝群邀请' })
+      toast({ title: t('chat.groupList.rejected'), description: t('chat.groupList.inviteRejected') })
       setInvitations(prev => prev.filter(i => i.request_id !== invitationId))
     } catch (error) {
       toast({
-        title: '失败',
-        description: error instanceof Error ? error.message : '拒绝邀请失败',
+        title: t('chat.groupList.failed'),
+        description: error instanceof Error ? error.message : t('chat.groupList.declineInviteFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -321,11 +323,11 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
   const getJoinModeText = (mode: string) => {
     const modes: Record<string, string> = {
-      open: '开放加入',
-      approval_required: '需要审核',
-      invite_only: '仅邀请',
-      admin_invite_only: '仅管理员邀请',
-      closed: '禁止加入'
+      open: t('chat.groupList.joinMode.open'),
+      approval_required: t('chat.groupList.joinMode.approval'),
+      invite_only: t('chat.groupList.joinMode.inviteOnly'),
+      admin_invite_only: t('chat.groupList.joinMode.adminInviteOnly'),
+      closed: t('chat.groupList.joinMode.closed')
     }
     return modes[mode] || mode
   }
@@ -341,7 +343,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             onClick={() => setShowCreateDialog(true)}
           >
             <Plus className="h-4 w-4" />
-            创建群聊
+            {t('chat.groupList.createGroup')}
           </Button>
           <Button
             variant="outline"
@@ -370,8 +372,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
                 <Users className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm text-muted-foreground">暂无群聊</p>
-              {searchQuery && <p className="text-xs text-muted-foreground mt-1">试试其他搜索条件</p>}
+              <p className="text-sm text-muted-foreground">{t('chat.groupList.noGroups')}</p>
+              {searchQuery && <p className="text-xs text-muted-foreground mt-1">{t('chat.groupList.tryOtherSearch')}</p>}
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -410,7 +412,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2">
                         <span className="truncate text-xs text-muted-foreground">
-                          {group.last_message_content || group.group_description || `${group.member_count || 0} 名成员`}
+                          {group.last_message_content || group.group_description || t('chat.groupList.memberCount', { count: group.member_count || 0 })}
                         </span>
                       {(group.unread_count ?? 0) > 0 && (
                         <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground">
@@ -454,14 +456,14 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   exit="exit"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <h3 className="text-xl font-semibold mb-6 text-foreground">创建群聊</h3>
+                  <h3 className="text-xl font-semibold mb-6 text-foreground">{t('chat.groupList.createGroup')}</h3>
 
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">群名称 *</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.groupList.groupNameRequired')}</label>
                       <Input
                         type="text"
-                        placeholder="输入群名称"
+                        placeholder={t('chat.groupList.enterGroupNamePlaceholder')}
                         value={groupName}
                         onChange={(e) => setGroupName(e.target.value)}
                         maxLength={30}
@@ -470,10 +472,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">群描述（可选）</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.groupList.groupDescOptional')}</label>
                       <Input
                         type="text"
-                        placeholder="简单介绍一下这个群..."
+                        placeholder={t('chat.groupList.groupDescPlaceholder')}
                         value={groupDescription}
                         onChange={(e) => setGroupDescription(e.target.value)}
                         maxLength={200}
@@ -482,15 +484,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">加群方式</label>
+                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.groupList.joinModeLabel')}</label>
                       <select
                         className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] cursor-pointer"
                         value={joinMode}
                         onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
                       >
-                        <option value="open">开放加入 - 任何人可直接加入</option>
-                        <option value="approval_required">需要审批 - 需管理员同意</option>
-                        <option value="invite_only">仅邀请 - 只能通过邀请加入</option>
+                        <option value="open">{t('chat.groupList.joinModeOpenDesc')}</option>
+                        <option value="approval_required">{t('chat.groupList.joinModeApprovalDesc')}</option>
+                        <option value="invite_only">{t('chat.groupList.joinModeInviteOnlyDesc')}</option>
                       </select>
                     </div>
                   </div>
@@ -507,7 +509,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       }}
                       disabled={submitting}
                     >
-                      取消
+                      {t('chat.groupList.cancel')}
                     </Button>
                     <Button
                       className="flex-1 h-10"
@@ -517,10 +519,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       {submitting ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          创建中...
+                          {t('chat.groupList.creating')}
                         </>
                       ) : (
-                        '创建'
+                        t('chat.groupList.create')
                       )}
                     </Button>
                   </div>
@@ -543,12 +545,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         <div className="p-4 rounded-xl space-y-3 border bg-card">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Link className="h-4 w-4" />
-            通过邀请码加入
+            {t('chat.groupList.joinByInviteCode')}
           </div>
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="输入邀请码"
+              placeholder={t('chat.groupList.enterInviteCodePlaceholder')}
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
               className="flex-1 h-10 font-mono"
@@ -559,7 +561,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               onClick={handleJoinByCode}
               disabled={joiningByCode || !inviteCode.trim()}
             >
-              {joiningByCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '加入'}
+              {joiningByCode ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.join')}
             </Button>
           </div>
         </div>
@@ -568,12 +570,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         <div className="p-4 rounded-xl space-y-3 border bg-card">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Search className="h-4 w-4" />
-            搜索群聊
+            {t('chat.groupList.searchGroup')}
           </div>
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="输入群ID"
+              placeholder={t('chat.groupList.enterGroupIdPlaceholder')}
               value={searchGroupId}
               onChange={(e) => setSearchGroupId(e.target.value)}
               className="flex-1 h-10"
@@ -584,7 +586,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               onClick={handleSearchGroup}
               disabled={searchingGroup || !searchGroupId.trim()}
             >
-              {searchingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : '搜索'}
+              {searchingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.search')}
             </Button>
           </div>
 
@@ -605,17 +607,17 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <div className="flex-1">
                   <div className="font-medium text-foreground">{searchResult.group_name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {searchResult.member_count ?? 0} 成员 · {getJoinModeText(searchResult.join_mode || 'approval_required')}
+                    {t('chat.groupList.memberCount', { count: searchResult.member_count ?? 0 })} · {getJoinModeText(searchResult.join_mode || 'approval_required')}
                   </div>
                 </div>
               </div>
 
               {(searchResult.join_mode || 'approval_required') !== 'open' && (
                 <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">申请理由</label>
+                  <label className="text-sm text-muted-foreground mb-1 block">{t('chat.groupList.applyReason')}</label>
                   <Input
                     type="text"
-                    placeholder="说明加群原因（可选）"
+                    placeholder={t('chat.groupList.applyReasonPlaceholder')}
                     value={applyReason}
                     onChange={(e) => setApplyReason(e.target.value)}
                     className="h-10"
@@ -634,7 +636,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                     setApplyReason('')
                   }}
                 >
-                  取消
+                  {t('chat.groupList.cancel')}
                 </Button>
                 <Button
                   className="flex-1 h-10"
@@ -644,9 +646,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   {applying ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (searchResult.join_mode || 'approval_required') === 'open' ? (
-                    '加入'
+                    t('chat.groupList.join')
                   ) : (
-                    '申请加入'
+                    t('chat.groupList.applyJoin')
                   )}
                 </Button>
               </div>
@@ -662,7 +664,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     return (
       <div className="flex-1 overflow-y-auto">
         <div className="p-4 flex items-center justify-between border-b border-border">
-          <span className="font-medium text-foreground">群邀请</span>
+          <span className="font-medium text-foreground">{t('chat.groupList.groupInvites')}</span>
           <Button
             variant="outline"
             size="icon-sm"
@@ -687,7 +689,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3 bg-muted">
               <Mail className="h-8 w-8 text-muted-foreground" />
             </div>
-            <p className="text-sm text-muted-foreground">暂无群邀请</p>
+            <p className="text-sm text-muted-foreground">{t('chat.groupList.noInvites')}</p>
           </motion.div>
         ) : (
           <div className="px-2 py-2">
@@ -711,7 +713,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-foreground truncate">{invitation.group_name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {invitation.inviter_nickname} 邀请你加入
+                      {t('chat.groupList.invitedBy', { name: invitation.inviter_nickname })}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(invitation.created_at).toLocaleDateString()}

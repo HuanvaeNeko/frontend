@@ -14,12 +14,14 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { storageApi, FileItem, formatFileSize, FileType, StorageLocation } from '../../api/storage'
 import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface FileManagerProps {
   subTab: 'main' | 'upload'
 }
 
 export default function FileManager({ subTab }: FileManagerProps) {
+  const { t, locale } = useI18n()
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -54,8 +56,8 @@ export default function FileManager({ subTab }: FileManagerProps) {
       }
     } catch (error) {
       toast({
-        title: '加载失败',
-        description: error instanceof Error ? error.message : '获取文件列表失败',
+        title: t('chat.fileManager.loadFailedTitle'),
+        description: error instanceof Error ? error.message : t('chat.fileManager.loadFailedDesc'),
         variant: 'destructive',
       })
     } finally {
@@ -98,8 +100,8 @@ export default function FileManager({ subTab }: FileManagerProps) {
     const maxSize = 500 * 1024 * 1024
     if (file.size > maxSize) {
       toast({
-        title: '文件过大',
-        description: `文件大小不能超过 ${formatFileSize(maxSize)}`,
+        title: t('chat.fileManager.fileTooLargeTitle'),
+        description: t('chat.fileManager.fileTooLargeDesc', { size: formatFileSize(maxSize) }),
         variant: 'destructive',
       })
       return
@@ -123,16 +125,16 @@ export default function FileManager({ subTab }: FileManagerProps) {
       )
 
       toast({
-        title: result.isInstant ? '秒传成功' : '上传成功',
-        description: `${file.name} 已上传`,
+        title: result.isInstant ? t('chat.fileManager.instantSuccess') : t('chat.fileManager.uploadSuccess'),
+        description: t('chat.fileManager.fileUploaded', { name: file.name }),
       })
 
       // 刷新文件列表
       loadFiles(true)
     } catch (error) {
       toast({
-        title: '上传失败',
-        description: error instanceof Error ? error.message : '上传文件失败',
+        title: t('chat.fileManager.uploadFailedTitle'),
+        description: error instanceof Error ? error.message : t('chat.fileManager.uploadFailedDesc'),
         variant: 'destructive',
       })
     } finally {
@@ -156,8 +158,8 @@ export default function FileManager({ subTab }: FileManagerProps) {
       document.body.removeChild(link)
     } catch (error) {
       toast({
-        title: '下载失败',
-        description: error instanceof Error ? error.message : '获取下载链接失败',
+        title: t('chat.fileManager.downloadFailedTitle'),
+        description: error instanceof Error ? error.message : t('chat.fileManager.downloadFailedDesc'),
         variant: 'destructive',
       })
     }
@@ -175,8 +177,8 @@ export default function FileManager({ subTab }: FileManagerProps) {
       })
     } catch (error) {
       toast({
-        title: '预览失败',
-        description: error instanceof Error ? error.message : '获取预览链接失败',
+        title: t('chat.fileManager.previewFailedTitle'),
+        description: error instanceof Error ? error.message : t('chat.fileManager.previewFailedDesc'),
         variant: 'destructive',
       })
     }
@@ -202,7 +204,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
   // 格式化时间
   const formatTime = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -220,7 +222,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
         {/* 工具栏 */}
         <div className="p-3 border-b flex items-center justify-between">
           <span className="text-sm text-muted-foreground">
-            共 {files.length} 个文件
+            {t('chat.fileManager.totalFiles', { count: files.length })}
           </span>
           <Button
             variant="ghost"
@@ -241,8 +243,8 @@ export default function FileManager({ subTab }: FileManagerProps) {
           ) : files.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
               <File className="h-12 w-12 mb-4" />
-              <p className="text-sm">暂无文件</p>
-              <p className="text-xs mt-1">上传文件后将在这里显示</p>
+              <p className="text-sm">{t('chat.fileManager.noFiles')}</p>
+              <p className="text-xs mt-1">{t('chat.fileManager.noFilesHint')}</p>
             </div>
           ) : (
             <div className="divide-y">
@@ -300,7 +302,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
-                    加载更多
+                    {t('chat.fileManager.loadMore')}
                   </Button>
                 </div>
               )}
@@ -318,12 +320,12 @@ export default function FileManager({ subTab }: FileManagerProps) {
           <div className="flex-1 overflow-y-auto p-4">
             <div className="border-2 border-dashed rounded-lg p-8 text-center">
               <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="font-semibold mb-2">上传文件</h3>
+            <h3 className="font-semibold mb-2">{t('chat.fileManager.uploadFile')}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              点击或拖拽文件到此处上传
+              {t('chat.fileManager.clickOrDrag')}
             </p>
             <p className="text-xs text-muted-foreground mb-6">
-              支持图片、视频、文档，最大 500MB
+              {t('chat.fileManager.supportedTypes')}
             </p>
 
             {/* 上传进度 */}
@@ -336,7 +338,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  上传中 {uploadProgress}%
+                  {t('chat.fileManager.uploadingPercent', { progress: uploadProgress })}
                 </p>
               </div>
             )}
@@ -357,39 +359,39 @@ export default function FileManager({ subTab }: FileManagerProps) {
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  上传中...
+                  {t('chat.fileManager.uploading')}
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  选择文件
+                  {t('chat.fileManager.selectFile')}
                 </>
               )}
             </Button>
 
             <div className="mt-8 space-y-2">
-              <h4 className="text-sm font-medium">存储位置</h4>
+              <h4 className="text-sm font-medium">{t('chat.fileManager.storageLocation')}</h4>
               <div className="flex gap-2 justify-center">
                 <Button
                   variant={selectedStorage === 'personal' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setSelectedStorage('personal')}
                 >
-                  个人文件
+                  {t('chat.fileManager.storagePersonal')}
                 </Button>
                 <Button
                   variant={selectedStorage === 'friend' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setSelectedStorage('friend')}
                 >
-                  发送给好友
+                  {t('chat.fileManager.storageFriend')}
                 </Button>
                 <Button
                   variant={selectedStorage === 'group' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setSelectedStorage('group')}
                 >
-                  发送到群聊
+                  {t('chat.fileManager.storageGroup')}
                 </Button>
               </div>
             </div>
@@ -397,11 +399,11 @@ export default function FileManager({ subTab }: FileManagerProps) {
 
           {/* 上传提示 */}
           <div className="mt-6 rounded-lg bg-muted p-4">
-            <h4 className="font-medium text-sm mb-2">上传说明</h4>
+            <h4 className="font-medium text-sm mb-2">{t('chat.fileManager.uploadTips')}</h4>
             <ul className="text-xs text-muted-foreground space-y-1">
-              <li>• 相同文件支持秒传，无需重复上传</li>
-              <li>• 大文件自动分片上传，支持断点续传</li>
-              <li>• 上传的文件将保存在您的个人空间</li>
+              <li>{t('chat.fileManager.tip1')}</li>
+              <li>{t('chat.fileManager.tip2')}</li>
+              <li>{t('chat.fileManager.tip3')}</li>
             </ul>
           </div>
           </div>
