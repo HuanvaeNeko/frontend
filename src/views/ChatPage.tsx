@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { 
   MessageCircle, 
@@ -14,6 +14,7 @@ import {
   Plus,
   Settings,
   LogOut,
+  Globe,
   User,
   ArrowLeft
 } from 'lucide-react'
@@ -39,6 +40,7 @@ import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
 import { CHAT_TAB_ROUTE_MAP, DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getChatTabFromPath } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
+import { MOBILE_INTERACTIONS, triggerMobileHaptic } from '@/lib/mobileInteractions'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 type MobileView = 'list' | 'chat'
@@ -91,6 +93,41 @@ export default function ChatPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [isLandscape, setIsLandscape] = useState(false)
   const [isCompactHeight, setIsCompactHeight] = useState(false)
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false)
+  const [swipeHintProgress, setSwipeHintProgress] = useState(0)
+  const chatSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const resolveSubTabFromRoute = (tab: TabType): SubTab => {
+    const view = searchParams.get('view')
+    if (tab === 'friends') {
+      if (view === 'new' || view === 'sent') return view
+      return 'main'
+    }
+    if (tab === 'groups') {
+      if (view === 'invites') return 'invites'
+      return 'main'
+    }
+    if (tab === 'files') {
+      if (view === 'upload') return 'upload'
+      return 'main'
+    }
+    return 'main'
+  }
+
+  const getRouteWithSubTab = (tab: TabType, targetSubTab: SubTab) => {
+    const params = new URLSearchParams(searchParams.toString())
+    const basePath = CHAT_TAB_ROUTE_MAP[tab]
+
+    if (targetSubTab === 'main') {
+      params.delete('view')
+    } else {
+      params.set('view', targetSubTab)
+      params.delete('id')
+    }
+
+    const query = params.toString()
+    return query ? `${basePath}?${query}` : basePath
+  }
 
   useEffect(() => {
     const updateViewportFlags = () => {
@@ -120,6 +157,31 @@ export default function ChatPage() {
   }, [selectedConversation, isMobile])
 
   useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const handleViewportChange = () => {
+      const keyboardGap = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setIsKeyboardOpen(keyboardGap > 120)
+    }
+
+    handleViewportChange()
+    viewport.addEventListener('resize', handleViewportChange)
+    viewport.addEventListener('scroll', handleViewportChange)
+
+    return () => {
+      viewport.removeEventListener('resize', handleViewportChange)
+      viewport.removeEventListener('scroll', handleViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile) {
+      setIsKeyboardOpen(false)
+    }
+  }, [isMobile])
+
+  useEffect(() => {
     const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
     if (pathname !== ROUTES.app.chat && pathname !== `${ROUTES.app.chat}/`) {
       setActiveTab(tabFromPath)
@@ -129,6 +191,14 @@ export default function ChatPage() {
     }
     setIsInitialized(true)
   }, [pathname, setActiveTab, isInitialized])
+
+  useEffect(() => {
+    const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
+    const nextSubTab = resolveSubTabFromRoute(tabFromPath)
+    setSubTab((prev) => (prev === nextSubTab ? prev : nextSubTab))
+    // searchParams 对象本身每次可能变化，使用 toString 保持稳定依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams.toString()])
 
   useEffect(() => {
     if (friendId && friends.length > 0) {
@@ -324,6 +394,65 @@ export default function ChatPage() {
     { id: 'files' as const, icon: FileText, label: t('chat.page.tabs.files') },
     { id: 'webrtc' as const, icon: Video, label: t('chat.page.tabs.webrtc') },
   ]
+  const isFilesTab = activeTab === 'files'
+
+  const handleMobileBackToList = () => {
+    saveStateToStorage(activeTab)
+    setSelectedConversation(null)
+    setMobileView('list')
+    triggerMobileHaptic(10)
+  }
+
+  const handleChatPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const touch = event.touches[0]
+    chatSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
+    if (touch.clientX <= MOBILE_INTERACTIONS.edgeSwipeStartX) {
+      setSwipeHintProgress(0.08)
+    } else {
+      setSwipeHintProgress(0)
+    }
+  }
+
+  const handleChatPanelTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const start = chatSwipeStartRef.current
+    if (!start) return
+
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - start.x
+    const deltaY = Math.abs(touch.clientY - start.y)
+    const startsFromLeftEdge = start.x <= MOBILE_INTERACTIONS.edgeSwipeStartX
+
+    if (!startsFromLeftEdge || deltaY > MOBILE_INTERACTIONS.edgeSwipeMaxVerticalDelta || deltaX <= 0) {
+      setSwipeHintProgress(0)
+      return
+    }
+
+    const progress = Math.min(1, deltaX / MOBILE_INTERACTIONS.edgeSwipeProgressDistance)
+    setSwipeHintProgress(progress)
+  }
+
+  const handleChatPanelTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || mobileView !== 'chat') return
+    const start = chatSwipeStartRef.current
+    if (!start) return
+
+    const touch = event.changedTouches[0]
+    const deltaX = touch.clientX - start.x
+    const deltaY = Math.abs(touch.clientY - start.y)
+    const startsFromLeftEdge = start.x <= MOBILE_INTERACTIONS.edgeSwipeStartX
+
+    chatSwipeStartRef.current = null
+
+    if (startsFromLeftEdge && deltaX > MOBILE_INTERACTIONS.edgeSwipeTriggerX && deltaY < MOBILE_INTERACTIONS.edgeSwipeMaxVerticalDelta) {
+      setSwipeHintProgress(0)
+      handleMobileBackToList()
+      return
+    }
+
+    setSwipeHintProgress(0)
+  }
 
   const getSubTabs = () => {
     switch (activeTab) {
@@ -349,10 +478,15 @@ export default function ChatPage() {
   }
 
   return (
-    <div className={cn("app-screen w-full flex relative overflow-hidden bg-background", isMobile && isLandscape && "mobile-landscape-chat")}>
+    <div
+      className={cn(
+        "app-screen relative flex w-full overflow-hidden bg-background/70 md:gap-3 md:p-3",
+        isMobile && isLandscape && "mobile-landscape-chat"
+      )}
+    >
       {/* 左侧图标栏 */}
       <TooltipProvider>
-        <aside className="w-[68px] h-full flex-col items-center py-6 z-10 bg-card border-r border-border hidden md:flex">
+        <aside className="z-10 hidden h-full w-[74px] flex-col items-center rounded-2xl border border-border bg-card/95 py-5 shadow-sm backdrop-blur md:flex">
           {/* 用户头像 */}
           <div className="relative mb-7">
             <button
@@ -377,7 +511,7 @@ export default function ChatPage() {
                 <TooltipTrigger asChild>
                   <button
                     className={cn(
-                      "w-11 h-11 rounded-xl flex items-center justify-center transition-all relative",
+                      "relative flex h-11 w-11 items-center justify-center rounded-xl transition-all",
                       activeTab === tab.id
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -385,7 +519,7 @@ export default function ChatPage() {
                     onClick={() => {
                       setActiveTab(tab.id)
                       setSubTab('main')
-                      router.push(CHAT_TAB_ROUTE_MAP[tab.id])
+                      router.push(getRouteWithSubTab(tab.id, 'main'))
                     }}
                   >
                     <tab.icon className="w-[22px] h-[22px]" />
@@ -436,6 +570,17 @@ export default function ChatPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+                  onClick={() => router.push(ROUTES.root)}
+                >
+                  <Globe className="w-[22px] h-[22px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{t('layout.officialSite')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
                   onClick={handleLogout}
                 >
@@ -450,30 +595,32 @@ export default function ChatPage() {
 
       {/* 中间会话列表 */}
       <div className={cn(
-        "relative h-full flex z-10 shrink-0",
-        "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
-        "max-md:absolute max-md:inset-0 max-md:w-full max-md:max-w-none",
-        isMobile && mobileView === 'chat' && "max-md:hidden"
+        "relative z-10 flex h-full w-full shrink-0 md:w-auto",
+        isFilesTab ? "md:min-w-0 md:max-w-none md:w-auto md:flex-1" : "md:min-w-[240px] md:max-w-[400px] md:w-[280px]",
+        isMobile && mobileView === 'chat' && "hidden md:flex"
       )}>
-        <div className="w-full h-full flex flex-col z-10 overflow-hidden min-h-0 bg-card md:border-r border-border">
+        <div className="z-10 flex h-full min-h-0 w-full flex-col overflow-hidden bg-card md:rounded-2xl md:border md:shadow-sm">
           {/* 子标签头部 */}
           {activeTab !== 'webrtc' && (
           <div className={cn(
             "p-4 pt-6 min-h-[90px] flex flex-col gap-3 border-b border-border",
             isMobile && isLandscape && "landscape-compact-header"
           )}>
-              <div className="flex gap-1">
+              <div className="flex gap-1 rounded-xl bg-muted/50 p-1">
                 {getSubTabs().map((tab) => (
                   <button
                     key={tab.id}
                     className={cn(
-                      "flex-1 px-2 py-2 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1",
+                      "flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-all",
                       isMobile && isLandscape && "landscape-compact-button",
                       subTab === tab.id
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-card text-primary shadow-sm"
                         : "text-muted-foreground hover:bg-accent"
                     )}
-                    onClick={() => setSubTab(tab.id)}
+                    onClick={() => {
+                      setSubTab(tab.id)
+                      router.push(getRouteWithSubTab(activeTab, tab.id))
+                    }}
                   >
                     <tab.icon className="w-3.5 h-3.5" />
                     {!(isMobile && isCompactHeight) && tab.label}
@@ -536,11 +683,23 @@ export default function ChatPage() {
       </div>
 
       {/* 右侧聊天窗口 */}
-      <div className={cn(
-        "flex-1 h-full min-h-0 min-w-0 flex flex-col z-10 overflow-hidden bg-background",
-        "max-md:absolute max-md:inset-0 max-md:w-full",
-        isMobile && mobileView === 'list' && "max-md:hidden"
-      )}>
+      <div
+        className={cn(
+          "relative z-10 flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-background md:w-auto md:rounded-2xl md:border md:shadow-sm",
+          isFilesTab && "md:hidden",
+          isMobile && mobileView === 'list' && "hidden md:flex"
+        )}
+        onTouchStart={handleChatPanelTouchStart}
+        onTouchMove={handleChatPanelTouchMove}
+        onTouchEnd={handleChatPanelTouchEnd}
+      >
+        {isMobile && mobileView === 'chat' && swipeHintProgress > 0 && (
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-30 w-12 bg-gradient-to-r from-primary/30 to-transparent transition-opacity duration-150"
+            style={{ opacity: Math.min(0.9, swipeHintProgress), transform: 'translateX(' + Math.max(-14, -16 + swipeHintProgress * 16) + 'px)' }}
+          />
+        )}
+
         {/* 移动端顶部返回栏 */}
         {isMobile && mobileView === 'chat' && (
           <div className={cn(
@@ -551,11 +710,7 @@ export default function ChatPage() {
               variant="ghost"
               size="icon"
               className="h-10 w-10 min-h-[44px] min-w-[44px] touch-target"
-              onClick={() => {
-                saveStateToStorage(activeTab)
-                setSelectedConversation(null)
-                setMobileView('list')
-              }}
+              onClick={handleMobileBackToList}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
@@ -586,8 +741,9 @@ export default function ChatPage() {
       {/* 移动端底部导航栏 */}
       {isMobile && mobileView === 'list' && (
         <div className={cn(
-          "md:hidden fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-2",
-          isLandscape && "pt-1"
+          "fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-2 right-2 z-20 rounded-2xl border border-border bg-card/95 px-2 pt-2 pb-2 shadow-lg backdrop-blur transition-all duration-200 md:hidden",
+          isLandscape && "pt-1",
+          isKeyboardOpen && "translate-y-24 opacity-0 pointer-events-none"
         )}>
           <div className="flex justify-around items-stretch">
             {tabs.map((tab) => (

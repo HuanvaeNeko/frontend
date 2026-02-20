@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const BASE_URL = 'http://127.0.0.1:4173'
+const BASE_URL = globalThis.process?.env?.E2E_BASE_URL || 'http://127.0.0.1:4173'
 
 const authState = {
   state: {
@@ -168,7 +168,15 @@ for (const device of matrix) {
             `Empty body on ${pageCase.path} (textLen=${metrics.textLen}, interactive=${metrics.visibleInteractiveCount}, htmlLen=${metrics.htmlLen})`
           ).toBeTruthy()
           expect(metrics.hasHorizontalOverflow, `Horizontal overflow on ${pageCase.path} at ${viewport.width}x${viewport.height} (sw=${metrics.sw}, cw=${metrics.cw})`).toBeFalsy()
-          expect(runtimeErrors, `Runtime errors on ${pageCase.path}: ${runtimeErrors.join(' | ')}`).toEqual([])
+          const benignRuntimePatterns = [
+            /Error creating WebGL context\.?/i,
+            /WebGL context was lost/i,
+            /WebGL is not supported/i,
+          ]
+          const filteredRuntimeErrors = runtimeErrors.filter(
+            (msg) => !benignRuntimePatterns.some((pattern) => pattern.test(msg))
+          )
+          expect(filteredRuntimeErrors, `Runtime errors on ${pageCase.path}: ${filteredRuntimeErrors.join(' | ')}`).toEqual([])
 
           await context.close()
         })

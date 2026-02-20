@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSettingsStore } from '@/store/settingsStore'
 import { playTap, playButton, playPop } from '@/hooks/useSound'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
-import type { AppLocale } from '@/i18n/messages'
+import type { LanguagePreference } from '@/i18n/messages'
 
 // ============================================
 // 类型定义
@@ -63,6 +63,7 @@ const THEMES = [
 ] as const
 
 const LANGUAGES = [
+  { value: 'auto', label: '跟随系统', flag: '🌐' },
   { value: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
   { value: 'en-US', label: 'English', flag: '🇺🇸' },
 ]
@@ -160,8 +161,8 @@ function SettingRow({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between py-3">
-      <div className="flex items-center gap-3">
+    <div className="flex items-start justify-between gap-3 py-3 sm:items-center">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted">
           <Icon className={`h-4 w-4 ${iconClass ?? 'text-primary'}`} />
         </div>
@@ -172,7 +173,7 @@ function SettingRow({
           )}
         </div>
       </div>
-      {children}
+      <div className="shrink-0">{children}</div>
     </div>
   )
 }
@@ -228,6 +229,10 @@ function OptionCard({
 // 获取当前语言文本
 function useI18n() {
   const { language } = useSettingsStore()
+  if (language === 'auto') {
+    const browserLang = typeof navigator !== 'undefined' ? navigator.language : 'zh-CN'
+    return i18n[browserLang] || i18n[browserLang.startsWith('en') ? 'en-US' : 'zh-CN']
+  }
   return i18n[language] || i18n['zh-CN']
 }
 
@@ -246,7 +251,7 @@ function GeneralSettings() {
         <Select
           value={settings.language}
           onValueChange={(value) => {
-            settings.setSetting('language', value as AppLocale)
+            settings.setSetting('language', value as LanguagePreference)
             playTap()
           }}
         >
@@ -498,7 +503,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
-      <DialogContent showCloseButton={false} className="max-w-[680px] p-0 overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        className="h-[min(92dvh,780px)] max-h-[92dvh] w-[calc(100%-1rem)] max-w-[680px] p-0 overflow-hidden"
+      >
         <DialogHeader className="border-b px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
@@ -517,7 +525,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             setActiveTab(value as TabId)
             playTap()
           }}
-          className="flex h-[min(80vh,620px)] flex-row max-md:flex-col"
+          className="flex h-full min-h-0 flex-col md:flex-row"
           orientation="vertical"
         >
           <div className="hidden h-full w-52 border-r p-3 md:block">
@@ -552,7 +560,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </TabsList>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
             <TabsContent value="general"><GeneralSettings /></TabsContent>
             <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
             <TabsContent value="notifications"><NotificationSettings /></TabsContent>

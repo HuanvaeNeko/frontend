@@ -1,0 +1,25 @@
+# Huanvae Chat
+
+> Official website and product overview for Huanvae Chat.
+
+## Summary
+Huanvae Chat is a communication platform with AI chat, real-time messaging, group collaboration, file sharing, and video meetings.
+
+## Canonical URL
+- https://huanvae.cn/
+
+## Public Pages
+- https://huanvae.cn/ : Marketing homepage and product overview.
+
+## Crawl Guidance for AI Systems
+- Prefer the canonical URL listed above.
+- Treat the homepage as the primary source for product positioning and feature summary.
+- Do not assume protected pages under `/app/` are publicly accessible.
+- Avoid inferring unsupported claims (pricing tiers, compliance certifications, or guarantees) unless explicitly stated.
+
+## Product Keywords
+AI chat, instant messaging, team collaboration, video conferencing, WebRTC, file sharing, PWA.
+
+## Contact
+- Organization: Huanvae Team
+- Website: https://huanvae.cn/

@@ -1,4 +1,5 @@
 export type AppLocale = 'zh-CN' | 'en-US'
+export type LanguagePreference = AppLocale | 'auto'
 
 export const SUPPORTED_LOCALES: AppLocale[] = ['zh-CN', 'en-US']
 export const DEFAULT_LOCALE: AppLocale = 'zh-CN'
@@ -22,6 +23,7 @@ const zhCN = {
     accountAndSystem: '账户与系统',
     online: '在线',
     installApp: '安装 APP',
+    officialSite: '官网',
     logout: '退出登录',
   },
   auth: {
@@ -74,6 +76,77 @@ const zhCN = {
       friends: { title: '好友管理', desc: '联系人与请求管理', badge: '关系' },
       settings: { title: '系统设置', desc: '通知、主题与偏好', badge: '配置' },
       open: '打开',
+    },
+  },
+  landing: {
+    controls: {
+      language: '语言',
+      themeLight: '浅色主题',
+      themeDark: '深色主题',
+    },
+    hero: {
+      title: '面向团队与社区的统一通信平台',
+      highlight: '聊天、AI、会议、下载一次到位',
+      description: '吸收 QQ、Discord、微信、Telegram 的核心体验，把消息、协作和实时会议收敛到同一个工作入口。官网在 /，Web App 在 /app。',
+    },
+    actions: {
+      openApp: '打开 Web App',
+      download: '下载客户端',
+    },
+    inspirations: {
+      title: '设计参考',
+      qq: {
+        focus: '熟人关系与文件协同',
+        description: '稳定联系人体系 + 多端同步，适配高频工作与日常沟通。',
+      },
+      discord: {
+        focus: '频道化社区与语音共创',
+        description: '频道结构清晰，沉淀话题知识，适合团队长期协作。',
+      },
+      wechat: {
+        focus: '轻量交互与触达效率',
+        description: '简洁交互与高可达消息流，优先保障消息触达。',
+      },
+      telegram: {
+        focus: '开放生态与自动化扩展',
+        description: '云端同步能力强，便于集成机器人和自动化工作流。',
+      },
+    },
+    features: {
+      title: '核心能力',
+      channel: {
+        title: '频道与群聊',
+        description: '将组织沟通从单聊扩展到可管理的频道与群组结构。',
+      },
+      ai: {
+        title: 'AI 助手协作',
+        description: '在聊天上下文中直接调用 AI，减少跨工具切换。',
+      },
+      video: {
+        title: '实时音视频',
+        description: '会议与沟通一体化，文本、语音、视频可无缝切换。',
+      },
+      security: {
+        title: '多端与安全',
+        description: '支持 Web/PWA/桌面端，结合权限与设备管理能力。',
+      },
+    },
+    download: {
+      title: '下载与安装',
+      backToTop: '返回顶部',
+      desktopTitle: '桌面客户端',
+      desktopDesc: 'Windows / macOS / Linux，优先推荐。',
+      normal: '普通线路下载',
+      proxy: '代理线路下载',
+      mobileTitle: '安装到手机/平板',
+      mobileDesc: '支持 PWA，安装后可像原生应用一样启动。',
+      pwaInstalled: '已安装 PWA',
+      pwaInstall: '一键安装 PWA',
+      mobileHint: '如浏览器不支持安装提示，将自动进入 Web App，可通过浏览器菜单“添加到主屏幕”。',
+      webTitle: '网页版',
+      webDesc: '无需下载，直接登录即可开始沟通。',
+      releases: '查看全部发布记录',
+      backToHero: '回到首屏',
     },
   },
   settings: {
@@ -133,6 +206,7 @@ const zhCN = {
     notifyMessageTitle: '新消息',
     notifyMessageBody: '你收到一条消息',
     languageOptions: {
+      auto: '跟随系统',
       zhCN: '简体中文',
       enUS: 'English',
     },
@@ -336,8 +410,11 @@ const zhCN = {
       selectFile: '选择文件',
       storageLocation: '存储位置',
       storagePersonal: '个人文件',
+      storagePersonalDesc: '上传到你的私人空间，可在文件页管理',
       storageFriend: '发送给好友',
+      storageFriendDesc: '上传后发送到好友会话，自动附带文件消息',
       storageGroup: '发送到群聊',
+      storageGroupDesc: '上传后发送到群会话，成员可直接下载',
       uploadTips: '上传说明',
       tip1: '• 相同文件支持秒传，无需重复上传',
       tip2: '• 大文件自动分片上传，支持断点续传',
@@ -442,6 +519,7 @@ const enUS = {
     accountAndSystem: 'Account & System',
     online: 'Online',
     installApp: 'Install App',
+    officialSite: 'Official Site',
     logout: 'Log out',
   },
   auth: {
@@ -494,6 +572,77 @@ const enUS = {
       friends: { title: 'Friends', desc: 'Contacts and requests', badge: 'Social' },
       settings: { title: 'Settings', desc: 'Theme and preferences', badge: 'Config' },
       open: 'Open',
+    },
+  },
+  landing: {
+    controls: {
+      language: 'Language',
+      themeLight: 'Light theme',
+      themeDark: 'Dark theme',
+    },
+    hero: {
+      title: 'A unified communication platform for teams and communities',
+      highlight: 'Chat, AI, meetings, and downloads in one place',
+      description: 'Inspired by QQ, Discord, WeChat, and Telegram, Huanvae combines messaging, collaboration, and real-time meetings into one entry point. Website at / and Web App at /app.',
+    },
+    actions: {
+      openApp: 'Open Web App',
+      download: 'Download',
+    },
+    inspirations: {
+      title: 'Design Inspirations',
+      qq: {
+        focus: 'Contacts and file collaboration',
+        description: 'Stable contact graph and cross-device sync for high-frequency communication.',
+      },
+      discord: {
+        focus: 'Channel-based communities and voice collaboration',
+        description: 'Structured channels retain context and work well for long-term teamwork.',
+      },
+      wechat: {
+        focus: 'Lightweight interactions and reach',
+        description: 'Simple interactions and strong message delivery for daily communication.',
+      },
+      telegram: {
+        focus: 'Open ecosystem and automation',
+        description: 'Strong cloud sync with flexible bot and automation integrations.',
+      },
+    },
+    features: {
+      title: 'Core Capabilities',
+      channel: {
+        title: 'Channels and Groups',
+        description: 'Scale communication from direct chats to manageable channels and groups.',
+      },
+      ai: {
+        title: 'AI Collaboration',
+        description: 'Use AI directly inside chat context with fewer context switches.',
+      },
+      video: {
+        title: 'Real-time Audio/Video',
+        description: 'Move between text, voice, and video without leaving the workflow.',
+      },
+      security: {
+        title: 'Cross-platform and Security',
+        description: 'Web/PWA/Desktop support with device and permission controls.',
+      },
+    },
+    download: {
+      title: 'Download and Install',
+      backToTop: 'Back to top',
+      desktopTitle: 'Desktop Client',
+      desktopDesc: 'Windows / macOS / Linux, recommended.',
+      normal: 'Download (Direct)',
+      proxy: 'Download (Proxy)',
+      mobileTitle: 'Install on Mobile/Tablet',
+      mobileDesc: 'PWA supported. Launch like a native app after installation.',
+      pwaInstalled: 'PWA Installed',
+      pwaInstall: 'Install PWA',
+      mobileHint: 'If install prompt is unavailable, we will open Web App and you can add it from browser menu.',
+      webTitle: 'Web Version',
+      webDesc: 'No installation required. Sign in and start communicating.',
+      releases: 'View all releases',
+      backToHero: 'Back to hero',
     },
   },
   settings: {
@@ -553,6 +702,7 @@ const enUS = {
     notifyMessageTitle: 'New message',
     notifyMessageBody: 'You received a message',
     languageOptions: {
+      auto: 'Follow system',
       zhCN: 'Simplified Chinese',
       enUS: 'English',
     },
@@ -756,8 +906,11 @@ const enUS = {
       selectFile: 'Select file',
       storageLocation: 'Storage location',
       storagePersonal: 'Personal files',
+      storagePersonalDesc: 'Upload to your private space for later management',
       storageFriend: 'Send to friend',
+      storageFriendDesc: 'Upload then send to a friend chat as a file message',
       storageGroup: 'Send to group',
+      storageGroupDesc: 'Upload then send to a group chat for member access',
       uploadTips: 'Upload tips',
       tip1: '• Same file supports instant upload',
       tip2: '• Large files are chunked with resume support',

@@ -25,7 +25,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { AppLocale } from '@/i18n/messages'
+import type { LanguagePreference } from '@/i18n/messages'
 import { clearApiBaseUrl, getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/store/authStore'
 
@@ -165,9 +165,10 @@ export default function Settings() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>{t('settings.language')}</Label>
-                <Select value={settings.language} onValueChange={(v) => settings.setSetting('language', v as AppLocale)}>
+                <Select value={settings.language} onValueChange={(v) => settings.setSetting('language', v as LanguagePreference)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="auto">{t('settings.languageOptions.auto')}</SelectItem>
                     <SelectItem value="zh-CN">{t('settings.languageOptions.zhCN')}</SelectItem>
                     <SelectItem value="en-US">{t('settings.languageOptions.enUS')}</SelectItem>
                   </SelectContent>

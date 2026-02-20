@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
 import { useAuthStore } from '../store/authStore'
 import { ROUTES } from '@/lib/routes'
+import { MOBILE_INTERACTIONS } from '@/lib/mobileInteractions'
 
 // =============================================
 // 类型定义
@@ -134,6 +135,8 @@ export default function VideoMeeting() {
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const [isTouchLandscape, setIsTouchLandscape] = useState(false)
   const [isCompactViewport, setIsCompactViewport] = useState(false)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -185,13 +188,19 @@ export default function VideoMeeting() {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
       controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
     }
+
+    if (isTouchDevice) {
+      setShowControls(true)
+      return
+    }
+
     window.addEventListener('mousemove', resetTimer)
     resetTimer()
     return () => {
       window.removeEventListener('mousemove', resetTimer)
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
     }
-  }, [])
+  }, [isTouchDevice])
 
   useEffect(() => {
     if (!isConnected) return
@@ -205,8 +214,17 @@ export default function VideoMeeting() {
       const height = window.innerHeight
       const coarsePointer = window.matchMedia('(pointer: coarse)').matches
       const isLandscape = width > height
-      setIsTouchLandscape(coarsePointer && isLandscape && height < 760)
+      const mobileViewport = width < 768
+      const touchLandscape = coarsePointer && isLandscape && height < 760
+
+      setIsTouchDevice(coarsePointer)
+      setIsMobileViewport(mobileViewport)
+      setIsTouchLandscape(touchLandscape)
       setIsCompactViewport(height < 560)
+
+      if (!mobileViewport && !touchLandscape) {
+        setShowParticipants(false)
+      }
     }
 
     updateViewportMode()
@@ -912,7 +930,7 @@ export default function VideoMeeting() {
             transition={{ duration: 0.2 }}
             className={`mobile-top-safe flex-shrink-0 z-20 h-14 px-3 sm:px-4 flex items-center justify-between border-b border-border ${isCompactViewport ? 'h-12' : ''}`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
               <button type="button" onClick={leaveMeeting}
                 className="flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-muted-foreground text-sm font-medium hover:text-foreground hover:bg-accent/60 transition-colors">
                 <ArrowLeft size={18} /> 离开
@@ -922,7 +940,7 @@ export default function VideoMeeting() {
                 <span className="text-foreground text-xs font-mono">{roomId}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button type="button" onClick={copyShareLink}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-muted-foreground text-sm hover:text-foreground hover:bg-accent/60 transition-colors">
                 {copied ? <Check size={16} className="text-primary" /> : <Copy size={16} />}
@@ -933,7 +951,7 @@ export default function VideoMeeting() {
                 <Users size={18} /><span>{participants.length + 1}</span>
               </button>
               <button type="button" onClick={toggleFullscreen}
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors">
+                className="hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors sm:block">
                 {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
               </button>
             </div>
@@ -1004,53 +1022,106 @@ export default function VideoMeeting() {
 
         <AnimatePresence>
           {showParticipants && (
-            <motion.aside
-              initial={isTouchLandscape ? { x: '100%', opacity: 0 } : { width: 0, opacity: 0 }}
-              animate={isTouchLandscape ? { x: 0, opacity: 1 } : { width: 260, opacity: 1 }}
-              exit={isTouchLandscape ? { x: '100%', opacity: 0 } : { width: 0, opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className={`${isTouchLandscape ? 'absolute right-0 top-0 bottom-0 z-30 w-[min(78vw,280px)] border-l border-border bg-card/95' : 'shrink-0 h-full border-l border-border bg-card/70'} overflow-hidden`}
-            >
-              <div className={`${isTouchLandscape ? 'w-full' : 'w-[260px]'} h-full overflow-y-auto p-3 sm:p-4`}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-foreground text-sm font-medium">参与者 · {participants.length + 1}</h3>
-                  <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60">
-                    <X size={16} />
-                  </button>
-                </div>
-                <ul className="space-y-1">
-                  <li className="flex items-center gap-3 px-3 py-2 rounded-xl bg-accent/50">
-                    <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-primary">{(displayName?.[0] || '?').toUpperCase()}</span>
+            <>
+              {(isTouchLandscape || isMobileViewport) && (
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="absolute inset-0 z-20 bg-background/40 backdrop-blur-[1px]"
+                  onClick={() => setShowParticipants(false)}
+                  aria-label="关闭参与者面板"
+                />
+              )}
+              <motion.aside
+                drag={isMobileViewport && !isTouchLandscape ? 'y' : false}
+                dragDirectionLock
+                dragElastic={MOBILE_INTERACTIONS.drawerDragElastic}
+                dragConstraints={{ top: 0, bottom: 0 }}
+                onDragEnd={(_, info) => {
+                  if (!isMobileViewport || isTouchLandscape) return
+                  if (info.offset.y > MOBILE_INTERACTIONS.drawerCloseOffsetY || info.velocity.y > MOBILE_INTERACTIONS.drawerCloseVelocityY) {
+                    setShowParticipants(false)
+                  }
+                }}
+                initial={
+                  isTouchLandscape
+                    ? { x: '100%', opacity: 0 }
+                    : isMobileViewport
+                      ? { y: '100%', opacity: 0 }
+                      : { width: 0, opacity: 0 }
+                }
+                animate={
+                  isTouchLandscape
+                    ? { x: 0, opacity: 1 }
+                    : isMobileViewport
+                      ? { y: 0, opacity: 1 }
+                      : { width: 260, opacity: 1 }
+                }
+                exit={
+                  isTouchLandscape
+                    ? { x: '100%', opacity: 0 }
+                    : isMobileViewport
+                      ? { y: '100%', opacity: 0 }
+                      : { width: 0, opacity: 0 }
+                }
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                className={
+                  isTouchLandscape
+                    ? 'absolute right-0 top-0 bottom-0 z-30 w-[min(80vw,300px)] border-l border-border bg-card/95 overflow-hidden'
+                    : isMobileViewport
+                      ? 'absolute inset-x-0 bottom-0 z-30 h-[min(70dvh,520px)] rounded-t-2xl border-t border-border bg-card/97 shadow-2xl overflow-hidden'
+                      : 'shrink-0 h-full border-l border-border bg-card/70 overflow-hidden'
+                }
+              >
+                <div className={isTouchLandscape || isMobileViewport ? 'h-full w-full overflow-y-auto p-3 sm:p-4' : 'h-full w-[260px] overflow-y-auto p-3 sm:p-4'}>
+                  {isMobileViewport && !isTouchLandscape && (
+                    <div className="mb-3 flex justify-center">
+                      <div className="mobile-drawer-handle" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-foreground text-sm truncate">{displayName}</p>
-                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                        <span className="text-primary">我</span>
-                        {isCreatorRef.current && <span className="text-primary">主持人</span>}
-                      </div>
-                    </div>
-                    {isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
-                  </li>
-                  {remoteStreams.map(rs => (
-                    <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-accent/50 transition-colors">
-                      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                        {rs.participant.user_info.avatar_url ? (
-                          <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-sm font-semibold text-muted-foreground">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
-                        )}
+                  )}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-foreground text-sm font-medium">参与者 · {participants.length + 1}</h3>
+                    <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <ul className="space-y-1">
+                    <li className="flex items-center gap-3 px-3 py-2 rounded-xl bg-accent/50">
+                      <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-semibold text-primary">{(displayName?.[0] || '?').toUpperCase()}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-foreground text-sm truncate">{rs.participant.name}</p>
-                        {rs.participant.is_creator && <span className="text-[10px] text-primary">主持人</span>}
+                        <p className="text-foreground text-sm truncate">{displayName}</p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="text-primary">我</span>
+                          {isCreatorRef.current && <span className="text-primary">主持人</span>}
+                        </div>
                       </div>
-                      {rs.isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+                      {isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                     </li>
-                  ))}
-                </ul>
-              </div>
-            </motion.aside>
+                    {remoteStreams.map(rs => (
+                      <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-accent/50 transition-colors">
+                        <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                          {rs.participant.user_info.avatar_url ? (
+                            <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-semibold text-muted-foreground">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-foreground text-sm truncate">{rs.participant.name}</p>
+                          {rs.participant.is_creator && <span className="text-[10px] text-primary">主持人</span>}
+                        </div>
+                        {rs.isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </motion.aside>
+            </>
           )}
         </AnimatePresence>
       </div>
@@ -1092,6 +1163,9 @@ export default function VideoMeeting() {
                 className="w-11 h-11 rounded-full bg-accent/60 text-muted-foreground hover:bg-accent flex items-center justify-center">
                 <Settings size={18} />
               </button>
+            </div>
+            <div className="mt-2 text-center text-[11px] font-mono text-muted-foreground md:hidden">
+              {formatDuration(meetingDuration)}
             </div>
             {!isCompactViewport && (
               <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1.5 text-muted-foreground text-xs font-mono">

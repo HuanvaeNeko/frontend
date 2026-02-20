@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useSettingsStore } from '@/store/settingsStore'
 import { DEFAULT_LOCALE, type AppLocale, messages, normalizeLocale } from './messages'
 
@@ -28,7 +28,23 @@ function formatMessage(template: string, params?: Record<string, string | number
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const language = useSettingsStore((s) => s.language)
-  const locale = normalizeLocale(language)
+  const [locale, setLocale] = useState<AppLocale>(DEFAULT_LOCALE)
+
+  useEffect(() => {
+    const resolveLocale = (): AppLocale => {
+      if (language !== 'auto') return normalizeLocale(language)
+      return normalizeLocale(typeof navigator === 'undefined' ? DEFAULT_LOCALE : navigator.language)
+    }
+
+    setLocale(resolveLocale())
+
+    if (language !== 'auto') return
+    const handleLanguageChange = () => {
+      setLocale(resolveLocale())
+    }
+    window.addEventListener('languagechange', handleLanguageChange)
+    return () => window.removeEventListener('languagechange', handleLanguageChange)
+  }, [language])
 
   const value = useMemo<I18nContextValue>(() => {
     const t = (key: string, params?: Record<string, string | number>) => {
@@ -52,4 +68,3 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 export function useI18n() {
   return useContext(I18nContext)
 }
-

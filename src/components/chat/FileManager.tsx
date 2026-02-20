@@ -8,7 +8,11 @@ import {
   Loader2, 
   Download, 
   RefreshCw,
-  Eye
+  Eye,
+  CheckCircle2,
+  FolderOpen,
+  MessageCircle,
+  Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -33,6 +37,31 @@ export default function FileManager({ subTab }: FileManagerProps) {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
+  const storageOptions: Array<{
+    key: 'personal' | 'friend' | 'group'
+    label: string
+    description: string
+    icon: typeof FolderOpen
+  }> = [
+    {
+      key: 'personal',
+      label: t('chat.fileManager.storagePersonal'),
+      description: t('chat.fileManager.storagePersonalDesc'),
+      icon: FolderOpen,
+    },
+    {
+      key: 'friend',
+      label: t('chat.fileManager.storageFriend'),
+      description: t('chat.fileManager.storageFriendDesc'),
+      icon: MessageCircle,
+    },
+    {
+      key: 'group',
+      label: t('chat.fileManager.storageGroup'),
+      description: t('chat.fileManager.storageGroupDesc'),
+      icon: Users,
+    },
+  ]
 
   // 加载文件列表
   const loadFiles = async (refresh = false) => {
@@ -317,95 +346,97 @@ export default function FileManager({ subTab }: FileManagerProps) {
     if (subTab === 'upload') {
       return (
         <div className="flex flex-col h-full">
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="border-2 border-dashed rounded-lg p-8 text-center">
-              <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="font-semibold mb-2">{t('chat.fileManager.uploadFile')}</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {t('chat.fileManager.clickOrDrag')}
-            </p>
-            <p className="text-xs text-muted-foreground mb-6">
-              {t('chat.fileManager.supportedTypes')}
-            </p>
+          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            <div className="rounded-xl border bg-card p-4">
+              <div className="rounded-xl border-2 border-dashed border-border/80 bg-muted/30 p-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
+                <Upload className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                <h3 className="mb-1.5 text-base font-semibold">{t('chat.fileManager.uploadFile')}</h3>
+                <p className="mb-2 text-sm text-muted-foreground">{t('chat.fileManager.clickOrDrag')}</p>
+                <p className="mb-5 text-xs text-muted-foreground">{t('chat.fileManager.supportedTypes')}</p>
 
-            {/* 上传进度 */}
-            {uploading && (
-              <div className="mb-6">
-                <div className="mb-2 h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="bg-primary h-2 rounded-full transition-all"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {t('chat.fileManager.uploadingPercent', { progress: uploadProgress })}
-                </p>
-              </div>
-            )}
+                {uploading && (
+                  <div className="mx-auto mb-4 w-full max-w-sm">
+                    <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{t('chat.fileManager.uploading')}</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-primary transition-all"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileSelect}
-              disabled={uploading}
-              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
-            />
-            
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {t('chat.fileManager.uploading')}
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  {t('chat.fileManager.selectFile')}
-                </>
-              )}
-            </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  disabled={uploading}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
+                />
 
-            <div className="mt-8 space-y-2">
-              <h4 className="text-sm font-medium">{t('chat.fileManager.storageLocation')}</h4>
-              <div className="flex gap-2 justify-center">
                 <Button
-                  variant={selectedStorage === 'personal' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedStorage('personal')}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="min-w-32"
                 >
-                  {t('chat.fileManager.storagePersonal')}
-                </Button>
-                <Button
-                  variant={selectedStorage === 'friend' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedStorage('friend')}
-                >
-                  {t('chat.fileManager.storageFriend')}
-                </Button>
-                <Button
-                  variant={selectedStorage === 'group' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedStorage('group')}
-                >
-                  {t('chat.fileManager.storageGroup')}
+                  {uploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t('chat.fileManager.uploading')}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      {t('chat.fileManager.selectFile')}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
-          </div>
 
-          {/* 上传提示 */}
-          <div className="mt-6 rounded-lg bg-muted p-4">
-            <h4 className="font-medium text-sm mb-2">{t('chat.fileManager.uploadTips')}</h4>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>{t('chat.fileManager.tip1')}</li>
-              <li>{t('chat.fileManager.tip2')}</li>
-              <li>{t('chat.fileManager.tip3')}</li>
-            </ul>
-          </div>
+            <div className="rounded-xl border bg-card p-4">
+              <h4 className="mb-3 text-sm font-semibold">{t('chat.fileManager.storageLocation')}</h4>
+              <div className="grid gap-2 md:grid-cols-3">
+                {storageOptions.map((option) => {
+                  const isActive = selectedStorage === option.key
+                  const Icon = option.icon
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setSelectedStorage(option.key)}
+                      className={`rounded-xl border p-3 text-left transition-all ${
+                        isActive
+                          ? 'border-primary/50 bg-primary/10 shadow-sm'
+                          : 'border-border bg-background hover:border-primary/30 hover:bg-accent/40'
+                      }`}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <span className="text-sm font-medium">{option.label}</span>
+                        </div>
+                        {isActive && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{option.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-muted/40 p-4">
+              <h4 className="mb-2 text-sm font-medium">{t('chat.fileManager.uploadTips')}</h4>
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                <p>{t('chat.fileManager.tip1')}</p>
+                <p>{t('chat.fileManager.tip2')}</p>
+                <p>{t('chat.fileManager.tip3')}</p>
+              </div>
+            </div>
           </div>
         </div>
       )
