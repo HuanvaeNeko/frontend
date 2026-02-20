@@ -374,7 +374,7 @@ export default function ChatWindow({ hideMobileHeader = false }: ChatWindowProps
           <div className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center bg-primary/10">
             <MessageCircle className="w-12 h-12 text-primary/50" />
           </div>
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent mb-2">Huanvae Chat</h3>
+          <h3 className="text-2xl font-bold text-foreground mb-2">Huanvae Chat</h3>
           <p className="text-muted-foreground">选择一个会话开始聊天</p>
         </motion.div>
       </div>

@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { 
-  X,
   User as UserIcon,
   Camera,
   Loader2,
@@ -20,6 +18,12 @@ import {
   Info
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/store/profileStore'
 import { useAuthStore } from '@/store/authStore'
 import { profileApi } from '@/api/profile'
@@ -41,7 +45,6 @@ interface Tab {
   id: TabId
   label: string
   icon: React.ElementType
-  color: string
 }
 
 // ============================================
@@ -49,9 +52,9 @@ interface Tab {
 // ============================================
 
 const TABS: Tab[] = [
-  { id: 'profile', label: '基本信息', icon: Edit3, color: '#6366f1' },
-  { id: 'password', label: '修改密码', icon: Lock, color: '#8b5cf6' },
-  { id: 'account', label: '账户信息', icon: Shield, color: '#10b981' },
+  { id: 'profile', label: '基本信息', icon: Edit3 },
+  { id: 'password', label: '修改密码', icon: Lock },
+  { id: 'account', label: '账户信息', icon: Shield },
 ]
 
 // ============================================
@@ -61,37 +64,32 @@ const TABS: Tab[] = [
 // 设置项行
 function SettingRow({
   icon: Icon,
-  iconColor,
+  iconClass,
   label,
   value,
   description,
 }: {
   icon: React.ElementType
-  iconColor: string
+  iconClass?: string
   label: string
   value?: string
   description?: string
 }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0">
+    <div className="flex items-center justify-between border-b py-3 last:border-b-0">
       <div className="flex items-center gap-3">
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{ 
-            background: `linear-gradient(135deg, ${iconColor}20 0%, ${iconColor}10 100%)`,
-          }}
-        >
-          <Icon className="w-4.5 h-4.5" style={{ color: iconColor }} />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-muted">
+          <Icon className={`h-4 w-4 ${iconClass ?? 'text-primary'}`} />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-800 dark:text-white">{label}</div>
+          <div className="text-sm font-medium">{label}</div>
           {description && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
           )}
         </div>
       </div>
       {value && (
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate ml-4">
+        <span className="ml-4 truncate text-sm font-medium text-muted-foreground">
           {value}
         </span>
       )}
@@ -124,32 +122,23 @@ function GlassInput({
   rightElement?: React.ReactNode
 }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
+    <div className="space-y-2">
+      <Label>{label}</Label>
       <div className="relative flex items-center gap-2">
-        <div className={`
-          flex-1 flex items-center gap-2.5 px-3 py-2.5
-          bg-white/60 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80
-          backdrop-blur-lg transition-all duration-200
-          focus-within:border-indigo-400 focus-within:bg-white/80 dark:focus-within:bg-slate-800/80
-          focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.1)]
-          ${disabled ? 'opacity-60 cursor-not-allowed' : ''}
-        `}>
-          {Icon && <Icon className="w-4 h-4 text-slate-400 shrink-0" />}
-          <input
-            type={type}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            disabled={disabled}
-            maxLength={maxLength}
-            className="flex-1 bg-transparent outline-none text-sm text-slate-800 dark:text-white placeholder:text-slate-400 disabled:cursor-not-allowed"
-          />
-        </div>
+        {Icon && <Icon className="absolute left-3 h-4 w-4 text-muted-foreground" />}
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          maxLength={maxLength}
+          className={`${Icon ? 'pl-9' : ''} ${rightElement ? 'pr-11' : ''}`}
+        />
         {rightElement}
       </div>
       {showCount && maxLength && (
-        <div className="text-xs text-slate-400 text-right">{value.length}/{maxLength}</div>
+        <div className="text-right text-xs text-muted-foreground">{value.length}/{maxLength}</div>
       )}
     </div>
   )
@@ -172,24 +161,17 @@ function GlassTextarea({
   showCount?: boolean
 }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-      <textarea
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className={`
-          w-full px-3 py-2.5 min-h-[100px] resize-none
-          bg-white/60 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/80
-          backdrop-blur-lg transition-all duration-200
-          focus:border-indigo-400 focus:bg-white/80 dark:focus:bg-slate-800/80 focus:outline-none
-          focus:shadow-[0_0_0_3px_rgba(99,102,241,0.1)]
-          text-sm text-slate-800 dark:text-white placeholder:text-slate-400
-        `}
+        className="min-h-[100px] resize-none"
       />
       {showCount && maxLength && (
-        <div className="text-xs text-slate-400 text-right">{value.length}/{maxLength}</div>
+        <div className="text-right text-xs text-muted-foreground">{value.length}/{maxLength}</div>
       )}
     </div>
   )
@@ -294,7 +276,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         <div className="relative group mb-3">
           <Avatar className="h-24 w-24 ring-4 ring-white dark:ring-slate-700 shadow-xl">
             <AvatarImage src={profile?.user_avatar_url || ''} alt={displayName} />
-            <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-2xl font-bold">
+            <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
               {displayName[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
@@ -319,8 +301,8 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           className="hidden"
           onChange={handleAvatarChange}
         />
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-white">{displayName}</h3>
-        <p className="text-xs text-slate-500">点击头像更换</p>
+        <h3 className="text-lg font-semibold">{displayName}</h3>
+        <p className="text-xs text-muted-foreground">点击头像更换</p>
       </div>
 
       {/* 表单 */}
@@ -352,17 +334,14 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         />
 
         <div className="flex gap-3 pt-2">
-          <motion.button
+          <Button
             type="submit"
             disabled={isLoading || !hasChanges}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
             className={`
-              flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
-              transition-all duration-200
+              flex-1 h-10
               ${hasChanges 
-                ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40' 
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                : ''
               }
             `}
           >
@@ -372,24 +351,17 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
               <Check className="w-4 h-4" />
             )}
             保存更改
-          </motion.button>
-          <motion.button
+          </Button>
+          <Button
             type="button"
             onClick={handleReset}
             disabled={!hasChanges}
-            whileHover={{ scale: hasChanges ? 1.02 : 1 }}
-            whileTap={{ scale: hasChanges ? 0.98 : 1 }}
-            className={`
-              flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
-              ${hasChanges 
-                ? 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50' 
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-              }
-            `}
+            variant="outline"
+            className="h-10"
           >
             <RefreshCw className="w-4 h-4" />
             重置
-          </motion.button>
+          </Button>
         </div>
       </form>
     </div>
@@ -477,7 +449,7 @@ function PasswordSettings() {
           <button
             type="button"
             onClick={() => togglePassword('old')}
-            className="p-2.5 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-all"
+            className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {showPasswords.old ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -495,7 +467,7 @@ function PasswordSettings() {
           <button
             type="button"
             onClick={() => togglePassword('new')}
-            className="p-2.5 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-all"
+            className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -513,24 +485,21 @@ function PasswordSettings() {
           <button
             type="button"
             onClick={() => togglePassword('confirm')}
-            className="p-2.5 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-slate-400 hover:text-slate-600 hover:bg-white/80 transition-all"
+            className="absolute right-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         }
       />
 
-      <motion.button
+      <Button
         type="submit"
         disabled={changingPassword || !canSubmit}
-        whileHover={{ scale: canSubmit ? 1.02 : 1 }}
-        whileTap={{ scale: canSubmit ? 0.98 : 1 }}
         className={`
-          w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
-          transition-all duration-200
+          w-full h-10
           ${canSubmit 
-            ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40' 
-            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+            ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+            : ''
           }
         `}
       >
@@ -540,7 +509,7 @@ function PasswordSettings() {
           <Lock className="w-4 h-4" />
         )}
         修改密码
-      </motion.button>
+      </Button>
     </form>
   )
 }
@@ -554,25 +523,25 @@ function AccountSettings() {
     <div className="space-y-1">
       <SettingRow
         icon={UserIcon}
-        iconColor="#6366f1"
+        iconClass="text-primary"
         label="用户 ID"
         value={profile?.user_id || user?.user_id || '-'}
       />
       <SettingRow
         icon={Shield}
-        iconColor={profile?.admin === 'true' ? '#8b5cf6' : '#64748b'}
+        iconClass={profile?.admin === 'true' ? 'text-violet-500' : 'text-muted-foreground'}
         label="账户类型"
         value={profile?.admin === 'true' ? '管理员' : '普通用户'}
       />
       <SettingRow
         icon={Calendar}
-        iconColor="#10b981"
+        iconClass="text-emerald-500"
         label="注册时间"
         value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN') : '-'}
       />
       <SettingRow
         icon={Calendar}
-        iconColor="#f59e0b"
+        iconClass="text-amber-500"
         label="最后更新"
         value={profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString('zh-CN') : '-'}
       />
@@ -596,143 +565,65 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     // 可以在保存后做一些操作
   }, [])
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'profile':
-        return <ProfileSettings onSaved={handleSaved} />
-      case 'password':
-        return <PasswordSettings />
-      case 'account':
-        return <AccountSettings />
-      default:
-        return null
-    }
-  }
-
-  if (typeof document === 'undefined') return null
-
-  return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* 背景遮罩 */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={handleClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9998]"
-          />
-
-          {/* 模态框 */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[600px] md:max-h-[85vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-[9999] flex flex-col overflow-hidden"
-          >
-            {/* 头部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                  <UserIcon className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-800 dark:text-white">个人资料</h2>
-                  <p className="text-xs text-slate-500">管理您的个人信息</p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
+      <DialogContent showCloseButton={false} className="max-w-[600px] p-0 overflow-hidden">
+        <DialogHeader className="border-b px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+              <UserIcon className="h-5 w-5 text-primary" />
             </div>
-
-            {/* 内容区 */}
-            <div className="flex flex-1 overflow-hidden">
-              {/* 侧边栏 - 桌面端 */}
-              <div className="w-44 shrink-0 border-r border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/50 max-md:hidden">
-                <nav className="space-y-1">
-                  {TABS.map(tab => {
-                    const Icon = tab.icon
-                    const isActive = activeTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveTab(tab.id)
-                          playTap()
-                        }}
-                        className={`
-                          w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                          ${isActive 
-                            ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' 
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'
-                          }
-                        `}
-                      >
-                        <Icon 
-                          className="w-4.5 h-4.5" 
-                          style={{ color: isActive ? tab.color : undefined }} 
-                        />
-                        {tab.label}
-                      </button>
-                    )
-                  })}
-                </nav>
-              </div>
-
-              {/* 移动端 Tab 栏 */}
-              <div className="md:hidden w-full border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 overflow-x-auto">
-                <div className="flex p-2 gap-1">
-                  {TABS.map(tab => {
-                    const Icon = tab.icon
-                    const isActive = activeTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setActiveTab(tab.id)
-                          playTap()
-                        }}
-                        className={`
-                          flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all
-                          ${isActive 
-                            ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' 
-                            : 'text-slate-600 dark:text-slate-400'
-                          }
-                        `}
-                      >
-                        <Icon className="w-4 h-4" style={{ color: isActive ? tab.color : undefined }} />
-                        {tab.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* 设置内容 */}
-              <div className="flex-1 overflow-y-auto p-6 max-md:p-4">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {renderContent()}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
+            <div>
+              <DialogTitle>个人资料</DialogTitle>
+              <DialogDescription>管理您的个人信息</DialogDescription>
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+          </div>
+        </DialogHeader>
+
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            setActiveTab(value as TabId)
+            playTap()
+          }}
+          className="flex h-[min(80vh,620px)] flex-row max-md:flex-col"
+          orientation="vertical"
+        >
+          <div className="hidden h-full w-48 border-r p-3 md:block">
+            <TabsList className="h-auto w-full flex-col bg-transparent p-0">
+              {TABS.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <TabsTrigger key={tab.id} value={tab.id} className="w-full justify-start gap-2 px-3 py-2.5">
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </div>
+
+          <div className="border-b p-2 md:hidden">
+            <TabsList className="grid w-full grid-cols-3">
+              {TABS.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs">
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <TabsContent value="profile"><ProfileSettings onSaved={handleSaved} /></TabsContent>
+            <TabsContent value="password"><PasswordSettings /></TabsContent>
+            <TabsContent value="account"><AccountSettings /></TabsContent>
+          </div>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }

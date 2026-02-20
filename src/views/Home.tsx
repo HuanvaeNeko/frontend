@@ -5,7 +5,8 @@ import { motion } from 'framer-motion'
 import { Bot, MessageCircle, Video, Settings, LogOut, User, Laptop, Users, IdCard, ArrowRight } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
@@ -29,12 +30,12 @@ export default function Home() {
   }
 
   const features = [
-    { icon: Bot, title: 'AI 聊天', description: '与智能助手进行对话', path: '/ai-chat', gradient: 'from-blue-500 to-cyan-400' },
-    { icon: MessageCircle, title: '即时通讯', description: '好友与群组聊天', path: '/chat', gradient: 'from-violet-500 to-purple-400' },
-    { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting', gradient: 'from-rose-500 to-pink-400' },
-    { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends', gradient: 'from-emerald-500 to-teal-400' },
-    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', onClick: openProfileModal, gradient: 'from-amber-500 to-orange-400' },
-    { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings', gradient: 'from-slate-500 to-gray-400' },
+    { icon: Bot, title: 'AI 聊天', description: '与智能助手进行对话', path: '/ai-chat' },
+    { icon: MessageCircle, title: '即时通讯', description: '好友与群组聊天', path: '/chat' },
+    { icon: Video, title: '视频会议', description: '高清音视频通话', path: '/video-meeting' },
+    { icon: Users, title: '好友管理', description: '添加、管理你的好友', path: '/friends' },
+    { icon: IdCard, title: '个人资料', description: '查看和编辑个人信息', onClick: openProfileModal },
+    { icon: Settings, title: '系统设置', description: '个性化配置选项', path: '/settings' },
   ]
 
   return (
@@ -101,9 +102,8 @@ export default function Home() {
           transition={{ delay: 0.1 }}
           className="text-center mb-12"
         >
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 bg-clip-text text-transparent mb-3">
-            Huanvae Chat
-          </h1>
+          <Badge variant="secondary" className="mb-3">控制台</Badge>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-3 text-foreground">Huanvae Chat</h1>
           <p className="text-base sm:text-lg text-muted-foreground">
             欢迎回来，<span className="text-primary">{user?.nickname || '用户'}</span>！开始您的智能通讯之旅
           </p>
@@ -119,12 +119,12 @@ export default function Home() {
               transition={{ delay: 0.15 + index * 0.08 }}
             >
               <Card 
-                className="cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg group"
+                className="cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md group"
                 onClick={feature.onClick ?? (() => router.push(feature.path!))}
               >
                 <CardContent className="flex items-center gap-4 p-5">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg bg-gradient-to-br ${feature.gradient}`}>
-                    <feature.icon size={28} />
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-muted text-primary">
+                    <feature.icon size={24} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-base font-semibold text-foreground mb-1">{feature.title}</h3>
@@ -146,6 +146,7 @@ export default function Home() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">快速开始</CardTitle>
+              <CardDescription>常用操作入口</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-3 max-sm:flex-col">

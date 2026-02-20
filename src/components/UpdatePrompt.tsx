@@ -4,6 +4,19 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, X, Sparkles, Info } from 'lucide-react'
 import { APP_VERSION, getSWVersion, clearSWCache } from '@/lib/version'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface UpdatePromptProps {
   /** 自动更新延迟（毫秒），默认 8000 */
@@ -249,7 +262,6 @@ export function UpdatePrompt({
 
   return (
     <>
-      {/* 更新提示 */}
       <AnimatePresence>
         {isVisible && (
           <motion.div
@@ -260,147 +272,98 @@ export function UpdatePrompt({
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[calc(100%-32px)] max-w-[480px]"
           >
-            <div className="relative overflow-hidden rounded-[20px] bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-2xl border border-blue-200/40 shadow-[0_8px_32px_rgba(59,130,246,0.2),0_0_0_1px_rgba(255,255,255,0.6)_inset]">
-              {/* 进度条 */}
-              <motion.div
-                className="absolute bottom-0 left-0 h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-r-sm"
-                initial={{ width: '100%' }}
-                animate={{ width: '0%' }}
-                transition={{ duration: autoUpdateDelay / 1000, ease: 'linear' }}
-              />
+            <Card className="relative gap-0 py-0 shadow-xl">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-2 right-2 text-muted-foreground z-10"
+                onClick={handleDismiss}
+              >
+                <X size={16} />
+              </Button>
 
-              <div className="flex items-center gap-3.5 px-4 py-4">
-                {/* 图标 */}
-                <div className="shrink-0 w-11 h-11 flex items-center justify-center rounded-[14px] bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/35">
+              <CardHeader className="px-4 py-4 pr-12">
+                <div className="flex items-center gap-2">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                    className="text-primary"
                   >
-                    <Sparkles size={20} />
+                    <Sparkles size={18} />
                   </motion.div>
+                  <CardTitle className="text-base">发现新版本</CardTitle>
+                  {state.newVersion && <Badge variant="secondary">v{state.newVersion}</Badge>}
                 </div>
+                <CardDescription>
+                  {countdown > 0 ? `将在 ${countdown} 秒后自动更新` : '正在更新...'}
+                </CardDescription>
+              </CardHeader>
 
-                {/* 文字内容 */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="flex items-center gap-2 text-[15px] font-semibold text-slate-800 mb-[3px]">
-                    发现新版本
-                    {state.newVersion && (
-                      <span className="text-[11px] font-medium py-0.5 px-2 rounded-md bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-500">
-                        v{state.newVersion}
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-[13px] text-slate-500">
-                    {countdown > 0 ? (
-                      <>将在 <strong className="text-blue-500 font-bold text-sm">{countdown}</strong> 秒后自动更新</>
-                    ) : (
-                      '正在更新...'
-                    )}
-                  </p>
-                </div>
-
-                {/* 操作按钮 */}
-                <div className="flex gap-2 shrink-0">
-                  <motion.button 
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[13px] font-medium cursor-pointer transition-all bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none shadow-md shadow-blue-500/35 hover:shadow-lg hover:-translate-y-px"
-                    onClick={handleImmediateUpdate}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
+              <CardContent className="px-4 pb-4 space-y-3">
+                <Progress
+                  value={Math.max(0, Math.min(100, (countdown / initialSeconds) * 100))}
+                  className="h-1.5"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleImmediateUpdate}>
                     <RefreshCw size={14} />
                     立即更新
-                  </motion.button>
-                  <motion.button 
-                    className="px-3.5 py-2.5 rounded-xl text-[13px] font-medium cursor-pointer transition-all bg-white/70 text-slate-500 border border-blue-200/40 hover:bg-white/95 hover:text-slate-700"
-                    onClick={handleDismiss}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleDismiss}>
                     稍后
-                  </motion.button>
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowVersionInfo(true)}>
+                    <Info size={14} />
+                    版本信息
+                  </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                {/* 版本信息按钮 */}
-                <button 
-                  className="absolute bottom-2 right-9 w-6 h-6 flex items-center justify-center rounded-md bg-transparent border-none text-slate-400 cursor-pointer transition-all hover:bg-blue-500/10 hover:text-blue-500"
-                  onClick={() => setShowVersionInfo(true)}
-                  title="版本信息"
-                >
-                  <Info size={14} />
-                </button>
+      <Dialog open={showVersionInfo} onOpenChange={setShowVersionInfo}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>版本信息</DialogTitle>
+            <DialogDescription>当前应用与 Service Worker 的版本状态</DialogDescription>
+          </DialogHeader>
 
-                {/* 关闭按钮 */}
-                <button 
-                  className="absolute top-2 right-2 w-[26px] h-[26px] flex items-center justify-center rounded-lg bg-transparent border-none text-slate-400 cursor-pointer transition-all hover:bg-black/5 hover:text-slate-600"
-                  onClick={handleDismiss}
-                >
-                  <X size={16} />
-                </button>
-              </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">应用版本</span>
+              <Badge variant="outline">v{APP_VERSION}</Badge>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">SW 版本</span>
+              <Badge variant="outline">{state.currentVersion || '未加载'}</Badge>
+            </div>
+            {state.newVersion && state.newVersion !== state.currentVersion && (
+              <>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">新版本</span>
+                  <Badge>v{state.newVersion}</Badge>
+                </div>
+              </>
+            )}
+          </div>
 
-      {/* 版本信息弹窗 */}
-      <AnimatePresence>
-        {showVersionInfo && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[10000] p-5"
-            onClick={() => setShowVersionInfo(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="w-full max-w-[340px] bg-gradient-to-br from-white/95 to-white/85 backdrop-blur-xl rounded-[20px] border border-blue-200/30 shadow-2xl overflow-hidden"
-              onClick={e => e.stopPropagation()}
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                await clearSWCache()
+                window.location.reload()
+              }}
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-blue-200/20">
-                <h3 className="text-base font-semibold text-slate-800">版本信息</h3>
-                <button 
-                  className="w-8 h-8 flex items-center justify-center rounded-[10px] bg-transparent border-none text-slate-500 cursor-pointer transition-all hover:bg-black/5 hover:text-slate-800"
-                  onClick={() => setShowVersionInfo(false)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="px-5 py-4">
-                <div className="flex justify-between items-center py-3 border-b border-blue-200/15">
-                  <span className="text-sm text-slate-500">应用版本</span>
-                  <span className="text-sm font-semibold text-slate-800 font-mono">v{APP_VERSION}</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-blue-200/15">
-                  <span className="text-sm text-slate-500">SW 版本</span>
-                  <span className="text-sm font-semibold text-slate-800 font-mono">{state.currentVersion || '未加载'}</span>
-                </div>
-                {state.newVersion && state.newVersion !== state.currentVersion && (
-                  <div className="flex justify-between items-center py-3">
-                    <span className="text-sm text-slate-500">新版本</span>
-                    <span className="text-sm font-semibold text-emerald-500 font-mono">v{state.newVersion}</span>
-                  </div>
-                )}
-              </div>
-              <div className="px-5 py-4 border-t border-blue-200/20">
-                <motion.button 
-                  className="w-full py-3 rounded-xl text-sm font-medium cursor-pointer transition-all bg-red-500/10 text-red-600 border-none hover:bg-red-500/20"
-                  onClick={async () => {
-                    await clearSWCache()
-                    window.location.reload()
-                  }}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                >
-                  清除缓存并刷新
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              清除缓存并刷新
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { 
   MessageSquare, 
@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Home,
   Menu,
+  Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -25,6 +26,7 @@ import { useProfileStore } from '../../store/profileStore'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/uiStore'
 import { playTap } from '@/hooks/useSound'
+import { RELEASE_PAGE_URL, fetchInstallTargets } from '@/lib/appInstall'
 
 interface NavItem {
   path: string
@@ -54,6 +56,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const { user, clearAuth } = useAuthStore()
   const { profile } = useProfileStore()
   const { openProfileModal } = useUIStore()
+  const [installUrl, setInstallUrl] = useState(RELEASE_PAGE_URL)
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
   const avatarUrl = profile?.user_avatar_url || ''
@@ -62,6 +65,19 @@ export default function MainLayout({ children }: MainLayoutProps) {
   useEffect(() => {
     // Sheet 自动处理关闭，不需要额外状态
   }, [pathname])
+
+  useEffect(() => {
+    let cancelled = false
+
+    void fetchInstallTargets().then((targets) => {
+      if (!targets || cancelled) return
+      setInstallUrl(targets.normalUrl)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleLogout = () => {
     clearAuth()
@@ -184,6 +200,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
               {item.label}
             </Button>
           ))}
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3"
+            onClick={() => window.open(installUrl, '_blank', 'noopener,noreferrer')}
+          >
+            <Download size={18} />
+            安装 APP
+          </Button>
         </nav>
       </ScrollArea>
 
