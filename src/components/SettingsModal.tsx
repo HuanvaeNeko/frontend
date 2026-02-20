@@ -505,7 +505,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
       <DialogContent
         showCloseButton={false}
-        className="h-[min(92dvh,780px)] max-h-[92dvh] w-[calc(100%-1rem)] max-w-[680px] p-0 overflow-hidden"
+        className="bottom-0 left-0 w-full max-w-none translate-x-0 rounded-t-2xl rounded-b-none border-b-0 h-[92dvh] max-h-[92dvh] p-0 overflow-hidden sm:bottom-auto sm:left-1/2 sm:w-[calc(100%-1rem)] sm:max-w-[680px] sm:translate-x-[-50%] sm:rounded-lg sm:border-b sm:h-[min(92dvh,780px)]"
       >
         <DialogHeader className="border-b px-6 py-4">
           <div className="flex items-center gap-3">

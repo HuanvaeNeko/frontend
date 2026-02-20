@@ -534,7 +534,7 @@ export default function ChatPage() {
               <TooltipTrigger asChild>
                 <button
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
-                  onClick={settingsModal.open}
+                  onClick={() => router.push(ROUTES.app.settings)}
                 >
                   <Settings className="w-[22px] h-[22px]" />
                 </button>
@@ -602,7 +602,7 @@ export default function ChatPage() {
               <div className="w-px h-6 bg-border mx-1" />
               <button
                 className="flex flex-col items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-muted-foreground hover:bg-accent"
-                onClick={settingsModal.open}
+                onClick={() => router.push(ROUTES.app.settings)}
               >
                 <Settings className="w-5 h-5" />
                 <span className="text-[10px] font-medium">{t('chat.page.settings')}</span>
@@ -712,7 +712,7 @@ export default function ChatPage() {
           />
         )}
 
-        {isMobile && (mobileView === 'chat' || activeTab === 'webrtc') && (
+        {isMobile && activeTab === 'webrtc' && (
           <div className={cn(
             "md:hidden flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-card border-b border-border shrink-0 safe-area-inset-top",
             isLandscape && "landscape-compact-header"
@@ -780,7 +780,7 @@ export default function ChatPage() {
 
       {/* 移动端底部导航栏 */}
       {/* 已迁移至 MainLayout 的 MobileBottomNav */}
-      <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} />
+      {/* <SettingsModal isOpen={settingsModal.isOpen} onClose={settingsModal.close} /> */}
     </div>
   )
 }
