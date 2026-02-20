@@ -28,6 +28,7 @@ import { useProfileStore } from '@/store/profileStore'
 import { useUIStore } from '@/store/uiStore'
 import { playTap } from '@/hooks/useSound'
 import { RELEASE_PAGE_URL, fetchInstallTargets } from '@/lib/appInstall'
+import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getRouteBreadcrumbs, isRouteActive } from '@/lib/routes'
 
 interface NavItem {
   path: string
@@ -36,15 +37,15 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { path: '/', label: '消息', icon: MessageSquare },
-  { path: '/friends', label: '好友', icon: Users },
-  { path: '/ai-chat', label: 'AI 助手', icon: Bot },
-  { path: '/video-meeting', label: '视频会议', icon: Video },
+  { path: ROUTES.app.chat, label: '消息', icon: MessageSquare },
+  { path: ROUTES.app.friends, label: '好友', icon: Users },
+  { path: ROUTES.app.aiChat, label: 'AI 助手', icon: Bot },
+  { path: ROUTES.app.videoMeeting, label: '视频会议', icon: Video },
 ]
 
 const settingsNavItems: NavItem[] = [
-  { path: '/devices', label: '设备管理', icon: Laptop },
-  { path: '/settings', label: '设置', icon: Settings },
+  { path: ROUTES.app.devices, label: '设备管理', icon: Laptop },
+  { path: ROUTES.app.settings, label: '设置', icon: Settings },
 ]
 
 interface MainLayoutProps {
@@ -75,7 +76,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const handleLogout = () => {
     clearAuth()
-    router.push('/login')
+    router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
   }
 
   const handleNavigation = (path: string) => {
@@ -83,33 +84,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   const isActive = (path: string) => {
-    if (path === '/') return pathname === '/' || pathname === '/chat'
-    return pathname?.startsWith(path) ?? false
+    return isRouteActive(pathname, path)
   }
 
-  const getBreadcrumbs = () => {
-    const segments = pathname?.split('/').filter(Boolean) || []
-    const labels: Record<string, string> = {
-      chat: '消息',
-      friends: '好友',
-      'ai-chat': 'AI 助手',
-      'video-meeting': '视频会议',
-      devices: '设备管理',
-      settings: '设置',
-      profile: '个人资料',
-      home: '首页',
-    }
-
-    const crumbs: { label: string; path: string }[] = [{ label: '首页', path: '/' }]
-    let currentPath = ''
-    for (const segment of segments) {
-      currentPath += `/${segment}`
-      if (labels[segment]) crumbs.push({ label: labels[segment], path: currentPath })
-    }
-    return crumbs
-  }
-
-  const breadcrumbs = getBreadcrumbs()
+  const breadcrumbs = getRouteBreadcrumbs(pathname)
 
   const handleOpenProfile = () => {
     playTap()

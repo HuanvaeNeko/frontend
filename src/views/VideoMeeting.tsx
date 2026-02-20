@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '../api/webrtc'
 import { useAuthStore } from '../store/authStore'
+import { ROUTES } from '@/lib/routes'
 
 // =============================================
 // 类型定义
@@ -805,7 +806,7 @@ export default function VideoMeeting() {
     else { document.exitFullscreen(); setIsFullscreen(false) }
   }, [])
 
-  const leaveMeeting = () => { cleanup(); router.push('/chat') }
+  const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.chat) }
 
   const copyShareLink = () => {
     navigator.clipboard.writeText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)
@@ -861,7 +862,7 @@ export default function VideoMeeting() {
           <p className="text-[13px] text-muted-foreground mb-8 leading-relaxed">{error}</p>
           <button
             type="button"
-            onClick={() => router.push('/chat')}
+            onClick={() => router.push(ROUTES.app.chat)}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent/50 border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
           >
             <ArrowLeft size={16} />

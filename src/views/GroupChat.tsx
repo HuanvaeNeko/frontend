@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowRight, MessageCircle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ROUTES } from '@/lib/routes'
 
 export default function GroupChat() {
   const router = useRouter()
@@ -22,11 +23,11 @@ export default function GroupChat() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Button onClick={() => router.push('/chat/groups')} className="gap-2">
+            <Button onClick={() => router.push(ROUTES.app.chatGroups)} className="gap-2">
               <MessageCircle className="h-4 w-4" />
               进入新群聊页
             </Button>
-            <Button variant="outline" onClick={() => router.push('/chat')} className="gap-2">
+            <Button variant="outline" onClick={() => router.push(ROUTES.app.chat)} className="gap-2">
               返回聊天首页
               <ArrowRight className="h-4 w-4" />
             </Button>

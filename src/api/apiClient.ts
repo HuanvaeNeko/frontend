@@ -1,5 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
+import { ROUTES } from '@/lib/routes'
 
 const BASE_URL = getApiBaseUrl()
 
@@ -58,8 +59,8 @@ const silentRedirectToLogin = () => {
   authStore.clearAuth()
   
   // 使用 replace 而不是 href，避免在历史记录中留下痕迹
-  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-    window.location.replace('/login')
+  if (typeof window !== 'undefined' && window.location.pathname !== ROUTES.auth.login) {
+    window.location.replace(ROUTES.auth.login)
   }
 }
 

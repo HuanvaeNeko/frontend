@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast'
 import { webrtcApi } from '../../api/webrtc'
 import { useAuthStore } from '../../store/authStore'
+import { ROUTES } from '@/lib/routes'
 
 export default function WebRTCPanel() {
   const router = useRouter()
@@ -48,7 +49,7 @@ export default function WebRTCPanel() {
       setShowCreateDialog(false)
       const params = new URLSearchParams({ room: response.room_id, token: response.ws_token, creator: 'true' })
       if (roomPassword) params.set('pwd', roomPassword)
-      router.push(`/video-meeting?${params.toString()}`)
+      router.push(`${ROUTES.app.videoMeeting}?${params.toString()}`)
     } catch (error) {
       toast({ title: '创建失败', description: error instanceof Error ? error.message : '创建房间失败', variant: 'destructive' })
     } finally { setCreating(false) }
@@ -63,7 +64,7 @@ export default function WebRTCPanel() {
       setShowJoinDialog(false)
       const params = new URLSearchParams({ room: joinRoomId, token: response.ws_token || '' })
       if (joinNickname) params.set('name', joinNickname)
-      router.push(`/video-meeting?${params.toString()}`)
+      router.push(`${ROUTES.app.videoMeeting}?${params.toString()}`)
     } catch (error) {
       toast({ title: '加入失败', description: error instanceof Error ? error.message : '加入房间失败', variant: 'destructive' })
     } finally { setJoining(false) }

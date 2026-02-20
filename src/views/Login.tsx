@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Sparkles, User } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
@@ -12,11 +12,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
+import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 
 const REMEMBER_USER_KEY = 'huanvae-remember-user_id'
 
 export default function Login() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const login = useAuthStore((state) => state.login)
 
   const [formData, setFormData] = useState({ user_id: '', password: '' })
@@ -25,6 +27,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const nextPath = searchParams.get('next')
 
   useEffect(() => {
     setMounted(true)
@@ -51,7 +54,8 @@ export default function Login() {
       if (rememberMe) localStorage.setItem(REMEMBER_USER_KEY, formData.user_id.trim())
       else localStorage.removeItem(REMEMBER_USER_KEY)
       playSuccess()
-      router.push('/')
+      const target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+      router.push(target)
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请检查用户名和密码')
       playError()
@@ -124,7 +128,7 @@ export default function Login() {
                 <Separator className="flex-1" />
               </div>
 
-              <Link href="/register">
+              <Link href={ROUTES.auth.register}>
                 <Button variant="outline" className="w-full">创建新账户</Button>
               </Link>
             </CardContent>

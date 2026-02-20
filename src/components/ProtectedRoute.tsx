@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '../store/authStore'
+import SimpleLoading from '@/components/SimpleLoading'
+import { DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -11,12 +13,31 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.replace('/login')
+    const hasHydrated = useAuthStore.persist.hasHydrated()
+    if (hasHydrated) {
+      setIsHydrated(true)
+      return
     }
-  }, [isAuthenticated, router])
+
+    const unsubscribe = useAuthStore.persist.onFinishHydration(() => {
+      setIsHydrated(true)
+    })
+
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      router.replace(DEFAULT_UNAUTHENTICATED_ROUTE)
+    }
+  }, [isAuthenticated, isHydrated, router])
+
+  if (!isHydrated) {
+    return <SimpleLoading />
+  }
 
   if (!isAuthenticated) {
     return null

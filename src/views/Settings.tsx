@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import { ROUTES } from '@/lib/routes'
 
 function SettingRow({
   label,
@@ -61,7 +62,7 @@ export default function Settings() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => router.push('/chat')}>
+            <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>

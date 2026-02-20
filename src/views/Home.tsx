@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Separator } from '@/components/ui/separator'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
+import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 
 export default function Home() {
   const router = useRouter()
@@ -33,7 +34,7 @@ export default function Home() {
   const handleLogout = async () => {
     try {
       await logout()
-      router.push('/login')
+      router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -42,11 +43,11 @@ export default function Home() {
   if (!isAuthenticated) return null
 
   const features = [
-    { icon: MessageCircle, title: '即时消息', description: '好友与群组沟通', path: '/chat', badge: '核心' },
-    { icon: Bot, title: 'AI 助手', description: '多轮上下文问答', path: '/ai-chat', badge: '效率' },
-    { icon: Video, title: '视频会议', description: '在线语音与视频沟通', path: '/video-meeting', badge: '协作' },
-    { icon: Users, title: '好友管理', description: '联系人与请求管理', path: '/friends', badge: '关系' },
-    { icon: Settings, title: '系统设置', description: '通知、主题与偏好', path: '/settings', badge: '配置' },
+    { icon: MessageCircle, title: '即时消息', description: '好友与群组沟通', path: ROUTES.app.chat, badge: '核心' },
+    { icon: Bot, title: 'AI 助手', description: '多轮上下文问答', path: ROUTES.app.aiChat, badge: '效率' },
+    { icon: Video, title: '视频会议', description: '在线语音与视频沟通', path: ROUTES.app.videoMeeting, badge: '协作' },
+    { icon: Users, title: '好友管理', description: '联系人与请求管理', path: ROUTES.app.friends, badge: '关系' },
+    { icon: Settings, title: '系统设置', description: '通知、主题与偏好', path: ROUTES.app.settings, badge: '配置' },
   ]
 
   return (
@@ -72,10 +73,10 @@ export default function Home() {
                 这是新的工作台布局。你可以在这里快速进入聊天、AI 助手、会议和设置，减少路径跳转。
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button onClick={() => router.push('/chat')} className="gap-2">
+                <Button onClick={() => router.push(ROUTES.app.chat)} className="gap-2">
                   <MessageCircle className="h-4 w-4" />进入聊天
                 </Button>
-                <Button variant="outline" onClick={() => router.push('/ai-chat')} className="gap-2">
+                <Button variant="outline" onClick={() => router.push(ROUTES.app.aiChat)} className="gap-2">
                   <Bot className="h-4 w-4" />打开 AI
                 </Button>
               </div>
@@ -147,7 +148,7 @@ export default function Home() {
             <Button variant="outline" onClick={openProfileModal} className="gap-2">
               <IdCard className="h-4 w-4" />个人资料
             </Button>
-            <Button variant="outline" onClick={() => router.push('/devices')} className="gap-2">
+            <Button variant="outline" onClick={() => router.push(ROUTES.app.devices)} className="gap-2">
               <Laptop className="h-4 w-4" />设备管理
             </Button>
             <DropdownMenu>
@@ -155,7 +156,7 @@ export default function Home() {
                 <Button variant="outline" className="gap-2"><User className="h-4 w-4" />更多</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => router.push('/friends')}>
+                <DropdownMenuItem onClick={() => router.push(ROUTES.app.friends)}>
                   <Users className="mr-2 h-4 w-4" />好友管理
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

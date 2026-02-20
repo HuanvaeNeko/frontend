@@ -1,5 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 import { getAuthApiUrl } from '../lib/apiConfig'
+import { ROUTES } from '@/lib/routes'
 
 const AUTH_BASE_URL = getAuthApiUrl()
 
@@ -53,7 +54,7 @@ const fetchWithAuth = async (
     } catch (error) {
       console.error('Token refresh failed, redirecting to login')
       authStore.clearAuth()
-      window.location.href = '/login'
+      window.location.href = ROUTES.auth.login
       throw error
     }
   }

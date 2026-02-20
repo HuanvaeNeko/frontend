@@ -25,6 +25,7 @@ import { useProfileStore } from '../store/profileStore'
 import { useAuthStore } from '../store/authStore'
 import { profileApi } from '../api/profile'
 import { useToast } from '../hooks/use-toast'
+import { ROUTES } from '@/lib/routes'
 
 export default function Profile() {
   const router = useRouter()
@@ -109,7 +110,7 @@ export default function Profile() {
     <div className="relative h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => router.push('/chat')}>
+          <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>

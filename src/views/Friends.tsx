@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useFriendsStore } from '../store/friendsStore'
 import { useToast } from '@/hooks/use-toast'
+import { ROUTES } from '@/lib/routes'
 
 export default function Friends() {
   const router = useRouter()
@@ -133,7 +134,7 @@ export default function Friends() {
           className="flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => router.push('/chat')}>
+            <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>

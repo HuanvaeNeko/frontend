@@ -4,6 +4,7 @@ import { Home, ArrowLeft, Ghost } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { ROUTES } from '@/lib/routes'
 
 export default function NotFound() {
   const router = useRouter()
@@ -102,7 +103,7 @@ export default function NotFound() {
             返回上页
           </motion.button>
           
-          <Link href="/chat">
+          <Link href={ROUTES.app.chat}>
             <motion.button
               className="flex items-center gap-2 px-5 py-3 rounded-xl font-medium text-white"
               style={{

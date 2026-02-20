@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { authApi } from '../api/auth'
 import { useToast } from '../hooks/use-toast'
 import { useAuthStore } from '../store/authStore'
+import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 
 interface Device {
   device_id: string
@@ -61,7 +62,7 @@ export default function Devices() {
       if (isCurrent) {
         toast({ title: '已退出登录', description: '当前设备已被移除，请重新登录' })
         clearAuth()
-        router.push('/login')
+        router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
       } else {
         toast({ title: '成功', description: '设备已移除' })
         await loadDevices()
@@ -117,7 +118,7 @@ export default function Devices() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => router.push('/chat')}>
+            <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>

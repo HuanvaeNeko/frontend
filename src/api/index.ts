@@ -97,5 +97,15 @@ export { diagnosticApi } from './diagnostic'
 export type {
   FriendPermissionReportRequest,
   DiagnosticReportResponse,
+  DiagnosticStatistics,
+  DiagnosticErrorLogItem,
+  DiagnosticReportItem,
 } from './diagnostic'
 
+// 低代码 API
+export { lowcodeApi } from './lowcode'
+export type {
+  LowcodeOperator,
+  LowcodeWorkflow,
+  LowcodeExecutionResult,
+} from './lowcode'

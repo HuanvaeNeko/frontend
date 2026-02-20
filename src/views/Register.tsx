@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
+import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
   const strength = {
@@ -91,7 +92,7 @@ export default function Register() {
     try {
       await register({ user_id: formData.user_id, nickname: formData.nickname, email: formData.email, password: formData.password })
       playSuccess()
-      router.push('/')
+      router.push(DEFAULT_AUTHENTICATED_ROUTE)
     } catch (err) {
       setError(err instanceof Error ? err.message : '注册失败，请稍后重试')
       playError()
@@ -150,7 +151,7 @@ export default function Register() {
               </form>
 
               <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-xs text-muted-foreground">或</span><Separator className="flex-1" /></div>
-              <Link href="/login"><Button variant="outline" className="w-full">已有账户，去登录</Button></Link>
+              <Link href={ROUTES.auth.login}><Button variant="outline" className="w-full">已有账户，去登录</Button></Link>
             </CardContent>
           </Card>
         </div>

@@ -37,16 +37,10 @@ import SettingsModal, { useSettingsModal } from '../components/SettingsModal'
 import FileManager from '../components/chat/FileManager'
 import WebRTCPanel from '../components/chat/WebRTCPanel'
 import { cn } from '@/lib/utils'
+import { CHAT_TAB_ROUTE_MAP, DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES, getChatTabFromPath } from '@/lib/routes'
 
 type SubTab = 'main' | 'new' | 'sent' | 'invites' | 'upload'
 type MobileView = 'list' | 'chat'
-
-function getTabFromPath(pathname: string): TabType {
-  if (pathname.startsWith('/chat/groups')) return 'groups'
-  if (pathname.startsWith('/chat/files')) return 'files'
-  if (pathname.startsWith('/chat/webrtc')) return 'webrtc'
-  return 'friends'
-}
 
 let chatPageInitialized = false
 
@@ -79,8 +73,8 @@ export default function ChatPage() {
   const searchParams = useSearchParams()
   const settingsModal = useSettingsModal()
   const { openProfileModal } = useUIStore()
-  const friendId = searchParams.get('id') && pathname?.includes('/friends') ? searchParams.get('id') : null
-  const groupId = searchParams.get('id') && pathname?.includes('/groups') ? searchParams.get('id') : null
+  const friendId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatFriends) ? searchParams.get('id') : null
+  const groupId = searchParams.get('id') && pathname?.startsWith(ROUTES.app.chatGroups) ? searchParams.get('id') : null
   const { user, logout, accessToken } = useAuthStore()
   const { profile, loadProfile } = useProfileStore()
   const { activeTab, setActiveTab, setSelectedConversation, selectedConversation } = useChatStore()
@@ -124,8 +118,8 @@ export default function ChatPage() {
   }, [selectedConversation, isMobile])
 
   useEffect(() => {
-    const tabFromPath = getTabFromPath(pathname || '/chat')
-    if (pathname !== '/chat' && pathname !== '/chat/') {
+    const tabFromPath = getChatTabFromPath(pathname || ROUTES.app.chat)
+    if (pathname !== ROUTES.app.chat && pathname !== `${ROUTES.app.chat}/`) {
       setActiveTab(tabFromPath)
     } else {
       const savedState = loadStateFromStorage()
@@ -316,7 +310,7 @@ export default function ChatPage() {
       useWSStore.getState().disconnect()
       resetChatPageInit()
       await logout()
-      router.push('/login')
+      router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
     } catch (error) {
       console.error('登出失败:', error)
     }
@@ -389,11 +383,7 @@ export default function ChatPage() {
                     onClick={() => {
                       setActiveTab(tab.id)
                       setSubTab('main')
-                      const pathMap: Record<TabType, string> = {
-                        friends: '/chat/friends', groups: '/chat/groups',
-                        files: '/chat/files', webrtc: '/chat/webrtc',
-                      }
-                      router.push(pathMap[tab.id])
+                      router.push(CHAT_TAB_ROUTE_MAP[tab.id])
                     }}
                   >
                     <tab.icon className="w-[22px] h-[22px]" />
