@@ -1,4 +1,4 @@
-import { useAuthStore } from '../store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 

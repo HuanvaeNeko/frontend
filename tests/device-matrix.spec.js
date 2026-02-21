@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const BASE_URL = globalThis.process?.env?.E2E_BASE_URL || 'http://127.0.0.1:4173'
+const BASE_URL = globalThis.process?.env?.E2E_BASE_URL || 'http://localhost:3000'
 
 const authState = {
   state: {
@@ -31,12 +31,12 @@ const matrix = [
 ]
 
 const pages = [
-  { name: 'Login', path: '/login/', requiresAuth: false },
-  { name: 'Register', path: '/register/', requiresAuth: false },
-  { name: 'Home', path: '/home/', requiresAuth: true },
-  { name: 'Chat', path: '/chat/', requiresAuth: true },
-  { name: 'VideoMeeting', path: '/video-meeting/?room=matrix&pwd=123', requiresAuth: true },
-  { name: 'Settings', path: '/settings/', requiresAuth: true },
+  { name: 'Login', path: '/app/login', requiresAuth: false },
+  { name: 'Register', path: '/app/register', requiresAuth: false },
+  { name: 'Home', path: '/app/home', requiresAuth: true },
+  { name: 'Chat', path: '/app/chat', requiresAuth: true },
+  { name: 'VideoMeeting', path: '/app/video-meeting?room=matrix&pwd=123', requiresAuth: true },
+  { name: 'Settings', path: '/app/settings', requiresAuth: true },
 ]
 
 async function collectMetricsWithRetry(page, maxRetries = 3) {

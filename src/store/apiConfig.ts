@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { ApiConfig } from '../types'
-import { getApiBaseUrl } from '../lib/apiConfig'
+import type { ApiConfig } from '@/types'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 
 interface ApiConfigState extends ApiConfig {
   setApiConfig: (config: Partial<ApiConfig>) => void

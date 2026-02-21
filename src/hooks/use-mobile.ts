@@ -1,19 +1,10 @@
-import * as React from "react"
-
-const MOBILE_BREAKPOINT = 768
+import { useResponsive } from 'ahooks'
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
+  const responsive = useResponsive()
+  // default breakpoints: xs: 0, sm: 576, md: 768, lg: 992, xl: 1200
+  // if responsive is undefined (SSR), return false
+  // if responsive.md is true (>=768), then not mobile
+  // if responsive.md is false (<768), then mobile
+  return !responsive?.md
 }

@@ -1,17 +1,17 @@
 export const ROUTES = {
   root: '/',
   webAppRoot: '/app',
+  downloads: '/downloads',
   auth: {
     login: '/app/login',
     register: '/app/register',
   },
   app: {
-    home: '/app/home',
     chat: '/app/chat',
-    chatFriends: '/app/chat/friends',
-    chatGroups: '/app/chat/groups',
-    chatFiles: '/app/chat/files',
-    chatWebrtc: '/app/chat/webrtc',
+    chatFriends: '/app/friends',
+    chatGroups: '/app/groups',
+    chatFiles: '/app/files',
+    chatWebrtc: '/app/webrtc',
     friends: '/app/friends',
     aiChat: '/app/ai-chat',
     videoMeeting: '/app/video-meeting',
@@ -26,7 +26,7 @@ export const ROUTES = {
 
 export type ChatTabRouteKey = 'friends' | 'groups' | 'files' | 'webrtc'
 
-export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.app.chat
+export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.app.chatFriends
 export const DEFAULT_UNAUTHENTICATED_ROUTE = ROUTES.auth.login
 
 export const CHAT_TAB_ROUTE_MAP: Record<ChatTabRouteKey, string> = {
@@ -60,7 +60,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   devices: '设备管理',
   settings: '设置',
   profile: '个人资料',
-  home: '首页',
   groups: '群聊',
   files: '文件',
   webrtc: '音视频',
@@ -74,7 +73,7 @@ export function getRouteBreadcrumbs(
 ): Array<{ label: string; path: string }> {
   const getLabel: BreadcrumbLabelResolver = resolveLabel || ((segment) => SEGMENT_LABELS[segment] || segment)
   const crumbs: Array<{ label: string; path: string }> = [
-    { label: getLabel('home', ROUTES.app.chat), path: ROUTES.app.chat },
+    { label: getLabel('chat', ROUTES.app.chat), path: ROUTES.app.chat },
   ]
 
   if (!pathname || pathname === ROUTES.root || pathname === ROUTES.app.chat) {

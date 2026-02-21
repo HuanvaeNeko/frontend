@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { getWsUrl } from '../lib/apiConfig'
-import { useAuthStore } from './authStore'
+import { getWsUrl } from '@/lib/apiConfig'
+import { useAuthStore } from '@/features/auth/store/authStore'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）
@@ -479,10 +479,17 @@ export const useWSStore = create<WSState>((set, get) => {
           }
         }
 
-        ws.onerror = () => {
+        ws.onerror = (event) => {
           // 如果这个 ws 已经不是最新的，忽略
           if (wsId !== activeWsId) return
-          console.error('❌ WebSocket 连接错误')
+          
+          // 如果是正在连接状态，可能是服务器暂时不可用，降级为 warn
+          if (get().connecting) {
+            console.warn('⚠️ WebSocket 连接失败 (正在重连...)', event)
+          } else {
+            console.error('❌ WebSocket 连接错误', event)
+          }
+          
           set({
             error: 'WebSocket 连接错误',
             connected: false,

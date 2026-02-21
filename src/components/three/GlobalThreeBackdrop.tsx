@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import * as THREE from 'three'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useEventListener } from 'ahooks'
+import { useSettingsStore } from '@/features/settings/store/settingsStore'
 
 type ParticleRuntime = {
   baseX: Float32Array
@@ -50,6 +51,85 @@ export default function GlobalThreeBackdrop() {
 
   const isLanding = pathname === '/'
   const overlayOpacity = useMemo(() => (isLanding ? 0.56 : 0.34), [isLanding])
+
+  // Physics State Refs
+  const stateRef = useRef({
+    scrollVelocity: 0,
+    clickImpulse: 0,
+    pointer: { x: 0, y: 0 },
+    pointerTarget: { x: 0, y: 0 },
+    lastScrollY: 0,
+    lastScrollTime: 0,
+    lastActivity: 0,
+    isVisible: true
+  })
+
+  // Initialize scroll position on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      stateRef.current.lastScrollY = window.scrollY
+      stateRef.current.lastScrollTime = performance.now()
+      stateRef.current.lastActivity = performance.now()
+    }
+  }, [])
+
+  // Event Handlers using ahooks
+  const markActive = () => {
+    stateRef.current.lastActivity = performance.now()
+  }
+
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    const width = window.innerWidth || 1
+    const height = window.innerHeight || 1
+    stateRef.current.pointerTarget.x = ((clientX / width) * 2 - 1) * 0.92
+    stateRef.current.pointerTarget.y = (1 - (clientY / height) * 2) * 0.92
+    markActive()
+  }
+
+  useEventListener('mousemove', (e: MouseEvent) => {
+    handlePointerMove(e.clientX, e.clientY)
+  })
+
+  useEventListener('touchmove', (e: TouchEvent) => {
+    const t = e.touches[0]
+    if (!t) return
+    handlePointerMove(t.clientX, t.clientY)
+  })
+
+  useEventListener('scroll', () => {
+    const now = performance.now()
+    const y = window.scrollY || 0
+    const dt = Math.max(now - stateRef.current.lastScrollTime, 16)
+    const dy = y - stateRef.current.lastScrollY
+    const v = (dy / dt) * 16
+    
+    stateRef.current.scrollVelocity = THREE.MathUtils.clamp(v * 6, -20, 20)
+    stateRef.current.lastScrollY = y
+    stateRef.current.lastScrollTime = now
+    markActive()
+  })
+
+  useEventListener('wheel', (e: WheelEvent) => {
+    stateRef.current.scrollVelocity = THREE.MathUtils.clamp(stateRef.current.scrollVelocity + e.deltaY * 0.02, -20, 20)
+    markActive()
+  })
+
+  useEventListener('pointerdown', () => {
+    stateRef.current.clickImpulse = Math.min(stateRef.current.clickImpulse + 1, 2.6)
+    markActive()
+  })
+
+  useEventListener('keydown', markActive)
+
+  useEventListener('visibilitychange', () => {
+    stateRef.current.isVisible = document.visibilityState !== 'hidden'
+  }, { target: typeof document !== 'undefined' ? document : undefined })
+
+  // Resize handler is handled inside useEffect because it needs renderer access, 
+  // or we can move renderer to ref too. Keeping it simple for now by just updating camera aspect 
+  // if we moved renderer to ref. But renderer is recreated on effect re-run.
+  // So we keep resize inside effect or use a ref for renderer.
+  // Let's keep resize logic inside effect for now as it depends on `renderer` and `camera` which are local to effect.
 
   useEffect(() => {
     const container = containerRef.current
@@ -213,19 +293,10 @@ export default function GlobalThreeBackdrop() {
       extraDisposables.push(nodeGeometry, nodeMaterial)
     }
 
-    const clock = new THREE.Clock()
+    // const clock = new THREE.Clock() // Deprecated
     let rafId = 0
-    let lastActivity = performance.now()
-    let isVisible = document.visibilityState !== 'hidden'
-    const pointerTarget = { x: 0, y: 0 }
-    const pointer = { x: 0, y: 0 }
-    let scrollVelocity = 0
-    let clickImpulse = 0
     let idleBlend = 1
-
-    const markActive = () => {
-      lastActivity = performance.now()
-    }
+    const startTime = performance.now()
 
     const resize = () => {
       const width = container.clientWidth || window.innerWidth
@@ -235,94 +306,50 @@ export default function GlobalThreeBackdrop() {
       renderer.setSize(width, height, false)
     }
 
-    const handlePointerMove = (clientX: number, clientY: number) => {
-      const width = window.innerWidth || 1
-      const height = window.innerHeight || 1
-      pointerTarget.x = ((clientX / width) * 2 - 1) * 0.92
-      pointerTarget.y = (1 - (clientY / height) * 2) * 0.92
-      markActive()
-    }
-
-    const onMouseMove = (e: MouseEvent) => {
-      handlePointerMove(e.clientX, e.clientY)
-    }
-
-    const onTouchMove = (e: TouchEvent) => {
-      const t = e.touches[0]
-      if (!t) return
-      handlePointerMove(t.clientX, t.clientY)
-    }
-
-    let lastScrollY = window.scrollY || 0
-    let lastScrollTime = performance.now()
-    const onScroll = () => {
-      const now = performance.now()
-      const y = window.scrollY || 0
-      const dt = Math.max(now - lastScrollTime, 16)
-      const dy = y - lastScrollY
-      const v = (dy / dt) * 16
-      scrollVelocity = THREE.MathUtils.clamp(v * 6, -20, 20)
-      lastScrollY = y
-      lastScrollTime = now
-      markActive()
-    }
-
-    const onWheel = (e: WheelEvent) => {
-      scrollVelocity = THREE.MathUtils.clamp(scrollVelocity + e.deltaY * 0.02, -20, 20)
-      markActive()
-    }
-
-    const onPointerDown = () => {
-      clickImpulse = Math.min(clickImpulse + 1, 2.6)
-      markActive()
-    }
-
-    const onVisibility = () => {
-      isVisible = document.visibilityState !== 'hidden'
-    }
-
     const tick = () => {
-      const elapsed = clock.getElapsedTime()
+      // const elapsed = clock.getElapsedTime()
+      const elapsed = (performance.now() - startTime) / 1000
       const pos = geometry.attributes.position as THREE.BufferAttribute
+      const state = stateRef.current
 
-      const idleTarget = performance.now() - lastActivity > 4500 ? 0.34 : 1
+      const idleTarget = performance.now() - state.lastActivity > 4500 ? 0.34 : 1
       idleBlend = THREE.MathUtils.lerp(idleBlend, idleTarget, 0.03)
-      pointer.x = THREE.MathUtils.lerp(pointer.x, pointerTarget.x, 0.05)
-      pointer.y = THREE.MathUtils.lerp(pointer.y, pointerTarget.y, 0.05)
-      scrollVelocity = THREE.MathUtils.lerp(scrollVelocity, 0, 0.04)
-      clickImpulse = THREE.MathUtils.lerp(clickImpulse, 0, 0.07)
+      state.pointer.x = THREE.MathUtils.lerp(state.pointer.x, state.pointerTarget.x, 0.05)
+      state.pointer.y = THREE.MathUtils.lerp(state.pointer.y, state.pointerTarget.y, 0.05)
+      state.scrollVelocity = THREE.MathUtils.lerp(state.scrollVelocity, 0, 0.04)
+      state.clickImpulse = THREE.MathUtils.lerp(state.clickImpulse, 0, 0.07)
 
       const routeIntensity = isLanding ? 1.1 : isApp ? 0.58 : 0.82
-      const interactionGain = 1 + Math.abs(scrollVelocity) * 0.03 + clickImpulse * 0.25
+      const interactionGain = 1 + Math.abs(state.scrollVelocity) * 0.03 + state.clickImpulse * 0.25
       const waveAmp = 0.2 * routeIntensity * idleBlend * interactionGain
-      const xDrift = 0.22 * pointer.x * routeIntensity
-      const yDrift = 0.17 * pointer.y * routeIntensity
-      const zDrift = 0.1 * pointer.x * routeIntensity
+      const xDrift = 0.22 * state.pointer.x * routeIntensity
+      const yDrift = 0.17 * state.pointer.y * routeIntensity
+      const zDrift = 0.1 * state.pointer.x * routeIntensity
 
       for (let i = 0; i < particleCount; i++) {
         const i3 = i * 3
-        const freq = runtime.speed[i] * (0.9 + Math.abs(scrollVelocity) * 0.05) * idleBlend
+        const freq = runtime.speed[i] * (0.9 + Math.abs(state.scrollVelocity) * 0.05) * idleBlend
         pos.array[i3] = runtime.baseX[i] + Math.sin(elapsed * 0.28 + runtime.phase[i]) * xDrift
         pos.array[i3 + 1] = runtime.baseY[i] + Math.sin(elapsed * freq + runtime.phase[i]) * waveAmp + yDrift
         pos.array[i3 + 2] = runtime.baseZ[i] + Math.cos(elapsed * (freq * 0.6) + runtime.phase[i]) * zDrift
       }
 
       pos.needsUpdate = true
-      points.rotation.z = elapsed * 0.012 * idleBlend + pointer.x * 0.038
-      points.rotation.y = Math.sin(elapsed * 0.07) * 0.05 + pointer.x * 0.06
+      points.rotation.z = elapsed * 0.012 * idleBlend + state.pointer.x * 0.038
+      points.rotation.y = Math.sin(elapsed * 0.07) * 0.05 + state.pointer.x * 0.06
 
-      camera.position.x = THREE.MathUtils.lerp(camera.position.x, pointer.x * 0.95 * routeIntensity, 0.04)
-      camera.position.y = THREE.MathUtils.lerp(camera.position.y, pointer.y * 0.6 * routeIntensity, 0.04)
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, state.pointer.x * 0.95 * routeIntensity, 0.04)
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, state.pointer.y * 0.6 * routeIntensity, 0.04)
 
       if (latticeMesh) {
-        latticeMesh.rotation.z = elapsed * 0.04 + pointer.x * 0.08
-        latticeMesh.position.x = THREE.MathUtils.lerp(latticeMesh.position.x, pointer.x * 1.2, 0.05)
-        latticeMesh.position.y = THREE.MathUtils.lerp(latticeMesh.position.y, -1.6 + pointer.y * 0.7, 0.05)
+        latticeMesh.rotation.z = elapsed * 0.04 + state.pointer.x * 0.08
+        latticeMesh.position.x = THREE.MathUtils.lerp(latticeMesh.position.x, state.pointer.x * 1.2, 0.05)
+        latticeMesh.position.y = THREE.MathUtils.lerp(latticeMesh.position.y, -1.6 + state.pointer.y * 0.7, 0.05)
       }
 
       if (abstractGroup) {
-        abstractGroup.rotation.z = elapsed * 0.1 + pointer.x * 0.12
-        abstractGroup.rotation.x = Math.sin(elapsed * 0.22) * 0.08 + pointer.y * 0.08
+        abstractGroup.rotation.z = elapsed * 0.1 + state.pointer.x * 0.12
+        abstractGroup.rotation.x = Math.sin(elapsed * 0.22) * 0.08 + state.pointer.y * 0.08
       }
 
       if (orbitNodes) {
@@ -337,9 +364,9 @@ export default function GlobalThreeBackdrop() {
         })
       }
 
-      material.opacity = baseOpacity * (0.84 + Math.min(0.32, Math.abs(scrollVelocity) * 0.015 + clickImpulse * 0.1))
+      material.opacity = baseOpacity * (0.84 + Math.min(0.32, Math.abs(state.scrollVelocity) * 0.015 + state.clickImpulse * 0.1))
 
-      if (isVisible) {
+      if (state.isVisible) {
         renderer.render(scene, camera)
       }
 
@@ -351,27 +378,13 @@ export default function GlobalThreeBackdrop() {
     resize()
     if (enableMotion) {
       tick()
-    } else if (isVisible) {
+    } else if (stateRef.current.isVisible) {
       renderer.render(scene, camera)
     }
 
-    window.addEventListener('mousemove', onMouseMove, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: true })
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('wheel', onWheel, { passive: true })
-    window.addEventListener('pointerdown', onPointerDown, { passive: true })
-    window.addEventListener('keydown', markActive, { passive: true })
-    document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('resize', resize)
 
     return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('touchmove', onTouchMove)
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('wheel', onWheel)
-      window.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('keydown', markActive)
-      document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('resize', resize)
       window.cancelAnimationFrame(rafId)
 
