@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, X, Sparkles, Info } from 'lucide-react'
+import { useInterval, useTimeout } from 'ahooks'
 import { APP_VERSION, getSWVersion, clearSWCache } from '@/lib/version'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -45,29 +46,9 @@ export function UpdatePrompt({
     newVersion: null
   })
   const [showVersionInfo, setShowVersionInfo] = useState(false)
-  
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null)
 
-  // 清理所有定时器
-  const clearAllTimers = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current)
-      checkIntervalRef.current = null
-    }
-    if (dismissTimeoutRef.current) {
-      clearTimeout(dismissTimeoutRef.current)
-      dismissTimeoutRef.current = null
-    }
-  }, [])
-
-  // 注册 Service Worker
+  // Service Worker Registration
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return
@@ -82,24 +63,9 @@ export function UpdatePrompt({
       return
     }
 
-    // 存储事件处理函数引用，以便清理
     let updateFoundHandler: (() => void) | null = null
     let stateChangeHandler: (() => void) | null = null
     let installingWorker: ServiceWorker | null = null
-    let refreshing = false
-
-    const handleControllerChange = () => {
-      if (!refreshing) {
-        refreshing = true
-        window.location.reload()
-      }
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'SW_ACTIVATED') {
-        console.log('SW 已激活:', event.data.version)
-      }
-    }
 
     const registerSW = async () => {
       try {
@@ -109,14 +75,11 @@ export function UpdatePrompt({
         registrationRef.current = registration
         console.log('✅ Service Worker 注册成功')
         
-        // 等待 SW 激活后再获取版本
         await navigator.serviceWorker.ready
         const currentSWVersion = await getSWVersion()
         setState(prev => ({ ...prev, currentVersion: currentSWVersion }))
 
-        // 检查是否有等待中的更新
         if (registration.waiting) {
-          // 尝试从 manifest.json 获取新版本号（因为 getSWVersion 只能查询活跃的 SW）
           let detectedVersion: string | null = null
           try {
             const manifestResponse = await fetch('/manifest.json', { cache: 'no-store' })
@@ -135,7 +98,6 @@ export function UpdatePrompt({
           }))
         }
 
-        // 监听更新 - 使用命名函数以便清理
         updateFoundHandler = () => {
           const newWorker = registration.installing
           if (newWorker) {
@@ -144,7 +106,6 @@ export function UpdatePrompt({
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 console.log('🔄 发现新版本')
                 
-                // 尝试从 manifest.json 获取新版本号
                 let detectedVersion: string | null = null
                 try {
                   const manifestResponse = await fetch('/manifest.json', { cache: 'no-store' })
@@ -159,7 +120,6 @@ export function UpdatePrompt({
                 setState(prev => ({ 
                   ...prev, 
                   needRefresh: true,
-                  // 优先使用从 manifest 获取的版本，否则显示通用提示
                   newVersion: detectedVersion || '新版本'
                 }))
               }
@@ -168,11 +128,6 @@ export function UpdatePrompt({
           }
         }
         registration.addEventListener('updatefound', updateFoundHandler)
-
-        // 定期检查更新
-        checkIntervalRef.current = setInterval(() => {
-          registration.update().catch(console.error)
-        }, checkInterval)
         
       } catch (error) {
         console.error('❌ Service Worker 注册失败:', error)
@@ -181,91 +136,81 @@ export function UpdatePrompt({
 
     void registerSW()
 
-    // 监听 SW 控制权变化
-    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
-    navigator.serviceWorker.addEventListener('message', handleMessage)
-
     return () => {
-      clearAllTimers()
-      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
-      navigator.serviceWorker.removeEventListener('message', handleMessage)
-      
-      // 清理 registration 事件监听器
       const registration = registrationRef.current
       if (registration && updateFoundHandler) {
         registration.removeEventListener('updatefound', updateFoundHandler)
       }
-      
-      // 清理 installing worker 事件监听器
       if (installingWorker && stateChangeHandler) {
         installingWorker.removeEventListener('statechange', stateChangeHandler)
       }
     }
-  }, [checkInterval, clearAllTimers])
+  }, []) // Removed intervals and timeouts from dependency/cleanup
 
-  // 执行更新
+  // Listeners
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
+
+    const handleControllerChange = () => {
+      window.location.reload()
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_ACTIVATED') {
+        console.log('SW 已激活:', event.data.version)
+      }
+    }
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
+    navigator.serviceWorker.addEventListener('message', handleMessage)
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
+      navigator.serviceWorker.removeEventListener('message', handleMessage)
+    }
+  }, [])
+
+  // Check Interval
+  useInterval(() => {
+    registrationRef.current?.update().catch(console.error)
+  }, checkInterval)
+
+  // Dismiss Timeout (2 minutes)
+  useTimeout(() => {
+    setState(prev => ({ ...prev, dismissed: false }))
+    setCountdown(initialSeconds)
+  }, state.dismissed ? 120000 : undefined)
+
+  // Execution
   const handleUpdate = useCallback(async () => {
     const registration = registrationRef.current
     if (registration?.waiting) {
       registration.waiting.postMessage({ type: 'SKIP_WAITING' })
     } else {
-      // 清除缓存后刷新
       await clearSWCache()
       window.location.reload()
     }
   }, [])
 
-  // 取消/稍后再说
   const handleDismiss = useCallback(() => {
     setState(prev => ({ ...prev, dismissed: true }))
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    if (dismissTimeoutRef.current) {
-      clearTimeout(dismissTimeoutRef.current)
-    }
-    // 2 分钟后重新显示
-    dismissTimeoutRef.current = setTimeout(() => {
-      setState(prev => ({ ...prev, dismissed: false }))
-      setCountdown(initialSeconds)
-    }, 120000)
-  }, [initialSeconds])
+  }, [])
 
-  // 立即更新
   const handleImmediateUpdate = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
     handleUpdate()
   }, [handleUpdate])
 
-  // 倒计时逻辑
-  useEffect(() => {
-    if (state.needRefresh && !state.dismissed) {
-      timerRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) {
-              clearInterval(timerRef.current)
-              timerRef.current = null
-            }
-            handleUpdate()
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-
-      return () => {
-        if (timerRef.current) {
-          clearInterval(timerRef.current)
-          timerRef.current = null
-        }
+  // Countdown Timer
+  useInterval(() => {
+    setCountdown((prev) => {
+      if (prev <= 1) {
+        handleUpdate()
+        return 0
       }
-    }
-  }, [state.needRefresh, state.dismissed, handleUpdate])
+      return prev - 1
+    })
+  }, (state.needRefresh && !state.dismissed && countdown > 0) ? 1000 : undefined)
+
 
   const isVisible = state.needRefresh && !state.dismissed
 

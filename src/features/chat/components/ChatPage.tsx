@@ -55,9 +55,6 @@ export default function ChatPage() {
     if (pathname === ROUTES.app.chatFriends) setActiveTab('friends')
     else if (pathname === ROUTES.app.chatGroups) setActiveTab('groups')
     else if (pathname === ROUTES.app.chatFiles) setActiveTab('files')
-    else if (pathname === ROUTES.app.chatWebrtc) setActiveTab('webrtc')
-    // 关键修复：当路径是 /app/chat 时，默认保持在 friends，但如果用户手动切换了 tab，不应该强制重置
-    // 只有当路径明确匹配子路由时才强制切换
     else if (pathname === ROUTES.app.chat && !activeTab) setActiveTab('friends') 
   }, [pathname, setActiveTab, activeTab])
 
@@ -70,7 +67,6 @@ export default function ChatPage() {
       case 'friends': return <FriendList subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} searchQuery={searchQuery} />
       case 'groups': return <GroupList subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} searchQuery={searchQuery} />
       case 'files': return <FileManager subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} />
-      case 'webrtc': return <div className="p-4 text-center text-muted-foreground">{t('chat.page.webrtcHint')}</div>
       default: return <FriendList subTab="main" searchQuery="" />
     }
   }
@@ -79,14 +75,14 @@ export default function ChatPage() {
     switch (activeTab) {
       case 'friends':
         return [
-          { id: 'main', label: t('chat.page.subTabs.friends.main'), icon: MessageCircle },
+          { id: 'main', label: t('chat.page.subTabs.friends.main'), icon: Users },
           { id: 'new', label: t('chat.page.subTabs.friends.new'), icon: Users },
-          { id: 'sent', label: t('chat.page.subTabs.friends.sent'), icon: FileText },
+          { id: 'sent', label: t('chat.page.subTabs.friends.sent'), icon: Users },
         ]
       case 'groups':
         return [
-          { id: 'main', label: t('chat.page.subTabs.groups.main'), icon: Users },
-          { id: 'invites', label: t('chat.page.subTabs.groups.invites'), icon: Users },
+          { id: 'main', label: t('chat.page.subTabs.groups.main'), icon: MessageCircle },
+          { id: 'invites', label: t('chat.page.subTabs.groups.invites'), icon: MessageCircle },
         ]
       case 'files':
         return [
@@ -99,7 +95,7 @@ export default function ChatPage() {
   }
 
   const subTabs = getSubTabs()
-  const isDetailView = selectedConversation || activeTab === 'webrtc'
+  const isDetailView = selectedConversation
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-background/50 backdrop-blur-3xl relative">
@@ -118,14 +114,12 @@ export default function ChatPage() {
                {activeTab === 'friends' && t('chat.page.tabs.friends')}
                {activeTab === 'groups' && t('chat.page.tabs.groups')}
                {activeTab === 'files' && t('chat.page.tabs.files')}
-               {activeTab === 'webrtc' && t('chat.page.tabs.webrtc')}
              </h1>
              {/* Tab Switcher */}
              <div className="flex gap-1 bg-muted/50 p-1 rounded-xl shrink-0">
                 <Button variant="ghost" size="icon" onClick={() => setActiveTab('friends')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='friends' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><MessageCircle className="w-4 h-4"/></Button>
                 <Button variant="ghost" size="icon" onClick={() => setActiveTab('groups')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='groups' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Users className="w-4 h-4"/></Button>
                 <Button variant="ghost" size="icon" onClick={() => setActiveTab('files')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='files' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><FileText className="w-4 h-4"/></Button>
-                <Button variant="ghost" size="icon" onClick={() => setActiveTab('webrtc')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='webrtc' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Video className="w-4 h-4"/></Button>
              </div>
           </div>
           
@@ -179,11 +173,7 @@ export default function ChatPage() {
           isDetailView ? "hidden md:flex" : "hidden md:flex" // Force hide on mobile if not detail view
         )}
       >
-        {activeTab === 'webrtc' ? (
-           <div className="h-full relative w-full">
-             <WebRTCPanel />
-           </div>
-        ) : selectedConversation ? (
+        {selectedConversation ? (
           <div className="h-full flex flex-col w-full">
              <div className="md:hidden h-14 border-b flex items-center px-2 shrink-0 bg-card/95 backdrop-blur absolute top-0 left-0 right-0 z-50">
                 <Button variant="ghost" size="icon" onClick={handleMobileBack}>
@@ -209,16 +199,7 @@ export default function ChatPage() {
       {/* Mobile Detail View Overlay */}
       {isDetailView && (
         <div className="fixed inset-0 z-50 bg-background md:hidden flex flex-col h-[100dvh]">
-          {activeTab === 'webrtc' ? (
-             <div className="h-full relative w-full">
-               <div className="absolute top-2 left-2 z-50">
-                 <Button variant="ghost" size="icon" onClick={() => setActiveTab('friends')}>
-                   <ArrowLeft className="w-6 h-6" />
-                 </Button>
-               </div>
-               <WebRTCPanel />
-             </div>
-          ) : selectedConversation ? (
+          {selectedConversation ? (
             <div className="h-full flex flex-col w-full">
                <div className="h-14 border-b flex items-center px-2 shrink-0 bg-card/95 backdrop-blur z-50">
                   <Button variant="ghost" size="icon" onClick={handleMobileBack}>

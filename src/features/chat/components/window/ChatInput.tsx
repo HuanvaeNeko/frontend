@@ -23,8 +23,8 @@ interface ChatInputProps {
   selectedFile: File | null
   uploadProgress: number | null
   editorHasContent: boolean
-  fileInputRef: React.RefObject<HTMLInputElement>
-  editorRef: React.RefObject<MarkdownEditorRef>
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  editorRef: React.RefObject<MarkdownEditorRef | null>
   onSendMessage: () => void
   onSendFile: () => void
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void

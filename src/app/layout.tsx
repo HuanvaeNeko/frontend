@@ -141,10 +141,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="h-full overflow-hidden">
+      <body className="h-full">
         <SerwistProvider swUrl="/sw.js" disable={process.env.NODE_ENV === 'development'}>
           <ClientProviders>
-            <div className="relative z-10 h-full overflow-hidden">
+            <div className="relative z-10 h-full">
               {children}
             </div>
           </ClientProviders>

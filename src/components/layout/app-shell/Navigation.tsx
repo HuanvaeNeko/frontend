@@ -25,7 +25,7 @@ const NAV_ITEMS: NavItem[] = [
     label: '消息',
     icon: MessageCircle,
     path: ROUTES.app.chat,
-    activeMatch: (p) => p === ROUTES.app.chat || (p.startsWith(ROUTES.app.chat + '/') && !p.startsWith(ROUTES.app.chatWebrtc)),
+    activeMatch: (p) => p === ROUTES.app.chat || (p.startsWith(ROUTES.app.chat + '/') && !p.startsWith(ROUTES.app.chatWebrtc) && !p.startsWith(ROUTES.app.friends)),
     badge: () => {
       const summary = useChatStore.getState().unreadSummary
       return (summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0) +
@@ -36,16 +36,8 @@ const NAV_ITEMS: NavItem[] = [
     id: 'webrtc',
     label: '会议',
     icon: Video,
-    path: ROUTES.app.chatWebrtc,
+    path: ROUTES.app.videoMeeting,
     activeMatch: (p) => p.startsWith(ROUTES.app.chatWebrtc) || p.startsWith(ROUTES.app.videoMeeting),
-  },
-  {
-    id: 'friends',
-    label: '好友',
-    icon: Users,
-    path: ROUTES.app.friends,
-    activeMatch: (p) => p.startsWith(ROUTES.app.friends),
-    badge: () => 0 // TODO: Friend requests count
   },
   {
     id: 'ai-chat',
@@ -97,7 +89,7 @@ export function DesktopSidebar() {
       {/* Nav Items */}
       <nav className="flex-1 flex flex-col gap-3 w-full px-3 items-center">
         <TooltipProvider delayDuration={0}>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => item.id !== 'profile').map((item) => {
             const isActive = item.activeMatch(pathname || '')
             const badgeCount = item.badge ? item.badge() : 0
             
@@ -159,7 +151,7 @@ export function MobileTabBar() {
   const router = useRouter()
   // 移动端通常不需要所有导航项，或者折叠
   // 这里选取核心的 4-5 个
-  const mobileItems = NAV_ITEMS.filter(item => ['chat', 'friends', 'ai-chat', 'profile'].includes(item.id))
+  const mobileItems = NAV_ITEMS.filter(item => ['chat', 'webrtc', 'ai-chat', 'profile'].includes(item.id))
 
   return (
     <nav className="md:hidden h-[64px] border-t bg-background/80 backdrop-blur-xl flex items-center justify-around px-2 shrink-0 safe-area-inset-bottom z-50 shadow-[0_-1px_10px_rgba(0,0,0,0.02)]">

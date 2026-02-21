@@ -1,6 +1,7 @@
 export const ROUTES = {
   root: '/',
   webAppRoot: '/app',
+  downloads: '/downloads',
   auth: {
     login: '/app/login',
     register: '/app/register',
@@ -12,7 +13,7 @@ export const ROUTES = {
     chatGroups: '/app/chat/groups',
     chatFiles: '/app/chat/files',
     chatWebrtc: '/app/chat/webrtc',
-    friends: '/app/friends',
+    friends: '/app/chat/friends',
     aiChat: '/app/ai-chat',
     videoMeeting: '/app/video-meeting',
     devices: '/app/devices',

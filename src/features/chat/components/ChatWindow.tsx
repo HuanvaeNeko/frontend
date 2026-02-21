@@ -6,13 +6,15 @@ import { messagesApi, type Message, type MessageType } from '@/features/chat/api
 import { groupMessagesApi } from '@/features/chat/api/groupMessages'
 import { storageApi, type FileType, type StorageLocation } from '@/api/storage'
 import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
-import { GroupManagement } from './sidebar/GroupManagement'
+import GroupManagement from './sidebar/GroupManagement'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import { useRealtimeMessages } from '@/features/chat/hooks/useRealtimeMessages'
 import type { MarkdownEditorRef } from './window/MarkdownEditor'
 import { useI18n } from '@/i18n/I18nProvider'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { differenceInMinutes } from 'date-fns'
+import { useDropzone } from 'react-dropzone'
 
 // Sub-components
 import { EmptyState } from './window/EmptyState'
@@ -52,10 +54,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const [showGroupManagement, setShowGroupManagement] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [editorHasContent, setEditorHasContent] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
 
   // Refs
-  const dragCounterRef = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -341,30 +341,18 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   // Drag & Drop
   // =============================================
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    dragCounterRef.current++
-    if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation()
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    dragCounterRef.current--
-    if (dragCounterRef.current === 0) setIsDragging(false)
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    dragCounterRef.current = 0
-    setIsDragging(false)
-    if (sending) return
-    const files = e.dataTransfer.files
-    if (files.length > 0) processFileForUpload(files[0])
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (sending || acceptedFiles.length === 0) return
+    processFileForUpload(acceptedFiles[0])
   }, [sending, processFileForUpload])
+
+  const { getRootProps, isDragActive } = useDropzone({
+    onDrop,
+    noClick: true,
+    noKeyboard: true,
+    multiple: false,
+    disabled: sending
+  })
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (sending) return
@@ -423,7 +411,7 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   }, [selectedConversation, messages, setMessages, t, toast])
 
   const canRecallMessage = useCallback((sendTime: string) => 
-    (Date.now() - new Date(sendTime).getTime()) <= 2 * 60 * 1000, 
+    differenceInMinutes(Date.now(), new Date(sendTime)) <= 2, 
   [])
 
   const handleFilePreview = useCallback(async (message: Message) => {
@@ -466,13 +454,10 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
 
   return (
     <div
+      {...getRootProps()}
       className="h-full flex flex-col min-h-0 overflow-hidden relative"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
-      <FileDropOverlay isDragging={isDragging} />
+      <FileDropOverlay isDragging={isDragActive} />
 
       <ChatHeader 
         conversation={selectedConversation}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, ChevronUp, Download, Globe, ShieldCheck, X } from 'lucide-react'
+import { useLocalStorageState } from 'ahooks'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,6 +30,12 @@ export default function AppInstallPrompt() {
   const [expanded, setExpanded] = useState(false)
   const [normalTarget, setNormalTarget] = useState<DownloadTarget>({ version: null, downloadUrl: RELEASE_PAGE_URL })
   const [proxyTarget, setProxyTarget] = useState<DownloadTarget>({ version: null, downloadUrl: RELEASE_PAGE_URL })
+  
+  const [hiddenUntil, setHiddenUntil] = useLocalStorageState<number>(DISMISS_STORAGE_KEY, {
+    defaultValue: 0,
+    serializer: (v) => String(v),
+    deserializer: (v) => Number(v),
+  })
 
   const versionText = useMemo(() => {
     if (normalTarget.version && proxyTarget.version) {
@@ -38,23 +45,26 @@ export default function AppInstallPrompt() {
   }, [normalTarget.version, proxyTarget.version])
 
   const dismissForDays = useCallback((days: number) => {
-    const hideUntil = Date.now() + days * 24 * 60 * 60 * 1000
-    localStorage.setItem(DISMISS_STORAGE_KEY, String(hideUntil))
+    const nextHiddenUntil = Date.now() + days * 24 * 60 * 60 * 1000
+    setHiddenUntil(nextHiddenUntil)
     setVisible(false)
-  }, [])
+  }, [setHiddenUntil])
 
   useEffect(() => {
     if (shouldSkipPrompt()) return
 
-    const hiddenUntil = Number(localStorage.getItem(DISMISS_STORAGE_KEY) || 0)
-    if (hiddenUntil <= Date.now()) setVisible(true)
+    if ((hiddenUntil || 0) <= Date.now()) {
+      setVisible(true)
+    }
 
     void fetchInstallTargets().then((targets) => {
       if (!targets) return
       setNormalTarget({ version: targets.version, downloadUrl: targets.normalUrl })
       setProxyTarget({ version: targets.version, downloadUrl: targets.proxyUrl })
     })
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run once on mount. If hiddenUntil updates later, we don't necessarily want to pop up if user closed it in this session.
+
 
   return (
     <AnimatePresence>

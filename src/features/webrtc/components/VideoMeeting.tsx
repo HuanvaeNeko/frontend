@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useInterval, useFullscreen, useEventListener, useDebounceFn } from 'ahooks'
 import {
   ArrowLeft,
   Mic,
@@ -122,7 +123,7 @@ export default function VideoMeeting() {
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  // const [isFullscreen, setIsFullscreen] = useState(false) // Replaced by ahooks
   const [showControls, setShowControls] = useState(true)
   const [copied, setCopied] = useState(false)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -140,6 +141,14 @@ export default function VideoMeeting() {
   const [isCompactViewport, setIsCompactViewport] = useState(false)
   const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
+
+  // Ahooks
+  const [isFullscreen, { toggleFullscreen }] = useFullscreen(() => document.documentElement)
+  const copyText = (text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(console.error)
+    }
+  }
   
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
@@ -152,7 +161,7 @@ export default function VideoMeeting() {
   const mediaTypeMapsRef = useRef<Map<string, Map<string, 'camera' | 'screen'>>>(new Map())
   const iceServersRef = useRef<ICEServer[]>([])
   const myIdRef = useRef<string>('')
-  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null) // Replaced by ahooks
   const negotiationLockRef = useRef<Set<string>>(new Set())
   const participantsRef = useRef<Participant[]>([])
   
@@ -185,59 +194,59 @@ export default function VideoMeeting() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId])
 
-  useEffect(() => {
-    const resetTimer = () => {
-      setShowControls(true)
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
-      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
-    }
+  // Controls Visibility Logic (ahooks)
+  const { run: hideControls } = useDebounceFn(
+    () => setShowControls(false),
+    { wait: 3000 }
+  )
 
+  const resetTimer = useCallback(() => {
+    setShowControls(true)
+    hideControls()
+  }, [hideControls])
+
+  useEventListener('mousemove', () => {
+    if (!isTouchDevice) resetTimer()
+  })
+
+  useEffect(() => {
     if (isTouchDevice) {
       setShowControls(true)
-      return
+    } else {
+      resetTimer()
     }
+  }, [isTouchDevice, resetTimer])
 
-    window.addEventListener('mousemove', resetTimer)
-    resetTimer()
-    return () => {
-      window.removeEventListener('mousemove', resetTimer)
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
-    }
-  }, [isTouchDevice])
+  // Meeting Duration Timer (ahooks)
+  useInterval(() => {
+    setMeetingDuration(prev => prev + 1)
+  }, isConnected ? 1000 : undefined)
 
-  useEffect(() => {
-    if (!isConnected) return
-    const timer = setInterval(() => setMeetingDuration(prev => prev + 1), 1000)
-    return () => clearInterval(timer)
-  }, [isConnected])
+  // Viewport Updates (ahooks event listener)
+  const updateViewportMode = useCallback(() => {
+    const width = window.innerWidth
+    const height = window.innerHeight
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+    const isLandscape = width > height
+    const mobileViewport = width < 768
+    const touchLandscape = coarsePointer && isLandscape && height < 760
 
-  useEffect(() => {
-    const updateViewportMode = () => {
-      const width = window.innerWidth
-      const height = window.innerHeight
-      const coarsePointer = window.matchMedia('(pointer: coarse)').matches
-      const isLandscape = width > height
-      const mobileViewport = width < 768
-      const touchLandscape = coarsePointer && isLandscape && height < 760
+    setIsTouchDevice(coarsePointer)
+    setIsMobileViewport(mobileViewport)
+    setIsTouchLandscape(touchLandscape)
+    setIsCompactViewport(height < 560)
 
-      setIsTouchDevice(coarsePointer)
-      setIsMobileViewport(mobileViewport)
-      setIsTouchLandscape(touchLandscape)
-      setIsCompactViewport(height < 560)
-
-      if (!mobileViewport && !touchLandscape) {
-        setShowParticipants(false)
-      }
-    }
-
-    updateViewportMode()
-    window.addEventListener('resize', updateViewportMode)
-    window.addEventListener('orientationchange', updateViewportMode)
-    return () => {
-      window.removeEventListener('resize', updateViewportMode)
-      window.removeEventListener('orientationchange', updateViewportMode)
+    if (!mobileViewport && !touchLandscape) {
+      setShowParticipants(false)
     }
   }, [])
+
+  useEventListener('resize', updateViewportMode)
+  useEventListener('orientationchange', updateViewportMode)
+
+  useEffect(() => {
+    updateViewportMode()
+  }, [updateViewportMode])
 
   useEffect(() => {
     participantsRef.current = participants
@@ -822,15 +831,10 @@ export default function VideoMeeting() {
     }
   }
 
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true) }
-    else { document.exitFullscreen(); setIsFullscreen(false) }
-  }, [])
-
   const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.chat) }
 
   const copyShareLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)
+    copyText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

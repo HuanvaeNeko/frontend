@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import Cookies from 'js-cookie'
 import SoundProvider from '@/components/providers/SoundProvider'
 import GlobalThreeBackdrop from '@/components/three/GlobalThreeBackdrop'
 import { Toaster } from '@/components/ui/toaster'
@@ -10,7 +11,7 @@ import { setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
 import { I18nProvider } from '@/i18n/I18nProvider'
 
 const UpdatePrompt = dynamic(
-  () => import('@/components/UpdatePrompt').then(mod => ({ default: mod.UpdatePrompt })),
+  () => import('@/components/common/UpdatePrompt').then(mod => ({ default: mod.UpdatePrompt })),
   { ssr: false }
 )
 
@@ -49,7 +50,7 @@ function SettingsSync() {
   useEffect(() => {
     const root = document.documentElement
     const setThemeCookie = (value: 'light' | 'dark') => {
-      document.cookie = `app-theme=${value}; Path=/; Max-Age=31536000; SameSite=Lax`
+      Cookies.set('app-theme', value, { expires: 365, sameSite: 'Lax', path: '/' })
       root.style.colorScheme = value
     }
     
@@ -57,18 +58,27 @@ function SettingsSync() {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       root.classList.toggle('dark', mediaQuery.matches)
       setThemeCookie(mediaQuery.matches ? 'dark' : 'light')
-      
-      // 监听系统主题变化
-      const handler = (e: MediaQueryListEvent) => {
-        root.classList.toggle('dark', e.matches)
-        setThemeCookie(e.matches ? 'dark' : 'light')
-      }
-      mediaQuery.addEventListener('change', handler)
-      return () => mediaQuery.removeEventListener('change', handler)
     } else {
       root.classList.toggle('dark', theme === 'dark')
       setThemeCookie(theme === 'dark' ? 'dark' : 'light')
     }
+  }, [theme])
+
+  // 监听系统主题变化
+  useEffect(() => {
+    if (theme !== 'auto') return
+    if (typeof window === 'undefined') return
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => {
+      const root = document.documentElement
+      root.classList.toggle('dark', e.matches)
+      Cookies.set('app-theme', e.matches ? 'dark' : 'light', { expires: 365, sameSite: 'Lax', path: '/' })
+      root.style.colorScheme = e.matches ? 'dark' : 'light'
+    }
+
+    mediaQuery.addEventListener('change', handler)
+    return () => mediaQuery.removeEventListener('change', handler)
   }, [theme])
 
   // 同步音效设置

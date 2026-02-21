@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Mail
 } from 'lucide-react'
+import { format } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -399,7 +400,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       unreadCount={group.unread_count || 0}
                       isActive={selectedConversation?.id === group.group_id}
                       onClick={() => handleSelectGroup(group)}
-                      time={group.last_message_time ? new Date(group.last_message_time).toLocaleDateString() : undefined}
+                      time={group.last_message_time ? format(new Date(group.last_message_time), 'yyyy/MM/dd') : undefined}
                     />
                   </div>
                 )
@@ -696,7 +697,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       {t('chat.groupList.invitedBy', { name: invitation.inviter_nickname })}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(invitation.created_at).toLocaleDateString()}
+                      {format(new Date(invitation.created_at), 'yyyy/MM/dd')}
                     </div>
                   </div>
                   <div className="flex gap-2">

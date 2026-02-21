@@ -3,6 +3,7 @@
 import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, Download, Image as ImageIcon, RotateCcw, Trash2, Video } from 'lucide-react'
+import { format } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Markdown } from '@/components/ui/markdown'
@@ -163,7 +164,7 @@ export const MessageItem = memo(({
                     "text-[9px] sm:text-[10px] mt-1 w-full flex items-center gap-1",
                     isOwn ? "justify-end text-primary-foreground/70" : "justify-end text-muted-foreground/60"
                   )}>
-                    {new Date(message.send_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    {format(new Date(message.send_time), 'HH:mm')}
                     {isOwn && <span className="w-1 h-1 rounded-full bg-current opacity-50" />}
                   </div>
                 )}

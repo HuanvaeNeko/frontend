@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from '../lib/apiConfig'
-import { useAuthStore } from '../store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 
 const STORAGE_BASE_URL = `${getApiBaseUrl()}/api/storage`

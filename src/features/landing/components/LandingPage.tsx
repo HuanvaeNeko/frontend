@@ -4,14 +4,17 @@ import { useI18n } from '@/i18n/I18nProvider'
 import LandingGsapOrchestrator from './LandingGsapOrchestrator'
 import LandingControls from './LandingControls'
 import HeroActions from './HeroActions'
-import MathCoreSection from './MathCoreSection'
+import FeaturesSection from './FeaturesSection'
 import DownloadCenter from './DownloadCenter'
 
 export default function LandingPage() {
   const { t } = useI18n()
 
   return (
-    <main className="relative min-h-screen w-full overflow-x-hidden bg-slate-50 selection:bg-sky-200/40 dark:bg-slate-950 dark:selection:bg-sky-500/30">
+    <main
+      id="top"
+      className="relative h-full w-full overflow-y-auto overflow-x-hidden bg-slate-50 selection:bg-sky-200/40 dark:bg-slate-950 dark:selection:bg-sky-500/30"
+    >
       <LandingGsapOrchestrator />
       <LandingControls />
 
@@ -36,7 +39,7 @@ export default function LandingPage() {
 
       {/* Sections */}
       <div className="mt-24 space-y-24 sm:mt-32 sm:space-y-32">
-        <MathCoreSection />
+        <FeaturesSection />
         <DownloadCenter />
       </div>
 

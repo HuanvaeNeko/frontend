@@ -32,13 +32,8 @@ export default function HeroActions() {
     router.push(target)
   }
 
-  const scrollToDownload = () => {
-    const section = document.getElementById('download')
-    if (section) {
-      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      return
-    }
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+  const goToDownload = () => {
+    router.push(ROUTES.downloads)
   }
 
   return (
@@ -55,7 +50,7 @@ export default function HeroActions() {
       </button>
       <button
         type="button"
-        onClick={scrollToDownload}
+        onClick={goToDownload}
         data-magnetic
         className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-300 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-800 backdrop-blur transition hover:-translate-y-0.5 hover:border-slate-400 sm:px-6"
       >

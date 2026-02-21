@@ -4,14 +4,18 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRight, Check, Eye, EyeOff, Globe, Loader2, Lock, Mail, Smile, Sparkles, User, X } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
+import { Progress } from '@/components/ui/progress'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
 import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
@@ -66,55 +70,67 @@ export default function Register() {
   const { t } = useI18n()
   const register = useAuthStore((state) => state.register)
 
-  const [formData, setFormData] = useState({ user_id: '', nickname: '', email: '', password: '', confirmPassword: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [agreeTerms, setAgreeTerms] = useState(false)
   const [mounted, setMounted] = useState(false)
+  
   const initialServer = parseServer(getApiBaseUrl())
   const [serverProtocol, setServerProtocol] = useState<'https://' | 'http://'>(initialServer.protocol)
-  const [serverHost, setServerHost] = useState(initialServer.host)
+
+  // Form Schema
+  const registerSchema = z.object({
+    serverHost: z.string().min(1, t('common.required')),
+    user_id: z.string().min(3, t('auth.register.userIdPlaceholder')),
+    nickname: z.string().min(1, t('auth.register.nicknamePlaceholder')),
+    email: z.string().email(t('auth.register.emailPlaceholder')),
+    password: z.string()
+      .min(8, t('auth.register.passwordPlaceholder'))
+      .regex(/[a-zA-Z]/, t('common.passwordRuleLetter'))
+      .regex(/[0-9]/, t('common.passwordRuleNumber')),
+    confirmPassword: z.string(),
+    agreeTerms: z.boolean().refine(val => val === true, {
+      message: t('auth.register.agreeTerms'),
+    }),
+  }).refine((data) => data.password === data.confirmPassword, {
+    message: t('common.passwordNotMatch'),
+    path: ["confirmPassword"],
+  })
+
+  type RegisterFormValues = z.infer<typeof registerSchema>
+
+  const form = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      serverHost: initialServer.host,
+      user_id: '',
+      nickname: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      agreeTerms: false,
+    },
+  })
 
   useEffect(() => {
     setMounted(true)
     warmupSound()
   }, [])
 
-  const passwordStrength = {
-    length: formData.password.length >= 8,
-    hasLetter: /[a-zA-Z]/.test(formData.password),
-    hasNumber: /[0-9]/.test(formData.password),
-  }
-  const passwordMatch = formData.password && formData.password === formData.confirmPassword
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (values: RegisterFormValues) => {
     setError('')
-
-    if (!agreeTerms) {
-      setError(t('auth.register.agreeTerms'))
-      playError()
-      return
-    }
-    if (formData.password !== formData.confirmPassword) {
-      setError(t('common.passwordNotMatch'))
-      playError()
-      return
-    }
-    if (!passwordStrength.length || !passwordStrength.hasLetter || !passwordStrength.hasNumber) {
-      setError(t('auth.register.passwordPlaceholder'))
-      playError()
-      return
-    }
-
     setLoading(true)
     playButton()
 
     try {
-      setApiBaseUrl(`${serverProtocol}${serverHost.trim()}`)
-      await register({ user_id: formData.user_id, nickname: formData.nickname, email: formData.email, password: formData.password })
+      setApiBaseUrl(`${serverProtocol}${values.serverHost.trim()}`)
+      await register({
+        user_id: values.user_id,
+        nickname: values.nickname,
+        email: values.email,
+        password: values.password
+      })
       playSuccess()
       router.push(DEFAULT_AUTHENTICATED_ROUTE)
     } catch (err) {
@@ -140,64 +156,156 @@ export default function Register() {
             <CardContent>
               {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="server_host">服务器</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-24 shrink-0 justify-center text-xs"
-                      onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
-                    >
-                      {serverProtocol}
-                    </Button>
-                    <div className="relative flex-1">
-                      <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="server_host"
-                        required
-                        value={serverHost}
-                        onChange={(e) => setServerHost(e.target.value)}
-                        className="pl-9"
-                        placeholder="api.huanvae.cn"
-                      />
-                    </div>
-                  </div>
-                </div>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="serverHost"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>服务器</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-24 shrink-0 justify-center text-xs"
+                            onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
+                          >
+                            {serverProtocol}
+                          </Button>
+                          <div className="relative flex-1">
+                            <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <FormControl>
+                              <Input {...field} className="pl-9" placeholder="api.huanvae.cn" />
+                            </FormControl>
+                          </div>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <div className="space-y-2">
-                  <Label>{t('auth.register.userId')}</Label>
-                  <div className="relative"><User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required minLength={3} value={formData.user_id} onChange={(e) => setFormData({ ...formData, user_id: e.target.value })} className="pl-9" placeholder={t('auth.register.userIdPlaceholder')} /></div>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('auth.register.nickname')}</Label>
-                  <div className="relative"><Smile className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required value={formData.nickname} onChange={(e) => setFormData({ ...formData, nickname: e.target.value })} className="pl-9" placeholder={t('auth.register.nicknamePlaceholder')} /></div>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('auth.register.email')}</Label>
-                  <div className="relative"><Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="pl-9" placeholder={t('auth.register.emailPlaceholder')} /></div>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('auth.register.password')}</Label>
-                  <div className="relative"><Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required minLength={8} type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.register.passwordPlaceholder')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-                  <PasswordStrengthIndicator password={formData.password} />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('auth.register.confirmPassword')}</Label>
-                  <div className="relative"><Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input required type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.register.confirmPasswordPlaceholder')} /><button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">{showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-                  {formData.confirmPassword && <div className={`text-xs ${passwordMatch ? 'text-primary' : 'text-destructive'}`}>{passwordMatch ? t('common.passwordMatch') : t('common.passwordNotMatch')}</div>}
-                </div>
+                  <FormField
+                    control={form.control}
+                    name="user_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('auth.register.userId')}</FormLabel>
+                        <div className="relative">
+                          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} className="pl-9" placeholder={t('auth.register.userIdPlaceholder')} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <label className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <Checkbox checked={agreeTerms} onCheckedChange={(v) => { setAgreeTerms(Boolean(v)); playTap() }} />
-                  <span>{t('auth.register.agreeTerms')}</span>
-                </label>
+                  <FormField
+                    control={form.control}
+                    name="nickname"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('auth.register.nickname')}</FormLabel>
+                        <div className="relative">
+                          <Smile className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} className="pl-9" placeholder={t('auth.register.nicknamePlaceholder')} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <Button type="submit" disabled={loading} className="w-full gap-1.5">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.register.submit')}<ArrowRight className="h-4 w-4" /></>}
-                </Button>
-              </form>
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('auth.register.email')}</FormLabel>
+                        <div className="relative">
+                          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} type="email" className="pl-9" placeholder={t('auth.register.emailPlaceholder')} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('auth.register.password')}</FormLabel>
+                        <div className="relative">
+                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} type={showPassword ? 'text' : 'password'} className="pl-9 pr-9" placeholder={t('auth.register.passwordPlaceholder')} />
+                          </FormControl>
+                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        <PasswordStrengthIndicator password={field.value} />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('auth.register.confirmPassword')}</FormLabel>
+                        <div className="relative">
+                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <FormControl>
+                            <Input {...field} type={showConfirmPassword ? 'text' : 'password'} className="pl-9 pr-9" placeholder={t('auth.register.confirmPasswordPlaceholder')} />
+                          </FormControl>
+                          <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="agreeTerms"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={(checked) => {
+                              field.onChange(checked)
+                              playTap()
+                            }}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-sm font-normal text-muted-foreground">
+                            {t('auth.register.agreeTerms')}
+                          </FormLabel>
+                          <FormMessage />
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button type="submit" disabled={loading} className="w-full gap-1.5">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.register.submit')}<ArrowRight className="h-4 w-4" /></>}
+                  </Button>
+                </form>
+              </Form>
 
               <div className="my-5 flex items-center gap-3"><Separator className="flex-1" /><span className="text-xs text-muted-foreground">{t('common.or')}</span><Separator className="flex-1" /></div>
               <Link href={ROUTES.auth.login}><Button variant="outline" className="w-full">{t('auth.register.toLogin')}</Button></Link>

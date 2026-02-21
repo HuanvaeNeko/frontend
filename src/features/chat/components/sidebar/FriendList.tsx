@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users, Clock, Send } from 'lucide-react'
+import { format } from 'date-fns'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -436,7 +437,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       </div>
                     )}
                     <div className="text-xs text-muted-foreground mt-2">
-                      {new Date(request.request_time).toLocaleString()}
+                      {format(new Date(request.request_time), 'yyyy/MM/dd HH:mm')}
                     </div>
                     <div className="flex gap-2 mt-3">
                       <Button
@@ -521,7 +522,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                           : t('chat.friendList.statusPending')}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(request.request_time).toLocaleString()}
+                        {format(new Date(request.request_time), 'yyyy/MM/dd HH:mm')}
                       </span>
                     </div>
                   </div>

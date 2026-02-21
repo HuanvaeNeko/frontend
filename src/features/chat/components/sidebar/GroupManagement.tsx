@@ -34,8 +34,8 @@ import {
   type JoinMode,
   type JoinRequest
 } from '../../api/groups'
-import { useToast } from '../../hooks/use-toast'
-import { useAuthStore } from '../../store/authStore'
+import { useToast } from '@/hooks/use-toast'
+import { useAuthStore } from '@/features/auth/store/authStore'
 
 interface GroupManagementProps {
   groupId: string

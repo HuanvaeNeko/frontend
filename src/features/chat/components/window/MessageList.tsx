@@ -9,7 +9,7 @@ import { TypingIndicator } from './TypingIndicator'
 import { useI18n } from '@/i18n/I18nProvider'
 import type { Message } from '@/features/chat/api/messages'
 import type { Conversation, TypingStatus } from '@/features/chat/store/chatStore'
-import type { User } from '@/features/auth/store/authStore'
+import type { User } from '@/features/auth/types/auth'
 
 interface MessageListProps {
   messages: Message[]
@@ -26,8 +26,8 @@ interface MessageListProps {
   onDownload: (message: Message) => void
   onPreview: (message: Message) => void
   canRecallMessage: (time: string) => boolean
-  messagesContainerRef: React.RefObject<HTMLDivElement>
-  messagesEndRef: React.RefObject<HTMLDivElement>
+  messagesContainerRef: React.RefObject<HTMLDivElement | null>
+  messagesEndRef: React.RefObject<HTMLDivElement | null>
 }
 
 export const MessageList = memo(({
