@@ -91,50 +91,6 @@ function pickAssetForCurrentPlatform(assets: GitHubAsset[]): GitHubAsset | null 
   return null
 }
 
-async function getAndroidDownloadUrl(assets: GitHubAsset[]): Promise<string | undefined> {
-  // Find android-latest.json asset
-  const jsonAsset = assets.find(asset => asset.name === 'android-latest.json')
-  if (!jsonAsset) return undefined
-
-  try {
-    // Fetch the JSON content
-    const response = await fetch(jsonAsset.browser_download_url)
-    if (!response.ok) return undefined
-    
-    const data = await response.json()
-    // Extract the APK file name from the path in JSON
-    // The JSON structure typically has a 'path' field like "Huanvae-Chat-App_1.0.0_arm64-v8a.apk"
-    // Or we can just look for the APK asset in the release that matches the filename
-    
-    // Actually, simpler approach:
-    // If we can get the filename from the JSON, we can find the asset in the release list
-    // Let's try to find an .apk asset directly first as a fallback, but the requirement is to parse json
-    
-    /* 
-      android-latest.json usually looks like:
-      {
-        "version": "1.0.0",
-        "releaseDate": "...",
-        "path": "Huanvae-Chat-App_1.0.0_arm64-v8a.apk" 
-      }
-    */
-    
-    if (data && data.path) {
-        // Find the asset with this name
-        const apkAsset = assets.find(a => a.name === data.path)
-        if (apkAsset) return apkAsset.browser_download_url
-    }
-    
-    // Fallback: just find the first apk
-    return assets.find(a => a.name.endsWith('.apk'))?.browser_download_url
-
-  } catch (e) {
-    console.error('Failed to parse android-latest.json', e)
-    // Fallback
-    return assets.find(a => a.name.endsWith('.apk'))?.browser_download_url
-  }
-}
-
 function readCache(): InstallTargets | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)

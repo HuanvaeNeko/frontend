@@ -12,11 +12,10 @@ import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import ChatWindow from '@/features/chat/components/ChatWindow'
 import FileManager from '@/features/chat/components/FileManager'
-import WebRTCPanel from '@/features/webrtc/components/WebRTCPanel'
 import { cn } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, MessageCircle, Users, FileText, Video, Search } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Users, FileText, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n/I18nProvider'
 
@@ -117,9 +116,9 @@ export default function ChatPage() {
              </h1>
              {/* Tab Switcher */}
              <div className="flex gap-1 bg-muted/50 p-1 rounded-xl shrink-0">
-                <Button variant="ghost" size="icon" onClick={() => setActiveTab('friends')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='friends' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><MessageCircle className="w-4 h-4"/></Button>
-                <Button variant="ghost" size="icon" onClick={() => setActiveTab('groups')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='groups' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Users className="w-4 h-4"/></Button>
-                <Button variant="ghost" size="icon" onClick={() => setActiveTab('files')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='files' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><FileText className="w-4 h-4"/></Button>
+                <Button data-testid="tab-friends" variant="ghost" size="icon" onClick={() => setActiveTab('friends')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='friends' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Users className="w-4 h-4"/></Button>
+                <Button data-testid="tab-groups" variant="ghost" size="icon" onClick={() => setActiveTab('groups')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='groups' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><MessageCircle className="w-4 h-4"/></Button>
+                <Button data-testid="tab-files" variant="ghost" size="icon" onClick={() => setActiveTab('files')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='files' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><FileText className="w-4 h-4"/></Button>
              </div>
           </div>
           
@@ -190,7 +189,7 @@ export default function ChatPage() {
           <div className="h-full flex items-center justify-center text-muted-foreground bg-muted/10 w-full">
             <div className="flex flex-col items-center gap-4">
               <MessageCircle className="w-16 h-16 opacity-20" />
-              <p>{t('chat.page.selectConversation') || '选择一个会话开始聊天'}</p>
+              <p>{t('chat.window.selectConversation') || '选择一个会话开始聊天'}</p>
             </div>
           </div>
         )}

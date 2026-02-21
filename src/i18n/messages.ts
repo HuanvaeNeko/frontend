@@ -487,6 +487,7 @@ const zhCN = {
   },
   common: {
     or: '或',
+    search: '搜索',
     appIntro: '统一通信工作台。即时消息、AI 助手、会议协作集中在一个应用中。',
     appSecurity: '安全登录 · 端到端传输 · 多端同步',
     joinTitle: '加入 Huanvae Chat',
@@ -987,6 +988,7 @@ const enUS = {
   },
   common: {
     or: 'or',
+    search: 'Search',
     appIntro: 'A unified communication workspace for chat, AI and meetings.',
     appSecurity: 'Secure login · End-to-end transport · Multi-device sync',
     joinTitle: 'Join Huanvae Chat',

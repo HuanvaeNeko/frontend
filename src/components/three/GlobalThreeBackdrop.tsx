@@ -293,9 +293,10 @@ export default function GlobalThreeBackdrop() {
       extraDisposables.push(nodeGeometry, nodeMaterial)
     }
 
-    const clock = new THREE.Clock()
+    // const clock = new THREE.Clock() // Deprecated
     let rafId = 0
     let idleBlend = 1
+    let startTime = performance.now()
 
     const resize = () => {
       const width = container.clientWidth || window.innerWidth
@@ -306,7 +307,8 @@ export default function GlobalThreeBackdrop() {
     }
 
     const tick = () => {
-      const elapsed = clock.getElapsedTime()
+      // const elapsed = clock.getElapsedTime()
+      const elapsed = (performance.now() - startTime) / 1000
       const pos = geometry.attributes.position as THREE.BufferAttribute
       const state = stateRef.current
 

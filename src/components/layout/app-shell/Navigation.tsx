@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { type LucideIcon, MessageCircle, Users, Bot, Settings, User, LogOut, Video } from 'lucide-react'
+import { type LucideIcon, MessageCircle, Bot, Settings, User, LogOut, Video } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'

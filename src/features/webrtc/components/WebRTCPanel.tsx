@@ -11,7 +11,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { webrtcApi } from '@/features/webrtc/api/webrtc'
 import { useToast } from '@/hooks/use-toast'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
 import { cn } from '@/lib/utils'
@@ -20,20 +19,22 @@ export default function WebRTCPanel() {
   const { t } = useI18n()
   const router = useRouter()
   const { toast } = useToast()
-  const { accessToken: _accessToken } = useAuthStore()
+  
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showJoinDialog, setShowJoinDialog] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [joining, setJoining] = useState(false)
-
+  
+  // Create room state
   const [roomName, setRoomName] = useState('')
   const [roomPassword, setRoomPassword] = useState('')
   const [maxParticipants, setMaxParticipants] = useState('5')
   const [durationMinutes, setDurationMinutes] = useState('60')
-
+  const [creating, setCreating] = useState(false)
+  
+  // Join room state
   const [joinRoomId, setJoinRoomId] = useState('')
   const [joinPassword, setJoinPassword] = useState('')
   const [joinNickname, setJoinNickname] = useState('')
+  const [joining, setJoining] = useState(false)
 
   const handleCreateRoom = async () => {
     setCreating(true)
