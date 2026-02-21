@@ -12,7 +12,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { useApiConfigStore } from '@/store/apiConfig'
 import { useToast } from '@/hooks/use-toast'
 import { useNotification, requestNotificationPermission } from '@/hooks/useNotification'
@@ -27,7 +27,7 @@ import { ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
 import type { LanguagePreference } from '@/i18n/messages'
 import { clearApiBaseUrl, getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 
 function SettingRow({
   label,

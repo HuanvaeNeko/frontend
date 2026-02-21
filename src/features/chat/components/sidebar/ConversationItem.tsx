@@ -23,7 +23,6 @@ export interface ConversationItemProps {
 }
 
 export const ConversationItem = memo(({
-  id,
   name,
   avatar,
   lastMessage,

@@ -2,17 +2,16 @@
 
 import { memo } from 'react'
 import { motion } from 'framer-motion'
-import { Copy, Download, Image as ImageIcon, RotateCcw, Trash2, Video, FileText } from 'lucide-react'
+import { Copy, Download, Image as ImageIcon, RotateCcw, Trash2, Video } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Markdown } from '@/components/ui/markdown'
 import { MessageImage } from './MessageImage'
 import { MessageVideo } from './MessageVideo'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { Message } from '@/api/messages'
-import type { GroupMessage } from '@/api/groupMessages'
-import { useAuthStore } from '@/store/authStore'
+import type { Message } from '@/features/chat/api/messages'
+import type { GroupMessage } from '@/features/chat/api/groupMessages'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { cn } from '@/lib/utils'
 import { FileMessageContent } from './FileMessageContent'
 
@@ -25,13 +24,6 @@ interface MessageItemProps {
   onDownload: (message: Message) => void
   onPreview: (message: Message) => void
   canRecall: boolean
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
-  return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB'
 }
 
 export const MessageItem = memo(({ 

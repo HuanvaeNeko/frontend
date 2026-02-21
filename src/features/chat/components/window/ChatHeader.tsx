@@ -5,7 +5,7 @@ import { MoreVertical, Settings, Phone, Video } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { Conversation } from '@/store/chatStore'
+import type { Conversation } from '@/features/chat/store/chatStore'
 import { cn } from '@/lib/utils'
 
 interface ChatHeaderProps {

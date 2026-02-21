@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { getWsUrl } from '@/lib/apiConfig'
-import { useAuthStore } from './authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）

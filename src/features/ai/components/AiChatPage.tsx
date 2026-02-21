@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import type { ChatMessage } from '@/types'
 import { useApiConfigStore } from '@/store/apiConfig'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

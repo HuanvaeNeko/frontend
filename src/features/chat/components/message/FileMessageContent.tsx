@@ -5,7 +5,7 @@ import { FileText, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { Message } from '@/api/messages'
+import type { Message } from '@/features/chat/api/messages'
 
 interface FileMessageContentProps {
   message: Message

@@ -11,7 +11,6 @@ import {
   Link,
   Check,
   X,
-  Crown,
   RefreshCw,
   Mail
 } from 'lucide-react'
@@ -19,14 +18,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { useChatStore } from '@/store/chatStore'
-import { useGroupStore } from '@/store/groupStore'
-import { useAuthStore } from '@/store/authStore'
-import { groupsApi, type GroupInvitation } from '@/api/groups'
+import { useChatStore } from '@/features/chat/store/chatStore'
+import { useGroupStore } from '@/features/chat/store/groupStore'
+import { groupsApi, type GroupInvitation } from '@/features/chat/api/groups'
 import { ConversationItem } from './ConversationItem'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { Group, GroupMember } from '@/types'
-import { groupMessagesApi } from '@/api/groupMessages'
 
 // 列表项动画配置
 const listItemVariants: Variants = {

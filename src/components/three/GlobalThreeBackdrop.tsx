@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import * as THREE from 'three'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useSettingsStore } from '@/features/settings/store/settingsStore'
 
 type ParticleRuntime = {
   baseX: Float32Array

@@ -1,15 +1,15 @@
 'use client'
 
 import { memo } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageItem } from '../message/MessageItem'
 import { TypingIndicator } from './TypingIndicator'
 import { useI18n } from '@/i18n/I18nProvider'
-import type { Message } from '@/api/messages'
-import type { Conversation, TypingStatus } from '@/store/chatStore'
-import type { User } from '@/store/authStore'
+import type { Message } from '@/features/chat/api/messages'
+import type { Conversation, TypingStatus } from '@/features/chat/store/chatStore'
+import type { User } from '@/features/auth/store/authStore'
 
 interface MessageListProps {
   messages: Message[]

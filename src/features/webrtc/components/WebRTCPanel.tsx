@@ -2,17 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Video, Phone, Copy, Loader2, Users, Shield, Globe, Lock, ArrowRight, VideoOff } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Video, Loader2, Users, Shield, Globe, Lock, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { webrtcApi } from '@/api/webrtc'
+import { webrtcApi } from '@/features/webrtc/api/webrtc'
 import { useToast } from '@/hooks/use-toast'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
 import { cn } from '@/lib/utils'
@@ -36,8 +35,6 @@ export default function WebRTCPanel() {
   const [joinPassword, setJoinPassword] = useState('')
   const [joinNickname, setJoinNickname] = useState('')
 
-  const [currentRoom, setCurrentRoom] = useState<{ roomId: string; password: string; shareLink: string } | null>(null)
-
   const handleCreateRoom = async () => {
     setCreating(true)
     try {
@@ -46,8 +43,6 @@ export default function WebRTCPanel() {
         password: roomPassword || undefined,
         max_participants: parseInt(maxParticipants),
       })
-      const shareLink = `${window.location.origin}/video-meeting?room=${response.room_id}&pwd=${roomPassword || ''}`
-      setCurrentRoom({ roomId: response.room_id, password: roomPassword || t('chat.webrtc.none'), shareLink })
       toast({ title: t('chat.webrtc.success'), description: t('chat.webrtc.roomCreatedRedirecting') })
       setShowCreateDialog(false)
       const params = new URLSearchParams({ room: response.room_id, token: response.ws_token, creator: 'true' })
@@ -71,10 +66,6 @@ export default function WebRTCPanel() {
     } catch (error) {
       toast({ title: t('chat.webrtc.joinFailedTitle'), description: error instanceof Error ? error.message : t('chat.webrtc.joinFailedDesc'), variant: 'destructive' })
     } finally { setJoining(false) }
-  }
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => toast({ title: t('chat.webrtc.copied'), description: t('chat.webrtc.copiedDesc', { label }) }))
   }
 
   const features = [

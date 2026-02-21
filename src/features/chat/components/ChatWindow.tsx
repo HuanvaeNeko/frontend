@@ -1,15 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { useChatStore } from '@/store/chatStore'
-import { messagesApi, type Message, type MessageType } from '@/api/messages'
-import { groupMessagesApi } from '@/api/groupMessages'
+import { useChatStore } from '@/features/chat/store/chatStore'
+import { messagesApi, type Message, type MessageType } from '@/features/chat/api/messages'
+import { groupMessagesApi } from '@/features/chat/api/groupMessages'
 import { storageApi, type FileType, type StorageLocation } from '@/api/storage'
 import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import { GroupManagement } from './sidebar/GroupManagement'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
-import { useRealtimeMessages } from '@/hooks/useRealtimeMessages'
+import { useRealtimeMessages } from '@/features/chat/hooks/useRealtimeMessages'
 import type { MarkdownEditorRef } from './window/MarkdownEditor'
 import { useI18n } from '@/i18n/I18nProvider'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -107,7 +107,7 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     }
   }
 
-  const loadMoreMessages = async () => {
+  const loadMoreMessages = useCallback(async () => {
     if (!selectedConversation || loading || !hasMore || messages.length === 0) return
     setLoading(true)
     try {
@@ -126,14 +126,14 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     } finally { 
       setLoading(false) 
     }
-  }
+  }, [selectedConversation, loading, hasMore, messages, prependMessages])
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current
     if (container && container.scrollTop === 0 && hasMore && !loading) {
       loadMoreMessages()
     }
-  }, [hasMore, loading])
+  }, [hasMore, loading, loadMoreMessages])
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {

@@ -1,19 +1,19 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { MessageCircle, Users, Bot, Settings, User, LogOut, Video } from 'lucide-react'
+import { type LucideIcon, MessageCircle, Users, Bot, Settings, User, LogOut, Video } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useChatStore } from '@/store/chatStore'
-import { useAuthStore } from '@/store/authStore'
-import { useProfileStore } from '@/store/profileStore'
+import { useChatStore } from '@/features/chat/store/chatStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
+import { useProfileStore } from '@/features/profile/store/profileStore'
 import { motion } from 'framer-motion'
 
 interface NavItem {
   id: string
   label: string
-  icon: any
+  icon: LucideIcon
   path: string
   activeMatch: (pathname: string) => boolean
   badge?: () => number

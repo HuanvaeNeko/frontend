@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useChatStore } from '@/store/chatStore'
-import { useAuthStore } from '@/store/authStore'
-import { useProfileStore } from '@/store/profileStore'
+import { useChatStore } from '@/features/chat/store/chatStore'
+import { useAuthStore } from '@/features/auth/store/authStore'
+import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useWSStore } from '@/store/wsStore'
-import { useFriendsStore } from '@/store/friendsStore'
-import { useGroupStore } from '@/store/groupStore'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useFriendsStore } from '@/features/chat/store/friendsStore'
+import { useGroupStore } from '@/features/chat/store/groupStore'
+import { useRouter, usePathname } from 'next/navigation'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import ChatWindow from '@/features/chat/components/ChatWindow'
@@ -22,7 +22,7 @@ import { useI18n } from '@/i18n/I18nProvider'
 
 export default function ChatPage() {
   const { t } = useI18n()
-  const router = useRouter()
+  const _router = useRouter()
   const pathname = usePathname()
   
   const { user, accessToken } = useAuthStore()
@@ -137,7 +137,7 @@ export default function ChatPage() {
                   {subTabs.map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setSubTab(tab.id as any)}
+                      onClick={() => setSubTab(tab.id as 'main' | 'new' | 'sent' | 'invites' | 'upload')}
                       className={cn(
                         "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all duration-200",
                         subTab === tab.id 

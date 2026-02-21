@@ -9,8 +9,7 @@ import {
   Image as ImageIcon, 
   FileText, 
   Video, 
-  X,
-  Smile
+  X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'

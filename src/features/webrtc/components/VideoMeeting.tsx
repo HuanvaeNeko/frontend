@@ -24,8 +24,8 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '@/api/webrtc'
-import { useAuthStore } from '@/store/authStore'
+import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '@/features/webrtc/api/webrtc'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { MOBILE_INTERACTIONS } from '@/lib/mobileInteractions'
 

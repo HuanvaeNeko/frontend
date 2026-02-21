@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { DEFAULT_LOCALE, type AppLocale, messages, normalizeLocale } from './messages'
 
 interface I18nContextValue {
