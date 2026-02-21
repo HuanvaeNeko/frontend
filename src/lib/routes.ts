@@ -8,11 +8,11 @@ export const ROUTES = {
   },
   app: {
     chat: '/app/chat',
-    chatFriends: '/app/chat/friends',
-    chatGroups: '/app/chat/groups',
-    chatFiles: '/app/chat/files',
-    chatWebrtc: '/app/chat/webrtc',
-    friends: '/app/chat/friends',
+    chatFriends: '/app/friends',
+    chatGroups: '/app/groups',
+    chatFiles: '/app/files',
+    chatWebrtc: '/app/webrtc',
+    friends: '/app/friends',
     aiChat: '/app/ai-chat',
     videoMeeting: '/app/video-meeting',
     devices: '/app/devices',
@@ -26,7 +26,7 @@ export const ROUTES = {
 
 export type ChatTabRouteKey = 'friends' | 'groups' | 'files' | 'webrtc'
 
-export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.app.chat
+export const DEFAULT_AUTHENTICATED_ROUTE = ROUTES.app.chatFriends
 export const DEFAULT_UNAUTHENTICATED_ROUTE = ROUTES.auth.login
 
 export const CHAT_TAB_ROUTE_MAP: Record<ChatTabRouteKey, string> = {

@@ -26,25 +26,16 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   {
     id: 'chat',
-    label: '消息',
-    icon: MessageCircle,
-    path: ROUTES.app.chat,
-    activeMatch: (p) => p === ROUTES.app.chat || (p.startsWith(ROUTES.app.chat + '/') && !p.startsWith(ROUTES.app.chatWebrtc) && !p.startsWith(ROUTES.app.chatFriends) && !p.startsWith(ROUTES.app.chatGroups) && !p.startsWith(ROUTES.app.chatFiles)),
-    badge: () => {
-      const summary = useChatStore.getState().unreadSummary
-      return (summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0) +
-             (summary?.group_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0)
-    }
-  },
-  {
-    id: 'friends',
     label: '好友',
     icon: Users,
     path: ROUTES.app.chatFriends,
-    activeMatch: (p) => p.startsWith(ROUTES.app.chatFriends),
+    activeMatch: (p) => p === ROUTES.app.chat || p.startsWith(ROUTES.app.chatFriends),
     badge: () => {
-       const pending = useFriendsStore.getState().pendingRequests
-       return pending?.length ?? 0
+      const summary = useChatStore.getState().unreadSummary
+      const pending = useFriendsStore.getState().pendingRequests
+      const chatUnreads = (summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0)
+      const pendingCount = pending?.length ?? 0
+      return chatUnreads + pendingCount
     }
   },
   {
