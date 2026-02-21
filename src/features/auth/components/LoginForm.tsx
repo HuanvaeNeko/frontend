@@ -71,7 +71,11 @@ export default function Login() {
     if (!hasHydrated) return
     if (!isAuthenticated) return
 
-    const target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+    let target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+    // Prevent redirecting to deleted home page
+    if (target.includes('/app/home')) {
+      target = DEFAULT_AUTHENTICATED_ROUTE
+    }
     router.replace(target)
   }, [isAuthenticated, mounted, nextPath, router])
 
@@ -87,7 +91,12 @@ export default function Login() {
       if (rememberMe) localStorage.setItem(REMEMBER_USER_KEY, formData.user_id.trim())
       else localStorage.removeItem(REMEMBER_USER_KEY)
       playSuccess()
-      const target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+      
+      let target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+      // Prevent redirecting to deleted home page
+      if (target.includes('/app/home')) {
+        target = DEFAULT_AUTHENTICATED_ROUTE
+      }
       router.push(target)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.login.errorDefault'))

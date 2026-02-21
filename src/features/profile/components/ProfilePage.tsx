@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Shield,
   User as UserIcon,
+  Monitor,
+  ArrowRight,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -222,6 +224,12 @@ export default function Profile() {
             <CardTitle className="text-base">账户信息</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Monitor className="h-4 w-4" />设备管理</span>
+              <Button variant="ghost" size="sm" onClick={() => router.push(ROUTES.app.devices)} className="h-auto py-0 px-2 text-primary hover:text-primary/80">
+                查看 <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </div>
             <div className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="inline-flex items-center gap-1.5 text-muted-foreground"><UserIcon className="h-4 w-4" />用户 ID</span><span>{profile?.user_id || user?.user_id}</span></div>
             <div className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Shield className="h-4 w-4" />账户类型</span><span>{profile?.admin === 'true' ? '管理员' : '普通用户'}</span></div>
             <div className="flex items-center justify-between rounded-lg border px-3 py-2"><span className="inline-flex items-center gap-1.5 text-muted-foreground"><Calendar className="h-4 w-4" />注册时间</span><span>{profile?.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN') : '-'}</span></div>

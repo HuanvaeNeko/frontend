@@ -186,6 +186,9 @@ export default function Settings() {
               <CardDescription>{t('settings.privacySecurityDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
+              <SettingRow label="设备管理" description="查看并管理已登录的设备">
+                <Button variant="outline" size="sm" onClick={() => router.push(ROUTES.app.devices)}>管理设备</Button>
+              </SettingRow>
               <SettingRow label={t('settings.showOnline')} description={t('settings.showOnlineDesc')}>
                 <Switch checked={settings.showOnlineStatus} onCheckedChange={(v) => settings.setSetting('showOnlineStatus', v)} />
               </SettingRow>

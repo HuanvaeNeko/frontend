@@ -12,10 +12,11 @@ import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import ChatWindow from '@/features/chat/components/ChatWindow'
 import FileManager from '@/features/chat/components/FileManager'
+import WebRTCPanel from '@/features/webrtc/components/WebRTCPanel'
 import { cn } from '@/lib/utils'
 import { ROUTES } from '@/lib/routes'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, MessageCircle, Users, FileText, Search } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Users, FileText, Search, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n/I18nProvider'
 
@@ -32,8 +33,14 @@ export default function ChatPage() {
   const { loadMyGroups } = useGroupStore()
   
   // Mobile sub-tabs state
-  const [subTab, setSubTab] = useState<'main' | 'new' | 'sent' | 'invites' | 'upload'>('main')
+  const [subTab, setSubTab] = useState<'main' | 'new' | 'sent' | 'invites' | 'upload' | 'join'>('main')
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Reset subTab when activeTab changes
+  useEffect(() => {
+    setSubTab('main')
+    setSearchQuery('')
+  }, [activeTab])
 
   // Initialization logic
   useEffect(() => {
@@ -51,10 +58,12 @@ export default function ChatPage() {
 
   // Route-based tab switching
   useEffect(() => {
-    if (pathname === ROUTES.app.chatFriends) setActiveTab('friends')
-    else if (pathname === ROUTES.app.chatGroups) setActiveTab('groups')
-    else if (pathname === ROUTES.app.chatFiles) setActiveTab('files')
-    else if (pathname === ROUTES.app.chat && !activeTab) setActiveTab('friends') 
+    if (pathname?.startsWith(ROUTES.app.chatFriends)) setActiveTab('friends')
+    else if (pathname?.startsWith(ROUTES.app.chatGroups)) setActiveTab('groups')
+    else if (pathname?.startsWith(ROUTES.app.chatFiles)) setActiveTab('files')
+    else if (pathname?.startsWith(ROUTES.app.chatWebrtc)) setActiveTab('webrtc')
+    // 如果是根路由 /app/chat，也默认到 friends
+    else if (pathname === ROUTES.app.chat || (pathname?.startsWith(ROUTES.app.chat) && !activeTab)) setActiveTab('friends') 
   }, [pathname, setActiveTab, activeTab])
 
   const handleMobileBack = () => {
@@ -64,8 +73,9 @@ export default function ChatPage() {
   const renderSidebarContent = () => {
     switch (activeTab) {
       case 'friends': return <FriendList subTab={subTab === 'invites' ? 'new' : subTab as 'main' | 'new' | 'sent'} searchQuery={searchQuery} />
-      case 'groups': return <GroupList subTab={subTab === 'upload' ? 'main' : subTab as 'main' | 'invites'} searchQuery={searchQuery} />
+      case 'groups': return <GroupList subTab={subTab as 'main' | 'invites' | 'join'} searchQuery={searchQuery} />
       case 'files': return <FileManager subTab={['main', 'upload'].includes(subTab) ? subTab as 'main' | 'upload' : 'main'} />
+      case 'webrtc': return <WebRTCPanel />
       default: return <FriendList subTab="main" searchQuery="" />
     }
   }
@@ -82,12 +92,15 @@ export default function ChatPage() {
         return [
           { id: 'main', label: t('chat.page.subTabs.groups.main'), icon: MessageCircle },
           { id: 'invites', label: t('chat.page.subTabs.groups.invites'), icon: MessageCircle },
+          { id: 'join', label: t('chat.groupList.join'), icon: Search },
         ]
       case 'files':
         return [
           { id: 'main', label: t('chat.page.subTabs.files.main'), icon: FileText },
           { id: 'upload', label: t('chat.page.subTabs.files.upload'), icon: FileText },
         ]
+      case 'webrtc':
+        return []
       default:
         return []
     }
@@ -113,12 +126,14 @@ export default function ChatPage() {
                {activeTab === 'friends' && t('chat.page.tabs.friends')}
                {activeTab === 'groups' && t('chat.page.tabs.groups')}
                {activeTab === 'files' && t('chat.page.tabs.files')}
+               {activeTab === 'webrtc' && t('chat.page.tabs.webrtc')}
              </h1>
              {/* Tab Switcher */}
-             <div className="flex gap-1 bg-muted/50 p-1 rounded-xl shrink-0">
+             <div className="flex gap-1 bg-muted/50 p-1 rounded-xl shrink-0 md:hidden">
                 <Button data-testid="tab-friends" variant="ghost" size="icon" onClick={() => setActiveTab('friends')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='friends' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Users className="w-4 h-4"/></Button>
                 <Button data-testid="tab-groups" variant="ghost" size="icon" onClick={() => setActiveTab('groups')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='groups' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><MessageCircle className="w-4 h-4"/></Button>
                 <Button data-testid="tab-files" variant="ghost" size="icon" onClick={() => setActiveTab('files')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='files' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><FileText className="w-4 h-4"/></Button>
+                <Button data-testid="tab-webrtc" variant="ghost" size="icon" onClick={() => setActiveTab('webrtc')} className={cn("h-8 w-8 rounded-lg transition-all", activeTab==='webrtc' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}><Video className="w-4 h-4"/></Button>
              </div>
           </div>
           
@@ -130,7 +145,7 @@ export default function ChatPage() {
                   {subTabs.map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setSubTab(tab.id as 'main' | 'new' | 'sent' | 'invites' | 'upload')}
+                      onClick={() => setSubTab(tab.id as 'main' | 'new' | 'sent' | 'invites' | 'upload' | 'join')}
                       className={cn(
                         "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all duration-200",
                         subTab === tab.id 

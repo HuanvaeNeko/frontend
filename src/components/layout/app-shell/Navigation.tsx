@@ -1,14 +1,18 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { type LucideIcon, MessageCircle, Bot, Settings, User, LogOut, Video } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
+import { type LucideIcon, MessageCircle, Bot, Settings, User, LogOut, Video, Users, FileText, MessageSquare, Globe, Monitor } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { motion } from 'framer-motion'
+import { useEffect } from 'react'
+
+import { useFriendsStore } from '@/features/chat/store/friendsStore'
 
 interface NavItem {
   id: string
@@ -25,7 +29,7 @@ const NAV_ITEMS: NavItem[] = [
     label: '消息',
     icon: MessageCircle,
     path: ROUTES.app.chat,
-    activeMatch: (p) => p === ROUTES.app.chat || (p.startsWith(ROUTES.app.chat + '/') && !p.startsWith(ROUTES.app.chatWebrtc) && !p.startsWith(ROUTES.app.friends)),
+    activeMatch: (p) => p === ROUTES.app.chat || (p.startsWith(ROUTES.app.chat + '/') && !p.startsWith(ROUTES.app.chatWebrtc) && !p.startsWith(ROUTES.app.chatFriends) && !p.startsWith(ROUTES.app.chatGroups) && !p.startsWith(ROUTES.app.chatFiles)),
     badge: () => {
       const summary = useChatStore.getState().unreadSummary
       return (summary?.friend_unreads.reduce((sum, u) => sum + u.unread_count, 0) ?? 0) +
@@ -33,11 +37,43 @@ const NAV_ITEMS: NavItem[] = [
     }
   },
   {
+    id: 'friends',
+    label: '好友',
+    icon: Users,
+    path: ROUTES.app.chatFriends,
+    activeMatch: (p) => p.startsWith(ROUTES.app.chatFriends),
+    badge: () => {
+       const pending = useFriendsStore.getState().pendingRequests
+       return pending?.length ?? 0
+    }
+  },
+  {
+    id: 'groups',
+    label: '群聊',
+    icon: MessageSquare,
+    path: ROUTES.app.chatGroups,
+    activeMatch: (p) => p.startsWith(ROUTES.app.chatGroups)
+  },
+  {
+    id: 'files',
+    label: '文件',
+    icon: FileText,
+    path: ROUTES.app.chatFiles,
+    activeMatch: (p) => p.startsWith(ROUTES.app.chatFiles)
+  },
+  {
     id: 'webrtc',
     label: '会议',
     icon: Video,
-    path: ROUTES.app.videoMeeting,
+    path: ROUTES.app.chatWebrtc,
     activeMatch: (p) => p.startsWith(ROUTES.app.chatWebrtc) || p.startsWith(ROUTES.app.videoMeeting),
+  },
+  {
+    id: 'devices',
+    label: '设备',
+    icon: Monitor,
+    path: ROUTES.app.devices,
+    activeMatch: (p) => p.startsWith(ROUTES.app.devices)
   },
   {
     id: 'ai-chat',
@@ -64,30 +100,37 @@ const NAV_ITEMS: NavItem[] = [
 
 export function DesktopSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
   const { user, logout } = useAuthStore()
   const { profile } = useProfileStore()
+  
+  // Save last visited path
+  useEffect(() => {
+    if (pathname && pathname.startsWith('/app') && pathname !== ROUTES.auth.login && pathname !== ROUTES.auth.register) {
+      localStorage.setItem('last_visited_path', pathname)
+    }
+  }, [pathname])
 
   return (
     <aside className="flex w-[80px] flex-col items-center border-r bg-card/50 backdrop-blur-xl py-6 h-full shrink-0 shadow-sm z-50">
       {/* Avatar / Profile Trigger */}
       <div className="mb-8">
-         <motion.button 
-           whileHover={{ scale: 1.05 }}
-           whileTap={{ scale: 0.95 }}
-           onClick={() => router.push(ROUTES.app.profile)}
-           className="w-12 h-12 rounded-2xl overflow-hidden ring-2 ring-border hover:ring-primary transition-all shadow-sm"
-         >
-            <img 
-              src={profile?.user_avatar_url || user?.avatar_url} 
-              alt="Avatar" 
-              className="w-full h-full object-cover bg-muted"
-            />
-         </motion.button>
+         <Link href={ROUTES.app.profile}>
+           <motion.div 
+             whileHover={{ scale: 1.05 }}
+             whileTap={{ scale: 0.95 }}
+             className="w-12 h-12 rounded-2xl overflow-hidden ring-2 ring-border hover:ring-primary transition-all shadow-sm cursor-pointer"
+           >
+              <img 
+                src={profile?.user_avatar_url || user?.avatar_url} 
+                alt="Avatar" 
+                className="w-full h-full object-cover bg-muted"
+              />
+           </motion.div>
+         </Link>
       </div>
 
       {/* Nav Items */}
-      <nav className="flex-1 flex flex-col gap-3 w-full px-3 items-center">
+      <nav className="flex-1 flex flex-col gap-3 w-full px-3 items-center overflow-y-auto no-scrollbar py-2">
         <TooltipProvider delayDuration={0}>
           {NAV_ITEMS.filter(item => item.id !== 'profile').map((item) => {
             const isActive = item.activeMatch(pathname || '')
@@ -96,8 +139,8 @@ export function DesktopSidebar() {
             return (
               <Tooltip key={item.id}>
                 <TooltipTrigger asChild>
-                  <button
-                    onClick={() => router.push(item.path)}
+                  <Link
+                    href={item.path}
                     className={cn(
                       "relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 group",
                       isActive 
@@ -115,7 +158,7 @@ export function DesktopSidebar() {
                         {badgeCount > 99 ? '99+' : badgeCount}
                       </span>
                     )}
-                  </button>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={10} className="font-medium bg-foreground text-background">
                   {item.label}
@@ -129,6 +172,20 @@ export function DesktopSidebar() {
       {/* Bottom Actions */}
       <div className="mt-auto flex flex-col gap-3 pb-2">
         <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a 
+                href="https://huanvae.cn" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <Globe className="w-5 h-5" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="right">官方网站</TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button 
@@ -148,10 +205,9 @@ export function DesktopSidebar() {
 
 export function MobileTabBar() {
   const pathname = usePathname()
-  const router = useRouter()
   // 移动端通常不需要所有导航项，或者折叠
   // 这里选取核心的 4-5 个
-  const mobileItems = NAV_ITEMS.filter(item => ['chat', 'webrtc', 'ai-chat', 'profile'].includes(item.id))
+  const mobileItems = NAV_ITEMS.filter(item => ['chat', 'webrtc', 'ai-chat', 'profile', 'devices'].includes(item.id))
 
   return (
     <nav className="md:hidden h-[64px] border-t bg-background/80 backdrop-blur-xl flex items-center justify-around px-2 shrink-0 safe-area-inset-bottom z-50 shadow-[0_-1px_10px_rgba(0,0,0,0.02)]">
@@ -160,9 +216,9 @@ export function MobileTabBar() {
         const badgeCount = item.badge ? item.badge() : 0
 
         return (
-          <button
+          <Link
             key={item.id}
-            onClick={() => router.push(item.path)}
+            href={item.path}
             className={cn(
               "relative flex flex-col items-center justify-center gap-1 w-16 h-full",
               isActive ? "text-primary" : "text-muted-foreground/60 hover:text-muted-foreground"
@@ -179,7 +235,7 @@ export function MobileTabBar() {
             <span className={cn("text-[10px] font-medium transition-all", isActive ? "text-primary" : "text-muted-foreground/60")}>
               {item.label}
             </span>
-          </button>
+          </Link>
         )
       })}
     </nav>

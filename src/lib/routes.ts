@@ -7,7 +7,6 @@ export const ROUTES = {
     register: '/app/register',
   },
   app: {
-    home: '/app/home',
     chat: '/app/chat',
     chatFriends: '/app/chat/friends',
     chatGroups: '/app/chat/groups',
@@ -61,7 +60,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   devices: '设备管理',
   settings: '设置',
   profile: '个人资料',
-  home: '首页',
   groups: '群聊',
   files: '文件',
   webrtc: '音视频',
@@ -75,7 +73,7 @@ export function getRouteBreadcrumbs(
 ): Array<{ label: string; path: string }> {
   const getLabel: BreadcrumbLabelResolver = resolveLabel || ((segment) => SEGMENT_LABELS[segment] || segment)
   const crumbs: Array<{ label: string; path: string }> = [
-    { label: getLabel('home', ROUTES.app.chat), path: ROUTES.app.chat },
+    { label: getLabel('chat', ROUTES.app.chat), path: ROUTES.app.chat },
   ]
 
   if (!pathname || pathname === ROUTES.root || pathname === ROUTES.app.chat) {

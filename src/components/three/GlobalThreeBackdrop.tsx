@@ -296,7 +296,7 @@ export default function GlobalThreeBackdrop() {
     // const clock = new THREE.Clock() // Deprecated
     let rafId = 0
     let idleBlend = 1
-    let startTime = performance.now()
+    const startTime = performance.now()
 
     const resize = () => {
       const width = container.clientWidth || window.innerWidth
