@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import SimpleLoading from '@/components/SimpleLoading'
 
-const LoginPage = dynamic(() => import('@/views/Login'), { 
+const LoginPage = dynamic(() => import('@/features/auth/components/LoginForm'), { 
   ssr: false,
   loading: () => <SimpleLoading />
 })

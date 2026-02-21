@@ -14,13 +14,13 @@ export default function ProtectedLayoutClient({
 }) {
   const pathname = usePathname()
   const { profileModalOpen, closeProfileModal } = useUIStore()
-  const useStandalonePageShell =
-    !!pathname &&
-    (pathname.startsWith(ROUTES.app.chat) || pathname.startsWith(ROUTES.app.videoMeeting))
+  
+  // Only video meeting needs to be standalone/fullscreen
+  const isVideoMeeting = !!pathname && pathname.startsWith(ROUTES.app.videoMeeting)
 
   return (
     <ProtectedRoute>
-      {useStandalonePageShell ? children : <MainLayout>{children}</MainLayout>}
+      {isVideoMeeting ? children : <MainLayout>{children}</MainLayout>}
 
       {/* 全局个人资料模态框 */}
       <ProfileModal isOpen={profileModalOpen} onClose={closeProfileModal} />

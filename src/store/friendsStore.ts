@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
-import { isAuthError } from '../api/apiClient'
+import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '@/api/friends'
+import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from './authStore'
 import { ROUTES } from '@/lib/routes'
 

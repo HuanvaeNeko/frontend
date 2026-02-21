@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/profile'
-import { isAuthError } from '../api/apiClient'
+import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '@/api/profile'
+import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from './authStore'
 import { ROUTES } from '@/lib/routes'
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { Message } from '../types'
-import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '../api/messages'
-import { isAuthError } from '../api/apiClient'
+import { Message } from '@/types'
+import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '@/api/messages'
+import { isAuthError } from '@/api/apiClient'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 

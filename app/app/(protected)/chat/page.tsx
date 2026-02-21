@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic'
 
-const ChatPage = dynamic(() => import('@/views/ChatPage'), { ssr: false })
+const ChatPage = dynamic(() => import('@/features/chat/components/ChatPage'), { ssr: false })
 
 export default function Chat() {
   return <ChatPage />

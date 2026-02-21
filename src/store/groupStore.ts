@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { groupsApi, type Group, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
+import { groupsApi, type Group, type MyGroup, type GroupMember, type GroupNotice } from '@/api/groups'
 
 interface GroupState {
   // 我的群聊列表
