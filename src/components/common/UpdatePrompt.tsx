@@ -148,27 +148,21 @@ export function UpdatePrompt({
   }, []) // Removed intervals and timeouts from dependency/cleanup
 
   // Listeners
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
-
-    const handleControllerChange = () => {
-      window.location.reload()
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'SW_ACTIVATED') {
-        console.log('SW 已激活:', event.data.version)
+    useEffect(() => {
+      if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
+  
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'SW_ACTIVATED') {
+          console.log('SW 已激活:', event.data.version)
+        }
       }
-    }
-
-    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
-    navigator.serviceWorker.addEventListener('message', handleMessage)
-
-    return () => {
-      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
-      navigator.serviceWorker.removeEventListener('message', handleMessage)
-    }
-  }, [])
+  
+      navigator.serviceWorker.addEventListener('message', handleMessage)
+  
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleMessage)
+      }
+    }, [])
 
   // Check Interval
   useInterval(() => {
@@ -186,6 +180,10 @@ export function UpdatePrompt({
     const registration = registrationRef.current
     if (registration?.waiting) {
       registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+      // Give it a moment to activate, then reload
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
     } else {
       await clearSWCache()
       window.location.reload()

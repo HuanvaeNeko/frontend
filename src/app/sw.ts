@@ -48,7 +48,7 @@ const precacheEntries = (self.__SW_MANIFEST ?? []).filter(
 const serwist = new Serwist({
   precacheEntries,
   skipWaiting: true,
-  clientsClaim: true,
+  clientsClaim: false,
   navigationPreload: true,
   runtimeCaching: defaultCache,
   fallbacks: {
