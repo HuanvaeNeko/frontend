@@ -13,8 +13,6 @@ import {
   PhoneOff,
   Users,
   Monitor,
-  Maximize,
-  Minimize,
   Clock,
   Copy,
   Check,
@@ -143,7 +141,6 @@ export default function VideoMeeting() {
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
   // Ahooks
-  const [isFullscreen, { toggleFullscreen }] = useFullscreen(() => document.documentElement)
   const copyText = (text: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text).catch(console.error)
@@ -1173,7 +1170,7 @@ export default function VideoMeeting() {
               </button>
 
               <button type="button"
-                onClick={(e) => { e.stopPropagation(); isScreenSharing ? toggleScreenShare() : setShowScreenShareSettings(true) }}
+                onClick={(e) => { e.stopPropagation(); if (isScreenSharing) toggleScreenShare(); else setShowScreenShareSettings(true) }}
                 className={`hidden sm:flex w-12 h-12 rounded-full items-center justify-center transition-all duration-200 ${
                   isScreenSharing 
                     ? 'bg-primary/20 text-primary hover:bg-primary/30' 
