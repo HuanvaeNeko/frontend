@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RefreshCw, X, Sparkles, Info } from 'lucide-react'
-import { useInterval, useTimeout } from 'ahooks'
+import { useInterval } from 'ahooks'
 import { APP_VERSION, getSWVersion, clearSWCache } from '@/lib/version'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -169,11 +169,7 @@ export function UpdatePrompt({
     registrationRef.current?.update().catch(console.error)
   }, checkInterval)
 
-  // Dismiss Timeout (2 minutes)
-  useTimeout(() => {
-    setState(prev => ({ ...prev, dismissed: false }))
-    setCountdown(initialSeconds)
-  }, state.dismissed ? 120000 : undefined)
+  // Dismissed state persists until next page load or a new update is detected
 
   // Execution
   const handleUpdate = useCallback(async () => {
