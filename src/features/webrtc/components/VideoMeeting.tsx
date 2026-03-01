@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useInterval, useFullscreen, useEventListener, useDebounceFn } from 'ahooks'
+import { useInterval, useEventListener, useDebounceFn } from 'ahooks'
 import {
   ArrowLeft,
   Mic,

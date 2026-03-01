@@ -47,7 +47,7 @@ const precacheEntries = (self.__SW_MANIFEST ?? []).filter(
 // 创建 Serwist 实例
 const serwist = new Serwist({
   precacheEntries,
-  skipWaiting: true,
+  skipWaiting: false,
   clientsClaim: false,
   navigationPreload: true,
   runtimeCaching: defaultCache,
@@ -155,6 +155,10 @@ self.addEventListener('message', (event) => {
   const { type } = event.data || {}
 
   switch (type) {
+    case 'SKIP_WAITING':
+      self.skipWaiting()
+      break
+
     case 'GET_VERSION':
       event.ports[0]?.postMessage({
         version: 'serwist',
