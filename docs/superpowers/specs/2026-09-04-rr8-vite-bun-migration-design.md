@@ -32,8 +32,9 @@
 
 ### 1.2 目标状态
 
-- **构建**：Vite 7 + React Router 8.3.1（framework mode）
+- **构建**：Vite 8.2.2（Rolldown 内核）+ React Router 8.3.1（framework mode）
 - **运行时**：Bun 1.3.14（包管理 + 服务端运行时）
+- **Lint**：Biome 2.5.12（取代 ESLint 全栈）
 - **渲染**：SSR 但偏 CSR —— 服务端渲染 HTML 外壳，业务数据全部客户端拉取
 - **部署**：Docker Compose（app + postgres + redis），取代 Cloudflare Pages 静态托管
 - **数据层**：Drizzle ORM 作为 BFF，管理 Postgres + Redis
@@ -130,11 +131,11 @@ huanvae/frontend/
 ├── docker-compose.yml              # 新增
 ├── playwright.config.ts            # 新增（当前缺失，见 §9）
 ├── tsconfig.json                   # 改
-├── eslint.config.mjs               # 改
+├── biome.json                      # 新增（取代 eslint.config.mjs）
 ├── package.json                    # 改
 ├── bun.lock                        # 新增（替代 pnpm-lock.yaml）
-└── [删除] next.config.js / next-env.d.ts / serwist.config.js
-        / pnpm-lock.yaml / pnpm-workspace.yaml / .next/ / out/
+└── [删除] next.config.js / next-env.d.ts / serwist.config.js / eslint.config.mjs
+        / pnpm-lock.yaml / pnpm-workspace.yaml / public/_headers / .next/ / out/
 ```
 
 ---
@@ -264,7 +265,9 @@ RR8 没有独立的 404 约定。在 `root.tsx` 导出 `ErrorBoundary`，用 `is
 
 ### 6.1 PWA：`@serwist/next` → `@serwist/vite`
 
-Serwist 官方有 Vite 集成（`@serwist/vite@9.5.12`），**继续用 Serwist**，不换 `vite-plugin-pwa` —— `src/app/sw.ts` 的自定义预缓存过滤逻辑可以基本原样保留。
+Serwist 官方有 Vite 集成（`@serwist/vite@9.5.12`），**优先继续用 Serwist** —— `src/app/sw.ts` 的自定义预缓存过滤逻辑可以基本原样保留，改动最小。
+
+**但这是有条件的**：`@serwist/vite` 对 Vite 8（Rolldown）的兼容性未经确证（§8、§10）。§9.2 第 2 步的骨架验证若发现不通，**改用 `vite-plugin-pwa@1.3.0`**（`injectManifest` 模式同样支持自定义 SW 源码），届时 `sw.ts` 需要按其 API 调整预缓存过滤的写法。两条路都可行，先验证再选。
 
 需要改的：
 
@@ -333,9 +336,56 @@ Vite 只暴露 `VITE_` 前缀的变量给客户端。全部 `NEXT_PUBLIC_*` 需�
 
 `process.env.X` → `import.meta.env.X`。注意 `src/api/apiClient.ts`、`src/app/providers.tsx` 等处的 `process.env.NODE_ENV` → `import.meta.env.DEV` / `import.meta.env.PROD`。
 
-`next.config.js` 里的 `compiler.removeConsole`（生产移除 console.log，保留 error/warn）用 esbuild 的 `drop` / `pure` 选项在 `vite.config.ts` 里等价实现。
+**`compiler.removeConsole` 的等价实现（需在实现时确认 API）**
+
+`next.config.js` 现在做的是：生产环境移除 `console.log`，但**保留 `console.error` 和 `console.warn`**。
+
+Vite 8 换成 Rolldown/Oxc 后，esbuild 时代常见的 `esbuild: { drop: ['console'] }` 写法不能照抄 —— 而且 `drop: ['console']` 是全量移除，会连 `error`/`warn` 一起干掉，与当前行为不等价。实现时按以下顺序尝试：
+
+1. **首选**：`oxc` 配置项下的 pure-function 剥离，把 `console.log` 列为可安全移除的纯函数调用（保留 `error`/`warn`）。具体字段名需查 Rolldown `TransformOptions` 的当前签名 —— 本 spec 不臆测。
+2. **保底**：`build.minify: 'terser'` + `terserOptions.compress.pure_funcs: ['console.log']`。这套 API 稳定且行为精确可控，代价是加一个 `terser` devDependency、构建稍慢。
+
+**验收以行为为准，不以配置写法为准**：生产构建产物中 `console.log` 已消失、`console.error` / `console.warn` 仍在。若首选方案做不到精确保留，直接用保底方案，不要为了少一个依赖而牺牲 `error`/`warn`（它们是线上排障的唯一手段）。
 
 ---
+
+### 6.5 Lint：ESLint 全栈 → Biome
+
+用 `@biomejs/biome@2.5.12` 取代 `eslint` + `@eslint/js` + `typescript-eslint` + `eslint-plugin-react-hooks` + `globals`（5 个包 → 1 个），`eslint.config.mjs` → `biome.json`。
+
+**现有 4 条规则的映射已逐条核实**（比对 Biome 的 `configuration_schema.json`）：
+
+| 现有 ESLint 规则 | 级别 | Biome 等价 | 分组 |
+|---|---|---|---|
+| `react-hooks/rules-of-hooks` | error | `useHookAtTopLevel` | `correctness` |
+| `react-hooks/exhaustive-deps` | warn | `useExhaustiveDependencies` | `correctness` |
+| `@typescript-eslint/no-unused-vars` | warn | `noUnusedVariables` + `noUnusedFunctionParameters` | `correctness` |
+| `@typescript-eslint/no-explicit-any` | warn | `noExplicitAny` | `suspicious` |
+
+四条全部有对应规则，**没有能力缺口**。注意 ESLint 的 `no-unused-vars` 在 Biome 里拆成了变量和函数参数两条规则，两条都要配。
+
+**一个不完全等价处**：现有配置用 `argsIgnorePattern: "^_"` / `varsIgnorePattern: "^_"`（正则）忽略下划线前缀。Biome 的 `noUnusedVariables.ignore` 取的是**标识符名数组**（`{ "*": [...], "function": [...] }`），不是正则。Biome 对 `_` 前缀有内建处理，实现时**先验证默认行为是否已满足**；若不满足，用 `ignore` 显式列出。这是小事，但别默认它自动等价。
+
+**关键决策：阶段 1 只启用 linter，不启用 formatter。**
+
+Biome 同时是格式化工具，而本项目**当前没有 Prettier**，代码风格是历史自然形成的。一旦开启 `biome format`，169 个文件会被全量重排 —— 这个 diff 会把框架迁移的真实改动彻底淹没，让 code review 失去意义。
+
+所以：
+
+- 阶段 1 的 `biome.json` 设 `"formatter": { "enabled": false }`，只跑 lint
+- 格式化作为**独立的一个 commit** 单独引入，时机在阶段 1 合并**之后**、阶段 2 开始**之前**，并在 `.git-blame-ignore-revs` 里登记该 commit，避免污染 `git blame`
+
+**scripts**：
+
+```json
+{
+  "lint": "biome lint .",
+  "lint:fix": "biome lint --write .",
+  "check": "biome check ."
+}
+```
+
+**顺带收益**：Biome 是 Rust 单二进制，替换掉 5 个 npm 包及其传递依赖，`bun install` 会明显变快 —— 与本次迁移"换 Bun 提速"的动机一致。
 
 ## 7. 部署拓扑与 Docker Compose
 
@@ -428,14 +478,16 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 
 当前 `dependencies` 40 个、`devDependencies` 18 个。
 
-**删除**（9 个包 + pnpm 字段）：
+**删除**（13 个包 + pnpm 字段）：
 
 - `dependencies`：`next`、`@sentry/nextjs`
-- `devDependencies`：`@serwist/next`、`@serwist/cli`、`autoprefixer`、`postcss`、`@tailwindcss/postcss`、`esbuild`、`globals`
+- `devDependencies`（构建相关）：`@serwist/next`、`@serwist/cli`、`autoprefixer`、`postcss`、`@tailwindcss/postcss`、`esbuild`
+- `devDependencies`（ESLint 全栈，换 Biome）：`eslint`、`@eslint/js`、`typescript-eslint`、`eslint-plugin-react-hooks`、`globals`
 - `package.json` 字段：`packageManager`、`pnpm.overrides`（overrides 内容需迁移，见下）
 
 > `postcss` / `autoprefixer` / `@tailwindcss/postcss` 换成 `@tailwindcss/vite`（Tailwind v4 官方 Vite 插件，参考仓库用的也是它）。
-> `globals` 已确认未被 `eslint.config.mjs` import，是残留依赖。
+> `globals` 已确认未被 `eslint.config.mjs` import，本就是残留依赖。
+> ESLint 全栈换 Biome，见 §6.5。
 
 **需要替换而非删除**：`next-themes`
 
@@ -452,11 +504,27 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 | `react-router` | ^8.3.1 | 路由核心 |
 | `@react-router/dev` | ^8.3.1 | Vite 插件 + CLI |
 | `@react-router/node` | ^8.3.1 | 服务端适配 |
-| `vite` | ^7 | 构建 |
-| `@vitejs/plugin-react` | ^4 | React 支持 |
-| `@tailwindcss/vite` | ^4.2 | Tailwind v4 |
+| `vite` | **^8.2.2** | 构建 |
+| `@vitejs/plugin-react` | **^6.1.1** | React 支持 |
+| `@tailwindcss/vite` | ^4.3.3 | Tailwind v4 |
 | `@serwist/vite` | ^9.5.12 | PWA |
 | `@sentry/react-router` | ^10.73 | 错误监控（待验证 RR8 支持，见 §6.2） |
+| `@biomejs/biome` | ^2.5.12 | Lint（取代 ESLint 全栈，见 §6.5） |
+
+**版本兼容性已逐条核实**：
+
+- `@react-router/dev@8.3.1` 的 peer 明确声明 `vite: "^7.0.0 || ^8.0.0"` —— **RR8 官方支持 Vite 8**，不是"能跑但没测"。
+- `@vitejs/plugin-react` **必须用 6.x**：6.1.1 的 peer 是 `vite: "^8.0.0"`（**只接受 8**）。配 Vite 8 时用 4.x/5.x 会 peer 冲突。它另外三个 peer（`oxc-transform-react`、`@rolldown/plugin-babel`、`babel-plugin-react-compiler`）**全部标了 optional**，不需要额外安装。
+- `@tailwindcss/vite@4.3.3` peer `^5.2.0 || ^6 || ^7 || ^8` ✓
+
+**Vite 8 的底层换代 —— 这不只是版本号 +1**
+
+Vite 8 的直接依赖是 `rolldown@~1.2.4` + `lightningcss`，即**打包器从 Rollup/esbuild 换成了 Rolldown，CSS 处理换成 Lightning CSS**。配置层面 `esbuild?: ESBuildOptions | false` 仍在（兼容用），同时新增了 `oxc?: OxcOptions | false`（Oxc 是 Rolldown 的转换器）。
+
+两个连带影响：
+
+1. **console 剥离的写法要重新确认**（见 §6.4）。
+2. **`@serwist/vite` 是本次最不确定的一环**：它的 peer 写的是 `vite: ">=5.0.0"` —— 这是个开放区间，**声明兼容不等于测过 Rolldown**。列为风险（§10），验证放在迁移最早期，一旦不通就及早换 `vite-plugin-pwa`，避免到后期才发现。
 
 **scripts**：
 
@@ -466,7 +534,8 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
   "build": "react-router build",
   "start": "bun run server/index.ts",
   "typecheck": "react-router typegen && tsc --noEmit",
-  "lint": "eslint .",
+  "lint": "biome lint .",
+  "lint:fix": "biome lint --write .",
   "test:e2e": "playwright test"
 }
 ```
@@ -490,9 +559,18 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 ### 9.2 验证顺序
 
 1. **补 `playwright.config.ts`，让现有用例在 Next 版本上跑绿** ← 基线
-2. 执行迁移
-3. 同一套用例在 RR8 版本上跑绿 ← 行为等价性证明
-4. 补充迁移专项回归（见 9.3）
+2. **技术骨架验证（spike）** ← 新增，见下
+3. 执行迁移
+4. 同一套用例在 RR8 版本上跑绿 ← 行为等价性证明
+5. 补充迁移专项回归（见 9.3）
+
+**第 2 步为什么必须独立存在**：Vite 8 是 Rolldown 换代版本，`@serwist/vite` 对它的兼容性只有一个开放区间 peer 作依据（§8、§10）。在动 169 个文件**之前**，先在一个临时目录搭最小骨架验证三件事：
+
+- Vite 8 + `@react-router/dev` + `@vitejs/plugin-react@6` 能起 dev server 并 SSR 出页面
+- `@serwist/vite` 能构建出可注册的 SW
+- `@sentry/react-router` 能在 RR8 下初始化（§6.2）
+
+这是一次性的抛弃型验证，产物不保留。**任何一项不通，先调整方案再开始迁移** —— 代价是半天，换的是不会在迁移做到 80% 时被迫推倒重来。
 
 ### 9.3 迁移专项回归清单
 
@@ -514,7 +592,9 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | `@sentry/react-router` 不支持 RR8 | 中 | 回退 `@sentry/react` + `@sentry/node` 手工接线（§6.2） |
-| Serwist Vite 集成与现有 `sw.ts` 不兼容 | 中 | 该文件刚被改过两次，脆弱；专项回归（§9.3）。最坏情况换 `vite-plugin-pwa` 重写 SW |
+| **`@serwist/vite` 未必测过 Vite 8 / Rolldown** | **高** | peer 只写 `vite: ">=5.0.0"`，是开放区间不是背书（§8）。**放在迁移最早期验证**：先建最小 Vite 8 + RR8 + Serwist 骨架跑通 SW 构建，再动 169 个文件。不通就立即换 `vite-plugin-pwa` |
+| Serwist 集成与现有 `sw.ts` 不兼容 | 中 | 该文件刚被改过两次，脆弱；专项回归（§9.3） |
+| Vite 8 生态其余插件的 Rolldown 兼容性 | 中 | RR8 与 `@tailwindcss/vite` 的 peer 都已显式包含 `^8`（§8），风险集中在 Serwist 一处 |
 | hydration mismatch | 中 | `useHydrated` 守卫（§5.3）；控制台零警告作为验收条件 |
 | **安全头随 `_headers` 失效** | **高** | `server/index.ts` 逐条重实现（§6.3）；`Permissions-Policy` 漏掉会静默破坏 WebRTC |
 | 静态资源缓存路径 `/_next/static/*` → `/assets/*` 未改 | 中 | 同 §6.3；症状是产物完全不被缓存，需在验收时用 DevTools 确认 |
@@ -563,7 +643,8 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 - [ ] `bun run dev` 启动 Vite dev server，20 条路由全部可访问
 - [ ] `bun run build` 产出 SSR 构建，`bun run start` 能起服务
 - [ ] `bun run typecheck` 零错误
-- [ ] `bun run lint` 零 error（warn 可接受）
+- [ ] `bun run lint`（Biome）零 error（warn 可接受），4 条规则映射生效（§6.5）
+- [ ] `biome.json` 中 formatter 处于禁用状态（格式化留作独立 commit，§6.5）
 - [ ] `docker compose up` 起 app + cloudflared，`/healthz` 返回 200，cloudflared 在 app healthy 后才接流量
 - [ ] VPS 防火墙对公网关闭 80/443，站点仍可从公网正常访问（证明流量确实走隧道）
 - [ ] `curl -IL https://huanvae.cn/app/chat/` 得到单次 301 到 `/app/chat`，**无重定向循环**
@@ -573,6 +654,8 @@ Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射
 - [ ] **§6.3 表中 8 条响应头逐条验证生效**（`curl -I` 比对），其中 `Permissions-Policy` 的 camera/microphone 必须允许 self
 - [ ] **静态资源长缓存路径已从 `/_next/static/*` 改为 `/assets/*`** 并在 DevTools 确认命中
 - [ ] `sonner.tsx` 的 Toaster 主题跟随应用主题（既存缺陷已修，见 §8）
+- [ ] **生产产物中 `console.log` 已剥离，`console.error` / `console.warn` 仍保留**（§6.4，以行为验收而非配置写法）
+- [ ] `bun run build` 使用 Vite 8（`vite --version` 确认 8.x），无 peer 依赖警告
 - [ ] 仓库内 `grep -r "next/" src/` 无结果（除注释）
 - [ ] `next.config.js`、`next-env.d.ts`、`serwist.config.js`、`public/_headers`、`.next/`、`out/` 已删除
 
