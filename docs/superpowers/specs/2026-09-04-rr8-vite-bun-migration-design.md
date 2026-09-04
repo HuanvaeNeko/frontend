@@ -290,8 +290,10 @@ Serwist 官方有 Vite 集成（`@serwist/vite@9.5.12`），**继续用 Serwist*
 `server/index.ts` 用 Bun 原生 HTTP server 挂 RR8 的 request handler：
 
 - 静态资源（`/assets/*`、`public/` 内容）由 Bun 直接 serve
-- 尾斜杠 301 重定向（见 §4）
-- 健康检查端点 `/healthz`，供 Docker Compose healthcheck 用
+- 尾斜杠 301 重定向（见 §4）—— **只处理路径，不碰协议**，否则与 Cloudflare Tunnel 形成重定向循环（§7.1）
+- 健康检查端点 `/healthz`，供 Docker Compose healthcheck 与 cloudflared 的 `depends_on` 用
+- 明文 HTTP 监听，**不处理 TLS**（终止在 CF 边缘，§7.1）
+- 客户端 IP 从 `CF-Connecting-IP` 头取，不用 socket 远端地址（§7.1）
 - **响应头迁移**（见下）
 
 **`public/_headers` 迁移 —— 不能丢的安全头**
@@ -335,23 +337,64 @@ Vite 只暴露 `VITE_` 前缀的变量给客户端。全部 `NEXT_PUBLIC_*` 需�
 
 ---
 
-## 7. Docker Compose
+## 7. 部署拓扑与 Docker Compose
 
-阶段 1 的 compose 只有 app 一个服务，但**结构上预留** pg 和 redis 的位置，让阶段 2 只需取消注释 + 加环境变量。
+### 7.1 拓扑：VPS + Cloudflare Tunnel
+
+```
+浏览器 ──TLS──> Cloudflare 边缘 ──加密隧道──> cloudflared 容器 ──明文 HTTP──> app 容器
+                                              （同一 docker 网络，不出 VPS）
+```
+
+这个选择消掉了两类工作，也带来几个必须处理的细节。
+
+**消掉的**：
+
+- **TLS 不需要自己管**。终止在 Cloudflare 边缘，证书由 CF 签发续期。`server/index.ts` 只服务明文 HTTP，**不需要 Caddy / Traefik / certbot**。
+- **不需要开任何入站端口**。`cloudflared` 是**出站**建连到 CF 边缘的，VPS 防火墙可以对公网完全关闭 80/443。app 容器也**不 publish 端口到宿主机** —— 只暴露在 docker 内部网络上给 cloudflared 访问。这比 Pages 时代的攻击面还小。
+
+**必须处理的**：
+
+1. **信任 `X-Forwarded-Proto`**。origin 收到的是 HTTP，如果服务端有任何"非 HTTPS 就重定向到 HTTPS"的逻辑，会和 CF 之间形成**无限重定向循环**。§4 的尾斜杠 301 重定向要注意只处理路径、不碰协议。
+2. **真实客户端 IP 在 `CF-Connecting-IP`**，不是 socket 远端地址（那是 cloudflared 的容器 IP）。阶段 1 只影响 Sentry 的请求上下文；**阶段 2 的 Redis 限流必须读这个头**，否则会把所有用户当成同一个 IP 限流。
+3. **`/sw.js` 要显式绕过 CF 边缘缓存**。CF 默认缓存 `.js` 扩展名。虽然它会尊重 origin 的 `Cache-Control: no-store`，但 Service Worker 的更新链路本来就是本项目最脆弱的一环（最近两个 commit 都在修它），在 CF 加一条 Cache Rule 对 `/sw.js` 设 Bypass 是廉价保险。
+4. **SSR 的 HTML 不能被边缘缓存**。CF 的 Standard 缓存级别默认不缓存 HTML，所以阶段 1 无需额外配置；但阶段 2 的 HTML 会带用户态（主题、登录状态），届时必须确认没有任何 Cache Rule 把 HTML 纳入缓存。
+5. **`/assets/*` 交给 CF 缓存**。§6.3 的 `max-age=31536000, immutable` 会让 CF 边缘长期缓存，这是白拿的 CDN 收益 —— 前提是路径改对了（不是 `/_next/static/*`）。
+
+### 7.2 Compose
+
+阶段 1 是 app + cloudflared 两个服务，**结构上预留** pg 和 redis，让阶段 2 只需取消注释。
 
 ```yaml
 services:
   app:
-    build: .
-    ports: ["3000:3000"]
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
+        VITE_APP_VERSION: ${VITE_APP_VERSION}
+    expose: ["3000"]          # 只对 docker 网络暴露，不 publish 到宿主机
     environment:
       NODE_ENV: production
       PORT: 3000
     healthcheck:
-      test: ["CMD", "bun", "-e", "await fetch('http://localhost:3000/healthz')"]
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3000/healthz'); process.exit(r.ok ? 0 : 1)"]
       interval: 30s
       timeout: 3s
       retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}    # 从 .env 读，不进镜像不进 git
+    depends_on:
+      app:
+        condition: service_healthy
     restart: unless-stopped
 
   # 阶段 2 启用
@@ -363,9 +406,21 @@ services:
   #   volumes: [redisdata:/data]
 ```
 
-`Dockerfile` 用 `oven/bun` 多阶段构建：deps → build → runtime，runtime 阶段只带 `build/` 产物和生产依赖，非 root 用户运行。
+Tunnel 的 ingress 规则用 CF 面板托管（remote-managed tunnel），映射 `huanvae.cn` → `http://app:3000`。`CF_TUNNEL_TOKEN` 是密钥，必须走 `.env` 且 `.env` 要在 `.gitignore` 里 —— 迁移时确认。
 
-**注意**：`VITE_*` 变量在**构建时**被内联进产物，不是运行时读取。所以 `VITE_API_URL` 必须作为 build arg 传入，改它需要重新构建镜像。这与 `apiConfig.ts` 现有的"localStorage 可覆盖 API 地址"机制并存 —— 后者是运行时的，不受影响。
+`depends_on: service_healthy` 保证 app 起来之前 cloudflared 不接流量，避免部署瞬间的 502。
+
+### 7.3 Dockerfile 与构建时变量
+
+`Dockerfile` 用 `oven/bun` 多阶段构建：deps → build → runtime，runtime 只带 `build/` 产物和生产依赖，非 root 用户运行。
+
+**关键约束：`VITE_*` 变量在构建时被内联进 JS 产物，不是运行时读取。** 所以：
+
+- 它们必须作为 **build args** 传入（见 §7.2），不能只放 `environment`
+- 改 `VITE_API_URL` 需要**重新构建镜像**，重启容器无效
+- 推论：**镜像是环境相关的**，不能"一个镜像部署到多环境"
+
+这与 `src/lib/apiConfig.ts` 现有的"localStorage 可覆盖 API 地址"机制并存 —— 后者是纯运行时的，不受影响，仍可用于临时切换后端。
 
 ---
 
@@ -463,8 +518,12 @@ services:
 | hydration mismatch | 中 | `useHydrated` 守卫（§5.3）；控制台零警告作为验收条件 |
 | **安全头随 `_headers` 失效** | **高** | `server/index.ts` 逐条重实现（§6.3）；`Permissions-Policy` 漏掉会静默破坏 WebRTC |
 | 静态资源缓存路径 `/_next/static/*` → `/assets/*` 未改 | 中 | 同 §6.3；症状是产物完全不被缓存，需在验收时用 DevTools 确认 |
-| 部署形态变更（Pages → Docker） | 高 | 阶段 1 交付即需确定新的托管位置与 CI/CD；**这是阶段 1 的隐含前置依赖，需单独确认**（§13） |
-| `.history/` 有 50 个历史文件、`out/` 和 `.next/` 是构建产物 | 低 | 迁移时确认 `.gitignore` 覆盖，避免误提交 |
+| 协议重定向与 CF Tunnel 形成循环 | 中 | 尾斜杠 301 只改路径不碰协议（§6.3、§7.1）；验收时 `curl -IL` 确认无循环 |
+| `/sw.js` 被 CF 边缘缓存，卡住 SW 更新 | 中 | CF 加 Cache Rule 对 `/sw.js` 设 Bypass（§7.1）；SW 更新链路专项回归（§9.3） |
+| `CF_TUNNEL_TOKEN` 误提交进 git | 高 | `.gitignore` 已覆盖 `.env`（已验证）；仍需在 PR 里确认 token 未硬编码进 compose |
+| 误以为改环境变量重启即可生效 | 中 | `VITE_*` 是构建时内联的，必须重建镜像（§7.3）；写进部署文档 |
+
+> `.gitignore` 已确认覆盖 `.env`、`out`、`.next`、`.history/`，且 `git ls-files` 无已跟踪的构建产物 —— 原先列的误提交风险不成立，已移除。迁移后可顺手删掉其中 `next-env.d.ts` 一行。
 
 ---
 
@@ -505,7 +564,10 @@ services:
 - [ ] `bun run build` 产出 SSR 构建，`bun run start` 能起服务
 - [ ] `bun run typecheck` 零错误
 - [ ] `bun run lint` 零 error（warn 可接受）
-- [ ] `docker compose up` 起 app 服务，`/healthz` 返回 200
+- [ ] `docker compose up` 起 app + cloudflared，`/healthz` 返回 200，cloudflared 在 app healthy 后才接流量
+- [ ] VPS 防火墙对公网关闭 80/443，站点仍可从公网正常访问（证明流量确实走隧道）
+- [ ] `curl -IL https://huanvae.cn/app/chat/` 得到单次 301 到 `/app/chat`，**无重定向循环**
+- [ ] `CF_TUNNEL_TOKEN` 在 `.env` 中且 `.env` 已被 `.gitignore` 覆盖
 - [ ] Playwright 现有用例 + §9.3 专项回归全绿
 - [ ] 浏览器控制台无 hydration 警告
 - [ ] **§6.3 表中 8 条响应头逐条验证生效**（`curl -I` 比对），其中 `Permissions-Policy` 的 camera/microphone 必须允许 self
@@ -516,15 +578,15 @@ services:
 
 ---
 
-## 13. 待确认
+## 13. 部署决策与剩余问题
 
-**唯一的开放问题：新的托管位置。**
+**已定**：VPS 自托管，Cloudflare Tunnel 出口。拓扑、TLS 归属、端口策略、响应头迁移见 §7。DNS 侧只需在 CF 面板把 `huanvae.cn` 指向 tunnel，不需要改 A/AAAA 记录。
 
-阶段 1 放弃 Cloudflare Pages 静态托管，改 Docker Compose 自托管。需要确定：
+**剩余的一个小问题：镜像在哪构建。**
 
-- 跑在哪台机器 / 什么平台（VPS？云厂商容器服务？）
-- TLS 终止在哪里（当前由 Cloudflare 提供；自托管后需要 Caddy / Traefik / 云厂商 LB）
-- CI/CD 怎么走（当前 `.github/` 在 `huanvae/` 上级目录，需确认现有流水线形态）
-- `huanvae.cn` 的 DNS 与 CDN 策略是否随之调整
+前端仓库目前**没有任何 CI**（`huanvae/.github` 只是组织 profile README，`frontend/` 下无 `.github/`），Cloudflare Pages 时代应是走 CF 的 git 集成自动构建。换成自托管后这条链断了，需要补。两个选项：
 
-**这是阶段 1 的前置依赖，不是收尾事项** —— 它决定了 `Dockerfile` 的基础镜像选择、`server/index.ts` 是否需要自己处理 TLS、以及 `VITE_*` 构建参数如何注入 CI。建议在动第一行代码前定下来。
+- **在 VPS 上 `docker compose build`（推荐作为起步）**：最少的活动部件，`.env` 就在机器上，不需要镜像仓库、不需要往 CI 传 secret。代价是构建吃 VPS 资源，且构建期间机器负载高。以本项目规模（169 文件）这代价可以接受。
+- **CI 构建 + 推镜像仓库**：VPS 只 `docker compose pull && up`。更规范，回滚也更容易（镜像有 tag）。代价是要建 GitHub Actions、配镜像仓库、把 4 个 `VITE_*` 和注册表凭据作为 secret 注入。
+
+**建议起步用前者，等部署节奏稳定后再上 CI。** 这个决定不阻塞阶段 1 的编码 —— `Dockerfile` 和 `compose.yml` 两种方式完全一样，区别只在谁执行 `build`。所以**可以现在就开始实施，这个问题在第一次部署前定下即可**。
