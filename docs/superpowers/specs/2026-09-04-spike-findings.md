@@ -178,7 +178,7 @@ export default defineConfig({
 });
 ```
 
-`app/sw.ts`（workbox 版本的最小骨架，precache 部分）：
+`app/sw.ts`（workbox 版本的最小骨架，precache 部分，不含仓库现有的过滤逻辑；含过滤逻辑的完整版本见 §2.4 "改动后完整代码"）：
 ```ts
 /// <reference lib="webworker" />
 import { precacheAndRoute } from "workbox-precaching";
@@ -216,17 +216,73 @@ WARN  inlineDynamicImports option is deprecated, please use codeSplitting: false
 
 ### 2.4 `sw.ts` 从 Serwist 迁移到 Workbox(`injectManifest`) 的具体改动点
 
-已读过仓库现有的 `src/app/sw.ts`（180 行左右），逐项对照：
+已读过仓库现有的 `src/app/sw.ts`（184 行），逐项对照：
 
 | 现有写法（Serwist） | 需要改成的写法（vite-plugin-pwa / Workbox） | 改动量 |
 |---|---|---|
 | `import { defaultCache } from '@serwist/next/worker'` | 无直接等价物；`workbox` 没有现成的"默认缓存策略集合"。需要用 `workbox-routing` 的 `registerRoute()` + `workbox-strategies`（`StaleWhileRevalidate`/`NetworkFirst` 等）手写等价的运行时缓存规则，或先跳过运行时缓存只做 precache（现有 `defaultCache` 具体策略需要在 Task 8 里对照 Serwist 源码手工搬） | 中，需要新写代码 |
 | `new Serwist({ precacheEntries, skipWaiting: false, clientsClaim: false, navigationPreload: true, runtimeCaching: defaultCache, fallbacks: {...} })` + `serwist.addEventListeners()` | 拆成：`precacheAndRoute(precacheEntries)`（workbox-precaching）+ 按需 `enable()`（workbox-navigation-preload）+ 手写的 `registerRoute` 规则 + `setCatchHandler()`（workbox-routing，替代 `fallbacks.entries` 里 `/~offline` 的逻辑） | 中，逻辑等价但 API 形状不同 |
-| `PRECACHE_SKIP_PATTERNS` / `shouldSkipPrecache` 过滤逻辑 | **原样保留**，只是把过滤后的数组传给 `precacheAndRoute()` 而不是 `new Serwist({ precacheEntries })` | 几乎不变 |
+| `import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist'`（第 6 行）+ `declare global { interface WorkerGlobalScope extends SerwistGlobalConfig { __SW_MANIFEST: (PrecacheEntry \| string)[] \| undefined } }`（第 10-14 行） | **整个 `declare global` 块直接删除，不需要任何替代物**。`import` 改成 `import type { PrecacheEntry } from 'workbox-precaching'`（`PrecacheEntry` 由 `workbox-precaching` 定义并从包入口导出，结构等价：`{ url: string; revision?: string \| null; integrity?: string }`）。`SerwistGlobalConfig` 没有等价物需要引入——`workbox-precaching` 自带的类型声明已经用 `declare global` 把 `ServiceWorkerGlobalScope.__WB_MANIFEST: Array<PrecacheEntry \| string>` 挂到全局了，文件里只要有一处 `import ... from 'workbox-precaching'`，`self.__WB_MANIFEST` 就自动类型正确，不需要手写扩展（已与 `vite-plugin-pwa` 官方 injectManifest 示例代码交叉核对：示例里 `self.__WB_MANIFEST` 直接可用，没有任何手写的全局类型声明）。 | 删除，不替换 |
+| `const precacheEntries = (self.__SW_MANIFEST ?? []).filter(...)`（第 43-45 行）里的 `self.__SW_MANIFEST` | **必须重命名为 `self.__WB_MANIFEST`**——这是整个迁移里最容易被漏改、后果最隐蔽的一处。`self.__SW_MANIFEST` 是 Serwist 专有全局变量名；`vite-plugin-pwa` 的 `injectManifest` 策略只注入 `self.__WB_MANIFEST`，与本文档 §2.3 骨架示例 `precacheAndRoute(self.__WB_MANIFEST)` 用的是同一个变量。**如果只替换了 API（`new Serwist` → `precacheAndRoute`）却漏改这个变量名**：`self.__WB_MANIFEST` 从未被读取，`self.__SW_MANIFEST` 是 `undefined`，`?? []` 把它静默换成空数组，`shouldSkipPrecache` 在空数组上跑不会报错，`precacheAndRoute([])` 同样不报错、SW 照常 install/activate——**没有构建错误、没有 console 错误，只有生产环境离线缓存 0 个文件生效**，代码走查也很难肉眼发现。改动后的完整代码见本节末尾"改动后完整代码"。 | **改动小但风险高**：漏改 = 静默清零 precache |
+| `PRECACHE_SKIP_PATTERNS` 数组的内容（第 20-27 行，6 个字符串常量） | 过滤**机制**（`filter()` + `path.includes(pattern)`）原样保留，但**列表内容不能原样保留**。现有 6 项里 `_buildManifest.js`、`_ssgManifest.js`、`_clientMiddlewareManifest.json`、`/_global-error` 这 4 项是 Next.js 构建产物 / App Router 保留路由的命名（`_buildManifest.js`/`_ssgManifest.js` 是 Next.js webpack/turbopack 产物，`_clientMiddlewareManifest.json` 是 Next.js middleware 产物，`/_global-error` 是 Next.js App Router 保留路由名），RR8 + Vite 构建不会产生任何一个同名文件，必须删除。剩下 `/_headers`（部署平台 headers 配置约定）和 `/version.json`（项目自定义版本文件）跟 Next.js↔RR8 框架切换本身无关，是否保留取决于项目当前部署流程是否仍产出这两个文件，需要 Task 8 单独确认，不能假定跟着 Next.js 一起淘汰。**Task 8 必须实际跑一次 `bun run react-router build`，检查 `build/client/` 目录的真实产物文件名（尤其是任何构建期生成、可能在部署后 404 的文件），据此重新列出这个数组，不能直接照抄现有 6 项。** | 机制不变，**列表内容必须重新调研** |
 | `skipWaiting: false` + 自定义 `message` 监听器里的 `SKIP_WAITING` 分支 | **原样保留**——这是标准 `self.addEventListener('message', ...)`，与 Serwist/Workbox 无关（注意：这部分是最近两次 commit 刚改过的逻辑，见仓库 log，属于脆弱区，Task 8 要单独回归测试） | 不变 |
+| `event.ports[0]?.postMessage({ version: 'serwist' })`（第 163-165 行，`GET_VERSION` 消息分支）和 `console.log('[SW] Serwist Service Worker 已加载')`（第 184 行，文件末尾顶层语句） | 两处都是残留的 Serwist 字面量字符串，逻辑结构本身不受迁移影响，但内容需要同步改掉，否则迁移完成后这两处仍然自称"serwist"，误导后续调试排查。建议：`version: 'serwist'` → `version: 'workbox'`（或项目约定的其他版本标识，只要不再是 `'serwist'`）；`'[SW] Serwist Service Worker 已加载'` → `'[SW] Service Worker 已加载'`（去掉 Serwist 字样即可；不建议改成 "Workbox Service Worker"，因为文件里除了 precache 部分还有大量与 Workbox 无关的自定义逻辑）。 | 极小，纯文案，但必须记得改 |
 | `push` / `notificationclick` / `notificationclose` / `sync` 事件监听器（约占文件一半篇幅） | **原样保留**，全部是标准 Service Worker API，不依赖 Serwist | 不变 |
 
-**结论对 Task 8 的具体指导**：`sw.ts` 里大约一半的代码（推送通知、通知点击、后台同步、自定义 message 处理）完全不用动。真正需要重写的是文件开头 Serwist 实例化那一段（约 20-30 行），核心是把 `defaultCache` 的运行时缓存策略用 `workbox-strategies`/`workbox-routing` 手工重建,以及把 `fallbacks.entries` 的离线兜底页逻辑用 `setCatchHandler` 重写。需要新增的 devDependencies：`workbox-precaching`、`workbox-routing`、`workbox-strategies`、`workbox-navigation-preload`(按实际用到的模块显式加,不要依赖 `vite-plugin-pwa` 传递依赖里恰好带了 `workbox-build`/`workbox-window` 这件事——那两个是构建期工具包，不保证暴露 `workbox-precaching` 这类运行时子包作为可直接 import 的直接依赖)。
+**改动后完整代码（precache 过滤部分，对应现有 `src/app/sw.ts` 第 1-45 行，含上表前四行的改动）**：
+
+```ts
+/// <reference no-default-lib="true" />
+/// <reference lib="esnext" />
+/// <reference lib="webworker" />
+
+import { precacheAndRoute, type PrecacheEntry } from "workbox-precaching";
+
+declare let self: ServiceWorkerGlobalScope;
+
+// 过滤掉部署后可能 404 的 URL，避免 bad-precaching-response 导致 SW 安装失败
+// （/~offline 有对应页面且需被 fallback 使用，故不排除）
+// 以下列表是占位示例，Task 8 必须对照 RR8 实际构建产物重新调研
+// （见上表 "PRECACHE_SKIP_PATTERNS 数组的内容" 一行，不能直接照抄）
+const PRECACHE_SKIP_PATTERNS = [
+  "/_headers",
+  "/version.json",
+];
+
+function getPath(entry: PrecacheEntry | string): string {
+  const url = typeof entry === "string" ? entry : entry.url;
+  try {
+    return url.startsWith("http") ? new URL(url).pathname : url;
+  } catch {
+    return url;
+  }
+}
+
+function shouldSkipPrecache(entry: PrecacheEntry | string): boolean {
+  const path = getPath(entry);
+  return PRECACHE_SKIP_PATTERNS.some((p) => path.includes(p));
+}
+
+// 关键改动：self.__SW_MANIFEST（Serwist 专有全局变量）→ self.__WB_MANIFEST
+// （vite-plugin-pwa / Workbox 注入的全局变量，与本文档 §2.3 骨架一致）
+const precacheEntries = (self.__WB_MANIFEST ?? []).filter(
+  (e) => !shouldSkipPrecache(e)
+);
+
+precacheAndRoute(precacheEntries);
+```
+
+这段代码与 §2.3 的最小骨架（`precacheAndRoute(self.__WB_MANIFEST)`）是同一件事的两个粒度：§2.3 演示"最小配置能否跑通"，本节演示"仓库现有的 45 行过滤逻辑套进 vite-plugin-pwa 之后长什么样"——两者读取的是同一个全局变量 `self.__WB_MANIFEST`，不存在冲突，也不要在两处使用不同的变量名。
+
+**结论对 Task 8 的具体指导**：`sw.ts` 里大约一半的代码（推送通知、通知点击、后台同步、自定义 message 处理）完全不用动。需要改动的地方有五处，缺一不可：
+
+1. 文件开头 Serwist 实例化那一段（约 20-30 行）——`defaultCache` 的运行时缓存策略用 `workbox-strategies`/`workbox-routing` 手工重建，`fallbacks.entries` 的离线兜底页逻辑用 `setCatchHandler` 重写。
+2. `self.__SW_MANIFEST` → `self.__WB_MANIFEST` 的重命名（见上表"`self.__SW_MANIFEST`"一行）——**这是最容易被漏改、失败方式最隐蔽的一处，务必单独检查**，漏改不会报错，只会让生产环境 precache 静默清零。
+3. 类型导入：删除 `import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist'` 和 `declare global {...}` 块，改成 `import type { PrecacheEntry } from 'workbox-precaching'`（见上表"类型声明"一行）。
+4. `PRECACHE_SKIP_PATTERNS` 列表内容按 RR8 真实构建产物重新调研，不能照抄现有 6 项（见上表"`PRECACHE_SKIP_PATTERNS` 数组的内容"一行）。
+5. 两处残留的 `'serwist'` 字面量文案改掉（见上表最后一行）。
+
+需要新增的 devDependencies：`workbox-precaching`、`workbox-routing`、`workbox-strategies`、`workbox-navigation-preload`(按实际用到的模块显式加,不要依赖 `vite-plugin-pwa` 传递依赖里恰好带了 `workbox-build`/`workbox-window` 这件事——那两个是构建期工具包，不保证暴露 `workbox-precaching` 这类运行时子包作为可直接 import 的直接依赖)。
 
 ---
 
