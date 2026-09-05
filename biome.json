@@ -31,7 +31,7 @@
         "noUnusedFunctionParameters": "warn"
       },
       "security": {
-        "noDangerouslySetInnerHtml": "warn"
+        "noDangerouslySetInnerHtml": "error"
       },
       "suspicious": {
         "noExplicitAny": "warn",
@@ -41,5 +41,17 @@
         "noArrayIndexKey": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/app/layout.tsx", "src/app/page.tsx"],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "warn"
+          }
+        }
+      }
+    }
+  ]
 }
