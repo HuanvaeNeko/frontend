@@ -1,6 +1,27 @@
 import * as Sentry from '@sentry/react-router'
 
 /**
+ * 过滤敏感信息：从 event.request.data 中移除 password / token 字段。
+ *
+ * 提取为具名导出（而不是内联匿名函数）是为了让这段有实际安全含义的逻辑
+ * 可以被单测直接覆盖，见 src/config/__tests__/sentry.test.ts。
+ */
+export function filterSensitiveData(event: Sentry.ErrorEvent, _hint: Sentry.EventHint): Sentry.ErrorEvent {
+  // 过滤密码等敏感信息
+  if (event.request?.data) {
+    const data = event.request.data as Record<string, unknown>
+    if (data.password) {
+      data.password = '[Filtered]'
+    }
+    if (data.token) {
+      data.token = '[Filtered]'
+    }
+  }
+
+  return event
+}
+
+/**
  * Sentry 错误监控配置
  */
 export const initSentry = () => {
@@ -8,27 +29,31 @@ export const initSentry = () => {
   if (import.meta.env.PROD) {
     Sentry.init({
       dsn: import.meta.env.VITE_SENTRY_DSN || '',
-      
+
       // 设置环境
       environment: import.meta.env.MODE,
-      
+
       // 设置发布版本
       release: `huanvae-frontend@${import.meta.env.VITE_APP_VERSION || '1.0.0'}`,
-      
+
       // 性能监控
+      // reactRouterTracingIntegration 是 @sentry/react-router 专为 RR 提供的
+      // 集成，内部包装了 browserTracingIntegration 并接管路由级 instrumentation
+      // （RR8 不会像原 Next.js 的 Sentry SDK 那样自动做路由埋点，需要显式加这一项）——
+      // 见 docs/superpowers/specs/2026-09-04-spike-findings.md §3。
       integrations: [
-        Sentry.browserTracingIntegration(),
+        Sentry.reactRouterTracingIntegration(),
         Sentry.replayIntegration({
           maskAllText: false,
           blockAllMedia: false,
         }),
       ],
-      
+
       // 采样率配置
       tracesSampleRate: 0.1, // 10% 的请求会被追踪
       replaysSessionSampleRate: 0.1, // 10% 的 session 会被录制
       replaysOnErrorSampleRate: 1.0, // 100% 的错误会被录制
-      
+
       // 忽略的错误
       ignoreErrors: [
         // 忽略浏览器扩展引起的错误
@@ -42,22 +67,9 @@ export const initSentry = () => {
         'AbortError',
         'The operation was aborted',
       ],
-      
+
       // 过滤敏感信息
-      beforeSend(event, _hint) {
-        // 过滤密码等敏感信息
-        if (event.request?.data) {
-          const data = event.request.data as Record<string, unknown>
-          if (data.password) {
-            data.password = '[Filtered]'
-          }
-          if (data.token) {
-            data.token = '[Filtered]'
-          }
-        }
-        
-        return event
-      },
+      beforeSend: filterSensitiveData,
     })
   }
 }

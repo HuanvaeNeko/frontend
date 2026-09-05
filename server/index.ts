@@ -16,6 +16,40 @@ import type { ServerBuild } from 'react-router'
 // SSR 时直接 500（dispatcher.getOwner is not a function）。
 process.env.NODE_ENV ??= 'production'
 
+// Sentry 服务端初始化。刻意放在这里（NODE_ENV 赋值之后，其余业务 import 之前），
+// 不能像 src/app/entry.client.tsx 那样用静态 `import * as Sentry from
+// '@sentry/react-router'` 放在文件顶部：这个包的 Node 导出
+// （@sentry/react-router/build/esm/index.server.js）里有一行
+// `export { createSentryHandleRequest } from './server/createSentryHandleRequest.js'`，
+// 而 createSentryHandleRequest.js 顶层是 `import React from 'react'` ——
+// ES 模块的静态 import/export-from 在模块求值阶段就会连带执行，一旦这行发生在
+// 上面 NODE_ENV 赋值之前，会在 NODE_ENV 还没落定时就把 react 拉进模块缓存；
+// react/index.js 自己也是 `process.env.NODE_ENV === 'production' ? require(prod)
+// : require(dev)` 这种一次性分支（同上面注释里 react-dom 那次事故的机制完全一样），
+// 一旦缓存住开发版就不会再重新求值，会和 build/server/index.js 里内联的、按
+// NODE_ENV=production 求值的 react-dom 对不上，复现同一类 dispatcher 不匹配的
+// 500。改成动态 import 并放在赋值之后，拿到的 react 已经是在 NODE_ENV=production
+// 下求值的版本，从源头避开这个问题（已用 bun run build && bun run start 验证：
+// curl / 返回 200，服务端日志无报错，见 task-9-report.md）。
+//
+// beforeSend 复用 src/config/sentry.ts 里为客户端定义、且有单测覆盖的
+// filterSensitiveData——避免同一条"过滤 password/token"的安全规则在两处分别
+// 维护、日后改一边忘了改另一边。
+if (process.env.NODE_ENV === 'production') {
+  const Sentry = await import('@sentry/react-router')
+  const { filterSensitiveData } = await import('../src/config/sentry')
+
+  Sentry.init({
+    dsn: process.env.VITE_SENTRY_DSN || '',
+    environment: process.env.NODE_ENV,
+    // 服务端不经过 vite.config.ts 的 define 注入（那只对 Vite 构建的产物生效），
+    // 读不到真实 package.json 版本号，回退值与客户端一致；DSN 未配置时 Sentry
+    // 本就是 inert，这个 release 标签不会被真正发送。
+    release: `huanvae-frontend@${process.env.VITE_APP_VERSION || '1.0.0'}`,
+    beforeSend: filterSensitiveData,
+  })
+}
+
 const PORT = Number(process.env.PORT ?? 3000)
 
 // 原 public/_headers 的安全头，Cloudflare Pages 格式在 Docker 下失效，此处重新实现。
