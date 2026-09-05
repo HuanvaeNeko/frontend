@@ -1,25 +1,11 @@
 import * as Sentry from '@sentry/react-router'
-
-/**
- * 过滤敏感信息：从 event.request.data 中移除 password / token 字段。
- *
- * 提取为具名导出（而不是内联匿名函数）是为了让这段有实际安全含义的逻辑
- * 可以被单测直接覆盖，见 src/config/__tests__/sentry.test.ts。
- */
-export function filterSensitiveData(event: Sentry.ErrorEvent, _hint: Sentry.EventHint): Sentry.ErrorEvent {
-  // 过滤密码等敏感信息
-  if (event.request?.data) {
-    const data = event.request.data as Record<string, unknown>
-    if (data.password) {
-      data.password = '[Filtered]'
-    }
-    if (data.token) {
-      data.token = '[Filtered]'
-    }
-  }
-
-  return event
-}
+// filterSensitiveData 单独拆到了自己的模块：server/index.ts 也要用它，
+// 但不能连带引入这个文件里其余 8 处 import.meta.env.PROD 判断——那些判断
+// 在 Bun 的服务端运行时里恒为 falsy（import.meta.env 在 Bun 下就是
+// process.env，没有 Vite 注入的 PROD 布尔值），会让 initSentry /
+// captureError 等其余导出被服务端误用时静默 no-op。完整原因见
+// ./filterSensitiveData.ts 顶部注释。
+import { filterSensitiveData } from './filterSensitiveData'
 
 /**
  * Sentry 错误监控配置

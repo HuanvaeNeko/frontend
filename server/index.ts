@@ -1,4 +1,16 @@
 import type { ServerBuild } from 'react-router'
+// filterSensitiveData 单独在 src/config/filterSensitiveData.ts 里：那个模块
+// 对 @sentry/react-router、React 都零运行时依赖，也不引用 import.meta.env
+// （完整原因见该文件顶部注释）。正因为如此，它可以放心用静态 import，和上面
+// 纯类型的 ServerBuild 一样，不会像 Sentry 或 react-router 那样在 NODE_ENV
+// 落定前就把 React 拉进模块缓存——下面 NODE_ENV 赋值那段注释详细解释了这个
+// 风险具体从何而来。这里不再像早期版本那样从客户端的 sentry.ts 动态
+// `await import(...)` 出 filterSensitiveData：那个文件其余 8 处判断都是
+// `import.meta.env.PROD`，在 Bun 下恒为 falsy，
+// 跨端引入整个模块会带出"看似能调、实际静默 no-op"的其余导出，只是因为一直
+// 没人在服务端调用到才没出过问题；改成从这个零依赖的小模块导入，从结构上
+// 消除这个隐患。
+import { filterSensitiveData } from '../src/config/filterSensitiveData'
 
 // vite.config.ts 把 react-dom 打进了 build/server/index.js（noExternal），
 // 那段代码在运行时读 process.env.NODE_ENV 来决定用生产版还是开发版实现。
@@ -8,11 +20,11 @@ import type { ServerBuild } from 'react-router'
 //
 // 必须在任何一个会加载 react/react-dom 的 import 之前设置：ES Module 的
 // import 在模块求值阶段就会执行，早于本文件里排在 import 语句之后的普通
-// 代码。所以上面这行 `import type` 用纯类型导入（编译期整条擦除，
-// 不产生真实 import），真正的 createRequestHandler 改成下面 NODE_ENV
-// 赋值之后再动态 import('react-router') —— 顺序调换过、已实测复现：
-// 调换前 react（外部、运行时按 NODE_ENV 走）已经在开发模式下完成初始化，
-// 与随后按 production 分支跑的内联 react-dom 内部结构对不上，
+// 代码。所以上面两行 import（type-only 的 ServerBuild、零运行时依赖的
+// filterSensitiveData）都不会加载 react 生态，真正的 createRequestHandler
+// 改成下面 NODE_ENV 赋值之后再动态 import('react-router') —— 顺序调换过、
+// 已实测复现：调换前 react（外部、运行时按 NODE_ENV 走）已经在开发模式下
+// 完成初始化，与随后按 production 分支跑的内联 react-dom 内部结构对不上，
 // SSR 时直接 500（dispatcher.getOwner is not a function）。
 process.env.NODE_ENV ??= 'production'
 
@@ -32,12 +44,11 @@ process.env.NODE_ENV ??= 'production'
 // 下求值的版本，从源头避开这个问题（已用 bun run build && bun run start 验证：
 // curl / 返回 200，服务端日志无报错，见 task-9-report.md）。
 //
-// beforeSend 复用 src/config/sentry.ts 里为客户端定义、且有单测覆盖的
-// filterSensitiveData——避免同一条"过滤 password/token"的安全规则在两处分别
-// 维护、日后改一边忘了改另一边。
+// beforeSend 复用文件顶部静态导入的 filterSensitiveData，和客户端的
+// sentry.ts 共用同一份实现——避免"过滤 password/token"这条安全规则在两处
+// 分别维护、日后改一边忘了改另一边。
 if (process.env.NODE_ENV === 'production') {
   const Sentry = await import('@sentry/react-router')
-  const { filterSensitiveData } = await import('../src/config/sentry')
 
   Sentry.init({
     dsn: process.env.VITE_SENTRY_DSN || '',
