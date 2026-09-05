@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
-    "preview": "npx wrangler pages dev out"
+    "preview": "npx wrangler pages dev out",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -41,6 +43,7 @@
     "react-markdown": "^10.1.0",
     "react-pdf": "^10.3.0",
     "react-resizable-panels": "^4",
+    "react-router": "^8.3.1",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
@@ -59,15 +62,22 @@
     "@serwist/cli": "^9.5.6",
     "@serwist/next": "^9.5.6",
     "@tailwindcss/postcss": "^4.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^25.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.4.24",
     "esbuild": "^0.27.3",
+    "happy-dom": "^20.14.0",
     "postcss": "^8.5.6",
     "serwist": "^9.5.6",
     "tailwindcss": "^4.2.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
   },
   "overrides": {
     "minimatch": "^10.2.1",
