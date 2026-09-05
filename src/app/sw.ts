@@ -167,8 +167,25 @@ registerRoute(
 const OFFLINE_URL = '/~offline'
 const OFFLINE_CACHE = 'offline-fallback'
 
+// .catch(() => {}) 是故意的，不是疏漏。precacheAndRoute() 在本文件顶部已经
+// 注册了它自己的 install 监听器，而 SW 规范里 install 事件只有在"每一个"
+// 监听器传给 waitUntil 的 promise 都 resolve 时才算成功——任何一个 reject，
+// 整个 SW 安装失败。这里的 cache.add(OFFLINE_URL) 不是读本地文件，是对
+// /~offline 发一次真实网络请求（该路由是 ssr: true 下动态渲染的，见下方
+// "离线兜底页"一节），一旦这次请求失败（网络瞬时抖动，或那条路由自己 SSR
+// 报错），会连累上面 precacheAndRoute() 的 install 一起判定失败：不是"没有
+// 离线兜底页"这么轻，而是 109 条 precache 全部落空、字体/图片/脚本运行时
+// 缓存规则也全部不会注册，SW 直接没装上。迁移前的 Serwist 实现能避开这个
+// 坑是因为离线页当时是构建期产出的静态文件、走的是 precache 白名单机制（见
+// 上面 PRECACHE_SKIP_PATTERNS 的注释）；现在它是运行时抓取，不能照搬同一套
+// 假设。吞掉这里的失败：`没有离线兜底页` 严格好于 `完全没有 Service Worker`。
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(OFFLINE_CACHE).then((cache) => cache.add(OFFLINE_URL)))
+  event.waitUntil(
+    caches
+      .open(OFFLINE_CACHE)
+      .then((cache) => cache.add(OFFLINE_URL))
+      .catch(() => {})
+  )
 })
 
 // navigationPreload：和迁移前的 `navigationPreload: true` 等价，
