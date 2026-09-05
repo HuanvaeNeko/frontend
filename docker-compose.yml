@@ -1,0 +1,36 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
+        VITE_APP_VERSION: ${VITE_APP_VERSION}
+    # 只对 docker 网络暴露，不 publish 到宿主机 —— 流量只经 cloudflared 进出
+    expose: ["3000"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3000/healthz'); process.exit(r.ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+# 阶段 2 启用
+# volumes:
+#   pgdata:
+#   redisdata:

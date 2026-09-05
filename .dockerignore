@@ -1,0 +1,13 @@
+node_modules
+.git
+.history
+.next
+out
+build
+tests
+test-results
+docs
+*.md
+.env
+.env.*
+playwright-report
