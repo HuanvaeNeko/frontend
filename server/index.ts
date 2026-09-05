@@ -92,8 +92,10 @@ Bun.serve({
   async fetch(request) {
     const url = new URL(request.url)
 
+    // spec §6.3 把六条安全头范围定在 /*，健康检查端点不是例外——即使探测方是
+    // Docker healthcheck 而不是浏览器，也没有理由让这一条路径少一份纵深防御。
     if (url.pathname === '/healthz') {
-      return new Response('ok', { status: 200 })
+      return withSecurityHeaders(new Response('ok', { status: 200 }))
     }
 
     // 尾斜杠 301：原 Next 配置是 trailingSlash: true，迁移后不带尾斜杠。
@@ -107,9 +109,12 @@ Bun.serve({
     // 唯一方式——origin 在 Cloudflare Tunnel 后面只看得到 HTTP，一旦重定向里
     // 混进了协议/主机，就有被攻击者操纵、或者在改协议时与 CF 边缘的 TLS
     // 终止形成无限循环的风险。
+    // 同样套 withSecurityHeaders：带尾斜杠的 URL 是 Next 时代的合法 canonical
+    // 形式，旧书签、外链、搜索引擎缓存结果会先命中这一条 301，不能让它们拿到
+    // 一个没有安全头的响应。
     if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
       const location = url.pathname.replace(/\/+$/, '') + url.search
-      return new Response(null, { status: 301, headers: { Location: location } })
+      return withSecurityHeaders(new Response(null, { status: 301, headers: { Location: location } }))
     }
 
     // Service Worker：绝不缓存
