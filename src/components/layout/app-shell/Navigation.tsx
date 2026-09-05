@@ -2,8 +2,8 @@
 
 import { cn } from '@/lib/utils'
 import { type LucideIcon, Bot, Settings, User, LogOut, Video, Users, FileText, MessageSquare, Globe, Monitor } from 'lucide-react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { AppLink as Link } from '@/components/common/AppLink'
+import { usePathname } from '@/lib/navigation'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChatStore } from '@/features/chat/store/chatStore'

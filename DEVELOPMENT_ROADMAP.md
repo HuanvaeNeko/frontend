@@ -94,8 +94,9 @@
 
 | 类别 | 技术 |
 |------|------|
-| 框架 | Next.js 16 (App Router) |
-| 构建 | Turbopack（开发）/ Next.js（生产） |
+| 框架 | React Router 8（Framework Mode，SSR 外壳 + 客户端数据拉取） |
+| 构建 | Vite 8 |
+| 运行时 / 包管理 | Bun |
 | 核心 | React 19 + TypeScript 5.9 |
 | 状态 | Zustand |
 | UI | shadcn/ui + Radix UI |
@@ -103,7 +104,10 @@
 | 动画 | Framer Motion |
 | 图标 | Lucide React |
 | 通信 | WebSocket + WebRTC |
+| Lint / 单测 | Biome（Lint，格式化暂禁用）+ Vitest |
+| PWA | vite-plugin-pwa（injectManifest） |
+| 部署 | Docker Compose（VPS）+ Cloudflare Tunnel |
 
 ---
 
-**更新时间**: 2026-01-13
+**更新时间**: 2026-09-05

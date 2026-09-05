@@ -54,7 +54,7 @@ export function UpdatePrompt({
       return
     }
 
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       void navigator.serviceWorker.getRegistrations().then((registrations) => {
         registrations.forEach((registration) => {
           void registration.unregister()

@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
+        VITE_APP_VERSION: ${VITE_APP_VERSION}
+    # 只对 docker 网络暴露，不 publish 到宿主机 —— 流量只经 cloudflared 进出
+    expose: ["3000"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # VITE_SENTRY_DSN / VITE_APP_VERSION 双重角色，必须同时留在上面的
+      # build.args 里：build.args 供 Vite 在构建期把值内联进客户端产物；这里
+      # 的 environment 供 server/index.ts 在容器启动时以
+      # process.env.VITE_SENTRY_DSN / process.env.VITE_APP_VERSION 读取，
+      # 用于服务端 Sentry 初始化（见该文件顶部注释）。只放 build.args 不放这里
+      # 的话，服务端那份 Sentry.init({ dsn: '' }) 永远读到空字符串，在
+      # runtime 阶段静默 inert——容器正常启动、健康检查照常通过，只是服务端
+      # 报错永远不会上报到 Sentry，且没有任何日志或错误提示这一点。
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
+      VITE_APP_VERSION: ${VITE_APP_VERSION}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3000/healthz'); process.exit(r.ok ? 0 : 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  cloudflared:
+    # 固定版本号，不用 latest：这个容器是部署的整个网络边界（唯一入站路径），
+    # 一次无预警的镜像更新（`docker compose up -d --build` 或宿主机拉取新
+    # latest 层）可能带来未经验证的行为变化，风险与收益不对等。升级前先看
+    # https://github.com/cloudflare/cloudflared/releases 的发布说明。
+    image: cloudflare/cloudflared:2026.8.2
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+# 阶段 2 启用
+# volumes:
+#   pgdata:
+#   redisdata:

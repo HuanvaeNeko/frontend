@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/lib/navigation'
 import { useAuthStore } from '../store/authStore'
 import SimpleLoading from '@/components/common/SimpleLoading'
 import { DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'

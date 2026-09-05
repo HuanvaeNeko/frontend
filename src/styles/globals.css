@@ -154,11 +154,6 @@
     touch-action: manipulation;
   }
 
-  #__next {
-    height: 100%;
-    min-height: 100dvh;
-  }
-
   /* 移动端可点击区域最小高度（约 44px），便于触控 */
   @media (max-width: 767px) {
     button:not([class*="size-"]):not([class*="h-"]):not([class*="min-h-"]),

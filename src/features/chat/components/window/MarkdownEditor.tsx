@@ -322,7 +322,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       </div>
 
       {/* 样式 */}
-      <style jsx global>{`
+      <style>{`
         .markdown-editor {
           background: hsl(var(--card));
           border: 1px solid hsl(var(--border));

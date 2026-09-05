@@ -576,7 +576,7 @@ Vite 8 的直接依赖是 `rolldown@~1.2.4` + `lightningcss`，即**打包器从
 
 现有用例覆盖不到、但迁移风险高的点：
 
-- **20 条路由逐个可达**，且 URL 与 `src/lib/routes.ts` 常量完全一致
+- **16 条路由逐个可达**，且 URL 与 `src/lib/routes.ts` 常量完全一致
 - **尾斜杠重定向**：`/app/chat/` → `/app/chat` 返回 301
 - **认证守卫**：未登录访问 `/app/*` 跳 `/app/login`；已登录访问 `/app/login` 跳默认页
 - **PWA 更新链路**：SW 注册 → 检测到新版本 → 更新提示 → 点击 → 重载（§6.1 风险点）
@@ -640,7 +640,7 @@ Vite 8 的直接依赖是 `rolldown@~1.2.4` + `lightningcss`，即**打包器从
 ## 12. 阶段 1 验收标准
 
 - [ ] `bun install` 生成 `bun.lock`，`pnpm-lock.yaml` / `pnpm-workspace.yaml` 已删除，`overrides` 三条安全约束已迁移
-- [ ] `bun run dev` 启动 Vite dev server，20 条路由全部可访问
+- [ ] `bun run dev` 启动 Vite dev server，16 条路由全部可访问
 - [ ] `bun run build` 产出 SSR 构建，`bun run start` 能起服务
 - [ ] `bun run typecheck` 零错误
 - [ ] `bun run lint`（Biome）零 error（warn 可接受），4 条规则映射生效（§6.5）

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/lib/navigation'
 import { motion } from 'framer-motion'
 import { Video, Loader2, Users, Shield, Globe, Lock, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'

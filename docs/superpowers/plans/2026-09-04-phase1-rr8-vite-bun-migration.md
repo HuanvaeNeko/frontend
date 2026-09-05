@@ -42,10 +42,10 @@
 | `src/lib/dynamic.tsx` | `next/dynamic` 的 RR8 适配（`React.lazy` + 水合守卫） |
 | `src/components/common/AppLink.tsx` | `next/link` 的 RR8 适配（接受 `href` 而非 `to`） |
 | `src/app/root.tsx` | HTML 外壳、meta、links、providers、ErrorBoundary（含 404） |
-| `src/app/routes.ts` | RR8 路由配置（20 条路由的显式声明） |
+| `src/app/routes.ts` | RR8 路由配置（16 条路由的显式声明） |
 | `src/app/entry.client.tsx` | 客户端 hydration 入口 + Sentry 客户端初始化 |
 | `src/app/entry.server.tsx` | 服务端渲染入口 |
-| `src/app/routes/*.tsx` | 20 个路由模块（见 Task 6） |
+| `src/app/routes/*.tsx` | 16 个路由模块（见 Task 6） |
 | `src/data/index.ts` | 数据访问抽象层（阶段 2 接缝） |
 | `server/index.ts` | Bun HTTP server：静态资源、响应头、尾斜杠重定向、`/healthz` |
 | `Dockerfile` | 多阶段构建（oven/bun） |
@@ -837,13 +837,13 @@ git commit -m "feat: 新增 React Router 导航适配层与单测栈
 **Files:**
 - Create: `react-router.config.ts`、`vite.config.ts`
 - Create: `src/app/root.tsx`、`src/app/routes.ts`、`src/app/entry.client.tsx`、`src/app/entry.server.tsx`
-- Create: `src/app/routes/` 下 20 个路由模块
+- Create: `src/app/routes/` 下 16 个路由模块
 - Modify: `package.json`、`tsconfig.json`、`.gitignore`、`src/lib/apiConfig.ts`、`src/lib/version.ts`、`src/components/ui/sonner.tsx`、34 个 import 替换文件
 - Delete: `next.config.js`、`next-env.d.ts`、`src/app/layout.tsx`、`src/app/providers.tsx`、`src/app/serwist.tsx`、`src/app/not-found.tsx`、所有 `src/app/**/page.tsx` 与 `layout.tsx`、`src/app/app/(protected)/ProtectedLayoutClient.tsx`
 
 **Interfaces:**
 - Consumes: Task 5 的 `useRouter`/`usePathname`/`useSearchParams`/`useParams`/`dynamic`/`AppLink`/`useHydrated`；Task 2 的三个决策
-- Produces: `bun run dev` 启动 Vite；20 条路由可达；`bun run build` 产出 SSR 构建。Task 7 的 `server/index.ts` 依赖构建产物路径 `build/server/index.js` 与 `build/client/`
+- Produces: `bun run dev` 启动 Vite；16 条路由可达；`bun run build` 产出 SSR 构建。Task 7 的 `server/index.ts` 依赖构建产物路径 `build/server/index.js` 与 `build/client/`
 
 - [ ] **Step 1: 装 RR8 + Vite 依赖，卸 Next**
 
@@ -1195,7 +1195,7 @@ export default [
 ] satisfies RouteConfig
 ```
 
-**核对**：这 20 条路径必须与 `src/lib/routes.ts` 的 `ROUTES` 常量逐字一致。用以下命令交叉验证：
+**核对**：这 16 条路径必须与 `src/lib/routes.ts` 的 `ROUTES` 常量逐字一致。用以下命令交叉验证：
 
 ```bash
 grep -oE "'/[a-z~/-]*'" src/lib/routes.ts | sort -u
@@ -1511,7 +1511,7 @@ bun run typecheck
 
 Expected: 零错误。常见问题：`import.meta.env` 无类型（加 `vite/client` 到 tsconfig types）、`dynamic` 第二参数残留 `ssr: false`（回 Step 12）。
 
-- [ ] **Step 17: 起 dev server，逐条访问 20 个路由**
+- [ ] **Step 17: 起 dev server，逐条访问 16 个路由**
 
 ```bash
 bun run dev &
@@ -1565,7 +1565,7 @@ git commit -m "feat!: 从 Next.js 迁移到 React Router 8 + Vite 8
 appDirectory，两者无法共存，故单次提交。
 
 - appDirectory 指向现有 src/app/，145 个非路由文件目录结构零改动
-- 20 条路由用 config-based routing 显式声明，URL 与 src/lib/routes.ts 逐字一致
+- 16 条路由用 config-based routing 显式声明，URL 与 src/lib/routes.ts 逐字一致
 - 34 个文件仅机械替换 import 到 Task 5 的适配层
 - metadata/viewport 导出转为 RR8 的 meta/links；404 走 ErrorBoundary
 - NEXT_PUBLIC_* → VITE_*，process.env → import.meta.env
@@ -2343,7 +2343,7 @@ Expected: 原有用例通过数与 Task 1 Step 4 记录一致，加上本 task �
 git add tests/migration-regression.spec.ts
 git commit -m "test: 补充迁移专项回归
 
-覆盖现有 e2e 触及不到但迁移风险高的点：20 条路由可达性与 URL 一致性、
+覆盖现有 e2e 触及不到但迁移风险高的点：16 条路由可达性与 URL 一致性、
 尾斜杠 301 无循环、认证守卫跳转、hydration 零警告、八条安全响应头、
 sw.js 不缓存。
 
@@ -2357,7 +2357,7 @@ sw.js 不缓存。
 全部 12 个 task 完成后，对照 spec §12 逐项确认：
 
 - [ ] `bun install` 生成 `bun.lock`，pnpm 文件已删除，overrides 安全约束已迁移
-- [ ] `bun run dev` 启动 Vite，20 条路由可访问
+- [ ] `bun run dev` 启动 Vite，16 条路由可访问
 - [ ] `bun run build` 产出 SSR 构建，`bun run start` 起服务
 - [ ] `bun run typecheck` 零错误
 - [ ] `bun run lint`（Biome）零 error，4 条规则映射生效

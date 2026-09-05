@@ -3,6 +3,7 @@ import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
+import { loadFriends } from '@/data'
 
 interface FriendsState {
   friends: Friend[]
@@ -59,7 +60,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   loadFriends: async () => {
     set({ isLoading: true, error: null })
     try {
-      const friends = await friendsApi.getFriendsList()
+      const friends = await loadFriends()
       set({ friends, isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '加载好友列表失败')

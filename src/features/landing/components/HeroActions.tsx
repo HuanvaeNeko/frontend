@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/lib/navigation'
 import { ArrowRight } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'

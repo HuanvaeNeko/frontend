@@ -1,6 +1,6 @@
-# Next.js build output
-.next
-out
+# Build output
+build
+.react-router
 
 # Node dependencies
 node_modules
@@ -36,11 +36,16 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
-next-env.d.ts
 
 # Testing
 coverage
 .nyc_output
+
+# Playwright (自动生成)
+test-results
+playwright-report
+blob-report
+playwright/.cache
 
 # PWA (自动生成)
 public/sw.js
@@ -59,3 +64,6 @@ public/version.json
 
 # Misc
 *.pem
+
+# SDD 工作区（ledger / 简报 / 审查包，非项目产物）
+.superpowers/
