@@ -2,13 +2,41 @@ import { fileURLToPath } from 'node:url'
 import { reactRouter } from '@react-router/dev/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig(({ command }) => ({
   // 不要再加 @vitejs/plugin-react：reactRouter() 内部已经装好了 React Fast Refresh，
   // 两者叠加会让 HMR 预导入脚本重复注入，浏览器直接报
   // "Identifier 'RefreshRuntime' has already been declared"（已实测复现）。
   // vitest.config.ts 里仍然需要 plugin-react，那是另一套构建管线。
-  plugins: [tailwindcss(), reactRouter()],
+  plugins: [
+    tailwindcss(),
+    reactRouter(),
+    // PWA Service Worker：@serwist/vite 在 Vite 8 + RR8 下不可用（它只认 Vite
+    // 单一顶层 build.outDir，RR8 用 Environment API 分别配置 client/ssr 的
+    // outDir，顶层 outDir 保持 Vite 默认值 "dist"，产物会错误地落到项目根的
+    // dist/ 而不是 build/client/ —— 已通过读源码 + 实测复现确认，详见
+    // docs/superpowers/specs/2026-09-04-spike-findings.md §2）。
+    // 改用 vite-plugin-pwa 的 injectManifest 模式：outDir 是它自己文档化的公开
+    // 配置项，不依赖任何未公开行为，已在 spike 中验证跑通。
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src/app',
+      filename: 'sw.ts',
+      outDir: 'build/client',
+      // 项目在 UpdatePrompt.tsx 里手写了自己的注册逻辑
+      // （navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })），
+      // 不需要插件生成注册脚本。
+      injectRegister: false,
+      // manifest.json 已由 public/manifest.json 静态提供，不用插件生成/接管。
+      manifest: false,
+      injectManifest: {
+        globDirectory: 'build/client',
+      },
+      // 不设置 devOptions.enabled（默认 false）：dev 模式下插件不生成/不注册
+      // SW，只有生产构建才产出 build/client/sw.js —— 见 Task 8 verification。
+    }),
+  ],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
