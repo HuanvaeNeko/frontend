@@ -25,11 +25,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // 本地不留 undefined（Playwright 默认按 CPU 核数跑满）：chat.spec.ts 在满
-  // 并发下已知 flaky（资源争抢），一个刚 clone 下来的干净检出跑这套"迁移
-  // 安全网"就先见红，会教会下一个人不信任这套测试。2 是留出并发验证价值
-  // 和稳定性之间的折中；CI 已经用 1 避免争抢。
-  workers: process.env.CI ? 1 : 2,
+  // 本地和 CI 都用 1。chat.spec.ts 里两个用例用 page.route() 拦截 +
+  // waitForResponse 打 dev server，而 Vite dev 的按需转译在并发下会被饿死：
+  // 页面 JS chunk 还没加载完，那个 fetch 就不会发出，30s 超时耗尽。
+  // 先试过 workers: 2 作为"并发验证价值 vs 稳定性"的折中，实测仍会见红
+  // （隔离单跑同样两个用例只需 3.2s / 1.3s，证明是争抢不是用例本身慢）。
+  // 这套 e2e 是整个迁移的安全网，它必须可信：本地绿和 CI 绿含义相同，
+  // 比省几分钟墙钟更重要。一个刚 clone 的干净检出跑出红色，
+  // 会教会下一个人不信任这套测试。
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
