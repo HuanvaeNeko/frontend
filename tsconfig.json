@@ -17,10 +17,13 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
+    "types": [
+      "vite/client",
+      "bun"
+    ],
+    "rootDirs": [
+      ".",
+      "./.react-router/types"
     ],
     "paths": {
       "@/*": [
@@ -29,15 +32,12 @@
     }
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".react-router/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "public/sw.js",
     "src/app/sw.ts"
   ]
 }

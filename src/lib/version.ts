@@ -6,10 +6,10 @@
  */
 
 // 从环境变量读取版本号（构建时注入）或使用默认值
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0'
 
 // 构建时间戳
-export const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || new Date().toISOString()
+export const BUILD_TIME = import.meta.env.VITE_BUILD_TIME || new Date().toISOString()
 
 /**
  * 完整版本信息接口

@@ -1,7 +1,7 @@
 'use client'
 
 import { DesktopSidebar, MobileTabBar } from './app-shell/Navigation'
-import { usePathname } from 'next/navigation'
+import { usePathname } from '@/lib/navigation'
 import { ROUTES } from '@/lib/routes'
 
 interface MainLayoutProps {

@@ -1,0 +1,165 @@
+import { describe, it, expect } from 'vitest'
+import { useState } from 'react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { useRouter, usePathname, useSearchParams, useParams } from '../navigation'
+
+function renderAt(path: string, ui: React.ReactNode, routePath = '*') {
+  const router = createMemoryRouter(
+    [{ path: routePath, element: ui }],
+    { initialEntries: [path] }
+  )
+  return render(<RouterProvider router={router} />)
+}
+
+describe('usePathname', () => {
+  it('返回不含 query string 的路径', () => {
+    function Probe() { return <span data-testid="p">{usePathname()}</span> }
+    renderAt('/app/chat?tab=1', <Probe />)
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/chat')
+  })
+})
+
+describe('useSearchParams', () => {
+  it('可以用 .get() 读取参数', () => {
+    function Probe() {
+      return <span data-testid="q">{useSearchParams().get('next') ?? 'none'}</span>
+    }
+    renderAt('/app/login?next=%2Fapp%2Fchat', <Probe />)
+    expect(screen.getByTestId('q')).toHaveTextContent('/app/chat')
+  })
+})
+
+describe('useParams', () => {
+  it('返回动态段', () => {
+    function Probe() {
+      const p = useParams<{ id?: string }>()
+      return <span data-testid="id">{p.id ?? 'none'}</span>
+    }
+    renderAt('/room/abc', <Probe />, '/room/:id')
+    expect(screen.getByTestId('id')).toHaveTextContent('abc')
+  })
+})
+
+describe('useRouter', () => {
+  it('push 会改变当前路径', async () => {
+    function Probe() {
+      const router = useRouter()
+      return (
+        <>
+          <span data-testid="p">{usePathname()}</span>
+          <button onClick={() => router.push('/app/friends')}>go</button>
+        </>
+      )
+    }
+    renderAt('/app/chat', <Probe />)
+    await userEvent.click(screen.getByText('go'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/friends')
+  })
+
+  it('replace 会覆盖当前历史记录，back 不会回到被替换前的路径', async () => {
+    function Probe() {
+      const router = useRouter()
+      return (
+        <>
+          <span data-testid="p">{usePathname()}</span>
+          <button onClick={() => router.push('/app/friends')}>push</button>
+          <button onClick={() => router.replace('/app/groups')}>replace</button>
+          <button onClick={() => router.back()}>back</button>
+        </>
+      )
+    }
+    renderAt('/app/chat', <Probe />)
+    // push 产生一条新历史记录：/app/chat -> /app/friends
+    await userEvent.click(screen.getByText('push'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/friends')
+    // replace 覆盖当前记录，而不是新增一条：栈变为 /app/chat -> /app/groups
+    await userEvent.click(screen.getByText('replace'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/groups')
+    // 如果 replace 误写成 push（丢了 { replace: true }），栈会是
+    // /app/chat -> /app/friends -> /app/groups，back 会先回到 /app/friends 而非 /app/chat。
+    await userEvent.click(screen.getByText('back'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/chat')
+  })
+
+  it('back 会回到上一个路径（对应 not-found.tsx 的返回按钮）', async () => {
+    function Probe() {
+      const router = useRouter()
+      return (
+        <>
+          <span data-testid="p">{usePathname()}</span>
+          <button onClick={() => router.push('/app/friends')}>go</button>
+          <button onClick={() => router.back()}>back</button>
+        </>
+      )
+    }
+    renderAt('/app/chat', <Probe />)
+    await userEvent.click(screen.getByText('go'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/friends')
+    await userEvent.click(screen.getByText('back'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/chat')
+  })
+
+  it('forward 会前进到被 back 离开的路径', async () => {
+    function Probe() {
+      const router = useRouter()
+      return (
+        <>
+          <span data-testid="p">{usePathname()}</span>
+          <button onClick={() => router.push('/app/friends')}>go</button>
+          <button onClick={() => router.back()}>back</button>
+          <button onClick={() => router.forward()}>forward</button>
+        </>
+      )
+    }
+    renderAt('/app/chat', <Probe />)
+    await userEvent.click(screen.getByText('go'))
+    await userEvent.click(screen.getByText('back'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/chat')
+    await userEvent.click(screen.getByText('forward'))
+    expect(screen.getByTestId('p')).toHaveTextContent('/app/friends')
+  })
+
+  it('暴露 refresh / prefetch（仓库内无调用点，仅验证签名完整性）', () => {
+    function Probe() {
+      const r = useRouter()
+      const ok = ['refresh', 'prefetch']
+        .every((k) => typeof (r as Record<string, unknown>)[k] === 'function')
+      return <span data-testid="ok">{String(ok)}</span>
+    }
+    renderAt('/app/chat', <Probe />)
+    expect(screen.getByTestId('ok')).toHaveTextContent('true')
+  })
+})
+
+describe('useRouter identity', () => {
+  it('连续渲染两次返回同一个对象引用（Object.is 稳定）', async () => {
+    // 回归测试，对应 commit be14018 修复的 bug：useRouter() 曾经每次渲染都
+    // 返回一个新的对象字面量，ProtectedRoute 把它放进 useEffect 依赖数组后，
+    // effect 无限重触发 router.replace()，navigate 又引发重渲染，形成死
+    // 循环——未登录用户永远到不了 /app/login（e2e 复现：生产构建下约 2200
+    // 次/秒被中止的 /__manifest 请求）。这里直接断言 identity 稳定性，一个
+    // 约 30ms 的单元测试，本该在这个 bug 引入时就拦住它，不必等
+    // tests/migration-regression.spec.ts 里慢得多（20s 超时）的 e2e 用例
+    // 失败才发现。
+    const refs: ReturnType<typeof useRouter>[] = []
+    function Probe() {
+      const router = useRouter()
+      refs.push(router)
+      const [, setTick] = useState(0)
+      return <button type="button" onClick={() => setTick((t) => t + 1)}>tick</button>
+    }
+    renderAt('/app/chat', <Probe />)
+    expect(refs).toHaveLength(1)
+
+    // 触发一次与导航无关的重渲染（纯组件内部 state 变化），验证的是
+    // useRouter() 在同一路由匹配下、单纯重渲染时的 identity 稳定性——而不是
+    // 更弱的"导航后拿到的函数依然能用"。
+    await userEvent.click(screen.getByText('tick'))
+    expect(refs).toHaveLength(2)
+
+    const [r1, r2] = refs
+    expect(Object.is(r1, r2)).toBe(true)
+  })
+})

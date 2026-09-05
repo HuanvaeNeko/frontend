@@ -1,0 +1,18 @@
+node_modules
+.git
+.history
+.next
+out
+build
+tests
+test-results
+docs
+*.md
+.env
+.env.*
+playwright-report
+# 迁移过程的 scratch 工作区（~1.7M .md/.diff，已 git-ignore）。runtime 镜像
+# 本来就不会碰到它（runtime 只 COPY 点名的路径），但它会拖慢 build context
+# 上传，并原样进 build 这个中间阶段的层里。上面的 *.md 只挡得住其中的 .md，
+# 挡不住 .diff，这里整目录排除。
+.superpowers

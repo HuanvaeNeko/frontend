@@ -46,7 +46,7 @@ test.describe('Chat Functionality', () => {
     })
   })
 
-  test('should load chat page and display friends list', async ({ page }) => {
+  test('should load chat page and display friends list', async ({ page }, testInfo) => {
     // Mock friends API
     await page.route('**/api/friends', async (route) => {
       await route.fulfill({
@@ -96,10 +96,16 @@ test.describe('Chat Functionality', () => {
     // Verify we are on the chat page
     await expect(page).toHaveURL(/\/app\/chat/)
 
-    // Verify "Friends" tab is active by default or clickable
-    const friendsTab = page.getByTestId('tab-friends')
-    // Depending on your UI, checking visibility might be enough
-    await expect(friendsTab).toBeVisible()
+    // Verify "Friends" tab is active by default or clickable.
+    // NOTE: the compact in-page tab switcher (data-testid="tab-friends") is rendered
+    // with Tailwind's `md:hidden` in ChatPage.tsx (src/features/chat/components/ChatPage.tsx),
+    // so it only exists in the mobile (<768px) layout — desktop uses the icon-rail nav
+    // (links to /app/friends, /app/groups, ...) instead. Only assert it on "mobile".
+    if (testInfo.project.name === 'mobile') {
+      const friendsTab = page.getByTestId('tab-friends')
+      // Depending on your UI, checking visibility might be enough
+      await expect(friendsTab).toBeVisible()
+    }
 
     // Verify header title is "好友" or "Friends"
     await expect(page.locator('h1')).toHaveText(/好友|Friends/)
@@ -108,20 +114,31 @@ test.describe('Chat Functionality', () => {
     await expect(page.getByText('Alice')).toBeVisible()
     await expect(page.getByText('Bob')).toBeVisible()
 
-    // Verify "Select a conversation" placeholder is shown
-    // Text might vary based on locale, check for key part or icon
-    await expect(page.getByText(/选择一个会话|Select a conversation/)).toBeVisible()
+    // NOTE: the "select a conversation" placeholder lives in ChatPage.tsx's desktop
+    // detail pane, which carries `hidden md:flex` unconditionally — so on mobile it
+    // never renders at all (a selected conversation opens as a full-screen overlay
+    // instead). Only assert the placeholder on the desktop ("chromium") project.
+    if (testInfo.project.name !== 'mobile') {
+      // Verify "Select a conversation" placeholder is shown
+      // Text might vary based on locale, check for key part or icon
+      await expect(page.getByText(/选择一个会话|Select a conversation/)).toBeVisible()
+    }
 
     // Click on Alice
     await page.getByText('Alice').click()
 
-    // Verify chat window opens (Placeholder should disappear, Alice's name should appear in header)
-    await expect(page.getByText(/选择一个会话|Select a conversation/)).not.toBeVisible()
-    
-    // Check for chat header with Alice's name
-    // Assuming ChatWindow has a header with the name
-    // Using a more generic selector for header
-    await expect(page.getByText('Alice').first()).toBeVisible()
+    if (testInfo.project.name !== 'mobile') {
+      // Verify chat window opens (Placeholder should disappear, Alice's name should appear in header)
+      await expect(page.getByText(/选择一个会话|Select a conversation/)).not.toBeVisible()
+    }
+
+    // Check for chat header with Alice's name.
+    // NOTE: "Alice" also appears in DOM nodes that are CSS-hidden at this viewport
+    // (the sidebar list item on mobile once isDetailView hides it, and duplicate
+    // desktop/mobile header markup ChatPage.tsx renders for both breakpoints at
+    // once). Filter to the visible match instead of assuming DOM order/`.first()`
+    // lands on it, since which copy is visible flips between the two projects.
+    await expect(page.getByText('Alice').locator('visible=true').first()).toBeVisible()
   })
 
   test('should handle empty friends list', async ({ page }) => {
@@ -153,7 +170,14 @@ test.describe('Chat Functionality', () => {
     await expect(page.getByText(/暂无好友|No friends/)).toBeVisible()
   })
 
-  test('should switch between tabs', async ({ page }) => {
+  test('should switch between tabs', async ({ page }, testInfo) => {
+    // The in-page tab switcher this test drives (data-testid="tab-groups"/"tab-files")
+    // is rendered with Tailwind's `md:hidden` in ChatPage.tsx (src/features/chat/components/ChatPage.tsx),
+    // so it only exists in the mobile (<768px) layout — desktop switches sections by
+    // navigating to /app/groups, /app/files via the icon-rail nav instead, which is a
+    // different interaction this test does not exercise. Scope to "mobile" only.
+    test.skip(testInfo.project.name !== 'mobile', 'in-page tab switcher (data-testid=tab-*) is md:hidden in ChatPage.tsx — mobile-only UI')
+
     // Mock APIs
     await page.route('**/api/friends', async (route) => {
       await route.fulfill({ status: 200, body: JSON.stringify({ friends: [] }) })

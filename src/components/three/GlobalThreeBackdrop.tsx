@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname } from '@/lib/navigation'
 import * as THREE from 'three'
 import { useEventListener } from 'ahooks'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'

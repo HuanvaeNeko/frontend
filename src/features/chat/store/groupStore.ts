@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { groupsApi, type Group, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
+import { loadGroups } from '@/data'
 
 interface GroupState {
   // 我的群聊列表
@@ -40,7 +41,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   loadMyGroups: async () => {
     set({ isLoading: true, error: null })
     try {
-      const response = await groupsApi.getMyGroups()
+      const response = await loadGroups()
       set({ 
         myGroups: response,
         isLoading: false 

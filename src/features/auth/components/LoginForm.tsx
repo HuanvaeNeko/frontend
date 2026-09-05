@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useRouter, useSearchParams } from '@/lib/navigation'
+import { AppLink as Link } from '@/components/common/AppLink'
 import { ArrowRight, Eye, EyeOff, Globe, Loader2, Lock, Sparkles, User } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { Button } from '@/components/ui/button'
