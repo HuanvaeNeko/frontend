@@ -35,17 +35,19 @@ docker compose up -d --build
 
 在 VPS 上创建 `.env`（已被 `.gitignore` 覆盖，绝不提交）：
 
-| 变量名 | 说明 | 示例值 |
-|--------|------|--------|
-| `VITE_API_URL` | 后端 API 地址 | `https://api.huanvae.cn` |
-| `VITE_WS_URL` | WebSocket 地址 | `wss://api.huanvae.cn` |
-| `VITE_SENTRY_DSN` | Sentry DSN（留空则禁用上报） | |
-| `VITE_APP_VERSION` | 版本号，用于 Sentry release 标签 | `1.0.1` |
-| `CF_TUNNEL_TOKEN` | Cloudflare Tunnel token（Zero Trust 控制台的隧道详情页获取） | |
+| 变量名 | 说明 | 消费方 | 示例值 |
+|--------|------|--------|--------|
+| `VITE_API_URL` | 后端 API 地址 | 仅客户端（构建期内联） | `https://api.huanvae.cn` |
+| `VITE_WS_URL` | WebSocket 地址 | 仅客户端（构建期内联） | `wss://api.huanvae.cn` |
+| `VITE_SENTRY_DSN` | Sentry DSN（留空则禁用上报） | **双重**：客户端（构建期内联）+ `server/index.ts`（运行时 `process.env` 读取，服务端 Sentry 初始化） | |
+| `VITE_APP_VERSION` | 版本号，用于 Sentry release 标签和版本徽标 | **双重**：客户端（构建期内联）+ `server/index.ts`（运行时 `process.env` 读取，服务端 Sentry release 标签） | `1.0.1` |
+| `CF_TUNNEL_TOKEN` | Cloudflare Tunnel token（Zero Trust 控制台的隧道详情页获取） | 仅 `cloudflared` 容器（运行时） | |
 
 > **`VITE_*` 在构建时被 Vite 内联进产物，不是运行时读取。** 它们通过 `docker-compose.yml` 的 `build.args` 传给 `Dockerfile`，改这些值必须 `docker compose up -d --build` 重新构建镜像，单纯重启容器不会生效。镜像因此是环境相关的，不能"一个镜像部署到多环境"。
 >
 > 与此并存的是 `src/lib/apiConfig.ts` 里纯运行时的 `localStorage` 覆盖机制（用于临时切换后端），不受这条限制影响。
+>
+> **`VITE_SENTRY_DSN` 和 `VITE_APP_VERSION` 是例外，两边都要配置。** 上表"消费方"一栏标了双重的这两个变量，`server/index.ts` 会在容器启动时用 `process.env.VITE_SENTRY_DSN` / `process.env.VITE_APP_VERSION` 做服务端 Sentry 初始化——这是纯运行时读取，和 Vite 构建期内联是两条独立的路径。因此 `docker-compose.yml` 里 `app` 服务必须**同时**在 `build.args`（供客户端构建）和 `environment`（供服务端运行时）声明它们；只配置其中一边，另一边会静默失效——服务端只配 `build.args` 的话，容器正常启动、健康检查照常通过，但 `Sentry.init({ dsn: '' })` 永远拿到空字符串，服务端报错永远不会上报，且不会有任何报错或日志提示这一点。
 
 ## 🔒 VPS 防火墙
 
