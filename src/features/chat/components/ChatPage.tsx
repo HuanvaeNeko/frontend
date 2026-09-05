@@ -7,7 +7,7 @@ import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useWSStore } from '@/store/wsStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { useGroupStore } from '@/features/chat/store/groupStore'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter, usePathname } from '@/lib/navigation'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import ChatWindow from '@/features/chat/components/ChatWindow'
@@ -63,7 +63,13 @@ export default function ChatPage() {
     else if (pathname?.startsWith(ROUTES.app.chatFiles)) setActiveTab('files')
     else if (pathname?.startsWith(ROUTES.app.chatWebrtc)) setActiveTab('webrtc')
     // 如果是根路由 /app/chat，也默认到 friends
-    else if (pathname === ROUTES.app.chat || (pathname?.startsWith(ROUTES.app.chat) && !activeTab)) setActiveTab('friends') 
+    // 注意：这里原本还有一个 `pathname === ROUTES.app.chat` 的分支。Next 时代
+    // next.config.js 开了 trailingSlash: true，浏览器里的路径永远是 `/app/chat/`，
+    // 那个等值判断恒为 false，是死代码。RR8 没有 trailingSlash，路径变成 `/app/chat`，
+    // 该分支被激活后会在每次 activeTab 变化时把用户刚点的 tab 又改回 friends
+    // （effect 依赖里有 activeTab），页内 tab 切换直接失效。
+    // 这里去掉那个分支，保留 `!activeTab` 守卫 —— 与迁移前的实际行为逐字等价。
+    else if (pathname?.startsWith(ROUTES.app.chat) && !activeTab) setActiveTab('friends')
   }, [pathname, setActiveTab, activeTab])
 
   const handleMobileBack = () => {

@@ -1,6 +1,6 @@
-# Next.js build output
-.next
-out
+# Build output
+build
+.react-router
 
 # Node dependencies
 node_modules
@@ -36,7 +36,6 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
-next-env.d.ts
 
 # Testing
 coverage

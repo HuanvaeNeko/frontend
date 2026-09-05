@@ -66,8 +66,8 @@ export const getApiBaseUrl = (): string => {
   if (stored) return stored
 
   // 如果设置了环境变量，优先使用
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
   }
 
   // 统一使用生产 API 地址
@@ -87,8 +87,8 @@ export const getAuthApiUrl = (): string => {
  */
 export const getWsUrl = (): string => {
   // 如果设置了环境变量，优先使用
-  if (process.env.NEXT_PUBLIC_WS_URL) {
-    return process.env.NEXT_PUBLIC_WS_URL
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL
   }
 
   const apiBaseUrl = getApiBaseUrl()

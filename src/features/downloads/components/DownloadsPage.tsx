@@ -8,7 +8,7 @@ import { Download, Globe, Laptop, Smartphone, Monitor, HardDrive, Package, Calen
 import { fetchReleaseInfo, type GitHubRelease, PROXY_PREFIX_URL } from '@/lib/appInstall'
 import { useI18n } from '@/i18n/I18nProvider'
 import { ROUTES } from '@/lib/routes'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/lib/navigation'
 
 type OSTab = 'windows' | 'mac' | 'linux' | 'android' | 'web'
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter, useSearchParams, useParams } from 'next/navigation'
+import { useRouter, useSearchParams, useParams } from '@/lib/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useInterval, useEventListener, useDebounceFn } from 'ahooks'
 import {
