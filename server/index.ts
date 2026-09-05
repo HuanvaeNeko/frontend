@@ -52,11 +52,19 @@ Bun.serve({
     }
 
     // 尾斜杠 301：原 Next 配置是 trailingSlash: true，迁移后不带尾斜杠。
-    // 只改路径、绝不碰协议 —— origin 在 Cloudflare Tunnel 后面收到的是 HTTP，
-    // 任何 http→https 重定向都会与 CF 边缘形成无限循环。
+    // Location 只拼 pathname + search 这个相对引用，绝不用 url.toString()
+    // 或以任何方式带出协议/主机。原因：new URL(request.url) 会如实相信请求行里
+    // 到达的 scheme 和 host —— HTTP/1.1 允许 absolute-form request-target
+    // （RFC 7230 §5.3.2），Bun.serve 会遵循它，所以一个精心构造的请求
+    // （如 `GET http://evil.example/foo/ HTTP/1.1`）能让 url.toString() 把
+    // evil.example 原样反射进 Location，构成开放重定向（已实测复现）。
+    // 只拼相对路径从结构上杜绝了这个问题，也是"绝不碰协议"这句话真正成立的
+    // 唯一方式——origin 在 Cloudflare Tunnel 后面只看得到 HTTP，一旦重定向里
+    // 混进了协议/主机，就有被攻击者操纵、或者在改协议时与 CF 边缘的 TLS
+    // 终止形成无限循环的风险。
     if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
-      url.pathname = url.pathname.replace(/\/+$/, '')
-      return Response.redirect(url.toString(), 301)
+      const location = url.pathname.replace(/\/+$/, '') + url.search
+      return new Response(null, { status: 301, headers: { Location: location } })
     }
 
     // Service Worker：绝不缓存
