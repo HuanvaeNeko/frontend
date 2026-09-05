@@ -16,7 +16,11 @@ import { defineConfig, devices } from '@playwright/test'
 // baseURL 跟着指过去。webServer 一旦用数组形式，Playwright 不会再从任何一条
 // 的 port/url 自动推导全局 baseURL（见官方文档），顶层 use.baseURL 保留给
 // chromium/mobile 用，production project 自己覆盖一份。
-const PRODUCTION_PORT = 3100
+// 3100 太"大众"了：实测被本机另一个无关项目（~/Code/th 的 react-router-serve）
+// 占用过。配合下面 webServer 的 reuseExistingServer，Playwright 会直接复用那个
+// 陌生服务器，于是 29 条生产回归用例全部打到别人的应用上——响应头断言自然全挂，
+// 而失败信息看上去像是我们的代码坏了。换一个不容易撞的端口。
+const PRODUCTION_PORT = 39471
 const PRODUCTION_BASE_URL = `http://localhost:${PRODUCTION_PORT}`
 const MIGRATION_REGRESSION_SPEC = /migration-regression\.spec\.ts$/
 
@@ -71,7 +75,13 @@ export default defineConfig({
       command: 'bun run build && bun run start',
       url: PRODUCTION_BASE_URL,
       env: { PORT: String(PRODUCTION_PORT) },
-      reuseExistingServer: !process.env.CI,
+      // 这一条永远自起，不复用。webServer.url 只检查能否拿到 200，无法辨认
+      // 对面是不是我们的服务器——一旦复用到陌生进程，这个 project 的用例
+      // （安全响应头、尾斜杠 301）会静默地在错误的应用上求值。上面 dev 那条
+      // 保留 reuse 是有真实便利（本地常年开着 bun run dev），而"生产构建常驻"
+      // 不是任何人的工作习惯，所以这里关掉零成本。端口被占时 Playwright 会
+      // 直接报错退出，是响亮的失败，好过悄悄测错东西。
+      reuseExistingServer: false,
       timeout: 600_000,
     },
   ],
