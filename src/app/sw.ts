@@ -2,10 +2,12 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
+import { CacheableResponsePlugin } from 'workbox-cacheable-response'
+import { ExpirationPlugin } from 'workbox-expiration'
 import { enable as enableNavigationPreload } from 'workbox-navigation-preload'
 import { precacheAndRoute, type PrecacheEntry } from 'workbox-precaching'
 import { registerRoute, setCatchHandler } from 'workbox-routing'
-import { NetworkOnly } from 'workbox-strategies'
+import { CacheFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -63,6 +65,90 @@ function shouldSkipPrecache(entry: PrecacheEntry | string): boolean {
 const precacheEntries = (self.__WB_MANIFEST ?? []).filter((e) => !shouldSkipPrecache(e))
 
 precacheAndRoute(precacheEntries)
+
+// ============================================
+// 运行时缓存：字体 / 图片 / 未进 precache 的脚本与样式
+// ============================================
+// 迁移前 Serwist 用 `new Serwist({ ..., runtimeCaching: defaultCache, ... })`。
+// `defaultCache`（`@serwist/next/worker` 导出）是一套多规则运行时缓存集合，
+// 覆盖图片、字体、音视频、未命中 precache 的脚本/样式等。这次迁移到
+// vite-plugin-pwa 时只搬了 precache 和离线兜底，`runtimeCaching` 这部分被
+// 漏迁移——workbox 没有现成的"默认缓存集合"可以直接替换，必须手写等价规则，
+// 这一段就是补上的部分（review 发现的具体回归点）。
+//
+// 已用真实构建核实需要覆盖什么：`build/client/assets/` 下 167 个文件，
+// 108 个（106 js + 2 css）已被上面的 precache 覆盖，剩下 59 个是字体
+// （20 ttf + 20 woff + 19 woff2，`katex` 依赖的数学公式渲染字体，经 Vite
+// 处理后带 hash 落在 assets/ 下）——这 59 个文件不在 precache 的 glob
+// （`**/*.{js,wasm,css,html}` 不含字体扩展名）里，也没有任何运行时路由兜底，
+// 离线时会用回退字体渲染。这是本次要修的具体问题。
+//
+// 音频/视频：`build/client/` 和 `public/` 下都没有任何音频/视频文件。
+// 全仓库搜索过 `<video>`/`<audio>` 用法：WebRTC 通话（`VideoMeeting.tsx`）
+// 全部是 `el.srcObject = someMediaStream`，从不发起 fetch，Service Worker
+// 的 fetch 事件根本看不到这类请求；聊天视频消息（`MessageVideo.tsx`）和
+// 文件预览（`file-preview.tsx`）的 `src` 都是后端返回的 `file_url`/预签名
+// URL，指向 `api.huanvae.cn`，属于下面必须排除的 API 源。两种情况都没有
+// "本应用自己的同源静态音视频文件"这个场景，所以没有加媒体路由——不是漏做，
+// 是确认过这个场景不存在。
+//
+// 硬性护栏：下面每条规则都显式加了 `isSameOrigin` 同源检查。本项目 REST
+// （`https://api.huanvae.cn`）和 WebSocket（`wss://api.huanvae.cn`）都在
+// 独立的 API 域名下（见 `src/lib/apiConfig.ts`），与本应用自己的部署域名
+// 不同源。用户头像、群头像、聊天文件等一律是后端直接返回的跨源 URL
+// （`avatar_url` / `group_avatar_url` / `sender_avatar_url` / `file_url`，
+// 见 `src/features/*/api/*.ts` 与 `src/types/models.ts`），天然不会被下面
+// 任何一条同源规则命中；不依赖"猜测某个 destination 不会用于 API 请求"这个
+// 假设——即使以后某条规则的匹配条件被放宽，同源检查也会先短路掉跨源请求。
+// WebSocket 握手请求本身不经过 Service Worker 的 fetch 事件，规范层面就
+// 不可能被 `registerRoute` 匹配到，不需要额外处理。
+function isSameOrigin(url: URL): boolean {
+  return url.origin === self.location.origin
+}
+
+// 字体：本次修复的具体目标。CacheFirst + 一年过期——文件名都带内容 hash，
+// 换新版本会是全新 URL，不存在"缓存住旧内容"的新鲜度风险，可以放心长缓存。
+registerRoute(
+  ({ request, url }) => isSameOrigin(url) && request.destination === 'font',
+  new CacheFirst({
+    cacheName: 'static-font-assets',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 365 }),
+    ],
+  })
+)
+
+// 图片：覆盖 /logo.svg、/favicon.ico 等应用自带的同源图片。不含任何用户
+// 头像/群头像/聊天图片——那些都来自 api.huanvae.cn，会被同源检查排除。
+// StaleWhileRevalidate：先返回旧缓存、后台悄悄刷新，图片更新不敏感，不需要
+// CacheFirst 那种"命中后绝不重新请求直到过期"的强语义。
+registerRoute(
+  ({ request, url }) => isSameOrigin(url) && request.destination === 'image',
+  new StaleWhileRevalidate({
+    cacheName: 'static-image-assets',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 30 }),
+    ],
+  })
+)
+
+// 脚本/样式：当前 106+2=108 就是这次构建全部的 js/css，precache 已经
+// 100% 覆盖，这条规则现阶段不会有实际命中——保留作为版本切换瞬间（旧 SW
+// 的 precache 清单里还没有新部署刚产出的某个 chunk）之类边缘场景的兜底网。
+// 同样必须限定同源 + 加过期，避免变成一个悄悄增长的无界缓存。
+registerRoute(
+  ({ request, url }) =>
+    isSameOrigin(url) && (request.destination === 'script' || request.destination === 'style'),
+  new StaleWhileRevalidate({
+    cacheName: 'static-resources',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 }),
+    ],
+  })
+)
 
 // ============================================
 // 离线兜底页
