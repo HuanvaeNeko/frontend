@@ -25,7 +25,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // 本地不留 undefined（Playwright 默认按 CPU 核数跑满）：chat.spec.ts 在满
+  // 并发下已知 flaky（资源争抢），一个刚 clone 下来的干净检出跑这套"迁移
+  // 安全网"就先见红，会教会下一个人不信任这套测试。2 是留出并发验证价值
+  // 和稳定性之间的折中；CI 已经用 1 避免争抢。
+  workers: process.env.CI ? 1 : 2,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
@@ -42,9 +46,11 @@ export default defineConfig({
       // 默认 30s 对这个 project 偏紧：它的用例会和 chromium/mobile 的整个设备
       // 矩阵一起并发跑，本机 8 核下这套用例本身多数几十毫秒到几秒内完成，但
       // 留够余量应对并发争抢。翻倍到 60s，CI 下 workers 强制为 1 没有这个
-      // 争抢，实际不会跑满。（这个 project 里的"认证守卫"用例目前会稳定
-      // 超时失败——那是一个已定位、待修的 src/ bug，不是这里的余量不够，
-      // 详见该用例内的注释。）
+      // 争抢，实际不会跑满。（这个 project 里的"认证守卫"用例曾经会稳定
+      // 超时失败——根因是 src/lib/navigation.ts 的 useRouter() 每次渲染返回
+      // 新对象，已在 commit be14018 修复，详见该用例内的注释。60s 这个数字
+      // 从修复前就定下了，纯粹是并发争抢的余量，不是为了兜住那个 bug——bug
+      // 修复后这条用例正常几秒内通过。）
       timeout: 60_000,
     },
   ],

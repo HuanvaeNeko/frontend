@@ -82,20 +82,30 @@ test.describe('认证守卫', () => {
   test('未登录访问受保护路由会跳到登录页', async ({ page }) => {
     await page.context().clearCookies()
     await page.goto('/app/chat')
-    // 已知问题（Task 12 编写本测试时发现，未修复——修复需要改 src/，超出本
-    // task 范围）：这个断言目前会稳定失败，不是超时预算不够、也不是并发争抢
-    // 造成的偶发 flake。用独立脚本（不经 Playwright test runner，纯
-    // playwright 库直连 dev :3000 和生产 :3100）反复实测确认：ProtectedRoute
-    // 判定未登录后调用 router.replace('/app/login')，但 src/lib/navigation.ts
-    // 的 useRouter() 每次渲染都返回一个全新对象；ProtectedRoute 的 useEffect
-    // 把这个不稳定对象放进依赖数组，于是每次重渲染都重新触发一次
-    // replace()——而 /app/chat → /app/login 跨越 protected-layout /
-    // auth-layout 需要现拉一次 RR8 路由 manifest（GET /__manifest?...），这次
-    // 导航发起本身又会触发重渲染，形成死循环：实测生产构建下 30 秒内产生约
-    // 6.6 万次被中止的 /__manifest 请求（≈2200 次/秒），dev 下约 13 次/秒，
-    // 页面永远停在 /app/chat 的空白 shell，不会跳到 /app/login。20s 的超时是
-    // 按"bug 修复后、三个 project 并发跑时的合理头寸"设的，而不是暗示这个
-    // bug 只是偶尔慢——它现在会稳定超时到底。
+    // 历史问题，已修复（Task 12 编写本测试时发现，当时未修——修复需要改
+    // src/，超出那个 task 范围；后由 commit be14018 补上）：这个断言曾经
+    // 会稳定失败，不是超时预算不够、也不是并发争抢造成的偶发 flake。用独立
+    // 脚本（不经 Playwright test runner，纯 playwright 库直连 dev :3000 和
+    // 生产 :3100）反复实测确认：ProtectedRoute 判定未登录后调用
+    // router.replace('/app/login')，但 src/lib/navigation.ts 的 useRouter()
+    // 每次渲染都返回一个全新对象；ProtectedRoute 的 useEffect 把这个不稳定
+    // 对象放进依赖数组，于是每次重渲染都重新触发一次 replace()——而
+    // /app/chat → /app/login 跨越 protected-layout / auth-layout 需要现拉
+    // 一次 RR8 路由 manifest（GET /__manifest?...），这次导航发起本身又会
+    // 触发重渲染，形成死循环：实测生产构建下 30 秒内产生约 6.6 万次被中止的
+    // /__manifest 请求（≈2200 次/秒），dev 下约 13 次/秒，页面永远停在
+    // /app/chat 的空白 shell，不会跳到 /app/login。
+    //
+    // commit be14018（fix(auth): 修复 useRouter() 返回对象不稳定导致的未登录
+    // 重定向死循环）把 useRouter() 改成 useMemo(() => ({ push, replace,
+    // back, forward, refresh, prefetch }), [navigate])，六个方法实现逐字
+    // 未变，只修 identity 稳定性——修复后这条断言应稳定通过。
+    // src/lib/__tests__/navigation.test.tsx 里新增的 identity 单元测试是比
+    // 这条 e2e 快得多（约 30ms vs 下面 20s 超时）的第一道防线，本该在这个
+    // bug 引入时就拦住它。20s 的超时是按"三个 project 并发跑时的合理头寸"
+    // 设的，不是暗示这个用例慢——如果这条断言又开始稳定超时，先怀疑
+    // useRouter() 的 identity 稳定性回归了，而不是默认这是"那个已知的
+    // bug"（它已经不是了）。
     await page.waitForURL(/\/app\/login/, { timeout: 20_000 })
     expect(page.url()).toContain('/app/login')
   })

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
@@ -129,5 +130,36 @@ describe('useRouter', () => {
     }
     renderAt('/app/chat', <Probe />)
     expect(screen.getByTestId('ok')).toHaveTextContent('true')
+  })
+})
+
+describe('useRouter identity', () => {
+  it('连续渲染两次返回同一个对象引用（Object.is 稳定）', async () => {
+    // 回归测试，对应 commit be14018 修复的 bug：useRouter() 曾经每次渲染都
+    // 返回一个新的对象字面量，ProtectedRoute 把它放进 useEffect 依赖数组后，
+    // effect 无限重触发 router.replace()，navigate 又引发重渲染，形成死
+    // 循环——未登录用户永远到不了 /app/login（e2e 复现：生产构建下约 2200
+    // 次/秒被中止的 /__manifest 请求）。这里直接断言 identity 稳定性，一个
+    // 约 30ms 的单元测试，本该在这个 bug 引入时就拦住它，不必等
+    // tests/migration-regression.spec.ts 里慢得多（20s 超时）的 e2e 用例
+    // 失败才发现。
+    const refs: ReturnType<typeof useRouter>[] = []
+    function Probe() {
+      const router = useRouter()
+      refs.push(router)
+      const [, setTick] = useState(0)
+      return <button type="button" onClick={() => setTick((t) => t + 1)}>tick</button>
+    }
+    renderAt('/app/chat', <Probe />)
+    expect(refs).toHaveLength(1)
+
+    // 触发一次与导航无关的重渲染（纯组件内部 state 变化），验证的是
+    // useRouter() 在同一路由匹配下、单纯重渲染时的 identity 稳定性——而不是
+    // 更弱的"导航后拿到的函数依然能用"。
+    await userEvent.click(screen.getByText('tick'))
+    expect(refs).toHaveLength(2)
+
+    const [r1, r2] = refs
+    expect(Object.is(r1, r2)).toBe(true)
   })
 })
