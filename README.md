@@ -1,11 +1,12 @@
 # Huanvae Chat - 即时通讯前端应用
 
-> 基于 Next.js + React + TypeScript 开发的现代化即时通讯应用
+> 基于 React Router + Vite + TypeScript 开发的现代化即时通讯应用
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.1-black.svg)](https://nextjs.org/)
+[![React Router](https://img.shields.io/badge/React_Router-8.3-CA4245.svg)](https://reactrouter.com/)
 [![React](https://img.shields.io/badge/React-19.2-blue.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
-[![Turbopack](https://img.shields.io/badge/Turbopack-enabled-F7DF1E.svg)](https://turbo.build/pack)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF.svg)](https://vite.dev/)
+[![Bun](https://img.shields.io/badge/Bun-1.3-000000.svg)](https://bun.sh/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC.svg)](https://tailwindcss.com/)
 
 ## 🌟 特性
@@ -26,39 +27,42 @@
 ### 安装依赖
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### 启动开发服务器
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
-> 使用 Turbopack 构建，启动速度极快 ⚡
+> 使用 Vite 8 构建，启动速度极快 ⚡
 
 ### 访问应用
 
-打开浏览器访问: http://localhost:5173
+打开浏览器访问: http://localhost:3000
 
 ### 构建生产版本
 
 ```bash
-pnpm build
+bun run build
 ```
 
-### 预览生产版本
+### 启动生产服务器
 
 ```bash
-pnpm preview
+bun run start
 ```
+
+> 生产环境用 Docker Compose 部署，见 [部署指南](./docs/DEPLOY.md)。
 
 ## 📦 技术栈
 
 | 类别 | 技术 |
 |------|------|
-| 框架 | Next.js 16 (App Router) |
-| 构建 | Turbopack（开发）/ Next.js（生产） |
+| 框架 | React Router 8（Framework Mode） |
+| 构建 | Vite 8 |
+| 运行时 / 包管理 | Bun |
 | 核心 | React 19 + TypeScript 5.9 |
 | 状态管理 | Zustand（auth/chat/friends/groups/ws） |
 | UI 组件 | shadcn/ui + Radix UI |
@@ -66,22 +70,20 @@ pnpm preview
 | 动画 | Framer Motion |
 | 图标 | Lucide React |
 | 实时通信 | WebSocket + WebRTC |
+| Lint / 单测 | Biome + Vitest |
+| PWA | vite-plugin-pwa |
 
 ## 📁 项目结构
 
 ```
-├── app/                      # Next.js App Router
-│   ├── (auth)/              # 认证相关页面
-│   │   ├── login/           # 登录页
-│   │   └── register/        # 注册页
-│   ├── (protected)/         # 需要登录的页面
-│   │   ├── chat/            # 聊天页面
-│   │   ├── profile/         # 个人资料
-│   │   ├── settings/        # 设置页面
-│   │   └── ...
-│   ├── layout.tsx           # 根布局
-│   └── providers.tsx        # 全局 Provider
 ├── src/
+│   ├── app/                  # React Router 8（config-based routing）
+│   │   ├── routes.ts        # 路由配置表
+│   │   ├── routes/          # 路由模块（login/register/chat/profile/settings/...）
+│   │   ├── root.tsx         # 根布局 + ErrorBoundary
+│   │   ├── entry.client.tsx # 客户端 hydration 入口
+│   │   ├── entry.server.tsx # SSR 入口
+│   │   └── sw.ts            # Service Worker 源码（vite-plugin-pwa injectManifest）
 │   ├── api/                 # API 接口层
 │   │   ├── auth.ts          # 认证 API
 │   │   ├── messages.ts      # 私聊消息 API
@@ -109,8 +111,9 @@ pnpm preview
 │   ├── styles/              # 全局样式
 │   └── types/               # TypeScript 类型
 ├── public/                  # 静态资源
-├── next.config.js           # Next.js 配置
-├── tailwind.config.ts       # Tailwind 配置
+├── server/                  # 生产服务（Bun.serve，安全响应头/尾斜杠重定向/静态资源缓存）
+├── vite.config.ts           # Vite 配置（含 Tailwind v4 插件、PWA）
+├── react-router.config.ts   # React Router 配置
 └── tsconfig.json            # TypeScript 配置
 ```
 
@@ -144,8 +147,8 @@ pnpm preview
 ```typescript
 export const getApiBaseUrl = (): string => {
   // 如果设置了环境变量，优先使用
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
   }
   return 'https://api.huanvae.cn'
 }
@@ -154,23 +157,24 @@ export const getApiBaseUrl = (): string => {
 ### 环境变量
 
 ```bash
-# .env.local
-NEXT_PUBLIC_API_URL=https://api.huanvae.cn
-NEXT_PUBLIC_WS_URL=wss://api.huanvae.cn
+# .env
+VITE_API_URL=https://api.huanvae.cn
+VITE_WS_URL=wss://api.huanvae.cn
 ```
+
+> `VITE_*` 在构建时被内联进产物：改这些值必须 `bun run build` 重新构建（生产环境即重建 Docker 镜像），重启容器不会生效。
 
 ## 🚀 部署
 
-### Cloudflare Pages（推荐）
+### Docker Compose（VPS，推荐）
+
+生产环境跑在自建 VPS 上：`app`（Bun 生产服务）+ `cloudflared`（Cloudflare Tunnel）两个容器，不对公网开放 80/443，全部流量经隧道进出。
 
 ```bash
-pnpm build
-# 部署 out/ 目录
+docker compose up -d --build
 ```
 
-### Vercel
-
-直接连接 Git 仓库，自动部署。
+详见 [部署指南](./docs/DEPLOY.md)。
 
 ## 📚 文档
 
@@ -189,5 +193,5 @@ MIT License
 
 ---
 
-**更新时间**: 2026-01-13  
+**更新时间**: 2026-09-05  
 **版本**: v1.0.1
