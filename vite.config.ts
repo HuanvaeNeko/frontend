@@ -12,6 +12,20 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  ssr: {
+    // 必须内联 react-dom，不能保持外部化（Vite SSR 默认行为）。
+    // 原因：src/app/entry.server.tsx 用的是 react-dom/server 的
+    // renderToPipeableStream（Node Stream 版）。react-dom 的 package.json
+    // exports 对 "./server" 按条件分流：Bun 运行时会命中它自己的 "bun" 条件，
+    // 解析到 server.bun.js —— 那个文件只有 renderToReadableStream 一族的
+    // Web Stream API，没有 renderToPipeableStream，外部化的话服务端一启动、
+    // 一收到请求就会抛 SyntaxError 直接崩溃（已实测复现）。
+    // noExternal 让 Vite 在构建期用它自己的解析逻辑把 react-dom 打进
+    // build/server/index.js，不再依赖 Bun 运行时对裸模块说明符的条件解析，
+    // 从根子上绕开这个冲突。entry.server.tsx 属于 src/，本任务不允许改，
+    // 所以只能在这一层（构建配置）修。
+    noExternal: ['react-dom'],
+  },
   build: {
     sourcemap: false,
     // 生产剥离 console.log，保留 error / warn（原 next.config.js 的 compiler.removeConsole）
