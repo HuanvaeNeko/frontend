@@ -42,12 +42,18 @@ const AUTH_ERROR_MESSAGES = [
  *
  * 三档，从可靠到不可靠：
  * 1. `AuthenticationError` —— 本文件自己抛的，最可信。
- * 2. `isAuthApiError` —— 解包层的 `ApiError` 带真实 HTTP 状态码，401/403 直接判定。
+ * 2. `isAuthApiError` —— 解包层的 `ApiError` 带真实 HTTP 状态码，**401** 直接判定。
  *    **这一档不能省**：解包层抛出的错误文案是后端原文，很可能一个
  *    AUTH_ERROR_MESSAGES 关键词都不含（例如"您的会话已结束"），只靠下面的
  *    关键词匹配会让 401 不再触发静默重定向——那是一次实打实的回归。
+ *    **`403` 刻意不在这一档**：本后端的 403 是普通权限不足（`权限不足`），
+ *    不是 token 失效；判成认证错误会让"打开一个没权限的文件"变成
+ *    `silentRedirectToLogin()` 的无提示登出，或 `chatStore` 的 `return []`。
+ *    详见 `isAuthApiError` 的注释。
  * 3. 关键词匹配 —— 兜住那些还没接入解包层的裸 `Error` / 字符串，
  *    等三个模块全部迁完之后可以再评估要不要删。
+ *    403 落到这一档后，因为文案「权限不足」不含任何关键词，会正确地
+ *    作为可见错误继续上抛，而不是被静默吞掉。
  */
 const isAuthError = (error: Error | string): boolean => {
   // AuthenticationError 直接返回 true

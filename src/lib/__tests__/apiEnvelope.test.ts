@@ -53,6 +53,11 @@ describe('readEnvelope —— 解包', () => {
     )
 
     expect(emptyData.message).toMatch(/data 为空/)
+    // `data: null` 对一部分端点是文档规定的**合法**成功响应
+    // （`DELETE /api/storage/file/{uuid}` 就是 `{"success":true,"code":200,"data":null}`）。
+    // 错误信息必须点名正确入口，否则迁移的人会在那里收到一句看不懂的报错
+    // 外加一条误报的 Sentry 形状告警。
+    expect(emptyData.message).toMatch(/assertEnvelopeOk/)
     expect(missingData.message).toMatch(/响应缺少 data 字段（收到的键：success, code, friends）/)
     expect(emptyData.message).not.toBe(missingData.message)
     expect(emptyData).toBeInstanceOf(ApiShapeError)
@@ -73,6 +78,27 @@ describe('readEnvelope —— 解包', () => {
     expect(reporter).toHaveBeenCalledOnce()
     expect(reporter.mock.calls[0]?.[0]).toBeInstanceOf(ApiShapeError)
     expect(reporter.mock.calls[0]?.[0].endpoint).toBe('GET /x')
+  })
+
+  it('上报器自己抛错时，调用点收到的仍然是原始 ApiShapeError', async () => {
+    // 上报是所有形状错误的唯一咽喉。上报器抛错（Sentry 没初始化、hook 里访问了
+    // undefined、队列满）若不被拦住，调用点拿到的就是上报器的错误——
+    // message / endpoint / payload 全丢，下游 instanceof / status 分诊全部失效。
+    // 「记录错误的动作把错误本身替换掉」是这一层最不能犯的错。
+    const reporterError = new Error('Sentry 挂了')
+    setApiShapeErrorReporter(() => {
+      throw reporterError
+    })
+
+    const error = await reject(
+      readEnvelope(json({ success: true, code: 0, friends: [] }), { endpoint: 'GET /api/friends' }),
+    )
+
+    expect(error).toBeInstanceOf(ApiShapeError)
+    expect(error).not.toBe(reporterError)
+    expect(error.endpoint).toBe('GET /api/friends')
+    expect(error.message).toMatch(/响应缺少 data 字段/)
+    expect(error.payload).toEqual({ success: true, code: 0, friends: [] })
   })
 
   it('响应体不是 JSON 但 HTTP 成功时也抛形状错误', async () => {
@@ -377,9 +403,17 @@ describe('unwrapEnvelope（FormData / WebSocket 已解析 JSON）', () => {
 })
 
 describe('isAuthApiError', () => {
-  it('401 / 403 的 ApiError 为真', () => {
+  it('401 的 ApiError 为真', () => {
     expect(isAuthApiError(new ApiError('x', { status: 401, endpoint: 'GET /x' }))).toBe(true)
-    expect(isAuthApiError(new ApiError('x', { status: 403, endpoint: 'GET /x' }))).toBe(true)
+  })
+
+  it('403 的 ApiError 为假 —— 本后端的 403 是权限不足，不是 token 失效', () => {
+    // 后端文档：文件预签名 403「error 恒为 权限不足」（不是会话参与者 / 好友关系已解除 /
+    // 不是该群活跃成员）；群模块统一口径「群存在但调用者无权 ⇒ 403」；
+    // profile 的 group_avatar 非群主/管理员 ⇒ 403。
+    // 判真会让这些普通拒绝走进 silentRedirectToLogin()：无提示登出。
+    const denied = new ApiError('权限不足', { status: 403, endpoint: 'POST /api/storage/file/x' })
+    expect(isAuthApiError(denied)).toBe(false)
   })
 
   it('其它状态码和非 ApiError 为假（apiClient 仍回落到关键词匹配）', () => {

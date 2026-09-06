@@ -128,13 +128,28 @@ export function setApiShapeErrorReporter(reporter: ShapeErrorReporter): void {
   reportShapeError = reporter
 }
 
-/** 抛出并同时上报形状错误。 */
+/**
+ * 抛出并同时上报形状错误。
+ *
+ * 上报**必须**被 try/catch 包住：这是所有形状错误的唯一咽喉，一旦注入的上报器
+ * 自己抛（Sentry 未初始化、hook 里访问了 undefined、上报队列满），调用点收到的
+ * 就是上报器的错误而不是 `ApiShapeError`——message / `endpoint` / `payload` 全丢，
+ * 下游 `instanceof ApiError`、`status === 409` 的分诊也全部失效。
+ * 「记录错误的动作把错误本身替换掉」是本层最不能犯的错。
+ *
+ * 这是整个解包路径上**唯一**一处 `catch {}`，它保护的是错误本身，不是任何数据。
+ */
 function throwShape(
   message: string,
   init: { status: number; endpoint: string; payload?: unknown },
 ): never {
   const error = new ApiShapeError(message, init)
-  reportShapeError(error)
+  try {
+    reportShapeError(error)
+  } catch {
+    // 上报失败不能替换掉被上报的错误。这里刻意不再上报「上报失败」，
+    // 否则同一个坏上报器会立刻二次抛出。
+  }
   throw error
 }
 
@@ -145,7 +160,22 @@ export interface EnvelopeOptions<T> {
   fallbackMessage?: string
   /** 强校验：任何带 `.parse(unknown): T` 的对象，zod schema 直接可用。 */
   parse?: Parser<T>
-  /** 弱校验：`data` 上必须存在（且不为 `undefined`）的字段。写错字段名 = 编译错误。 */
+  /**
+   * 弱校验：`data` 上必须存在（且不为 `undefined`）的字段。写错字段名 = 编译错误。
+   *
+   * 两条使用限制，写在这里免得迁移时踩：
+   *
+   * 1. **编译期检查是「选进来的」，不是默认开启的。** `keyof T & string` 只有在
+   *    `T` 被真正定下来时才约束得住。既不写类型参数、上下文也推不出返回类型时，
+   *    `T` 塌成 `unknown`，`keyof unknown & string` 是 `never`… 但空数组字面量
+   *    仍可赋值，于是 `readEnvelope(res, { require: ['made', 'up'] })` **能编译通过**。
+   *    所以：**永远显式写 `readEnvelope<T>(...)`**，别指望推断。
+   * 2. **`null` 算「存在」。** 判定是 `payload[key] === undefined`，
+   *    所以 `require: ['devices']` 对上 `{devices: null}` 会放行，把 `TypeError`
+   *    推迟到调用点的 `.map()`——又变回「失败伪装成数据」。
+   *    **数组字段一律走 {@link readEnvelopeList}**，它会实打实地 `Array.isArray` 一次；
+   *    非数组字段要求非空就用 `parse`。
+   */
   require?: readonly (keyof T & string)[]
   /**
    * 显式承认某个端点仍返回裸响应（没有 `data` 包裹）。
@@ -288,7 +318,16 @@ function unwrapData(
     if (payload === null || payload === undefined) {
       // 和"没有 data 键"必须是两条不同的信息：这条说的是后端返回了空，
       // 那条说的是前端解析错了地方。
-      return throwShape(`${endpoint}: data 为空`, { status, endpoint, payload: envelope })
+      //
+      // 文案里点名 assertEnvelopeOk，因为 `data: null` 对一部分端点是**文档规定的
+      // 合法成功响应**——`DELETE /api/storage/file/{uuid}` 成功时就是
+      // `{"success":true,"code":200,"data":null}`。迁移的人若在那里顺手用了
+      // readEnvelope，拿到的是一句语焉不详的报错外加一条误报的 Sentry 形状告警；
+      // 把正确入口写进错误信息里，这个来回就不会发生。
+      return throwShape(
+        `${endpoint}: data 为空（后端返回 data: null）。若该端点本就无返回值（如 DELETE 类），请改用 assertEnvelopeOk`,
+        { status, endpoint, payload: envelope },
+      )
     }
     return payload
   }
@@ -355,6 +394,14 @@ function validatePayload<T>(payload: unknown, options: EnvelopeOptions<T>, statu
 /**
  * 校验信封并返回 `data`，失败一律抛错，**不返回任何兜底值**。
  *
+ * **永远显式写类型参数：`readEnvelope<T>(res, ...)`。** 省掉它时 `T` 塌成 `unknown`，
+ * `require` 的编译期字段名检查会整档失效（详见 {@link EnvelopeOptions.require}）。
+ *
+ * 选错入口的两个常见情形：
+ * - `data` 里的数组字段 → 用 {@link readEnvelopeList}，`require` 认 `null` 为「存在」。
+ * - 文档明确返回 `data: null` 的端点（如 `DELETE /api/storage/file/{uuid}`）
+ *   → 用 {@link assertEnvelopeOk}，这里会判成形状错误并上报。
+ *
  * @throws {ApiError} HTTP 非 2xx，或 `success === false`
  * @throws {ApiShapeError} HTTP 成功但缺 `data` / `data` 为空 / 缺必需字段 / `parse` 不通过
  */
@@ -382,10 +429,27 @@ export async function readEnvelope<T>(
 /**
  * 列表端点专用：解包信封后再从 `data` 上取出数组字段。
  *
- * 覆盖 `GET /api/friends`（`data.friends`）、`requests/sent`、`requests/pending`
- * （`data.requests`）、`auth/devices`（`data.devices`）这一整类。
  * 拿不到数组就抛错——历史写法 `data.friends || data || []` 在信封化之后
  * 会稳定返回 `[]`，UI 显示"暂无好友"，没有任何人会去报 bug。
+ *
+ * ## 各端点该传什么 `field`（逐条对过后端文档，**不要照抄设计稿**）
+ *
+ * **`data` 本身就是数组 ⇒ 不传 `field`：**
+ * - `GET /api/friends` —— `resp.data: FriendDto[]`
+ *   （`friends/好友添加删除.md`；README 更新日志 2026-03-08：从裸 `{"items":[...]}`
+ *   改为 `{"success":true,"code":200,"data":[...]}`）
+ * - `GET /api/friends/requests/sent` —— `resp.data: SentRequestDto[]`（同上）
+ * - `GET /api/friends/requests/pending` —— `resp.data: PendingRequestDto[]`（同上）
+ * - `GET /api/friends/presence` —— `resp.data: PresenceEntry[]`
+ * - `GET /api/ai/voice_profiles` —— 2026-03-08 起 `data` 为数组
+ *
+ * **`data` 是对象、数组在其字段上 ⇒ 传 `field`：**
+ * - `GET /api/auth/devices` —— `field: 'devices'`
+ *   （`data` 为 `{"devices":[...],"total":N}`，README 更新日志 2026-03-08）
+ *
+ * ⚠️ 设计稿 §「friends（第二批）」写的 `field: 'friends'` / `field: 'requests'`
+ * 与后端不符：那是**信封化之前**的裸响应形状。按设计稿写会让每一次好友列表请求
+ * 抛 `data.friends 应为数组`。迁移时以后端文档为准，逐个端点核对。
  *
  * @param options.field `data` 上承载数组的字段名；不传则要求 `data` 本身就是数组。
  */
@@ -464,12 +528,29 @@ export function unwrapEnvelope<T>(
 }
 
 /**
- * 是否是 401/403 认证类失败。
+ * 是否是 **401** 认证类失败。**只认 401，不认 403。**
  *
  * 供 `src/api/apiClient.ts` 的 `isAuthError` 复用：那里原本靠中英文关键词
  * 模糊匹配 message 来决定要不要静默跳登录，而解包层抛出的 `ApiError` 带的是
  * 真实后端文案，可能一个关键词都不含——不加这一条，401 会不再触发重定向。
+ *
+ * ## 为什么把 403 排除在外（对设计 §4(e) 的刻意修正）
+ *
+ * 设计里的代码注释写的是「401/403 走状态码」，但正文只论证了 401 那一半。
+ * 本后端的 403 是**普通的权限不足**，不是 token 失效：
+ * - `storage/文件存储管理.md`：文件预签名的 403 「`error` 恒为 `权限不足`」，
+ *   触发条件是「不是会话参与者」「双方已不是好友」「不是该群活跃成员」；
+ * - `groups/群聊管理.md`：全模块统一口径「群存在但调用者无权 ⇒ `403`」；
+ * - `profile/个人资料管理.md`：`group_avatar` 且调用者不是群主/管理员 ⇒ `403`。
+ *
+ * `isAuthError` 的五个消费点全部是「静默」路径：`silentRedirectToLogin()`
+ * （`clearAuth()` + `location.replace('/login')`，不弹任何提示），以及
+ * `chatStore` 的 `return []`。若 403 落进来，用户点开一个已失去权限的文件，
+ * 得到的是**无任何解释的登出**或**空列表**——正是这一层要消灭的失败形态。
+ *
+ * 403 排除之后会落到 `isAuthError` 的关键词兜底档，而 403 的文案是「权限不足」，
+ * 不含 AUTH_ERROR_MESSAGES 里任何一个词，因此会正确地作为可见错误向上抛。
  */
 export function isAuthApiError(error: unknown): error is ApiError {
-  return error instanceof ApiError && (error.status === 401 || error.status === 403)
+  return error instanceof ApiError && error.status === 401
 }
