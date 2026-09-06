@@ -117,6 +117,54 @@ describe('authStore.login —— 信封解包', () => {
     )
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
+
+  it('user_nickname（profile 命名）能正确归一成 nickname', async () => {
+    // 后端 profile 模块的字段一律带 user_ 前缀（user_nickname/user_email/...），
+    // 而登录响应历史上读的是无前缀名；这条断言的是 optionalString 对
+    // user_nickname 这个新映射真的生效，不是只测到了旧的无前缀名分支。
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_nickname: '小明' },
+      }),
+    )
+
+    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
+
+    expect(useAuthStore.getState().user?.nickname).toBe('小明')
+  })
+
+  it('avatar_url 是相对路径时补成绝对地址', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_avatar_url: 'avatars/x.jpg' },
+      }),
+    )
+
+    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
+
+    expect(useAuthStore.getState().user?.avatar_url).toBe('https://api.huanvae.cn/avatars/x.jpg')
+  })
+
+  it('avatar_url 已经是绝对地址时原样保留，不会被二次拼接破坏', async () => {
+    // backend-docs/profile/个人资料管理.md:74 的真实示例就是这种形状
+    // （指向 MinIO 的完整 URL，不是 api.huanvae.cn 下的路径）。
+    const absolute = 'http://localhost:9000/avatars/testuser001.jpg'
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_avatar_url: absolute },
+      }),
+    )
+
+    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
+
+    expect(useAuthStore.getState().user?.avatar_url).toBe(absolute)
+  })
 })
 
 describe('authStore.refreshAccessToken —— 与 login 逐字同构的第二处静默故障', () => {

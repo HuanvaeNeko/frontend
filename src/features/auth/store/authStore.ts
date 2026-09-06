@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
-import { getAuthApiUrl } from '@/lib/apiConfig'
+import { getAuthApiUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { assertEnvelopeOk, type Parser, readEnvelope } from '@/lib/apiEnvelope'
 
 /**
@@ -209,7 +209,25 @@ export const useAuthStore = create<AuthStore>()(
               // 那里本来就写着 `user?.nickname || '访客'` 之类，行为不变。
               nickname: data.nickname,
               email: data.email,
-              avatar_url: data.avatar_url,
+              // avatar_url 过 toAbsoluteApiUrl 补基址。
+              //
+              // 之前这里两次给出的理由都没有站住：
+              // - 曾经的实现说"这是对象存储 key，前缀了会 404"——但
+              //   backend-docs/profile/个人资料管理.md:74（GET /api/profile 示例）
+              //   与 :344（POST /api/profile/avatar 响应示例）给出的
+              //   user_avatar_url / avatar_url 都已经是带协议的完整地址
+              //   （`http://localhost:9000/avatars/testuser001.jpg`，
+              //   指向 MinIO 而非 api.huanvae.cn），根本不是裸 key。
+              // - 后来又有人认定它是"需要拼 STORAGE_BASE_URL 的相对路径"——
+              //   这份 backend-docs 里同样找不到 STORAGE_BASE_URL 这个概念，
+              //   也没有任何一处把 avatar 字段描述成相对路径；这条说法同样
+              //   没有文档支持，不能采信。
+              // 真实情况是：目前这两个字段一律已经是绝对地址。这里仍然套一层
+              // toAbsoluteApiUrl，纯粹是防御性的——它对已带协议的地址是幂等直通
+              // （见 apiConfig.ts 的说明），今天不会拼错任何东西；一旦后端未来
+              // 改成返回相对路径，这里不用跟着改，且和 storage 模块里其它 URL 字段
+              // （如 presigned_url）保持同一处理方式，不必每个消费点各自记一遍。
+              avatar_url: toAbsoluteApiUrl(data.avatar_url),
               signature: data.signature,
             },
           })

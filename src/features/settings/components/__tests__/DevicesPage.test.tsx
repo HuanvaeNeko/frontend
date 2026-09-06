@@ -97,4 +97,31 @@ describe('设备管理页', () => {
       expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: '加载失败', variant: 'destructive' })),
     )
   })
+
+  it('某条设备缺少 is_current 时加载失败，绝不把它悄悄当成"不是当前设备"', async () => {
+    // require: ['devices','total'] 只保护顶层字段，保护不到数组元素内部；
+    // 这里模拟的正是"当前设备"那条记录漏了 is_current 的情况——如果代码用
+    // `?? false` 兜底，这条本该显示"当前设备"徽章的记录会被误判成"别人的设备"，
+    // 用户可能因此把自己正在用的会话当成陌生设备撤销掉。
+    const deviceMissingIsCurrent = {
+      device_id: 'd1',
+      device_info: 'Mozilla/5.0 (Macintosh) Chrome/140',
+      ip_address: '10.0.0.1',
+      last_active_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      // 故意不写 is_current
+    }
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { devices: [deviceMissingIsCurrent, DEVICES[1]], total: 2 } }),
+    )
+
+    renderPage()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: '加载失败', variant: 'destructive' })),
+    )
+    // 关键断言：这条设备不能被渲染出来（尤其不能渲染成"不是当前设备"的样子）。
+    expect(screen.queryByText('当前设备')).toBeNull()
+    expect(screen.queryByText('Mac Chrome')).toBeNull()
+  })
 })
