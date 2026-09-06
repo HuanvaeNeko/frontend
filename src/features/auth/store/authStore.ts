@@ -209,24 +209,26 @@ export const useAuthStore = create<AuthStore>()(
               // 那里本来就写着 `user?.nickname || '访客'` 之类，行为不变。
               nickname: data.nickname,
               email: data.email,
-              // avatar_url 过 toAbsoluteApiUrl 补基址。
+              // avatar_url 过 toAbsoluteApiUrl 补基址——这是必需的，不是防御性的。
               //
-              // 之前这里两次给出的理由都没有站住：
-              // - 曾经的实现说"这是对象存储 key，前缀了会 404"——但
-              //   backend-docs/profile/个人资料管理.md:74（GET /api/profile 示例）
-              //   与 :344（POST /api/profile/avatar 响应示例）给出的
-              //   user_avatar_url / avatar_url 都已经是带协议的完整地址
-              //   （`http://localhost:9000/avatars/testuser001.jpg`，
-              //   指向 MinIO 而非 api.huanvae.cn），根本不是裸 key。
-              // - 后来又有人认定它是"需要拼 STORAGE_BASE_URL 的相对路径"——
-              //   这份 backend-docs 里同样找不到 STORAGE_BASE_URL 这个概念，
-              //   也没有任何一处把 avatar 字段描述成相对路径；这条说法同样
-              //   没有文档支持，不能采信。
-              // 真实情况是：目前这两个字段一律已经是绝对地址。这里仍然套一层
-              // toAbsoluteApiUrl，纯粹是防御性的——它对已带协议的地址是幂等直通
-              // （见 apiConfig.ts 的说明），今天不会拼错任何东西；一旦后端未来
-              // 改成返回相对路径，这里不用跟着改，且和 storage 模块里其它 URL 字段
-              // （如 presigned_url）保持同一处理方式，不必每个消费点各自记一遍。
+              // 后端已经把头像字段从「绝对 MinIO 地址」改成了「相对路径」，
+              // 两份文档正好各记录了一个时期，前后对照可以看得很清楚：
+              // - 旧（/Users/i/Code/huanvae/backend/profile/个人资料管理.md:74，已过期）
+              //   `"user_avatar_url": "http://localhost:9000/avatars/testuser001.jpg"`
+              //   字段说明只写「头像 URL」。
+              // - 新（backend-docs/profile/个人资料管理.md:74，权威）
+              //   `"user_avatar_url": "avatars/testuser001.jpg?t=1706000000"`
+              //   :98 明写「头像**相对路径**（需拼接 `STORAGE_BASE_URL`）」。
+              // 而 STORAGE_BASE_URL 的定义在 backend-docs/storage/文件存储管理.md:54-55：
+              //   `// 存储基础地址（与 API 基础地址相同）`
+              //   `const STORAGE_BASE_URL = 'https://api.huanvae.cn'`
+              // :58-63 给出的拼接helper 就是 `${STORAGE_BASE_URL}/${relativePath}`，
+              // 与 toAbsoluteApiUrl 的行为一致。
+              //
+              // ⚠️ 这条注释此前被写反过两次，两次都是因为查了
+              // /Users/i/Code/huanvae/backend/ 那份**已过期**的旧文档而非
+              // backend-docs 仓库。storage 那一批同样会遇到 presigned_url /
+              // file_url 的相对路径问题——认准 backend-docs，别再查旧目录。
               avatar_url: toAbsoluteApiUrl(data.avatar_url),
               signature: data.signature,
             },
