@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
+import { isAuthApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 
 const BASE_URL = getApiBaseUrl()
@@ -38,13 +39,27 @@ const AUTH_ERROR_MESSAGES = [
 
 /**
  * 判断是否是认证相关的错误
+ *
+ * 三档，从可靠到不可靠：
+ * 1. `AuthenticationError` —— 本文件自己抛的，最可信。
+ * 2. `isAuthApiError` —— 解包层的 `ApiError` 带真实 HTTP 状态码，401/403 直接判定。
+ *    **这一档不能省**：解包层抛出的错误文案是后端原文，很可能一个
+ *    AUTH_ERROR_MESSAGES 关键词都不含（例如"您的会话已结束"），只靠下面的
+ *    关键词匹配会让 401 不再触发静默重定向——那是一次实打实的回归。
+ * 3. 关键词匹配 —— 兜住那些还没接入解包层的裸 `Error` / 字符串，
+ *    等三个模块全部迁完之后可以再评估要不要删。
  */
 const isAuthError = (error: Error | string): boolean => {
   // AuthenticationError 直接返回 true
   if (error instanceof AuthenticationError) {
     return true
   }
-  
+
+  // 有状态码就不猜词
+  if (isAuthApiError(error)) {
+    return true
+  }
+
   const message = typeof error === 'string' ? error : error.message
   const lowerMessage = message.toLowerCase()
   return AUTH_ERROR_MESSAGES.some(keyword => lowerMessage.includes(keyword.toLowerCase()))
