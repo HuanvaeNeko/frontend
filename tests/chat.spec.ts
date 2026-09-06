@@ -47,39 +47,66 @@ test.describe('Chat Functionality', () => {
   })
 
   test('should load chat page and display friends list', async ({ page }, testInfo) => {
-    // Mock friends API
+    // Mock friends API.
+    // Envelope shape per backend-docs/friends/好友添加删除.md:57 & :99-118:
+    // `{success, code, data}` where `data` IS the FriendDto[] array (no `friends`
+    // wrapper key). Field names are `friend_id`/`friend_nickname`/`friend_avatar_url`
+    // — the old `user_id`/`nickname`/`avatar_url`/`signature` shape has zero overlap
+    // with the real DTO and throws ApiShapeError against the migrated client
+    // (src/features/chat/api/friends.ts). The display name resolves via
+    // `friend_remark ?? friend_nickname ?? friend_id` (FriendList.tsx:66), so with
+    // `friend_remark: null` here, "Alice"/"Bob" render from `friend_nickname` —
+    // genuinely proving the row renders from the field the app actually reads.
     await page.route('**/api/friends', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          friends: [
+          success: true,
+          code: 200,
+          data: [
             {
-              user_id: 'friend_1',
-              nickname: 'Alice',
-              avatar_url: '',
-              signature: 'Hi there!',
+              friend_id: 'friend_1',
+              friend_nickname: 'Alice',
+              friend_avatar_url: null,
+              add_time: new Date().toISOString(),
+              approve_reason: null,
+              friend_remark: null,
+              is_blacklisted: false,
+              is_special_care: false,
             },
             {
-              user_id: 'friend_2',
-              nickname: 'Bob',
-              avatar_url: '',
-              signature: 'Busy',
+              friend_id: 'friend_2',
+              friend_nickname: 'Bob',
+              friend_avatar_url: null,
+              add_time: new Date().toISOString(),
+              approve_reason: null,
+              friend_remark: null,
+              is_blacklisted: false,
+              is_special_care: false,
             },
           ],
         }),
       })
     })
 
-    // Mock other chat APIs to avoid errors
+    // Mock other chat APIs to avoid errors.
+    // Same envelope as /api/friends (backend-docs/friends/好友添加删除.md:79-85, :59-65):
+    // `data` is PendingRequestDto[] / SentRequestDto[] directly, no `requests` wrapper.
     await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
+    // Groups module has not migrated to the envelope client yet (groups.ts still
+    // reads `result.data?.groups || result.data || result.groups || result || []`),
+    // but the real backend already returns the envelope here too
+    // (backend-docs/groups/群聊管理.md:113-129: `{success, code, data: MyGroup[]}`).
+    // This shape satisfies both the current fallback chain (via `result.data`) and
+    // whatever the client looks like once groups.ts migrates.
     await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ groups: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
 
     // Navigate to chat page and wait for friends API
@@ -142,24 +169,46 @@ test.describe('Chat Functionality', () => {
   })
 
   test('should handle empty friends list', async ({ page }) => {
-    // Mock empty friends list
+    // Genuine empty-list success response — `{success:true, code:200, data:[]}`
+    // (backend-docs/friends/好友添加删除.md:57,99-105) — NOT a throwing mock that
+    // happens to leave the store's initial `[]` on screen. Those are indistinguishable
+    // in FriendList.tsx's rendering (it branches on `filteredFriends.length === 0`,
+    // not on the store's `error`), which is exactly the conflation
+    // (`data.friends || data || []` silently returning `[]` forever) that let the
+    // production bug survive six months (see
+    // src/features/chat/api/__tests__/friends.test.ts header comment). A bare
+    // `{friends:[]}` throws ApiShapeError in getFriendsList
+    // (src/features/chat/api/friends.ts) and ChatPage.tsx swallows it via
+    // `loadFriends().catch(console.error)` — invisible in the DOM. So this test
+    // additionally asserts on the one signal that *does* survive the swallow:
+    // apiEnvelope.ts's shape-error reporter guarantees a `[api-shape]` console.error
+    // "even if the caller catches it" (its own doc comment). Watch the console
+    // before navigating so a reverted/throwing fixture fails this test instead of
+    // passing for the wrong reason.
+    const shapeErrors: string[] = []
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' && msg.text().includes('[api-shape]') && msg.text().includes('/api/friends')) {
+        shapeErrors.push(msg.text())
+      }
+    })
+
     await page.route('**/api/friends', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ friends: [] }),
+        body: JSON.stringify({ success: true, code: 200, data: [] }),
       })
     })
 
     // Mock other APIs
     await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ groups: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
 
     const friendsPromise = page.waitForResponse(resp => resp.url().includes('/api/friends') && resp.status() === 200);
@@ -168,6 +217,10 @@ test.describe('Chat Functionality', () => {
 
     // Verify empty state message
     await expect(page.getByText(/暂无好友|No friends/)).toBeVisible()
+
+    // Verify it is empty because the backend said so, not because parsing failed
+    // and the UI can't tell the difference.
+    expect(shapeErrors).toEqual([])
   })
 
   test('should switch between tabs', async ({ page }, testInfo) => {
@@ -178,33 +231,36 @@ test.describe('Chat Functionality', () => {
     // different interaction this test does not exercise. Scope to "mobile" only.
     test.skip(testInfo.project.name !== 'mobile', 'in-page tab switcher (data-testid=tab-*) is md:hidden in ChatPage.tsx — mobile-only UI')
 
-    // Mock APIs
+    // Mock APIs. Envelope shape per backend-docs/friends/好友添加删除.md:57
+    // (friends/pending/sent) and backend-docs/groups/群聊管理.md:113-129 (groups/my).
     await page.route('**/api/friends', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ friends: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ requests: [] }) })
+      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
     await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({ 
-        status: 200, 
-        body: JSON.stringify({ 
-          groups: [
-            { 
-              group_id: 'g1', 
-              group_name: 'Test Group', 
-              group_description: 'desc', 
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          code: 200,
+          data: [
+            {
+              group_id: 'g1',
+              group_name: 'Test Group',
+              group_description: 'desc',
               creator_id: 'u1',
               role: 'owner',
               unread_count: 0,
               last_message_content: 'hello',
               last_message_time: new Date().toISOString()
             }
-          ] 
-        }) 
+          ]
+        })
       })
     })
     await page.route('**/api/groups/invites/my', async (route) => {
