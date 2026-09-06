@@ -615,8 +615,16 @@ export const storageApi = {
     // 这里曾经是 `uploadInfo.chunk_size || 30MB` 和 `uploadInfo.total_chunks ||
     // Math.ceil(...)`：后端少给字段时不报错，而是自己编一个分片方案接着跑，
     // 于是"信封没解包"这件事被伪装成了一次正常上传，错误延后到分片 PUT 才炸。
-    // 现在这三个字段由 uploadRequestResponse 在解包处校验、由类型保证非空，
-    // 兜底值和 `!` 非空断言都写不出来了。
+    //
+    // 现在这三个字段由 uploadRequestResponse 在解包处校验，缺任何一个直接抛
+    // ApiShapeError —— **防线是那个运行时 parser，不是类型**。
+    //
+    // ⚠️ 不要以为可辨识联合让旧写法"写不出来"了：实测把
+    // `chunk_size || 30MB` 和 `multipart_upload_id!` 原样还原，
+    // `tsc --noEmit` 照样通过（TS 允许在非空类型上写冗余 `!`，也允许在
+    // number 上写 `||`）。联合类型的价值是文档和调用点便利，不是强制。
+    // 真正钉住这件事的是 storage.test.ts 里那组 parser 校验用例——
+    // 删掉校验会让它们变红，删掉联合类型不会。
     const { chunk_size: chunkSize, total_chunks: totalChunks } = uploadInfo
 
     let totalUploaded = 0
