@@ -34,7 +34,11 @@ export default function Devices() {
     setLoading(true)
     try {
       const response = await authApi.getDevices()
-      const normalized: Device[] = (response.devices || []).map((d) => ({
+      // 没有 `|| []`：getDevices 现在要么抛错、要么返回真数组（解包层已 require
+      // devices/total）。留着兜底唯一的作用是在下一次响应形状漂移时再把空值咽下去，
+      // 变回"设备页永远显示暂无设备、撤销按钮永远不渲染"的静默故障。
+      // 出错就走下面 catch 的「加载失败」toast，故障可见。
+      const normalized: Device[] = response.devices.map((d) => ({
         device_id: d.device_id,
         device_info: d.device_info ?? '',
         ip_address: d.ip_address ?? '',
