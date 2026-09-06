@@ -18,7 +18,7 @@ interface FriendsState {
   loadPendingRequests: () => Promise<void>
   loadSentRequests: () => Promise<void>
   sendFriendRequest: (targetUserId: string, reason?: string) => Promise<void>
-  approveFriendRequest: (applicantUserId: string, approvedReason?: string) => Promise<void>
+  approveFriendRequest: (applicantUserId: string) => Promise<void>
   rejectFriendRequest: (applicantUserId: string, rejectReason?: string) => Promise<void>
   removeFriend: (friendUserId: string, removeReason?: string) => Promise<void>
   setOnlineStatus: (userId: string, isOnline: boolean) => void
@@ -123,10 +123,13 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     }
   },
 
-  approveFriendRequest: async (applicantUserId: string, approvedReason?: string) => {
+  // 后端 approve 的请求体只有 { user_id, applicant_user_id }
+  // （backend-docs/friends/好友添加删除.md:25-32），不收集通过理由，
+  // 所以这里也不再往下透传一个永远不会被消费的 approvedReason。
+  approveFriendRequest: async (applicantUserId: string) => {
     set({ isLoading: true, error: null })
     try {
-      await friendsApi.approveFriendRequest(applicantUserId, approvedReason)
+      await friendsApi.approveFriendRequest(applicantUserId)
       // 重新加载好友列表和请求列表
       await get().loadFriends()
       await get().loadPendingRequests()
@@ -184,6 +187,13 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     set({ onlineStatus })
   },
 
+  // ⚠️ 已知缺口（本轮不修，属于"缺功能"而非解包 bug）：
+  // `GET /api/friends/presence` 首屏快照与顶层 `presence_update` 推送
+  // （backend-docs/friends/好友添加删除.md:443-509）前端都还没接，
+  // `setOnlineStatus` 至今零调用点，`onlineStatus` 恒为空 Map，
+  // 于是这里的 `|| false` 把「从未拿到过数据」显示成「离线」——
+  // 所有好友的状态点永远是灰的。修的时候要连 `boolean | undefined`
+  // （未知 ≠ 离线）一起改，不要只补一个接口。
   isOnline: (userId: string) => {
     return get().onlineStatus.get(userId) || false
   },

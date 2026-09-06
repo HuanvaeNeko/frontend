@@ -17,34 +17,48 @@ export interface UserProfile {
 }
 
 /**
- * Friend Information
+ * Friend Information（`GET /api/friends` 的 `FriendDto`）
+ *
+ * 字段以 `backend-docs/friends/好友添加删除.md:107-118` 为准；可空字段后端序列化为
+ * `null`（无 `skip_serializing_if`），故写 `| null` 而非可选属性。
+ * 权威定义在 `src/features/chat/api/friends.ts`——这里是历史遗留的第二份拷贝
+ * （全仓无引用），同步更新只是不想再留一份会误导人的旧字段名。
  */
 export interface Friend {
-  user_id: string
-  nickname: string
-  avatar_url?: string
-  email?: string
-  signature?: string
+  friend_id: string
+  friend_nickname: string | null
+  friend_avatar_url: string | null
+  add_time: string
+  approve_reason: string | null
+  friend_remark: string | null
+  is_blacklisted: boolean
+  is_special_care: boolean
 }
 
 /**
- * Pending Friend Request
+ * Pending Friend Request（`GET /api/friends/requests/pending` 的 `PendingRequestDto`）
  */
 export interface PendingRequest {
-  applicant_user_id: string
-  nickname: string
-  reason?: string
+  request_id: string
+  request_user_id: string
+  request_message: string | null
   request_time: string
+  requester_nickname: string | null
+  requester_avatar_url: string | null
 }
 
 /**
- * Sent Friend Request
+ * Sent Friend Request（`GET /api/friends/requests/sent` 的 `SentRequestDto`）
+ *
+ * 没有 `status`：该端点只返回仍处于 pending 的申请。
  */
 export interface SentRequest {
-  target_user_id: string
-  reason?: string
-  request_time: string
-  status: string
+  request_id: string
+  sent_to_user_id: string
+  sent_message: string | null
+  sent_time: string
+  sent_to_nickname: string | null
+  sent_to_avatar_url: string | null
 }
 
 /**

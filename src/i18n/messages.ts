@@ -328,8 +328,9 @@ const zhCN = {
       approve: '同意',
       reject: '拒绝',
       noSentRequests: '暂无已发送的请求',
-      statusApproved: '已同意',
-      statusRejected: '已拒绝',
+      // statusApproved / statusRejected 已随「已发送」列表的三态徽章一起删除：
+      // GET /api/friends/requests/sent 只返回 pending 的申请，响应里没有 status
+      // 字段（backend-docs/friends/好友添加删除.md:67-78），两个文案永远取不到。
       statusPending: '待处理',
     },
     groupList: {
@@ -829,8 +830,6 @@ const enUS = {
       approve: 'Approve',
       reject: 'Reject',
       noSentRequests: 'No sent requests',
-      statusApproved: 'Approved',
-      statusRejected: 'Rejected',
       statusPending: 'Pending',
     },
     groupList: {
