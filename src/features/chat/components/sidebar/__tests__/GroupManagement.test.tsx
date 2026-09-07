@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Group, GroupMember, GroupNotice, JoinRequest } from '@/features/chat/api/groups'
+import { ApiError } from '@/lib/apiEnvelope'
 import GroupManagement from '../GroupManagement'
 
 /**
@@ -58,6 +59,22 @@ vi.mock('@/hooks/use-toast', () => ({
 vi.mock('@/features/auth/store/authStore', () => ({
   useAuthStore: () => authState,
 }))
+
+/**
+ * 只替掉 `AvatarImage` 这一个展示件。Radix 的 AvatarImage 要等图片真的 `load` 完
+ * 才渲染 `<img>`，而 happy-dom 根本不发请求 —— 保留原件的话「上传成功后头像 URL
+ * 有没有真的落到 DOM 上」永远断言不出来（渲染出来的恒是 fallback）。
+ * Root / Fallback 仍是真件。
+ */
+vi.mock('@/components/ui/avatar', async () => {
+  const actual = await vi.importActual<typeof import('@/components/ui/avatar')>('@/components/ui/avatar')
+  const { createElement } = await import('react')
+  return {
+    ...actual,
+    AvatarImage: (props: { src?: string }) =>
+      createElement('img', { 'data-testid': 'avatar-image', ...props }),
+  }
+})
 
 /** `GET /{group_id}` 的 `GroupInfo`，八字段照抄 doc:175-190 的响应样例。 */
 const GROUP: Group = {
@@ -923,5 +940,135 @@ describe('GroupManagement 待审申请行：附言字段与四类 request_type',
 
     await waitFor(() => expect(screen.getAllByText('u2').length).toBeGreaterThan(0))
     expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
+  })
+})
+
+describe('GroupManagement 群头像上传（storage 四步链路的组件侧）', () => {
+  const pngFile = () => new File(['x'], 'logo.png', { type: 'image/png' })
+
+  /** 管理员才渲染得出那个隐藏 input（`isAdmin` 由 members 里自己这一行决定）。 */
+  const renderAsAdmin = async () => {
+    groupsApiMock.getMembers.mockResolvedValue({ members: [ADMIN_MEMBER], total: 1 })
+    groupsApiMock.getNotices.mockResolvedValue([])
+    const { container } = render(<GroupManagement groupId="g1" />)
+    const input = await waitFor(() => {
+      const el = container.querySelector('input[type="file"]') as HTMLInputElement | null
+      if (!el) throw new Error('隐藏 file input 还没渲染出来')
+      return el
+    })
+    return { container, input }
+  }
+
+  it('成功后写进头像的是 result.file_url —— 旧字段名 avatar_url 已随旧端点删除', async () => {
+    // doc:288-306：confirm 的响应字段叫 `file_url`。旧的 `POST /{id}/avatar` 回的是
+    // `avatar_url`，形态逐字相同、名字变了：读错字段不会抛，只会把 undefined 写进
+    // group_avatar_url，UI 静默退回首字母 fallback。所以断言必须是**这个 URL 逐字
+    // 出现在 DOM 上**，只断言"没弹错误 toast"抓不出来。
+    groupsApiMock.uploadGroupAvatar.mockResolvedValue({
+      file_url: 'https://api.huanvae.cn/avatars/group-g1.png?t=1706000000',
+      file_key: 'group-g1.png',
+    })
+
+    const { input } = await renderAsAdmin()
+    fireEvent.change(input, { target: { files: [pngFile()] } })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '群头像已更新' }),
+      ),
+    )
+    const img = await screen.findByTestId('avatar-image')
+    expect(img).toHaveAttribute('src', 'https://api.huanvae.cn/avatars/group-g1.png?t=1706000000')
+  })
+
+  it('409 在后端原文之外再补一句"另一位管理员"，而不是换掉原文', async () => {
+    // 群头像 key 由群 ID 决定，群主与任一管理员落在同一行会话上（doc:369）。
+    // 后端原文本身是有用的话，套一句自造的「上传失败」等于把它扔掉。
+    // 必须是**真的** ApiError 实例：`isUploadSessionExpired` 按
+    // `instanceof ApiError && status === 409` 分诊（storage.ts :485），
+    // 一个 name 被改成 'ApiError' 的鸭子类型走不进 409 分支。
+    const taken = new ApiError('该上传会话已被同一目标的新请求接管，请重新发起上传', {
+      status: 409,
+      endpoint: 'POST /api/storage/upload/confirm',
+    })
+    groupsApiMock.uploadGroupAvatar.mockRejectedValueOnce(taken)
+
+    const { input } = await renderAsAdmin()
+    fireEvent.change(input, { target: { files: [pngFile()] } })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description:
+            '该上传会话已被同一目标的新请求接管，请重新发起上传（可能是本群另一位管理员同时在换头像）',
+          variant: 'destructive',
+        }),
+      ),
+    )
+  })
+
+  it('403 原文照透，且不带 409 那句后缀', async () => {
+    const forbidden = new ApiError('只有群主或管理员可以修改群头像', {
+      status: 403,
+      endpoint: 'POST /api/storage/upload/request',
+    })
+    groupsApiMock.uploadGroupAvatar.mockRejectedValueOnce(forbidden)
+
+    const { input } = await renderAsAdmin()
+    fireEvent.change(input, { target: { files: [pngFile()] } })
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: '只有群主或管理员可以修改群头像',
+          variant: 'destructive',
+        }),
+      ),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining('另一位管理员') }),
+    )
+  })
+
+  it('失败之后还能重选**同一个**文件：finally 里清掉了 input 的 value', async () => {
+    // 409 的提示要用户"重选文件"，可浏览器只在 value **变化**时才发 change：
+    // 不清 value，重选同一张图就什么都不会发生，那句提示是空头支票。
+    //
+    // happy-dom 这里没法用读值来断言：给 file input 设 files 不会写 value（恒为 ""），
+    // 设非空 value 还会抛 InvalidStateError。所以在元素上装一个 setter 探针，直接记录
+    // 组件对 value 的写入——浏览器里正是这一次写入让下一次选同一个文件仍然发 change。
+    groupsApiMock.uploadGroupAvatar.mockRejectedValueOnce(new Error('网络错误，请稍后重试'))
+
+    const { input } = await renderAsAdmin()
+    const valueWrites: string[] = []
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      // getter 照抄 happy-dom 对 file input 的真实行为（恒为 ""），
+      // setter 只记录，不改元素状态：组件唯一会写的值就是 ""，本来也是空操作。
+      get: () => '',
+      set: (next: string) => { valueWrites.push(next) },
+    })
+
+    const file = pngFile()
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ description: '网络错误，请稍后重试' }),
+    ))
+
+    // 关键断言：失败路径上组件确实把 value 清空过。没有这一次写入，下面那次
+    // "重选同一个文件"在真实浏览器里根本不会触发 change。
+    expect(valueWrites).toContain('')
+
+    groupsApiMock.uploadGroupAvatar.mockResolvedValueOnce({
+      file_url: 'https://api.huanvae.cn/avatars/group-g1.png?t=2',
+      file_key: 'group-g1.png',
+    })
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(groupsApiMock.uploadGroupAvatar).toHaveBeenCalledTimes(2))
+    expect(await screen.findByTestId('avatar-image')).toHaveAttribute(
+      'src',
+      'https://api.huanvae.cn/avatars/group-g1.png?t=2',
+    )
   })
 })

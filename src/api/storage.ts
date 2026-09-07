@@ -113,13 +113,27 @@ export type AvatarTarget = 'user_avatar' | 'user_background' | 'group_avatar'
  * 落点 + `related_id` 的合法组合，只有这两种。
  *
  * 文档 :119：`group_avatar` **必填且必须是群 UUID**；`user_avatar` / `user_background`
- * **携带它就是 400**——注意是"携带"，不是"值不对"，所以不能传 `related_id: undefined`
- * 之外的任何东西，`buildAvatarUploadPayload` 里靠**不写这个键**来保证。
+ * **携带它就是 400**——注意是"携带"，不是"值不对"。所以 `related_id: undefined`
+ * **不是**安全写法：那一样是把这个键写进了对象，只是碰巧被 `JSON.stringify` 丢掉；
+ * 换一种编码（FormData、msgpack、手拼 query）它就原样发出去了。唯一安全的构造是
+ * **根本不写这个键**，`buildAvatarUploadPayload` 就是这么写的。
  *
  * ⚠️ 这个联合是给调用点用的便利与文档，**不是**保证：`as` 一下就能绕过去
  * （本仓已经实测过一次"可辨识联合让坏写法写不出来"这个说法是假的，
  * 见 {@link storageApi.uploadWithMultipart} 里的注释）。真正钉住三条约束的是
- * `buildAvatarUploadPayload` 的构造方式 + groups.test.ts 里那组 body 断言。
+ * `buildAvatarUploadPayload` 的构造方式，加上三组**各自不同**的测试：
+ *
+ * - `file_type` ⟺ `storage_location` 双向绑定：这两个键值写死在 `base` 里，由
+ *   storage.test.ts 里直接调 `buildAvatarUploadPayload` 的那条 `toEqual`、加上
+ *   groups.test.ts「第 1 步的请求体逐字段与 doc:270-284 一致」的 wire-level `toEqual`
+ *   一起钉住——任一侧被改成单独出现都会当场变红；
+ * - `related_id` 这个键的**有无**：只有 storage.test.ts 里直接调 `buildAvatarUploadPayload`
+ *   的那组 `Object.hasOwn` 断言测得出来。线上 body 要过 `JSON.stringify`，而
+ *   `related_id: undefined` 与"根本没这个键"序列化后逐字相同，所以任何基于
+ *   `JSON.parse(init.body)` 的断言（包括本仓那条 `'related_id' in body`）对这条约束
+ *   **恒真**——它钉的是序列化结果，不是构造方式；
+ * - 群 UUID 原样透传：storage.test.ts 里那条「大小写变体逐字进 payload，只有单飞键
+ *   小写化」的断言。
  */
 export type AvatarUploadTarget =
   | { avatar_target: 'group_avatar'; related_id: string }
@@ -185,10 +199,15 @@ export interface InstantUploadResponse extends UploadRequestBase {
  * 文档 :167-182：这一档 `multipart_upload_id` / `chunk_size` / `total_chunks`
  * 三个字段**必有值**，`existing_file_url` 为 `null`。
  *
- * 把它和 {@link InstantUploadResponse} 拆成可辨识联合，是为了让
- * `uploadInfo.multipart_upload_id!` 这种非空断言**写不出来**：
- * 旧代码用 `!` 强推，字段真为 null 时会把字面量 `upload_id=undefined`
- * 发给后端，错误延后到分片 PUT 才炸，日志指向错误的环节。
+ * 把它和 {@link InstantUploadResponse} 拆成可辨识联合，是**便利与文档**，不是强制。
+ * 别把它当防线：本仓实测过把 `uploadInfo.multipart_upload_id!` 原样还原，
+ * `tsc --noEmit` 照样通过（TS 允许在非空类型上写冗余 `!`），见
+ * {@link storageApi.uploadWithMultipart} 里那段实测记录。
+ *
+ * 真正拦住旧写法的是 `uploadRequestResponse` 那个**运行时 parser**：这三个字段缺任何
+ * 一个直接抛 ApiShapeError，`!` 根本等不到 null 值可推。旧代码正是用 `!` 强推，字段
+ * 真为 null 时会把字面量 `upload_id=undefined` 发给后端，错误延后到分片 PUT 才炸，
+ * 日志指向错误的环节。
  */
 export interface MultipartUploadSession extends UploadRequestBase {
   instant_upload: false
@@ -624,8 +643,20 @@ export function buildAvatarUploadPayload(
 
 /**
  * 单飞键。头像的 object key 是**确定性**的（`{user_id}.{ext}` / `group-{group_id}.{ext}`），
- * 同一个落点只有一行上传会话：并发或重复发起 `upload/request` 会让先手方之后的每一次
- * `part_url` / `confirm` 都变成 409（文档 :643-646、群聊文档 :369）。
+ * 同一个落点在服务端只有一行上传会话：并发或重复发起 `upload/request` 会让先手方之后的
+ * 每一次 `part_url` / `confirm` 都变成 409（文档 :643-646、群聊文档 :369）。
+ *
+ * ⚠️ 这个 Map 只活在**当前这张标签页**里，能挡的因此只有本页自己的重复发起：连点、
+ * 组件重挂、以及同一页里两个调用点同时发。文档那条「群主与任一管理员互相接管」是
+ * **跨客户端**的危险，per-tab 的 Map 在结构上就防不住，也不该假装防得住——跨端 409
+ * 的处理方式是**如实透出**（`isUploadSessionExpired` 分诊 + 调用点把后端原文和"重选
+ * 文件重来"讲清楚），不是预防。
+ *
+ * 眼下 GroupManagement 那一侧其实还锁不到东西：触发按钮 `disabled={uploadingAvatar}`，
+ * 隐藏 input 只能由它打开，同一页发不出第二次。保留这一层是给下一个调用点
+ * （profile.ts 复用同一支）的纵深防御；冲突时**直接拒**而不是让后手方共享先手的
+ * in-flight promise，也是有意的：两次点击很可能选的是不同的文件，共享会把先手的
+ * `file_url` 当成后手的结果返回。
  *
  * 群 ID 在键里小写化，是因为服务端会把 UUID 归一成规范小写再拼 key —— 大小写不同的
  * 两个字符串落在**同一个对象**上，键不小写化就等于给同一个落点开了两条并发通道。

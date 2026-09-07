@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isUploadSessionExpired, storageApi } from '@/api/storage'
+import { buildAvatarUploadPayload, isUploadSessionExpired, storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { clearApiBaseUrl, getApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
@@ -713,7 +713,11 @@ describe('storageApi.uploadAvatar（三档共用层）', () => {
       content_type: 'image/png',
       file_hash: '0'.repeat(64),
     })
-    // "键不存在"和"键在但值是 null/undefined"对后端是两回事
+    // ⚠️ 这一条钉的是**序列化结果**，不是构造方式：`JSON.stringify` 会丢掉值为
+    // undefined 的键，所以无论 payload 里写没写 `related_id: undefined`，它都通过。
+    // "键在但值是 undefined"这个具体错法由下面 buildAvatarUploadPayload 那组
+    // `Object.hasOwn` 断言负责——这里留着是因为"线上真的发出去的 body 长这样"
+    // 本身值得钉住。
     expect('related_id' in body).toBe(false)
     expect(result.file_url).toBe(`${getApiBaseUrl()}/avatars/alice.png?t=1`)
   })
@@ -753,5 +757,74 @@ describe('storageApi.uploadAvatar（三档共用层）', () => {
 
     releaseAvatar(ok({ success: false, code: 400, message: '文件大小超过限制' }, 400))
     await expect(avatar).rejects.toThrow('文件大小超过限制')
+  })
+})
+
+/**
+ * `buildAvatarUploadPayload` 的直接单测。
+ *
+ * 为什么不能只靠上面那些 wire-level 断言：它们全都读
+ * `JSON.parse(String(init.body))`，而 `JSON.stringify` 会**丢掉值为 undefined 的键**。
+ * 于是 `{ ...base }` 和 `{ ...base, related_id: undefined }` 序列化后逐字相同，
+ * `toEqual` 和 `'related_id' in body` 对两者都是绿的——恰恰测不出周围注释警告的那个
+ * 错法。文档 :119 的规则是「**携带这个键**就是 400」，判据在对象上，不在 JSON 上。
+ *
+ * 所以这一组一律断言**返回值这个对象本身**：`Object.hasOwn` / `in` 直接看键在不在。
+ */
+describe('buildAvatarUploadPayload（返回值这个对象本身，不走 JSON 往返）', () => {
+  const pngFile = () => new File(['x'], 'me.png', { type: 'image/png' })
+  const HASH = '0'.repeat(64)
+
+  it.each(['user_avatar', 'user_background'] as const)(
+    '%s 档：返回的对象上根本没有 related_id 这个键（不是"键在但值是 undefined"）',
+    (avatar_target) => {
+      const payload = buildAvatarUploadPayload(pngFile(), { avatar_target }, HASH)
+
+      expect(Object.hasOwn(payload, 'related_id')).toBe(false)
+      expect('related_id' in payload).toBe(false)
+      expect(Object.keys(payload)).not.toContain('related_id')
+    },
+  )
+
+  it('group_avatar 档：related_id 这个键存在，值就是传进来的群 UUID', () => {
+    const groupId = '019ae4ec-0dfe-7ac1-966e-876e9755561c'
+
+    const payload = buildAvatarUploadPayload(pngFile(), {
+      avatar_target: 'group_avatar',
+      related_id: groupId,
+    }, HASH)
+
+    expect(Object.hasOwn(payload, 'related_id')).toBe(true)
+    expect(payload.related_id).toBe(groupId)
+  })
+
+  it('群 UUID 原样透传：大小写变体逐字进 payload，客户端不做归一', () => {
+    // 服务端自 2026-08-29 起把 UUID 归一成规范小写再拼 object key（群聊文档 :308-312），
+    // 客户端**不必**自己归一。小写化只发生在单飞键里（同一个对象 = 同一个锁位），
+    // 请求体这一侧原样透传。
+    const mixedCase = '019AE4EC-0DFE-7AC1-966E-876E9755561C'
+
+    const payload = buildAvatarUploadPayload(pngFile(), {
+      avatar_target: 'group_avatar',
+      related_id: mixedCase,
+    }, HASH)
+
+    expect(payload.related_id).toBe(mixedCase)
+    expect(payload.related_id).not.toBe(mixedCase.toLowerCase())
+  })
+
+  it('file_type=avatar 与 storage_location=avatars 成对写死（双向绑定，文档 :136-139）', () => {
+    // 任一侧单独出现都是 400，而这条绑定是 10 MB 上限的承重件。
+    const payload = buildAvatarUploadPayload(pngFile(), { avatar_target: 'user_avatar' }, HASH)
+
+    expect(payload).toEqual({
+      file_type: 'avatar',
+      storage_location: 'avatars',
+      avatar_target: 'user_avatar',
+      filename: 'me.png',
+      file_size: 1,
+      content_type: 'image/png',
+      file_hash: HASH,
+    })
   })
 })

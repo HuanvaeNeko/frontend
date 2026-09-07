@@ -283,6 +283,13 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
    * - 409 = 上传会话被同一个群的另一个管理员接管 / 已过期（doc:369）：
    *   重发同一条永远不会成功，必须整条重来。这里只把话说清楚让用户重选文件，
    *   **不自动重试**——自动重走链路会去接管别人的会话，两边互相打架。
+   *
+   * 因此 `finally` 里必须清掉 input 的 value（仓里同一套写法见 ChatWindow :244、
+   * FileManager :182、ProfileModal :260、ProfilePage :81）：浏览器只在 value **变化**
+   * 时才发 `change`，不清就等于"失败之后不许重选同一个文件"——而上面那句提示要用户
+   * 做的恰恰就是重选文件，一次网络抖动就能把这个入口锁死到用户换一张图为止。
+   * 用 ref 而不是 `e.target`：与仓里其余四处一致，也不依赖异步 `finally` 里
+   * 事件对象还活着。
    */
   const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -300,6 +307,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '错误', description, variant: 'destructive' })
     } finally {
       setUploadingAvatar(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
