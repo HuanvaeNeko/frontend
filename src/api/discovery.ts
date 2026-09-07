@@ -1,8 +1,7 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
-import { ROUTES } from '@/lib/routes'
+import { fetchWithAuth } from './authedFetch'
 
 /**
  * 统一发现搜索 `GET /api/discovery/search`（`backend-docs/discovery/发现搜索.md`）。
@@ -28,66 +27,6 @@ import { ROUTES } from '@/lib/routes'
  */
 
 const DISCOVERY_BASE_URL = `${getApiBaseUrl()}/api/discovery`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-/**
- * 带一次刷新重试的 fetch。与 `groups.ts` / `friends.ts` / `storage.ts` 的同名函数
- * 逐字同型（本仓四个 api 模块各带一份，是既有约定）。
- *
- * **只对 401 做刷新与登出**。403 原样返回给解包层，抛成带 `status` 的 `ApiError`
- * 交给调用点——本端点的 403 只可能是普通权限不足，把它并进认证失败会变成一次
- * 无任何解释的登出（`apiEnvelope.isAuthApiError` 的注释记录了这条口径）。
- */
-const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  if (response.status === 401 && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 /**
  * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts`、`friends.ts`

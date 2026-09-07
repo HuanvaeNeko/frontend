@@ -543,7 +543,8 @@ export function unwrapEnvelope<T>(
  * - `groups/群聊管理.md`：全模块统一口径「群存在但调用者无权 ⇒ `403`」；
  * - `profile/个人资料管理.md`：`group_avatar` 且调用者不是群主/管理员 ⇒ `403`。
  *
- * `isAuthError` 的五个消费点全部是「静默」路径：`silentRedirectToLogin()`
+ * `isAuthError` 的消费点（`chatStore` / `friendsStore` / `profileStore`）全部是
+ * 「静默」路径：`silentRedirectToLogin()`
  * （`clearAuth()` + `location.replace('/login')`，不弹任何提示），以及
  * `chatStore` 的 `return []`。若 403 落进来，用户点开一个已失去权限的文件，
  * 得到的是**无任何解释的登出**或**空列表**——正是这一层要消灭的失败形态。

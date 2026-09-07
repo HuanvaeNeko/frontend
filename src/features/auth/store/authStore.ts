@@ -385,9 +385,12 @@ export const useAuthStore = create<AuthStore>()(
           }
         }
 
-        // 单飞：并发调用共享同一个 in-flight 请求。九份 `fetchWithAuth` 副本
-        // （apiClient / auth / profile / friends / messages / groupMessages / groups /
-        // webrtc / storage）和 wsStore 都直接调到这里，锁只有放在这个漏斗里才对所有人生效。
+        // 单飞：并发调用共享同一个 in-flight 请求。`src/api/authedFetch.ts`
+        // （2026-09-07 由 auth / profile / friends / messages / groupMessages / groups /
+        // webrtc / storage / discovery 九份逐字副本合并而来）、`apiClient.ts` 里另一份
+        // 语义不同的 `fetchWithAuth`、以及 wsStore 都直接调到这里，
+        // 锁只有放在这个漏斗里才对所有人生效——谁绕过去自己 POST /api/auth/refresh，
+        // 锁对谁就失效。
         // 2026-09-07 线上实锤：页面加载时 5 个请求来自 4 份副本，各自发现 token 临期，
         // 5 个 refresh 带着同一个 refresh token 同时出去；后端每次都轮换一对新 token，
         // 5 个响应以任意顺序落进 store，最后写入的那对已被后来的轮换作废 → 全部 401

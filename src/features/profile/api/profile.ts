@@ -1,66 +1,8 @@
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { ROUTES } from '@/lib/routes'
+import { fetchWithAuth } from '@/api/authedFetch'
 
 const PROFILE_BASE_URL = `${getApiBaseUrl()}/api/profile`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-// 带自动重试的 fetch 封装
-const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-  
-  // 检查 Token 是否即将过期，如果是则刷新
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-  
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  // 如果 Token 过期，尝试刷新后重试一次
-  if (response.status === 401 && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 // ============================================
 // 类型定义

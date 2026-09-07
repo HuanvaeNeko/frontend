@@ -1,5 +1,4 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import {
   asRecord,
@@ -10,7 +9,7 @@ import {
   optionalStr,
   str,
 } from '@/lib/apiParse'
-import { ROUTES } from '@/lib/routes'
+import { fetchWithAuth } from './authedFetch'
 
 /**
  * ⚠️ 这个常量**只能用来拼接端点路径**，不能用来把后端返回的相对路径补成绝对地址。
@@ -22,62 +21,6 @@ import { ROUTES } from '@/lib/routes'
  * 紧挨着 `getApiBaseUrl()`，正是为了让这个坑在结构上不存在）。
  */
 const STORAGE_BASE_URL = `${getApiBaseUrl()}/api/storage`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-// 带自动重试的 fetch 封装
-const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-  
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-  
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  if (response.status === 401 && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 // ============================================
 // 类型定义
