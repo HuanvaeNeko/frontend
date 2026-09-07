@@ -162,18 +162,39 @@ const sendGroupMessageResponse: Parser<SendGroupMessageResponse> = {
 }
 
 /**
+ * `message` 允许空串。
+ *
+ * `apiParse` 的 `str()` 把 `''` 判成"缺失"（对 URL / UUID 那类字段是对的），但 `""`
+ * 是这个后端真的会发出来的值——`群消息.md:200` 的 `sender_avatar_url: ""` 就是。
+ * 一次合法的 `data:{success:true, message:""}` 会被 `str()` 判成 `ApiShapeError`，
+ * 把**删除成功**变成一个用户看得见的报错：这正是这一层要消灭的失败形态，只是方向反了
+ * （不是把失败伪装成数据，而是把成功伪装成失败）。
+ *
+ * 类型检查一点没松：不是 string 照样抛。放宽的只有"非空"。
+ */
+function mutationMessage(payload: Record<string, unknown>): string {
+  const value = payload.message
+  if (typeof value !== 'string') {
+    throw new Error('message 缺失或不是字符串')
+  }
+  return value
+}
+
+/**
  * `data:{success, message}`。
  *
  * 走 `parse` 而不是 `require`：`require` 判定的是"键存在且不为 undefined"，
  * **`null` 算存在**（`apiEnvelope.ts` 的 `EnvelopeOptions.require` JSDoc），
  * 于是 `{success:null, message:null}` 会放行——正是这条 bug 换个位置继续踩。
+ *
+ * `message` 走 {@link mutationMessage} 而不是 `str`，理由见那里：空串是合法值。
  */
 const groupMessageMutationResult: Parser<GroupMessageMutationResult> = {
   parse(input: unknown): GroupMessageMutationResult {
     const payload = asRecord(input, 'data')
     return {
       success: bool(payload, 'success'),
-      message: str(payload, 'message'),
+      message: mutationMessage(payload),
     }
   },
 }

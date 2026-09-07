@@ -273,4 +273,16 @@ describe('groupMessagesApi.deleteMessage / recallMessage', () => {
 
     await expect(groupMessagesApi.deleteMessage('m1')).rejects.toThrow(/message/)
   })
+
+  it('message 为空串时算成功，不抛错（后端确实会发 ""，见 群消息.md:200）', async () => {
+    // `apiParse` 的 str() 把 '' 判成缺失，直接用它会把一次**删除成功**变成
+    // 用户看得见的 ApiShapeError——同一层 bug 的镜像形态。
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { success: true, message: '' } }),
+    )
+
+    const result = await groupMessagesApi.deleteMessage('m1')
+
+    expect(result).toEqual({ success: true, message: '' })
+  })
 })

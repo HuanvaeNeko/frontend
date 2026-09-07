@@ -138,21 +138,62 @@ export interface SyncMessagesResponse {
 /**
  * 好友会话的 `conversation_id`。
  *
- * ## ⚠️ 排序口径是**推断**出来的，不是文档规定的
+ * ## ⚠️ 排序口径是**推断**出来的，而且"排序"这个词本身有两种互不相同的含义
  *
- * 后端文档从没写过两个用户 ID 谁在前。四处独立示例**全部满足字典序**，但它们
- * 同样满足别的规则（比如"发起方在前"），所以这是一致性证据，不是证明：
+ * ### 一、证据比上一版注释写的少得多
  *
- * - `backend-docs/messages/消息同步.md:87`、:123 —— `conv-user123-user456`
- * - `backend-docs/messages/消息同步.md:357` —— `conv-user1-user2`
- * - `backend-docs/messages/好友消息.md:164` —— `friends-file/conv-user1-user2/videos/clip.mp4`
- * - `backend-docs/storage/文件存储管理.md:2588` —— `friends-file/conv-alice-bob/images/xxx.jpg`
- * - 本仓 `src/api/__tests__/storage.test.ts:477` —— `conv-a-b`
+ * 上一版说"四处独立示例全部满足字典序"。**这个计数是错的。** 逐条回查之后，
+ * 被引用的那几处里只有一处是**服务端产出**的：
  *
- * **上线前必须用一次真实 sync 请求核对排序口径。** 排错了的表现是"同步永远返回
- * 0 个会话"——和修复前一模一样，而且同样不报错，所以别指望自己会发现。
+ * - `backend-docs/storage/文件存储管理.md:2588` —— 预签名**响应**里的 `presigned_url`
+ *   `friends-file/conv-alice-bob/images/xxx.jpg`。服务端拼的。
+ * - （上一版没引、但同样是服务端拼的：同文档 `:222` 的 `file_key`
+ *   `conv-user1-user2/images/...`，一个带省略号的占位串。）
  *
- * 抽成独立导出函数就是为了让这次修正只需要改一个地方（并且有单测钉住）。
+ * 其余全部**不是**服务端口径的证据：
+ * - `messages/消息同步.md:87` —— **请求体**样例，客户端自己拼的
+ * - `messages/消息同步.md:123` —— 响应，但只是把请求里那个 id **原样回显**
+ * - `messages/消息同步.md:357` —— JS 使用示例里客户端手写的请求参数
+ * - `messages/好友消息.md:164` —— 发送视频消息**请求体**里客户端传的 `file_url`
+ * - 本仓 `src/api/__tests__/storage.test.ts:477` —— 我们自己写的 fixture
+ *
+ * ### 二、所有示例都是全小写，区分不出 JS 的排序和数据库的排序
+ *
+ * `alice`/`bob`、`user1`/`user2`、`a`/`b` —— 全小写。而 JS 的 `[a,b].sort()` 是
+ * **UTF-16 码元序**：大写 `A`–`Z`（0x41–0x5A）整体排在小写 `a`–`z`（0x61–0x7A）**之前**。
+ * 全小写的样例既满足码元序，也满足任何不区分大小写的排序，**一个都区分不出来**。
+ *
+ * 真实 user_id 是混合大小写的：`backend-docs/admin/诊断日志.md:218-224` 里是
+ * `GUGUGAGA` 和 `HuanWei`。于是 `HuanWei` + `alice` 这一对：
+ *
+ * - JS `.sort()` → `conv-HuanWei-alice`（`H`=0x48 < `a`=0x61）
+ * - 后端若在 SQL 里用 `LEAST(a,b)`，`en_US.UTF-8` collation 下 → `conv-alice-HuanWei`
+ * - 同样是 `LEAST(a,b)`，`C` / `POSIX` collation 下 → 与 JS 一致
+ *
+ * **所以核对必须用一对混合大小写的 ID。** 拿两个全小写的 ID 去验，两种口径都会通过，
+ * 而线上每一对含大写字母的好友仍然是坏的——这是一次"验过了、还是错的"的完整剧本。
+ *
+ * ## 怎么核对（这条能跑；上一版写的那条跑不起来）
+ *
+ * 上一版写的是"上线前必须用一次真实 sync 请求核对"。**那条不可执行**：
+ * `setConversations` / `addConversation` 在 `src` 里零调用点，`chatStore.conversations`
+ * 恒为 `[]`，而 `useRealtimeMessages.ts:44` 与 `chatStore.syncMessages` 都以
+ * `conversations.length > 0` 为前置条件——同步请求永远发不出去。
+ * （这处接线缺失是独立的一条待办，不在本批范围内。）
+ *
+ * 能跑的通道在 storage 侧，而且不需要前端先猜对 id：
+ *
+ * 1. 挑一个 **user_id 含大写字母**的好友，调 `storageApi.requestUpload`
+ *    （`src/api/storage.ts:676` 已有现成调用点），传
+ *    `storage_location: 'friend_messages'` + `related_id: <该好友的 user_id>`；
+ * 2. 响应的 `file_key` 形如 `friends-file/{conversation_uuid}/{type}/...`
+ *    （`storage/文件存储管理.md:977` 路径规范、`:2392` 好友文件上传、`:2588` 响应样例），
+ *    中间那段 `conv-…` 是**服务端自己拼的**会话 ID；
+ * 3. 与 `buildFriendConversationId(myUserId, friendId)` 的结果逐字符比对。
+ *
+ * 排错了的表现是"同步永远返回 0 个会话"——和修复前一模一样，而且同样不报错，
+ * 所以别指望自己会发现。抽成独立导出函数就是为了让修正只需要改一个地方
+ * （下面的单测会跟着变红）。
  *
  * ## 为什么不用"持久化服务端回显的 id"那条路
  *
@@ -170,6 +211,60 @@ export interface SyncMessagesResponse {
 export function buildFriendConversationId(myUserId: string, friendUserId: string): string {
   return `conv-${[myUserId, friendUserId].sort().join('-')}`
 }
+
+// ============================================
+// 好友侧的裸响应容忍
+// ============================================
+
+/**
+ * `好友消息.md` 记录的那两个端点（`POST /api/messages`、`GET /api/messages`）
+ * 显式容忍裸响应。
+ *
+ * ## 上一版注释里那条引用是**假的**
+ *
+ * 它写着「`README.md:371-375` 记了 2026-03-08 的统一」。逐字核对过原文：那条
+ * 更新日志列的是**五个端点**——`GET /api/friends`、`.../requests/pending`、
+ * `.../requests/sent`、`GET /api/auth/devices`、`GET /api/ai/voice_profiles`。
+ * **其中没有任何一个消息端点。** 而它是 README 全文**唯一**一条讲信封统一的记录。
+ * 那个设计决定（不传 legacyBare）就是建立在这条不存在的记录上的。
+ *
+ * ## 实际证据是不对称的
+ *
+ * **群侧明确有信封**：`群消息.md` 的响应样例逐个带 `{"success":true,"code":200,"data":{…}}`
+ * （:107-116 发送、:191-201 列表、:279-287 删除；`grep -c '"data"' 群消息.md` = 5、
+ * `'"code"'` = 9）。
+ *
+ * **`POST /api/messages/sync` 也明确有信封**：`消息同步.md:117-120` 是
+ * `{"code":0,"message":"success","data":{…}}`。
+ *
+ * **好友侧一个信封样例都没有**：`grep -c '"code"' messages/好友消息.md` = **0**，
+ * `'"data"'` = **0**。POST(:115-121)、GET(:206-236)、delete(:335-340) 三个响应样例
+ * 全是裸的，连 Fetch 示例都直接写 `messages.messages`。
+ *
+ * 支持"好友侧也跟着信封化了"的，只有两条**推断**：
+ * 1. `好友消息.md:250-258` 的字段表列了样例里没有的 `rev` / `reply_to` / `media_group_*`，
+ *    所以样例块确实过期了——但这只证明它在**字段**上过期，**不证明它在形状上过期**；
+ * 2. 与群文档类比。
+ *
+ * 这是类比推断，不是"已记录的统一"。下一个改这里的人必须能看见：好友侧的证据比群侧弱。
+ *
+ * ## 为什么容忍而不是赌
+ *
+ * 代价不对称。好友侧若其实没信封化，严格解包会让**每一次消息加载**抛 `ApiShapeError`：
+ * 主界面从"静默空白"变成"显式崩溃"。legacyBare 正是为这种模糊准备的逃生口——
+ * 接受裸体、每次命中打 `console.warn`、`grep legacyBare` 列得出来、带清理期限。
+ * 群侧不加：那边文档明确，加了是自造模糊。
+ *
+ * ## ⚠️ legacyBare 必须与 `parse` 配对（本项目已经违反过一次）
+ *
+ * 只配 `require` 的话，"裸响应"和"信封里 data 为空"就变得无法区分，正好把这批工作
+ * 要堵的那个洞重新打开。两个消费点用的都是下面已有的 parser，不要改成 `require`。
+ */
+const PRIVATE_MESSAGE_LEGACY_BARE = {
+  until: '2026-12-31',
+  reason:
+    '好友消息.md 全文零个信封样例（grep "code" / "data" 均 0 命中），好友侧信封化目前只是对群文档的类比推断',
+} as const
 
 // ============================================
 // 响应校验器（喂给 readEnvelope 的 parse 档）
@@ -237,6 +332,20 @@ const sendMessageResponse: Parser<SendMessageResponse> = {
  * `messages[]` 这里**不**走 `messageRow`：sync 的消息 DTO 与 REST 列表不同形
  * （无 `receiver_id`，可空字段是"整键缺省"而非 `null`，见 `消息同步.md:180-190`），
  * 这处类型分叉是 spec-msg-priv 第 11 条，独立待办。
+ *
+ * ## ⚠️ 顺序也是分叉的：sync **不**做 DESC→ASC 翻转
+ *
+ * `getMessages` / 群侧 `getMessages` 都在模块出口翻了一次，这里**故意没翻**，因为
+ * sync 本来就是 ASC：
+ * - `消息同步.md:117-160` 的响应样例里 `messages` 是 seq **101 → 102**，最旧在前；
+ * - `chatStore.ts:461` 也是拿 `conv.messages[conv.messages.length - 1]` 当"最新一条"
+ *   去写 `lastMessage` / `lastTime`。
+ *
+ * 翻一次会把最旧那条当成最新的写进会话列表预览。这条和上面的 DTO 分叉一样必须写下来：
+ * 这批刚花了三十行把 REST 侧的顺序统一掉，下一个人很容易顺手把 sync 也"统一"了。
+ *
+ * 后端也没有为 sync 承诺过 DESC——`好友消息.md:774` 那句 "本页覆盖的时间区间 DESC 连续"
+ * 讲的是 `before_time` 游标分页，sync 走的是 `last_seq` 增量，两套语义。
  */
 const syncMessagesResponse: Parser<SyncMessagesResponse> = {
   parse(input: unknown): SyncMessagesResponse {
@@ -273,14 +382,14 @@ export const messagesApi = {
     // 手写的 `if (!response.ok)` 分支删掉了：readEnvelope 内部 body 只读一次，
     // 且会认 HTTP 200 + success:false（旧写法把它当成功，再从缺失的 data 里读 undefined）。
     //
-    // 不传 legacyBare：`群消息.md:107-116` 的同族端点明确带信封，
-    // `README.md:371-375` 记了 2026-03-08 的统一。好友侧 `好友消息.md:115-127`
-    // 的裸样例块和它下面 :250-258 的字段表自相矛盾（字段表列的 rev / reply_to /
-    // media_group_* 在样例里一个都没有），是过期块，不作为反证。
+    // legacyBare：好友侧是否已信封化证据不足，见 PRIVATE_MESSAGE_LEGACY_BARE 的 JSDoc
+    // （上一版这里的 README 引用是假的）。它与 `parse` 配对，所以裸响应被接受、
+    // 而"有信封但 data 为空"仍然抛错，两者不会重新混成一种表现。
     const data = await readEnvelope<SendMessageResponse>(response, {
       endpoint: 'POST /api/messages',
       fallbackMessage: '发送消息失败',
       parse: sendMessageResponse,
+      legacyBare: PRIVATE_MESSAGE_LEGACY_BARE,
     })
     console.log('✅ 消息发送成功:', data.message_uuid)
     return data
@@ -311,10 +420,14 @@ export const messagesApi = {
       method: 'GET',
     })
 
+    // legacyBare 同 sendMessage，见 PRIVATE_MESSAGE_LEGACY_BARE 的 JSDoc。
+    // 这个端点是代价最不对称的那一个：好友侧若没信封化，严格解包会让主界面
+    // 每一次消息加载都抛 ApiShapeError。
     const page = await readEnvelope<GetMessagesResponse>(response, {
       endpoint: 'GET /api/messages',
       fallbackMessage: '获取消息失败',
       parse: getMessagesResponse,
+      legacyBare: PRIVATE_MESSAGE_LEGACY_BARE,
     })
 
     // 后端按 DESC 返回（数组最后一条最旧）——`好友消息.md:774` 写明"本页覆盖的
@@ -342,10 +455,24 @@ export const messagesApi = {
    * 且 HTTP 200 + `success:false` 会被当成删除成功。
    *
    * 群侧的同名端点这批已经修了（`groupMessages.ts` 用 readEnvelope + 业务级 success 校验），
-   * 两边现在不对称。迁移方式照抄群侧即可——`群消息.md:279-287` 明确
-   * `data:{success, message}` 是嵌在信封里的业务结果；好友侧 `好友消息.md:335-340`
-   * 的裸样例出自本文件那个已过期的样例块（同块的 GET / POST 样例都缺字段表里的
-   * rev / reply_to / media_group_*），不足以证明这两个端点没跟着统一。
+   * 两边现在不对称。
+   *
+   * ## ⚠️ 迁移时**不要照抄群侧**——两边的形状不一样
+   *
+   * - 群侧 `群消息.md:279-287`：
+   *   `{"success":true,"code":200,"data":{"success":true,"message":"消息已删除"}}`
+   *   ——业务结果**嵌在 data 里**，所以 `groupMessages.ts` 解包之后还要再判一次
+   *   `data.success`。
+   * - 好友侧 `好友消息.md:335-340`：`{"success": true, "message": "消息删除成功"}`
+   *   ——**裸的，连 `data` 键都没有**，`success` 就在顶层。原样套群侧的
+   *   `readEnvelope(..., {parse: 嵌套结果})` 会直接抛「响应缺少 data 字段」。
+   *
+   * 好友侧这个样例块在**字段**上确实过期（同块的 GET / POST 样例都缺字段表 :250-258
+   * 里的 rev / reply_to / media_group_*），但过期的是字段不是形状——而它是好友侧
+   * 全文唯一的形状线索，方向恰好与群侧相反。
+   *
+   * 所以这两个端点的迁移必须先发一次**真实请求**看实际形状（同上面
+   * PRIVATE_MESSAGE_LEGACY_BARE 的处境），不能靠类比群侧推出来。
    */
   deleteMessage: async (messageUuid: string): Promise<{ success: boolean; message: string }> => {
     console.log('🗑️ 删除消息:', messageUuid)
@@ -438,6 +565,11 @@ export const messagesApi = {
     // 时，`!response.ok` 不成立 → `result.data` 为 undefined → `?? result` 回退到整个
     // 信封 → `data.conversations` 为 undefined → 兜成 `[]`，还照打一行"✅ 消息同步完成"。
     // 这就是 friends 那批 bug 原样搬进 sync：`?? x` 只是把 `|| []` 挪了一层。
+    //
+    // 这个端点**不传** legacyBare，尽管它也在 `/api/messages` 下：它的文档
+    // （`消息同步.md:117-120`）给的响应样例就是 `{"code":0,"message":"success","data":{…}}`，
+    // 明确带信封。好友侧那两个端点的模糊来自 `好友消息.md` 一个信封样例都没有，
+    // 这里没有那种模糊，加容忍是自造的。
     const result = await readEnvelope<SyncMessagesResponse>(response, {
       endpoint: 'POST /api/messages/sync',
       fallbackMessage: '同步消息失败',
