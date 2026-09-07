@@ -467,10 +467,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.log('✅ 消息同步完成:', result.conversations.length, '个会话')
       return result.conversations
     } catch (error) {
-      // 认证错误静默处理
+      // 认证失败：不必按"同步失败"打 console.error（会话到期是预期内的），
+      // 但**照样上抛**。原来这里是 `return []`，等于把"没同步成"说成
+      // "同步完成、0 个新会话"：调用方 `useRealtimeMessages` 的 `hasSyncedRef`
+      // 已置真，本次连接不会再同步；未读计数与 lastSeq 永远停在旧值，
+      // 且没有任何地方能察觉。`[]` 是这条 bug 修好前的原样表现。
+      // 唯一的调用点自带 `.catch(...)`，上抛不会变成 unhandled rejection。
       if (error instanceof Error && isAuthError(error)) {
-        console.warn('消息同步因认证问题跳过')
-        return []
+        console.warn('消息同步因认证失败中止')
+        throw error
       }
       console.error('消息同步失败:', error)
       throw error

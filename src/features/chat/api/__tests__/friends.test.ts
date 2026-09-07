@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
@@ -52,20 +53,6 @@ const SENT_DTO = {
   sent_to_nickname: '王五',
   sent_to_avatar_url: null,
 }
-
-/** apiClient 判定认证错误用的关键词；命中会静默 clearAuth + 跳登录页。 */
-const AUTH_ERROR_KEYWORDS = [
-  'token',
-  '无效',
-  '过期',
-  'expired',
-  'invalid',
-  'unauthorized',
-  '登录',
-  'login',
-  '认证',
-  'authentication',
-]
 
 let fetchMock: ReturnType<typeof vi.fn>
 
@@ -143,16 +130,16 @@ describe('friendsApi.getFriendsList', () => {
     expect(friend.friend_avatar_url).toBeNull()
   })
 
-  it('形状错误的文案不含认证关键词，不会被误判成登录失效而静默登出', async () => {
+  it('形状错误不会被误判成登录失效而静默登出', async () => {
+    // 这里原来是"逐个断言 message 不含认证关键词"的代理断言。关键词表已删除，
+    // 现在直接问真正的判据 `isAuthError` —— 代理断言只能证明"文案里没有那些词"，
+    // 而分类器改成别的口径之后它照样绿。
     fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
 
     const error = await friendsApi.getFriendsList().catch((e: unknown) => e as Error)
 
     expect(error).toBeInstanceOf(Error)
-    const message = (error as Error).message.toLowerCase()
-    for (const keyword of AUTH_ERROR_KEYWORDS) {
-      expect(message).not.toContain(keyword.toLowerCase())
-    }
+    expect(isAuthError(error as Error)).toBe(false)
   })
 
   it('HTTP 200 但 success:false 也算失败，并透出后端文案', async () => {

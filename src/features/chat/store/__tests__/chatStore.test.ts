@@ -180,4 +180,35 @@ describe('chatStore.syncMessages 的 conversation_id 往返', () => {
     await expect(useChatStore.getState().syncMessages()).rejects.toThrow('请求过于频繁')
     expect(useChatStore.getState().isSyncing).toBe(false)
   })
+
+  it('认证失败也上抛，不吞成"同步完成、0 个会话"', async () => {
+    // 这一支原来是 `console.warn(...); return []`——与"真的没有新消息"完全同形。
+    // 唯一调用点 `useRealtimeMessages` 拿到 resolve 后会把 hasSyncedRef 置真，
+    // 本次连接不再重试，未读计数与 lastSeq 永远停在旧值且无人察觉。
+    // 把 `throw error` 改回 `return []` → 本条第一行断言变红。
+    vi.spyOn(messagesApi, 'syncMessages').mockRejectedValue(
+      new ApiError('未认证或 Token 无效', {
+        status: 401,
+        code: 401,
+        endpoint: 'POST /api/messages/sync',
+      }),
+    )
+    useChatStore.setState({ conversations: [FRIEND_CONV] })
+
+    await expect(useChatStore.getState().syncMessages()).rejects.toThrow('未认证或 Token 无效')
+    expect(useChatStore.getState().isSyncing).toBe(false)
+  })
+
+  it('403 权限不足与认证失败一样上抛（不同分支，同样不能变成空数组）', async () => {
+    vi.spyOn(messagesApi, 'syncMessages').mockRejectedValue(
+      new ApiError('权限不足', {
+        status: 403,
+        code: 403,
+        endpoint: 'POST /api/messages/sync',
+      }),
+    )
+    useChatStore.setState({ conversations: [FRIEND_CONV] })
+
+    await expect(useChatStore.getState().syncMessages()).rejects.toThrow('权限不足')
+  })
 })

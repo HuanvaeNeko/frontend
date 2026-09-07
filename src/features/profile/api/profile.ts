@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 
 const PROFILE_BASE_URL = `${getApiBaseUrl()}/api/profile`
@@ -97,6 +98,26 @@ export interface AvatarUploadResponse {
 // API 方法
 // ============================================
 
+/**
+ * ## 本模块的失败为什么抛 `ApiError` 而不是裸 `Error`
+ *
+ * 本批只做一件事：**把真实 HTTP 状态码带上**。
+ *
+ * `apiClient.isAuthError` 原来是靠关键词子串匹配 message 来决定要不要静默
+ * 跳登录页的，于是 `PUT /api/profile` 的校验文案
+ * `"Validation error: email: Invalid email format"`
+ * （`backend-docs/profile/个人资料管理.md:213`，逐字）因为含 `invalid`
+ * 被判成会话失效。收窄那个分类器的前提，是它能拿到状态码去判——
+ * 本模块是仅剩的、抛裸 `Error` 的调用方，所以这三处必须一起改，
+ * 否则收窄之后 profile 的**真 401 会一起漏判**（那才是回归）。
+ *
+ * **这不是信封解包迁移**。响应体的读法（`data.data || data`、
+ * `error.message || error.error`）一个字没动：那要连同缺失字段、背景图、
+ * 公开资料一起改，属于后续批次，混进来会让这次的 review 失焦。
+ *
+ * `ApiError extends Error`，所以 `error instanceof Error`、`error.message`
+ * 的既有调用点行为不变。
+ */
 export const profileApi = {
   /**
    * 获取个人信息
@@ -113,7 +134,11 @@ export const profileApi = {
         message: `获取个人资料失败 (${response.status})` 
       }))
       console.error('获取个人资料失败:', error)
-      throw new Error(error.message || error.error || '获取个人资料失败')
+      throw new ApiError(error.message || error.error || '获取个人资料失败', {
+        status: response.status,
+        endpoint: 'GET /api/profile',
+        payload: error,
+      })
     }
 
     const data = await response.json()
@@ -141,7 +166,15 @@ export const profileApi = {
         message: `更新个人资料失败 (${response.status})` 
       }))
       console.error('更新个人资料失败:', error)
-      throw new Error(error.message || error.error || '更新个人资料失败')
+      // 400 校验失败走这里，文案例如
+      // `Validation error: email: Invalid email format`（文档 :213）。
+      // 带上 400 之后，`isAuthError` 在状态码档就地判假，不会再去看这句话里
+      // 有没有 `invalid`。
+      throw new ApiError(error.message || error.error || '更新个人资料失败', {
+        status: response.status,
+        endpoint: 'PUT /api/profile',
+        payload: error,
+      })
     }
 
     const data = await response.json()
@@ -166,7 +199,15 @@ export const profileApi = {
         message: `修改密码失败 (${response.status})` 
       }))
       console.error('修改密码失败:', error)
-      throw new Error(error.message || error.error || '修改密码失败')
+      // ⚠️ 这个端点的 **401 是业务失败**："旧密码错误"就返回 401，body 为
+      // `{"error": "Old password is incorrect"}`（文档 :329-333，:345 复述）。
+      // `endpoint` 字符串必须与 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`
+      // 逐字一致，否则打错一次当前密码就会被静默登出。
+      throw new ApiError(error.message || error.error || '修改密码失败', {
+        status: response.status,
+        endpoint: 'PUT /api/profile/password',
+        payload: error,
+      })
     }
 
     const data = await response.json()

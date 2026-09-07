@@ -39,7 +39,17 @@ const silentRedirectToLogin = () => {
 }
 
 /**
- * 处理 API 错误，认证错误静默重定向
+ * 处理 API 错误，认证错误静默重定向。
+ *
+ * 返回 `null` 表示「已经跳登录页、不必再写 `store.error`」。
+ * **它不表示成功**：七个调用点在这之后**一律 `throw error`**。
+ *
+ * 原来 `null` 分支是 `set({isLoading:false}); return`，promise 因此 resolve，
+ * 于是 `FriendList.handleApprove` 里 `await approveFriendRequest(...)` 后面
+ * 那句「成功 / 已添加好友」照弹——同一刻 `clearAuth()` 已执行、页面在跳登录页。
+ * 会话失效被报告成"加好友成功"。跳转不是同步中断，rethrow 之后调用方的 catch
+ * 照常跑；而且 `silentRedirectToLogin` 在已经处于登录页时什么都不做，
+ * 那种情况下 `return` 就是纯粹的谎报。
  */
 const handleApiError = (error: unknown, defaultMessage: string): string | null => {
   if (error instanceof Error && isAuthError(error)) {
@@ -64,11 +74,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ friends, isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '加载好友列表失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -80,11 +86,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ pendingRequests, isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '加载好友请求失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -96,11 +98,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ sentRequests, isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '加载已发送请求失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -114,11 +112,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '发送好友请求失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -136,11 +130,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '同意好友请求失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -154,11 +144,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '拒绝好友请求失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -172,11 +158,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       const errorMessage = handleApiError(error, '删除好友失败')
-      if (errorMessage === null) {
-        set({ isLoading: false })
-        return
-      }
-      set({ error: errorMessage, isLoading: false })
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
   },

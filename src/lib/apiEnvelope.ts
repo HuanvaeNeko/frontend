@@ -533,6 +533,9 @@ export function unwrapEnvelope<T>(
  * 供 `src/api/apiClient.ts` 的 `isAuthError` 复用：那里原本靠中英文关键词
  * 模糊匹配 message 来决定要不要静默跳登录，而解包层抛出的 `ApiError` 带的是
  * 真实后端文案，可能一个关键词都不含——不加这一条，401 会不再触发重定向。
+ * （关键词兜底档已于本批删除：它把 `PUT /api/profile` 的校验文案
+ * `"Validation error: email: Invalid email format"` 判成了会话失效。
+ * 现在 `isAuthError` 见到 `ApiError` 就只看状态码。）
  *
  * ## 为什么把 403 排除在外（对设计 §4(e) 的刻意修正）
  *
@@ -543,13 +546,18 @@ export function unwrapEnvelope<T>(
  * - `groups/群聊管理.md`：全模块统一口径「群存在但调用者无权 ⇒ `403`」；
  * - `profile/个人资料管理.md`：`group_avatar` 且调用者不是群主/管理员 ⇒ `403`。
  *
- * `isAuthError` 的五个消费点全部是「静默」路径：`silentRedirectToLogin()`
- * （`clearAuth()` + `location.replace('/login')`，不弹任何提示），以及
- * `chatStore` 的 `return []`。若 403 落进来，用户点开一个已失去权限的文件，
- * 得到的是**无任何解释的登出**或**空列表**——正是这一层要消灭的失败形态。
+ * `isAuthError` 的六个消费点全部会 `silentRedirectToLogin()`
+ * （`clearAuth()` + `location.replace('/login')`，不弹任何提示）或只留一句
+ * `console.warn`。若 403 落进来，用户点开一个已失去权限的文件，得到的是
+ * **无任何解释的登出**——正是这一层要消灭的失败形态。
  *
- * 403 排除之后会落到 `isAuthError` 的关键词兜底档，而 403 的文案是「权限不足」，
- * 不含 AUTH_ERROR_MESSAGES 里任何一个词，因此会正确地作为可见错误向上抛。
+ * 403 排除之后，`isAuthError` 见到非 401 的 `ApiError` 就地判假，
+ * 因此会正确地作为可见错误向上抛。
+ *
+ * ⚠️ 反过来也不成立：**401 也不必然是会话失效**。`PUT /api/profile/password`
+ * 的"旧密码错误"就是 401（`backend-docs/profile/个人资料管理.md:329-333`）。
+ * 这类端点在 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS` 里逐条排除，
+ * 本函数保持"纯状态码判断"的语义不变。
  */
 export function isAuthApiError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 401

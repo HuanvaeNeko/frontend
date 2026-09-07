@@ -25,10 +25,41 @@ interface ProfileState {
 const silentRedirectToLogin = () => {
   const authStore = useAuthStore.getState()
   authStore.clearAuth()
-  
+
   if (typeof window !== 'undefined' && window.location.pathname !== ROUTES.auth.login) {
     window.location.replace(ROUTES.auth.login)
   }
+}
+
+type SetProfileState = (partial: Partial<ProfileState>) => void
+
+/**
+ * 失败收尾：写 store 状态，认证失败时另外跳登录页。
+ *
+ * **调用方必须紧接着 `throw error`。** 这不是风格问题：四个 action 的认证
+ * 分支原来是 `set({isLoading:false}); silentRedirectToLogin(); return`，
+ * `return` 让 promise **resolve**，于是
+ * `ProfilePage.handleSubmit` 的 `await updateProfile(...)` 顺利往下走，
+ * 弹出绿色的「成功 / 个人资料已更新」——同一刻 `clearAuth()` 已经执行、
+ * 页面正在跳登录页。一次被后端拒绝的编辑，用户得到的是"成功"加"无解释登出"。
+ *
+ * `silentRedirectToLogin()` 之后 rethrow 是**能被观测到的**：
+ * `location.replace()` 不会同步中断 JS，当前这一拍照常跑完，promise 照常
+ * reject，调用方的 catch 照常执行。何况 `silentRedirectToLogin` 自带
+ * `pathname !== '/app/login'` 的守卫——已经在登录页时它**什么都不做**，
+ * 那时 `return` 就是纯粹的"失败被报告成成功"。
+ *
+ * 认证分支刻意**不写 `store.error`**：跳转本身就是回答，错误文案由调用方
+ * 从 rethrow 的 error 上拿（`ProfilePage` / `ProfileModal` 的 catch 已经
+ * 在弹 destructive toast，无需改动）。
+ */
+const settleError = (error: unknown, defaultMessage: string, set: SetProfileState): void => {
+  if (error instanceof Error && isAuthError(error)) {
+    set({ isLoading: false })
+    silentRedirectToLogin()
+    return
+  }
+  set({ error: error instanceof Error ? error.message : defaultMessage, isLoading: false })
 }
 
 export const useProfileStore = create<ProfileState>()(
@@ -44,14 +75,7 @@ export const useProfileStore = create<ProfileState>()(
           const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
-          // 认证错误静默处理，不显示给用户
-          if (error instanceof Error && isAuthError(error)) {
-            set({ isLoading: false })
-            silentRedirectToLogin()
-            return
-          }
-          const errorMessage = error instanceof Error ? error.message : '加载个人资料失败'
-          set({ error: errorMessage, isLoading: false })
+          settleError(error, '加载个人资料失败', set)
           throw error
         }
       },
@@ -64,13 +88,7 @@ export const useProfileStore = create<ProfileState>()(
           const profile = await profileApi.getProfile()
           set({ profile, isLoading: false })
         } catch (error) {
-          if (error instanceof Error && isAuthError(error)) {
-            set({ isLoading: false })
-            silentRedirectToLogin()
-            return
-          }
-          const errorMessage = error instanceof Error ? error.message : '更新个人资料失败'
-          set({ error: errorMessage, isLoading: false })
+          settleError(error, '更新个人资料失败', set)
           throw error
         }
       },
@@ -90,13 +108,7 @@ export const useProfileStore = create<ProfileState>()(
             set({ isLoading: false })
           }
         } catch (error) {
-          if (error instanceof Error && isAuthError(error)) {
-            set({ isLoading: false })
-            silentRedirectToLogin()
-            return
-          }
-          const errorMessage = error instanceof Error ? error.message : '上传头像失败'
-          set({ error: errorMessage, isLoading: false })
+          settleError(error, '上传头像失败', set)
           throw error
         }
       },
@@ -107,13 +119,11 @@ export const useProfileStore = create<ProfileState>()(
           await profileApi.changePassword(passwordData)
           set({ isLoading: false })
         } catch (error) {
-          if (error instanceof Error && isAuthError(error)) {
-            set({ isLoading: false })
-            silentRedirectToLogin()
-            return
-          }
-          const errorMessage = error instanceof Error ? error.message : '修改密码失败'
-          set({ error: errorMessage, isLoading: false })
+          // 旧密码填错是 **401**（`backend-docs/profile/个人资料管理.md:329-333`）。
+          // 它由 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS` 排除在认证错误之外，
+          // 所以走的是下面那条可见分支：store.error 写上「旧密码不正确」的后端原文，
+          // 用户留在页面上重填，而不是被 clearAuth 送去登录页。
+          settleError(error, '修改密码失败', set)
           throw error
         }
       },

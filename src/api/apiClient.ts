@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
-import { isAuthApiError } from '@/lib/apiEnvelope'
+import { ApiError, isAuthApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 
 const BASE_URL = getApiBaseUrl()
@@ -23,37 +23,101 @@ export class AuthenticationError extends Error {
 let isRefreshing = false
 let refreshPromise: Promise<boolean> | null = null
 
-// 认证相关错误的标识
-const AUTH_ERROR_MESSAGES = [
-  'token',
-  '无效',
-  '过期',
-  'expired',
-  'invalid',
-  'unauthorized',
-  '登录',
-  'login',
-  '认证',
-  'authentication',
-]
+/**
+ * 前端**自己**写死的「未认证」哨兵文案，**整串相等**才算命中。
+ *
+ * 这里原本是一张关键词表（`'token'` / `'无效'` / `'过期'` / `'invalid'` /
+ * `'登录'` / `'认证'` …）配 `message.includes(keyword)`，也就是拿**后端任意
+ * 一句话**当分类依据。而 `isAuthError` 判真 = 用户得不到任何解释
+ * （六个消费点全是静默路径，见下方 `isAuthError` 的注释），于是：
+ *
+ *   `PUT /api/profile` 的校验失败文案，逐字是
+ *   `"Validation error: email: Invalid email format"`
+ *   （`backend-docs/profile/个人资料管理.md:213`）——含 `invalid`，
+ *   于是"邮箱格式不对"被判成会话失效，`clearAuth()` + `location.replace('/login')`；
+ *   而当时 `profileStore.updateProfile` 命中这一档后是 `return` 不是 `throw`，
+ *   `ProfilePage` 拿到一个 resolve 的 promise，照样弹绿色的「个人资料已更新」。
+ *   一次被拒绝的编辑 = 成功提示 + 无解释登出。
+ *
+ * 删掉 `'invalid'` 救不活这张表：`'过期'` 会命中"该分享链接已过期"，
+ * `'登录'` 会命中"请在登录设备上确认"，`'token'` 会命中 bot 模块的
+ * "bot token 无效"（`backend-docs/bots/Bot平台API.md:630`）。
+ * **凡是猜后端文案的分类都是同一个 bug**，区别只是哪天撞上。
+ *
+ * 现在只剩两条，且都是**本仓库源码里的字符串常量**、不是后端文案。
+ * `src/api/__tests__/apiClient.test.ts` 的「哨兵两端一致」两条用例是真的从
+ * **抛出点**取错误的（`authStore.refreshAccessToken()` / `friendsApi`
+ * 在没有 user_id 时），所以抛出点或本表任一端改文案都会红；
+ * 只断言 `isAuthError(new Error('用户未登录'))` 的那条用例做不到这一点，
+ * 它只钉本表自己。
+ */
+const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
+  // `src/features/auth/store/authStore.ts` 的 `refreshAccessToken`：
+  // 调用时连 refresh token 都没有（典型是另一个并发失败刚 `clearAuth()` 过），
+  // 会话确实没了。各模块 `fetchWithAuth` 副本的 401 分支 catch 到它之后
+  // 原样 rethrow，于是它以裸 `Error` 的形态到达这里。
+  'No refresh token available',
+  // `src/features/chat/api/friends.ts` 四处（sendFriendRequest / approve /
+  // reject / removeFriend）：拿不到自己的 user_id 就不发请求。
+  '用户未登录',
+])
 
 /**
- * 判断是否是认证相关的错误
+ * HTTP 状态码是 401、但**语义是业务失败**的端点。
+ *
+ * 「401 ⇒ 会话失效」在本后端有写在文档正文里的反例：
+ *
+ * - `PUT /api/profile/password`：**旧密码填错返回 401**，body 是
+ *   `{"error": "Old password is incorrect"}`
+ *   （`backend-docs/profile/个人资料管理.md:329-333`；同页 :345 又写了一遍
+ *   「旧密码验证失败返回 401 状态码」）。若只按状态码判，用户**打错一次
+ *   当前密码就被静默登出**——与这一层刚消灭掉的 403 静默登出是同一形态。
+ * - 旁证（暂时到不了本分类器，webrtc 侧没有接 `isAuthError`）：
+ *   `POST /api/webrtc/rooms/{id}/join` 的**房间密码错误也是 401**
+ *   （`backend-docs/webrtc/WebRTC房间.md:228` 错误码表：`| 401 | 密码错误 |`）。
+ *   列出来是为了说明"401 不等于会话失效"在这个后端不是孤例。
+ *
+ * 表里的字符串必须与 `ApiError.endpoint` 逐字一致。唯一来源是
+ * `src/features/profile/api/profile.ts` 里 `changePassword` 抛的那个
+ * `endpoint: 'PUT /api/profile/password'`。
+ *
+ * **钉住两端一致性的是线级用例**
+ * `src/features/profile/api/__tests__/profile.test.ts` 的
+ * 「旧密码错误的 401 抛 ApiError，端点字段可被白名单识别」：它 mock 的是
+ * 真实 fetch 响应，端点字符串任一端写错都会红（已实测：把 profile.ts 里改成
+ * `.../passwords` → 该用例变红）。
+ * `profileStore` 那条同名用例是手工构造 `ApiError` 的，只能钉住**本表**
+ * 被删掉的情况（同样实测过），钉不住端点串的笔误——别把它当成两端的证据。
+ */
+const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/password'])
+
+/**
+ * 判断是否是认证相关的错误。
+ *
+ * **判真 = 用户看不到任何解释**：六个消费点全是静默路径——
+ * `profileStore` 四个 action 与 `friendsStore.handleApiError` 走
+ * `silentRedirectToLogin()`（`clearAuth()` + `location.replace('/login')`，
+ * 不弹提示），`chatStore.syncMessages` 只留一句 `console.warn`。
+ * 所以宁可漏判（错误可见地抛给用户）也不能误判。
+ * （本文件的 `safeApiCall` 是第七处调用，但它全仓库零调用点，
+ * 不算在"六个"里；它判真后 `return null`，同样是静默形态。）
  *
  * 三档，从可靠到不可靠：
  * 1. `AuthenticationError` —— 本文件自己抛的，最可信。
- * 2. `isAuthApiError` —— 解包层的 `ApiError` 带真实 HTTP 状态码，**401** 直接判定。
- *    **这一档不能省**：解包层抛出的错误文案是后端原文，很可能一个
- *    AUTH_ERROR_MESSAGES 关键词都不含（例如"您的会话已结束"），只靠下面的
- *    关键词匹配会让 401 不再触发静默重定向——那是一次实打实的回归。
- *    **`403` 刻意不在这一档**：本后端的 403 是普通权限不足（`权限不足`），
- *    不是 token 失效；判成认证错误会让"打开一个没权限的文件"变成
- *    `silentRedirectToLogin()` 的无提示登出，或 `chatStore` 的 `return []`。
- *    详见 `isAuthApiError` 的注释。
- * 3. 关键词匹配 —— 兜住那些还没接入解包层的裸 `Error` / 字符串，
- *    等三个模块全部迁完之后可以再评估要不要删。
- *    403 落到这一档后，因为文案「权限不足」不含任何关键词，会正确地
- *    作为可见错误继续上抛，而不是被静默吞掉。
+ * 2. `ApiError` —— 带真实 HTTP 状态码。**有状态码就只看状态码，一个字都不猜**：
+ *    - 401 判真（`isAuthApiError`，401-only 的理由见它的注释），
+ *      但 `BUSINESS_401_ENDPOINTS` 里的端点除外；
+ *    - **其余状态码一律判假并就地返回**，不再落到第 3 档。
+ *      这一步是本次修复的要害：`PUT /api/profile` 的 400 校验错误
+ *      正是在这里被挡下的，而不是靠"关键词表里恰好没有那个词"。
+ *    - `403` 依旧判假（普通权限不足，详见 `isAuthApiError` 的注释）。
+ * 3. 哨兵文案整串相等 —— 只兜前端自己抛的两条裸 `Error`，见
+ *    `FRONTEND_AUTH_SENTINELS`。**不做子串匹配，不看后端文案。**
+ *
+ * 代价说清楚：还没带上状态码的裸 `Error`（例如 profile 的 `uploadAvatar`）
+ * 若真是会话失效，这里会漏判 → 错误照常上抛、用户看到一条可见的失败提示，
+ * 而不是被静默送去登录页。这是刻意选的方向：可见的错误提示是可恢复的，
+ * 无解释的登出不是。
  */
 const isAuthError = (error: Error | string): boolean => {
   // AuthenticationError 直接返回 true
@@ -61,14 +125,13 @@ const isAuthError = (error: Error | string): boolean => {
     return true
   }
 
-  // 有状态码就不猜词
-  if (isAuthApiError(error)) {
-    return true
+  // 有状态码就不猜词：认下 401（业务 401 端点除外），其余一律不是认证错误。
+  if (error instanceof ApiError) {
+    return isAuthApiError(error) && !BUSINESS_401_ENDPOINTS.has(error.endpoint)
   }
 
   const message = typeof error === 'string' ? error : error.message
-  const lowerMessage = message.toLowerCase()
-  return AUTH_ERROR_MESSAGES.some(keyword => lowerMessage.includes(keyword.toLowerCase()))
+  return FRONTEND_AUTH_SENTINELS.has(message)
 }
 
 /**
