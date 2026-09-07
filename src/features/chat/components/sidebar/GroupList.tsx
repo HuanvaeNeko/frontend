@@ -81,12 +81,26 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const {
     myGroups,
     isLoading,
+    selectionError,
+    clearSelectionError,
     createGroup,
     loadMyGroups,
     selectGroup,
   } = useGroupStore()
 
   const { setSelectedConversation, selectedConversation } = useChatStore()
+
+  // groupStore 的 selectionError 此前是零消费方：selectGroup 里加载成员/公告
+  // 失败时只 console.error，用户什么都看不到。这里给它接一个可见的消费方——
+  // 选中一个群之后，"成员和公告悄悄加载失败"不该和"选群成功"长得一样。
+  // 用专门的 selectionError 而不是共享的 `error`：createGroup/updateGroup/
+  // searchGroups 各自在调用点已经 try/catch 弹过 toast，共享同一个字段会让
+  // 同一次失败弹两次。
+  useEffect(() => {
+    if (!selectionError) return
+    toast({ title: t('chat.groupList.failed'), description: selectionError, variant: 'destructive' })
+    clearSelectionError()
+  }, [selectionError, clearSelectionError, t, toast])
 
   // 创建群聊状态
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -111,6 +125,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // 群邀请状态
   const [invitations, setInvitations] = useState<GroupInvitation[]>([])
   const [loadingInvites, setLoadingInvites] = useState(false)
+  // 三态之三：失败。与"确实没有邀请"分开渲染——否则一次请求失败和真实空列表
+  // 在屏幕上长得一模一样，这正是 apiEnvelope.ts 开篇讲的那类 bug。
+  const [invitesError, setInvitesError] = useState<string | null>(null)
   const [processingInvite, setProcessingInvite] = useState<string | null>(null)
 
   // 确保 myGroups 是数组
@@ -129,7 +146,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       id: group.group_id,
       type: 'group',
       name: group.group_name,
-      avatar: group.group_avatar_url,
+      avatar: group.group_avatar_url ?? undefined,
       unreadCount: group.unread_count || 0,
       lastMessage: group.last_message_content || undefined,
       lastTime: group.last_message_time || undefined,
@@ -145,11 +162,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
   const loadInvitations = async () => {
     setLoadingInvites(true)
+    setInvitesError(null)
     try {
+      // getInvitations() 现在要么返回真实数组，要么抛错——不再需要
+      // Array.isArray 兜底把"解析错了"悄悄变成一个空数组。
       const data = await groupsApi.getInvitations()
-      setInvitations(Array.isArray(data) ? data : [])
+      setInvitations(data)
     } catch (error) {
       console.error('Failed to load group invitations:', error)
+      setInvitesError(error instanceof Error ? error.message : t('chat.groupList.loadInvitesFailed'))
     } finally {
       setLoadingInvites(false)
     }
@@ -361,7 +382,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       id={group.group_id}
                       type="group"
                       name={group.group_name}
-                      avatar={group.group_avatar_url}
+                      avatar={group.group_avatar_url ?? undefined}
                       lastMessage={lastMsg}
                       unreadCount={group.unread_count || 0}
                       isActive={selectedConversation?.id === group.group_id}
@@ -601,6 +622,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
           <div className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
+        ) : invitesError ? (
+          // 失败态必须和"确实没有邀请"分开渲染，否则两者在屏幕上无法区分
+          // （apiEnvelope.ts 开篇讲的那类 bug）。
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-center px-4">
+            <p className="text-sm text-destructive">{invitesError}</p>
+            <Button variant="outline" size="sm" onClick={loadInvitations}>
+              {t('chat.groupList.retry')}
+            </Button>
+          </div>
         ) : invitations.length === 0 ? (
           <motion.div
             className="flex flex-col items-center justify-center h-32"
@@ -627,7 +657,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   custom={index}
                 >
                   <Avatar className="h-10 w-10 shrink-0">
-                      <AvatarImage src={invitation.group_avatar_url} />
+                      <AvatarImage src={invitation.group_avatar_url ?? undefined} />
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {invitation.group_name[0]?.toUpperCase()}
                       </AvatarFallback>
@@ -635,7 +665,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-foreground truncate">{invitation.group_name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {t('chat.groupList.invitedBy', { name: invitation.inviter_nickname })}
+                      {/* inviter_nickname 可为 null（users JOIN 缺失，doc:1182），
+                          展示层退到 inviter_id，不是 api 解包层的兜底 */}
+                      {t('chat.groupList.invitedBy', { name: invitation.inviter_nickname ?? invitation.inviter_id })}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {format(new Date(invitation.created_at), 'yyyy/MM/dd')}

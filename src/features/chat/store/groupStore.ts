@@ -18,6 +18,16 @@ interface GroupState {
   // 加载状态
   isLoading: boolean
   error: string | null
+  /**
+   * 选中群之后自动拉成员/公告失败时的信息，独立于上面共享的 `error`。
+   *
+   * 不合用同一个字段：`error` 被 `createGroup`/`searchGroups`/`updateGroup`
+   * 共用，而这三个动作在调用点（`GroupList.tsx`）已经各自 try/catch 并弹了
+   * toast——如果 `selectGroup` 的失败也写进同一个 `error`，给它接一个消费方
+   * 就会对同一次失败弹两次 toast。这个字段只服务 `loadGroupMembers`/
+   * `loadGroupNotices`（全仓唯二调用点是 `selectGroup`），互不干扰。
+   */
+  selectionError: string | null
 
   // Actions
   loadMyGroups: () => Promise<void>
@@ -28,6 +38,7 @@ interface GroupState {
   searchGroups: (query: string) => Promise<Group[]>
   updateGroup: (groupId: string, updates: Partial<Group>) => Promise<void>
   clearError: () => void
+  clearSelectionError: () => void
 }
 
 export const useGroupStore = create<GroupState>((set, get) => ({
@@ -37,6 +48,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   currentGroupNotices: [],
   isLoading: false,
   error: null,
+  selectionError: null,
 
   loadMyGroups: async () => {
     set({ isLoading: true, error: null })
@@ -54,31 +66,31 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   },
 
   loadGroupMembers: async (groupId: string) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, selectionError: null })
     try {
       const data = await groupsApi.getMembers(groupId)
-      set({ 
+      set({
         currentGroupMembers: data.members,
-        isLoading: false 
+        isLoading: false
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '加载群成员失败'
-      set({ error: errorMessage, isLoading: false })
+      set({ selectionError: errorMessage, isLoading: false })
       throw error
     }
   },
 
   loadGroupNotices: async (groupId: string) => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, selectionError: null })
     try {
       const response = await groupsApi.getNotices(groupId)
-      set({ 
+      set({
         currentGroupNotices: response,
-        isLoading: false 
+        isLoading: false
       })
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '加载群公告失败'
-      set({ error: errorMessage, isLoading: false })
+      set({ selectionError: errorMessage, isLoading: false })
       throw error
     }
   },
@@ -86,13 +98,25 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   selectGroup: (group: MyGroup | null) => {
     set({ selectedGroup: group })
     if (group) {
-      // 选中群后自动加载成员和公告
-      get().loadGroupMembers(group.group_id).catch(console.error)
-      get().loadGroupNotices(group.group_id).catch(console.error)
+      // 选中群后自动加载成员和公告。
+      //
+      // `.catch(console.error)` 曾经是本模块吞异常的地方之一：
+      // loadGroupMembers/loadGroupNotices 已经把失败写进 `selectionError`
+      // （并 rethrow），但这里选了 console.error 而不是任何 UI 消费，结果和
+      // `apiEnvelope.ts` 开篇讲的"功能正常但没有数据"是同一种表现——只是
+      // 控制台里多一行没人看的日志。现在 `selectionError` 由 GroupList.tsx
+      // 消费（toast + clearSelectionError），这里只需要防止未处理的 promise
+      // rejection，不必再重复打印。
+      // 注意：两次调用共享同一个 `selectionError`，后失败的一个会覆盖先失败
+      // 的那条消息——如果两者都失败，只看得到最后一条。这是本批刻意接受的
+      // 范围（不为每个子加载单独分列错误状态），但结果是"失败"而不是
+      // "什么都没发生"，比现状是净改善。
+      get().loadGroupMembers(group.group_id).catch(() => {})
+      get().loadGroupNotices(group.group_id).catch(() => {})
     } else {
-      set({ 
+      set({
         currentGroupMembers: [],
-        currentGroupNotices: [] 
+        currentGroupNotices: []
       })
     }
   },
@@ -149,5 +173,9 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   clearError: () => {
     set({ error: null })
+  },
+
+  clearSelectionError: () => {
+    set({ selectionError: null })
   },
 }))

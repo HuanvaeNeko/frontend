@@ -99,12 +99,10 @@ test.describe('Chat Functionality', () => {
     await page.route('**/api/friends/requests/sent', async (route) => {
       await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })
-    // Groups module has not migrated to the envelope client yet (groups.ts still
-    // reads `result.data?.groups || result.data || result.groups || result || []`),
-    // but the real backend already returns the envelope here too
-    // (backend-docs/groups/群聊管理.md:113-129: `{success, code, data: MyGroup[]}`).
-    // This shape satisfies both the current fallback chain (via `result.data`) and
-    // whatever the client looks like once groups.ts migrates.
+    // groups.ts migrated to the envelope client in batch 2 (getMyGroups uses
+    // readEnvelopeList with no `field`: `data` itself is the MyGroup[] array —
+    // backend-docs/groups/群聊管理.md:113-129: `{success, code, data: MyGroup[]}`).
+    // This fixture already matches that shape; nothing to change here.
     await page.route('**/api/groups/my', async (route) => {
       await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
     })

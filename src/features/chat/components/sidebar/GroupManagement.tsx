@@ -31,6 +31,7 @@ import {
   type JoinMode,
   type JoinRequest
 } from '../../api/groups'
+import { ApiError } from '@/lib/apiEnvelope'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/features/auth/store/authStore'
 
@@ -51,14 +52,19 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   // 成员
   const [members, setMembers] = useState<GroupMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
+  // 三态之三：失败。与"成员列表为空"分开表示——否则一次网络故障会长期显示
+  // 空空如也的成员列表，和真的没有成员没有任何区别（apiEnvelope.ts 规则 1）。
+  const [membersError, setMembersError] = useState<string | null>(null)
 
   // 公告
   const [notices, setNotices] = useState<GroupNotice[]>([])
   const [loadingNotices, setLoadingNotices] = useState(false)
+  const [noticesError, setNoticesError] = useState<string | null>(null)
 
   // 加入请求
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
+  const [requestsError, setRequestsError] = useState<string | null>(null)
   const [processingRequest, setProcessingRequest] = useState<string | null>(null)
 
   // UI 状态
@@ -118,11 +124,15 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const loadMembers = async () => {
     setLoadingMembers(true)
+    setMembersError(null)
     try {
       const { members } = await groupsApi.getMembers(groupId)
       setMembers(members)
     } catch (err) {
+      // 三态：失败要能和"这个群真的没有成员"区分开，不能只 console.error
+      // 然后让成员列表继续显示上一次（或初始的空）状态。
       console.error('加载成员失败:', err)
+      setMembersError(err instanceof Error ? err.message : '加载成员失败')
     } finally {
       setLoadingMembers(false)
     }
@@ -130,11 +140,13 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const loadNotices = async () => {
     setLoadingNotices(true)
+    setNoticesError(null)
     try {
       const data = await groupsApi.getNotices(groupId)
       setNotices(data)
     } catch (err) {
       console.error('加载公告失败:', err)
+      setNoticesError(err instanceof Error ? err.message : '加载公告失败')
     } finally {
       setLoadingNotices(false)
     }
@@ -142,14 +154,28 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const loadJoinRequests = async () => {
     setLoadingRequests(true)
+    setRequestsError(null)
     try {
       const data = await groupsApi.getJoinRequests(groupId)
       setJoinRequests(data)
     } catch (err) {
       console.error('加载加入请求失败:', err)
+      setRequestsError(err instanceof Error ? err.message : '加载加入请求失败')
     } finally {
       setLoadingRequests(false)
     }
+  }
+
+  /**
+   * 403 在 approve/reject 上只有一种成因：`admin_can_approve=false` 时管理员
+   * 无权审批（doc:1274、:1306）。该 403 的响应体文案是通用「权限不足」——
+   * 不含任何专属关键词，只能按状态码分诊，不能 match 消息体字符串。
+   */
+  const describeApprovalError = (err: unknown, fallback: string): string => {
+    if (err instanceof ApiError && err.status === 403) {
+      return '无权操作：本群未开放管理员审批，仅群主可处理入群申请'
+    }
+    return err instanceof Error ? err.message : fallback
   }
 
   const handleApproveRequest = async (requestId: string) => {
@@ -159,8 +185,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '成功', description: '已通过加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
       loadMembers()
-    } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+    } catch (err) {
+      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -172,8 +198,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.rejectJoinRequest(groupId, requestId)
       toast({ title: '已拒绝', description: '已拒绝加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
-    } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+    } catch (err) {
+      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -593,9 +619,20 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         <AlertDialogCancel>取消</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
-                            await groupsApi.leaveGroup(groupId)
-                            toast({ title: '成功', description: '已退出群聊' })
-                            onClose?.()
+                            // 本文件之前唯一没有 try/catch 的调用点：抛错会变成
+                            // 未处理的 promise rejection，toast 和 onClose 都不
+                            // 执行，用户只会看到弹窗自己关掉、什么反馈都没有。
+                            try {
+                              await groupsApi.leaveGroup(groupId)
+                              toast({ title: '成功', description: '已退出群聊' })
+                              onClose?.()
+                            } catch (err) {
+                              toast({
+                                title: '错误',
+                                description: err instanceof Error ? err.message : '退出群聊失败',
+                                variant: 'destructive',
+                              })
+                            }
                           }}
                         >
                           确认退出
@@ -625,9 +662,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         <AlertDialogCancel>取消</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
-                            await groupsApi.disbandGroup(groupId)
-                            toast({ title: '成功', description: '群聊已解散' })
-                            onClose?.()
+                            // 同上一个弹窗：补 try/catch，失败要有可见反馈。
+                            try {
+                              await groupsApi.disbandGroup(groupId)
+                              toast({ title: '成功', description: '群聊已解散' })
+                              onClose?.()
+                            } catch (err) {
+                              toast({
+                                title: '错误',
+                                description: err instanceof Error ? err.message : '解散群聊失败',
+                                variant: 'destructive',
+                              })
+                            }
                           }}
                         >
                           确认解散
@@ -655,23 +701,38 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
+            ) : membersError ? (
+              // 失败态必须和"这个群真的没有成员"长得不一样——同一句"暂无成员"
+              // 曾经在信封化之前把网络故障和真实空列表渲染成同一个画面。
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载成员失败：{membersError}</p>
+                <Button variant="outline" size="sm" onClick={loadMembers}>重试</Button>
+              </div>
+            ) : members.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">暂无成员</p>
             ) : (
               <div className="space-y-2">
-                {members.map(member => (
+                {members.map(member => {
+                  // user_nickname 可为 null（users JOIN 缺失，同文档同族推断——
+                  // 参见 groups.ts 里 GroupMember 接口上方的注释）。展示名统一走
+                  // 这条链，取到的第一个非空值兜到 user_id，保证非空传给
+                  // getAvatarColor / [0] 索引，这是展示层的兜底，不是 api 解包层的。
+                  const displayName = member.group_nickname || member.user_nickname || member.user_id
+                  return (
                   <div
                     key={member.user_id}
                     className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent"
                   >
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={member.user_avatar_url} />
-                      <AvatarFallback className={getAvatarColor(member.user_nickname) + ' text-primary-foreground'}>
-                        {member.user_nickname[0]?.toUpperCase()}
+                      <AvatarImage src={member.user_avatar_url ?? undefined} />
+                      <AvatarFallback className={getAvatarColor(displayName) + ' text-primary-foreground'}>
+                        {displayName[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium truncate">
-                          {member.group_nickname || member.user_nickname}
+                          {displayName}
                         </span>
                         {getRoleIcon(member.role)}
                         {member.muted_until && new Date(member.muted_until) > new Date() && (
@@ -752,7 +813,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -771,6 +833,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {loadingNotices ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : noticesError ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载公告失败：{noticesError}</p>
+                <Button variant="outline" size="sm" onClick={loadNotices}>重试</Button>
               </div>
             ) : notices.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">暂无公告</p>
@@ -836,6 +903,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {loadingRequests ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : requestsError ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载加入申请失败：{requestsError}</p>
+                <Button variant="outline" size="sm" onClick={loadJoinRequests}>重试</Button>
               </div>
             ) : joinRequests.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">暂无加入申请</p>
