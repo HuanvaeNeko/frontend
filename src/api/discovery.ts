@@ -104,8 +104,17 @@ const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(
  * 本端点的字段表（doc:104）与样例都写 `null`，但同一列数据在群模块的两份样例里
  * 给的是 `""`（`groups.ts` 的 `emptyableStr` 上方记着这件事）。用 `apiParse` 的
  * `nullableStr` 会把 `''` 判成"缺失"并抛错，于是一个纯装饰性的字段能把整次
- * 群搜索打挂；而放行 `''` 又会让 `<AvatarImage src="">` 发一次真实图片请求。
- * 归一成 `null` 两头都躲开，同时保留"不是字符串就抛"这条真正的形状防线。
+ * 群搜索打挂。放行 `''`、并保留"不是字符串就抛"这条真正的形状防线，是本函数
+ * 全部的职责。
+ *
+ * ⚠️ 这里的 `'' → null` 是**贴身冗余**，不是防 `<AvatarImage src="">` 的那道防线。
+ * 唯一调用点是 `absoluteAvatar(emptyableAvatarPath(...))`，而 `absoluteAvatar` 走的
+ * `toAbsoluteApiUrl` 对空串（含纯空白）已经返回 `undefined`（`apiConfig.ts:138`），
+ * 再 `?? null` 成 `null` —— 把本行改成 `return value` 全套测试照样绿。留着它，是为了
+ * 让函数名（`emptyableAvatarPath`）对自己的返回值说真话、不依赖调用方兜底；
+ * "空串不能进 `<AvatarImage>`"这条理由记在 {@link absoluteAvatar} 上，别在这里重复
+ * 一遍——两处都写就成了两份会互相漂移的说法（`groups.ts:132-135` 把同一条正确地
+ * 归给了 `absoluteAvatar`）。
  */
 function emptyableAvatarPath(payload: Record<string, unknown>, key: string): string | null {
   const value = payload[key]
@@ -168,11 +177,19 @@ export function clampDiscoveryLimit(limit?: number): number {
 /**
  * 只校验「被点名的那一段是数组」，然后逐行喂给调用方的 `row`。
  *
- * **另外两段有意不校验**：doc:87 写明三段互相独立、各自都可以是空数组。
- * 若把 `people` 也一并强校验，后端哪天动了 `PersonCard` 就会连带把"找群"
- * 打挂——那是凭空造出来的耦合。真正的形状漂移（`data` 不是对象、点名的那段
- * 不见了或不是数组、行里字段名变了）在这里全都会抛，且因为挂在
- * `readEnvelope` 的 `parse` 档上，抛出的是可被上报的 `ApiShapeError`。
+ * **另外两段有意不校验，这条口径出自本函数、不出自文档**。doc:87 只写了
+ * 「三类结果均可为空数组」，并**没有**写三段互相独立；doc:83-85 的字段表反过来
+ * 把 `people` / `groups` / `bots` 三段全部标成非空的数组。理由是消费方式：
+ * 谁消费哪一段，谁才校验哪一段。若把 `people` 也一并强校验，后端哪天动了
+ * `PersonCard` 就会连带把"找群"打挂——那是凭空造出来的耦合。
+ *
+ * 代价说明白：`bots: null` 这类**有文档记录的漂移**（字段表说它是数组）本函数
+ * 就是发现不了。这是有意的——本次请求没有 bot 消费方，发现了也无从处置，
+ * 只会把一次成功的群搜索变成一次失败。等接"找 bot"时，那个消费点自己会校验它。
+ *
+ * 真正的形状漂移（`data` 不是对象、点名的那段不见了或不是数组、行里字段名变了）
+ * 在这里全都会抛，且因为挂在 `readEnvelope` 的 `parse` 档上，抛出的是可被上报的
+ * `ApiShapeError`。
  *
  * 于是「真的没搜到」（`groups: []` ⇒ 返回 `[]`）与「形状漂了」（抛错）是两件
  * 可区分的事，而不是旧 `result.data || []` 下同一句"没有找到匹配的群聊"。

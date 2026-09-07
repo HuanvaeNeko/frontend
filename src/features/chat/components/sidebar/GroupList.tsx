@@ -95,9 +95,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // groupStore 的 selectionError 此前是零消费方：selectGroup 里加载成员/公告
   // 失败时只 console.error，用户什么都看不到。这里给它接一个可见的消费方——
   // 选中一个群之后，"成员和公告悄悄加载失败"不该和"选群成功"长得一样。
-  // 用专门的 selectionError 而不是共享的 `error`：createGroup/updateGroup/
-  // searchGroups 各自在调用点已经 try/catch 弹过 toast，共享同一个字段会让
-  // 同一次失败弹两次。
+  // 用专门的 selectionError 而不是共享的 `error`：createGroup/updateGroup
+  // 各自在调用点已经 try/catch 弹过 toast，共享同一个字段会让同一次失败弹两次。
+  //（这里原本还列着 store 的 searchGroups，那个 action 零消费方且漏了 limit，
+  // 批 6 复核时删除——搜索始终是本组件直接调 `groupsApi.searchGroups`。）
   useEffect(() => {
     if (!selectionError) return
     toast({ title: t('chat.groupList.failed'), description: selectionError, variant: 'destructive' })
@@ -125,9 +126,19 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   //
   // 批 6 起类型就是到货的那一个：discovery 的 `GroupCard`。此前这里手写了一个
   // 结构字面量，字段名（`group_avatar_url`）和可选性都是照着已删端点写的。
-  const [searchResult, setSearchResult] = useState<DiscoveryGroupCard | null>(null)
-  const [applyReason, setApplyReason] = useState('')
-  const [applying, setApplying] = useState(false)
+  //
+  // 存的是**整个数组**，不是 `results[0]`：请求带 `limit=20`（`discovery.ts` 的
+  // `clampDiscoveryLimit` 注释解释了为什么让 URL 说真话），而完全匹配同名群是
+  // 合法的，所以「到货 20 条、只渲染 1 条、其余 19 条一声不吭地丢掉」正是这一轮
+  // 在消灭的那类静默偏差——只不过丢的是结果而不是错误。
+  const [searchResults, setSearchResults] = useState<DiscoveryGroupCard[]>([])
+  // 申请附言按 group_id 各存各的：多张卡片同屏时共用一个 string 会让在 A 卡片里
+  // 打的字出现在 B 卡片的输入框里。搜到结果时按 group_id 建满（见
+  // `handleSearchGroup`），渲染与读取都只认这份表里的键。
+  const [applyReasons, setApplyReasons] = useState<Record<string, string>>({})
+  // 哪一张卡片正在提交。用 group_id 而不是布尔：否则一次提交会把所有卡片的
+  // 按钮一起转圈，用户看不出自己点的是哪一个。
+  const [applyingGroupId, setApplyingGroupId] = useState<string | null>(null)
 
   // 群邀请状态
   const [invitations, setInvitations] = useState<GroupInvitation[]>([])
@@ -248,6 +259,12 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
 
 
+  /** 清空一次搜索的全部产物（结果、每张卡片的附言）。关键词单独清，见调用点。 */
+  const clearSearchResults = () => {
+    setSearchResults([])
+    setApplyReasons({})
+  }
+
   // 搜索群聊
   const handleSearchGroup = async () => {
     if (!searchKeyword.trim()) {
@@ -260,11 +277,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     }
 
     setSearchingGroup(true)
-    setSearchResult(null)
+    clearSearchResults()
     try {
       const results = await groupsApi.searchGroups(searchKeyword.trim())
       if (results.length > 0) {
-        setSearchResult(results[0])
+        // 全部留下。`results[0]` 之外的那些不是噪声：完全匹配（大小写不敏感的
+        // ILIKE，发现搜索.md:164）允许同名群同时命中，丢掉它们等于替用户做了
+        // 一个他不知道自己做过的选择。
+        setSearchResults(results)
+        setApplyReasons(Object.fromEntries(results.map((card) => [card.group_id, ''])))
       } else {
         toast({
           title: t('chat.groupList.notFound'),
@@ -308,17 +329,22 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
    * 结果按 `data.status` 分支（doc:1128-1132，唯一判据，不要解析文案）：
    * `joined` 说明这个群 `join_approval_required=false`，用户**已经在群里了**，
    * 必须刷新群列表，否则新群不出现，用户以为还在等审批。
+   *
+   * 形参是**具体哪一张卡片**：搜索结果可以有多条（同名群完全匹配都会命中），
+   * 从组件状态里去猜"当前那一个"就会在多结果时点 A 申请到 B。
+   *
+   * 调用点已由 `card.is_member` 门控（渲染处不给已在群的人这颗按钮）：
+   * 后端对已是成员的申请返回 400「已是该群成员」（群聊管理.md:1089），
+   * 渲染一颗必被拒的按钮就是拿一次注定的报错去换用户的一次点击。
    */
-  const handleApplyJoin = async () => {
-    if (!searchResult) return
-
+  const handleApplyJoin = async (card: DiscoveryGroupCard) => {
     const source: JoinSource = 'search'
-    setApplying(true)
+    setApplyingGroupId(card.group_id)
     try {
       const result = await groupsApi.applyToJoin(
-        searchResult.group_id,
+        card.group_id,
         source,
-        applyReason.trim() || undefined,
+        applyReasons[card.group_id].trim() || undefined,
       )
       toast({
         title: t('chat.groupList.success'),
@@ -330,9 +356,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       if (result.status === 'joined') {
         await loadMyGroups()
       }
-      setSearchResult(null)
+      clearSearchResults()
       setSearchKeyword('')
-      setApplyReason('')
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
@@ -340,7 +365,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         variant: 'destructive',
       })
     } finally {
-      setApplying(false)
+      setApplyingGroupId(null)
     }
   }
 
@@ -652,24 +677,34 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             </Button>
           </div>
 
-          {/* 搜索结果 */}
-          {searchResult && (
+          {/*
+            搜索结果——**全部**渲染。请求带 `limit=20`，旧实现只留 `results[0]`：
+            同名群完全匹配都会命中（发现搜索.md:164 的 ILIKE 无通配），于是"到货 20 条
+            只显示 1 条"会让用户以为另外那些群不存在，而屏幕上没有任何信号。
+          */}
+          {searchResults.length > 1 && (
+            <div className="text-xs text-muted-foreground">
+              {t('chat.groupList.matchedGroupCount', { count: searchResults.length })}
+            </div>
+          )}
+          {searchResults.map((card) => (
             <motion.div
+              key={card.group_id}
               className="p-4 rounded-xl space-y-3 border bg-accent/30"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10 shrink-0">
-                    <AvatarImage src={searchResult.avatar_url ?? undefined} />
+                    <AvatarImage src={card.avatar_url ?? undefined} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {searchResult.group_name[0]?.toUpperCase()}
+                      {card.group_name[0]?.toUpperCase()}
                     </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <div className="font-medium text-foreground">{searchResult.group_name}</div>
+                  <div className="font-medium text-foreground">{card.group_name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {t('chat.groupList.memberCount', { count: searchResult.member_count })}
+                    {t('chat.groupList.memberCount', { count: card.member_count })}
                   </div>
                 </div>
                 {/*
@@ -678,46 +713,77 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   卡片上直接显示，用户按下「申请加入」之前就知道会不会落待审。
                 */}
                 <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                  {searchResult.join_approval_required
+                  {card.join_approval_required
                     ? t('chat.groupList.needApproval')
                     : t('chat.groupList.noApproval')}
                 </span>
               </div>
 
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">{t('chat.groupList.applyReason')}</label>
-                <Input
-                  type="text"
-                  placeholder={t('chat.groupList.applyReasonPlaceholder')}
-                  value={applyReason}
-                  onChange={(e) => setApplyReason(e.target.value)}
-                  className="h-10"
-                  maxLength={100}
-                />
-              </div>
+              {/*
+                `is_member` 在这里被消费——这也是 `parseDiscoveryGroupCard` 严格解析
+                它的理由。已在群里的人点「申请加入」，后端必回 400「已是该群成员」
+                （群聊管理.md:1089）：渲染一颗注定被拒的按钮，等于用一次报错去回答
+                一个本地就能回答的问题。改成告诉他人已经在群里，附言输入框一并撤掉。
+              */}
+              {card.is_member ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-sm text-muted-foreground">
+                    {t('chat.groupList.alreadyMember')}
+                  </span>
+                  <Button
+                    variant="outline"
+                    className="h-10"
+                    onClick={() => {
+                      clearSearchResults()
+                      setSearchKeyword('')
+                    }}
+                  >
+                    {t('chat.groupList.cancel')}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">{t('chat.groupList.applyReason')}</label>
+                    <Input
+                      type="text"
+                      placeholder={t('chat.groupList.applyReasonPlaceholder')}
+                      value={applyReasons[card.group_id]}
+                      onChange={(e) =>
+                        setApplyReasons((prev) => ({ ...prev, [card.group_id]: e.target.value }))
+                      }
+                      className="h-10"
+                      maxLength={100}
+                    />
+                  </div>
 
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 h-10"
-                  onClick={() => {
-                    setSearchResult(null)
-                    setSearchKeyword('')
-                    setApplyReason('')
-                  }}
-                >
-                  {t('chat.groupList.cancel')}
-                </Button>
-                <Button
-                  className="flex-1 h-10"
-                  onClick={handleApplyJoin}
-                  disabled={applying}
-                >
-                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.applyJoin')}
-                </Button>
-              </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10"
+                      onClick={() => {
+                        clearSearchResults()
+                        setSearchKeyword('')
+                      }}
+                    >
+                      {t('chat.groupList.cancel')}
+                    </Button>
+                    <Button
+                      className="flex-1 h-10"
+                      onClick={() => handleApplyJoin(card)}
+                      disabled={applyingGroupId !== null}
+                    >
+                      {applyingGroupId === card.group_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t('chat.groupList.applyJoin')
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
-          )}
+          ))}
         </div>
       </div>
     )

@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { groupsApi, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
-import type { DiscoveryGroupCard } from '@/api/discovery'
 import { loadGroups } from '@/data'
 
 interface GroupState {
@@ -22,11 +21,15 @@ interface GroupState {
   /**
    * 选中群之后自动拉成员/公告失败时的信息，独立于上面共享的 `error`。
    *
-   * 不合用同一个字段：`error` 被 `createGroup`/`searchGroups`/`updateGroup`
-   * 共用，而这三个动作在调用点（`GroupList.tsx`）已经各自 try/catch 并弹了
-   * toast——如果 `selectGroup` 的失败也写进同一个 `error`，给它接一个消费方
-   * 就会对同一次失败弹两次 toast。这个字段只服务 `loadGroupMembers`/
-   * `loadGroupNotices`（全仓唯二调用点是 `selectGroup`），互不干扰。
+   * 不合用同一个字段：`error` 被 `createGroup`/`updateGroup` 共用，而这两个
+   * 动作在调用点（`GroupList.tsx`）已经各自 try/catch 并弹了 toast——如果
+   * `selectGroup` 的失败也写进同一个 `error`，给它接一个消费方就会对同一次
+   * 失败弹两次 toast。这个字段只服务 `loadGroupMembers`/`loadGroupNotices`
+   * （全仓唯二调用点是 `selectGroup`），互不干扰。
+   *
+   * 📌 曾经还有第三个共用方 `searchGroups`：那是一个零消费方的转发 action
+   * （`GroupList.tsx` 直接调 `groupsApi.searchGroups`），且签名漏了 `limit`，
+   * 于是它转发的请求和真实发出的请求长得不一样。批 6 复核时删除，不是收窄。
    */
   selectionError: string | null
 
@@ -41,11 +44,6 @@ interface GroupState {
    * 见 backend-docs/groups/群聊管理.md:64-75。不传 ⇒ 后端默认 `true`（需审核）。
    */
   createGroup: (name: string, description?: string, joinApprovalRequired?: boolean) => Promise<{ group_id: string; group_name: string; created_at: string }>
-  /**
-   * 转发 `GET /api/discovery/search` 的 `groups` 段（见 `groupsApi.searchGroups`）。
-   * 返回的是 discovery 的 `GroupCard`，不是本模块的 `GroupBase`——两者字段集不同。
-   */
-  searchGroups: (keyword: string) => Promise<DiscoveryGroupCard[]>
   /**
    * 形参就是 `PUT /api/groups/{group_id}` 的请求体（doc:227-231），不是
    * `Partial<Group>`：本 action 只做转发，而 `Group` 上的 `group_description`
@@ -152,19 +150,6 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       return group
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '创建群聊失败'
-      set({ error: errorMessage, isLoading: false })
-      throw error
-    }
-  },
-
-  searchGroups: async (keyword: string) => {
-    set({ isLoading: true, error: null })
-    try {
-      const groups = await groupsApi.searchGroups(keyword)
-      set({ isLoading: false })
-      return groups
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '搜索群聊失败'
       set({ error: errorMessage, isLoading: false })
       throw error
     }

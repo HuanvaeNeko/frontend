@@ -446,6 +446,133 @@ describe('GroupList 申请入群：source 必填 + status 两态', () => {
 })
 
 /**
+ * 批 6 复核：`is_member` 与"多条结果"这两件事各自都是**到货了却没人消费**。
+ *
+ * - `parseDiscoveryGroupCard` 严格解析 `is_member`（缺失即抛，把整次搜索打挂），
+ *   而渲染处无条件给出「申请加入」。已在群里的人点下去，后端必回
+ *   400「已是该群成员」（`群聊管理.md:1089`）——一个只能靠报错才能知道的答案，
+ *   本地明明已经拿到了。字段要么消费、要么别强解析，不能两头都不占。
+ * - 请求带 `limit=20`（`discovery.ts` 的 `clampDiscoveryLimit`），旧渲染只取
+ *   `results[0]`。完全匹配允许同名群同时命中（`发现搜索.md:164`），于是"要 20 条、
+ *   丢 19 条、屏幕上不着一字"。
+ *
+ * 这一组是它们各自的变异闸门：把 `is_member` 门控改回无条件渲染、或把渲染改回
+ * 只画 `searchResults[0]`，下面必须有用例红掉。
+ */
+describe('GroupList 搜索结果：is_member 门控 + 多条结果全部渲染', () => {
+  const card = (over: Partial<DiscoveryGroupCard> = {}): DiscoveryGroupCard => ({
+    group_id: 'g1',
+    group_name: 'Test Group',
+    avatar_url: null,
+    member_count: 3,
+    join_approval_required: true,
+    is_member: false,
+    ...over,
+  })
+
+  const search = async (keyword = 'Test Group') => {
+    fireEvent.change(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+      { target: { value: keyword } },
+    )
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+  }
+
+  it('is_member=true ⇒ 显示「你已在该群」，不给必被 400 拒掉的「申请加入」', async () => {
+    searchGroupsMock.mockResolvedValue([card({ is_member: true })])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search()
+
+    expect(await screen.findByText('chat.groupList.alreadyMember')).toBeTruthy()
+    // 按钮和附言输入框都必须不在：只把按钮 disable 掉仍然是在邀请用户去撞一次 400。
+    expect(screen.queryByText('chat.groupList.applyJoin')).toBeNull()
+    expect(screen.queryByPlaceholderText('chat.groupList.applyReasonPlaceholder')).toBeNull()
+  })
+
+  it('is_member=false ⇒ 照常给「申请加入」，且不说「你已在该群」', async () => {
+    // 上一条的对照：否则把门控写成恒 true 也能让上一条绿。
+    searchGroupsMock.mockResolvedValue([card({ is_member: false })])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search()
+
+    expect(await screen.findByText('chat.groupList.applyJoin')).toBeTruthy()
+    expect(screen.queryByText('chat.groupList.alreadyMember')).toBeNull()
+  })
+
+  it('三条同名结果全部渲染，并给出计数——不是只画第一条', async () => {
+    searchGroupsMock.mockResolvedValue([
+      card({ group_id: 'g1', group_name: '技术交流群' }),
+      card({ group_id: 'g2', group_name: '技术交流群' }),
+      card({ group_id: 'g3', group_name: '技术交流群' }),
+    ])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search('技术交流群')
+
+    await waitFor(() => expect(screen.getAllByText('技术交流群')).toHaveLength(3))
+    expect(screen.getAllByText('chat.groupList.applyJoin')).toHaveLength(3)
+    expect(screen.getByText('chat.groupList.matchedGroupCount')).toBeTruthy()
+  })
+
+  it('点第二张卡片申请的是第二个群——旧实现只留 results[0]，这里会打到 g1', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'pending', message: 'x' })
+    searchGroupsMock.mockResolvedValue([
+      card({ group_id: 'g1', group_name: '同名群' }),
+      card({ group_id: 'g2', group_name: '同名群' }),
+    ])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search('同名群')
+
+    await waitFor(() => expect(screen.getAllByText('chat.groupList.applyJoin')).toHaveLength(2))
+    fireEvent.click(screen.getAllByText('chat.groupList.applyJoin')[1])
+
+    await waitFor(() => expect(applyToJoinMock).toHaveBeenCalledTimes(1))
+    expect(applyToJoinMock).toHaveBeenCalledWith('g2', 'search', undefined)
+  })
+
+  it('附言按卡片各存各的：在第二张里打的字不会跟着第一张一起发出去', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'pending', message: 'x' })
+    searchGroupsMock.mockResolvedValue([
+      card({ group_id: 'g1', group_name: '同名群' }),
+      card({ group_id: 'g2', group_name: '同名群' }),
+    ])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search('同名群')
+
+    await waitFor(() =>
+      expect(screen.getAllByPlaceholderText('chat.groupList.applyReasonPlaceholder')).toHaveLength(2),
+    )
+    const reasons = screen.getAllByPlaceholderText('chat.groupList.applyReasonPlaceholder')
+    fireEvent.change(reasons[1], { target: { value: '想加入第二个' } })
+    // 第一张的输入框必须还是空的——共用一个 string 时这里会同步变成同一句话
+    expect((reasons[0] as HTMLInputElement).value).toBe('')
+
+    fireEvent.click(screen.getAllByText('chat.groupList.applyJoin')[1])
+    await waitFor(() => expect(applyToJoinMock).toHaveBeenCalledTimes(1))
+    expect(applyToJoinMock).toHaveBeenCalledWith('g2', 'search', '想加入第二个')
+  })
+
+  it('多条结果里混着已入群的：只有那一张换成「你已在该群」，其余照常可申请', async () => {
+    searchGroupsMock.mockResolvedValue([
+      card({ group_id: 'g1', group_name: '同名群', is_member: true }),
+      card({ group_id: 'g2', group_name: '同名群', is_member: false }),
+    ])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await search('同名群')
+
+    expect(await screen.findByText('chat.groupList.alreadyMember')).toBeTruthy()
+    // 门控必须是逐卡片的，不是"整批里有一个已入群就全部关掉"
+    expect(screen.getAllByText('chat.groupList.alreadyMember')).toHaveLength(1)
+    expect(screen.getAllByText('chat.groupList.applyJoin')).toHaveLength(1)
+  })
+})
+
+/**
  * 批 4：accept 成功 ≠ 入群（doc:1194-1203）。两种结局的 HTTP、信封 `success`、
  * 内层 `data.success` 全都相同，判据只能是 accept 之后重新拉的
  * `GET /api/groups/my` 里有没有这个 group_id。旧实现无条件弹「已加入群聊」

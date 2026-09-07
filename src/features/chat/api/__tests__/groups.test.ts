@@ -1226,8 +1226,11 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
   })
 
   it('只消费 groups 段：people/bots 里的行既不混进结果，形状怎么漂也打不挂找群', async () => {
-    // 三段互相独立（doc:87）。把 people 换成一堆非法行——找群不该受影响，
-    // 否则就是凭空造出来的耦合：后端动一次 PersonCard 就把找群一起打挂。
+    // 把 people 换成一堆非法行——找群不该受影响，否则就是凭空造出来的耦合：
+    // 后端动一次 PersonCard 就把找群一起打挂。判据是「谁消费哪一段谁才校验哪一段」，
+    // 不是文档：doc:87 只说三段均可为空数组，doc:83-85 的字段表甚至把三段都写成
+    // 非空数组——所以下面这个 `bots: null` 是**有记录的漂移**，本实现明知而不报，
+    // 因为本次请求没有 bot 消费方，报了也只是把一次成功的群搜索变成失败。
     fetchMock.mockResolvedValueOnce(
       sections({
         people: [{ user_id: 'u1' }, null, 42],
@@ -1262,7 +1265,7 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
     await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/应为对象/)
   })
 
-  it('相对 avatar_url 在 api 出口补基址，null 与空串都归一为 null', async () => {
+  it('相对 avatar_url 在 api 出口补基址；null 出去是 null，空串被 absoluteAvatar 归一成 null', async () => {
     fetchMock.mockResolvedValueOnce(
       sections({ groups: [{ ...GROUP_CARD, avatar_url: 'avatars/g1.png?t=1' }] }),
     )
@@ -1273,7 +1276,10 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
     const [noAvatar] = await groupsApi.searchGroups('kw')
     expect(noAvatar.avatar_url).toBeNull()
 
-    // 空串不能原样出去：<AvatarImage src=""> 会发一次真实图片请求
+    // 空串不能原样出去：<AvatarImage src=""> 会发一次真实图片请求。
+    // ⚠️ 这一条**真正**红掉的前提是 `absoluteAvatar` 被拆掉，不是 `emptyableAvatarPath`
+    // 里那句 `value === '' ? null : value`——后者是贴身冗余，去掉本条照样绿
+    // （`toAbsoluteApiUrl('')` 已经是 `undefined`，`apiConfig.ts:138`）。
     fetchMock.mockResolvedValueOnce(sections({ groups: [{ ...GROUP_CARD, avatar_url: '' }] }))
     const [emptyAvatar] = await groupsApi.searchGroups('kw')
     expect(emptyAvatar.avatar_url).toBeNull()

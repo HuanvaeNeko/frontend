@@ -385,6 +385,12 @@ const zhCN = {
       // 搜索结果卡片上的角标，判据是 GroupCard.join_approval_required
       needApproval: '需审核',
       noApproval: '免审核',
+      // 判据是 GroupCard.is_member。已在群里的人再点「申请加入」必被后端
+      // 400「已是该群成员」（群聊管理.md:1089），所以那颗按钮根本不该渲染。
+      alreadyMember: '你已在该群',
+      // 完全匹配也可能命中多个群（同名合法），多于一个时给一句计数，
+      // 否则用户不知道下面还有别的选择。
+      matchedGroupCount: '{count} 个匹配的群聊',
       cancel: '取消',
       creating: '创建中...',
       create: '创建',
@@ -880,6 +886,8 @@ const enUS = {
       joinApprovalOpenDesc: 'No approval - eligible users join directly',
       needApproval: 'Approval required',
       noApproval: 'No approval',
+      alreadyMember: 'You are already in this group',
+      matchedGroupCount: '{count} matching groups',
       cancel: 'Cancel',
       creating: 'Creating...',
       create: 'Create',
