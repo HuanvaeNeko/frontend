@@ -87,9 +87,14 @@ vi.mock('@/hooks/use-toast', () => ({
 }))
 
 // t 直接回显 key：断言与语言环境无关，且"这个文案还在不在"看得最清楚。
-vi.mock('@/i18n/I18nProvider', () => ({
-  useI18n: () => ({ locale: 'zh', t: (key: string) => key }),
-}))
+// `t` 提到 mock 工厂外层、每次 `useI18n()` 调用返回同一个引用，而不是内联在
+// 返回对象里新建一个箭头函数——下面 selectionError→toast 的 useEffect 依赖
+// 数组里就有 `t`，如果这里每次渲染给一个新引用，`selectionError` 有没有留在
+// 依赖数组里就测不出来了（不管数组对不对，`t` 的引用变化都会让 effect 重跑）。
+vi.mock('@/i18n/I18nProvider', () => {
+  const t = (key: string) => key
+  return { useI18n: () => ({ locale: 'zh', t }) }
+})
 
 const INVITATION: GroupInvitation = {
   request_id: 'r1',
@@ -108,6 +113,13 @@ beforeEach(() => {
   getInvitationsMock.mockReset()
   toastMock.mockReset()
   groupStoreState.selectionError = null
+  groupStoreState.clearSelectionError.mockReset()
+  // 真实 store 里 `clearSelectionError` 会把 `selectionError` 写回 null——
+  // mock 也照做，这样下面的测试才能断言"清除之后不会再弹一次 toast"，而不是
+  // 因为 mock 本身什么都不做而巧合地只弹一次。
+  groupStoreState.clearSelectionError.mockImplementation(() => {
+    groupStoreState.selectionError = null
+  })
 })
 
 afterEach(() => {
@@ -143,5 +155,61 @@ describe('GroupList 群邀请 tab 的三态', () => {
     await waitFor(() => expect(screen.getByText('Test Group')).toBeInTheDocument())
     expect(screen.queryByText('chat.groupList.noInvites')).not.toBeInTheDocument()
     expect(screen.queryByText('chat.groupList.retry')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * groupStore.selectGroup 的两处 `.catch(() => {})`：真正吞异常的不是这两个
+ * catch 本身（它们只是防止 unhandled rejection），而是它们依赖
+ * `loadGroupMembers`/`loadGroupNotices` 把失败写进 `selectionError` 并
+ * rethrow，再由这里的 `useEffect` 消费成 toast。这条链此前零测试覆盖——
+ * `selectionError`/`clearSelectionError` 在上面的 mock 里从一开始就存在，
+ * 但从未被断言过。
+ *
+ * 按规则不 mock `groupsApi`：这里连 store 本身都是 mock 的（跟本文件其余
+ * 测试一致），只测 `GroupList.tsx` 消费 `selectionError` 这一段 wiring——
+ * store 自己把失败写进 `selectionError` 并 rethrow 这件事，由
+ * `groupStore.ts` 的真实实现保证（`loadGroupMembers`/`loadGroupNotices`
+ * 的 catch 分支），不在本文件重复验证。
+ */
+describe('GroupList selectionError → toast 消费（groupStore.selectGroup 失败提示）', () => {
+  it('selectionError 出现时 toast 只弹一次，随后被清除', async () => {
+    const { rerender } = render(<GroupList subTab="main" searchQuery="" />)
+    expect(toastMock).not.toHaveBeenCalled()
+
+    groupStoreState.selectionError = '加载群成员失败：网络错误'
+    rerender(<GroupList subTab="main" searchQuery="" />)
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1))
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: '加载群成员失败：网络错误',
+        variant: 'destructive',
+      })
+    )
+    expect(groupStoreState.clearSelectionError).toHaveBeenCalledTimes(1)
+    expect(groupStoreState.selectionError).toBeNull()
+
+    // 清除之后，一次和 selectionError 无关的重渲染不应该让 toast 再弹一次——
+    // 否则用户选中一个群会看到同一条错误反复弹出。
+    rerender(<GroupList subTab="main" searchQuery="" />)
+    expect(toastMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('两次独立失败各弹一次 toast，不会被前一次"吃掉"', async () => {
+    const { rerender } = render(<GroupList subTab="main" searchQuery="" />)
+
+    groupStoreState.selectionError = '第一次失败'
+    rerender(<GroupList subTab="main" searchQuery="" />)
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1))
+
+    groupStoreState.selectionError = '第二次失败'
+    rerender(<GroupList subTab="main" searchQuery="" />)
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(2))
+    expect(toastMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ description: '第二次失败' })
+    )
+    expect(groupStoreState.clearSelectionError).toHaveBeenCalledTimes(2)
   })
 })
