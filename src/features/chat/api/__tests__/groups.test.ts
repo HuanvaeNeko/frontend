@@ -928,6 +928,20 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
     expect(row.user_nickname).toBeNull()
   })
 
+  /**
+   * `JoinRequest.message` 同样声明成 `string | null`（doc:1367），而
+   * `JOIN_REQUEST_ROW.message` 是一句非空附言——上面每一条都没走过 `null`。
+   * 与 `/public` 的 `group_description` 是同一个洞：解包层把 `emptyableStr`
+   * 换成 `str` 全绿，而「不写附言就申请」这种最常见的行会把整个待审列表打挂。
+   */
+  it('message 为 null（申请人没写附言）是合法的，不抛错', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ requests: [{ ...JOIN_REQUEST_ROW, message: null }] }))
+
+    const [row] = await groupsApi.getJoinRequests('g1')
+
+    expect(row.message).toBeNull()
+  })
+
   it('request_type 落在四类闭集之外时抛错（doc:1280-1288）', async () => {
     fetchMock.mockResolvedValueOnce(
       envelope({ requests: [{ ...JOIN_REQUEST_ROW, request_type: 'invite_code' }] }),
@@ -1279,7 +1293,7 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
     // 空串不能原样出去：<AvatarImage src=""> 会发一次真实图片请求。
     // ⚠️ 这一条**真正**红掉的前提是 `absoluteAvatar` 被拆掉，不是 `emptyableAvatarPath`
     // 里那句 `value === '' ? null : value`——后者是贴身冗余，去掉本条照样绿
-    // （`toAbsoluteApiUrl('')` 已经是 `undefined`，`apiConfig.ts:138`）。
+    // （`toAbsoluteApiUrl('')` 已经是 `undefined`，见 `apiConfig.ts` 的 `toAbsoluteApiUrl`）。
     fetchMock.mockResolvedValueOnce(sections({ groups: [{ ...GROUP_CARD, avatar_url: '' }] }))
     const [emptyAvatar] = await groupsApi.searchGroups('kw')
     expect(emptyAvatar.avatar_url).toBeNull()
@@ -1347,8 +1361,13 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
  *
  * 🔴 **照抄样例，也就是说这里 `card_share_scope` / `qr_show_scope` / `search_scope`
  * 三个键一个都没有**（doc:644-649 的破坏性变更）。这份 DTO 本身就是一条断言：
- * 谁要是"顺手统一"把 `publicGroupInfoResponse` 接回 `joinPolicyOf`，下面每一条
- * 用例都会红在「card_share_scope 缺失」上——一个**完全合规**的响应被判成形状错误。
+ * 谁要是"顺手统一"把 `publicGroupInfoResponse` 接回 `joinPolicyOf`，下面 7 条用例
+ * 里会红 6 条，全部红在「card_share_scope 缺失」上——一个**完全合规**的响应被判成
+ * 形状错误。
+ *
+ * 剩下那一条是 404 用例：它 mock 的是错误响应，压根不走 parser，所以对这个改动
+ * 免疫。这个数字是实测出来的，不是估的——本批次自己就在追查"注释声称的守卫比
+ * 断言真正交付的多"这一类缺陷，这段注释不能是其中一例。
  */
 const PUBLIC_GROUP_DTO = {
   group_id: '019ae4ec-0dfe-7ac1-966e-876e9755561c',
@@ -1429,6 +1448,23 @@ describe('groupsApi.getPublicGroupInfo（非成员视角的窄结构）', () => 
 
     fetchMock.mockResolvedValueOnce(envelope({ ...PUBLIC_GROUP_DTO, group_avatar_url: null }))
     expect((await groupsApi.getPublicGroupInfo('g1')).group_avatar_url).toBeNull()
+  })
+
+  /**
+   * `PublicGroupInfo.group_description` 声明的是 `string | null`（字段表
+   * doc:657），但 `PUBLIC_GROUP_DTO` 给的是一句非空文案，上面那些用例一条都没有
+   * 驱动过 `null` 这条分支——把 {@link publicGroupInfoResponse} 里的
+   * `emptyableStr` 改成 `str` 全套 api 测试照样绿，而一次**合法**的
+   * `group_description: null` 会当场把整个落地页判成形状错误。
+   * `groupDetailResponse` 早有同型的一条（上面「group_description 为 null 是
+   * 合法的」），同一个文件里两个 parser 的严格程度不该只由注释声明。
+   */
+  it('group_description 为 null 是合法的（字段表 doc:657）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ ...PUBLIC_GROUP_DTO, group_description: null }))
+
+    const info = await groupsApi.getPublicGroupInfo('g1')
+
+    expect(info.group_description).toBeNull()
   })
 
   it('三个 allow_join_via_* 缺失 / 为 null 时抛错——落地页靠它们决定按钮长什么样', async () => {

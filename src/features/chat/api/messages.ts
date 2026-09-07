@@ -155,7 +155,8 @@ export interface SyncMessagesResponse {
  * - `messages/消息同步.md:123` —— 响应，但只是把请求里那个 id **原样回显**
  * - `messages/消息同步.md:357` —— JS 使用示例里客户端手写的请求参数
  * - `messages/好友消息.md:164` —— 发送视频消息**请求体**里客户端传的 `file_url`
- * - 本仓 `src/api/__tests__/storage.test.ts:477` —— 我们自己写的 fixture
+ * - 本仓 `src/api/__tests__/storage.test.ts` 里 `getFriendFilePresignedUrl` 那条用例的
+ *   `conv-a-b` —— 我们自己写的 fixture
  *
  * ### 二、所有示例都是全小写，区分不出 JS 的排序和数据库的排序
  *
@@ -177,14 +178,15 @@ export interface SyncMessagesResponse {
  *
  * 上一版写的是"上线前必须用一次真实 sync 请求核对"。**那条不可执行**：
  * `setConversations` / `addConversation` 在 `src` 里零调用点，`chatStore.conversations`
- * 恒为 `[]`，而 `useRealtimeMessages.ts:44` 与 `chatStore.syncMessages` 都以
- * `conversations.length > 0` 为前置条件——同步请求永远发不出去。
+ * 恒为 `[]`，而 `useRealtimeMessages.ts` 里那个「连上之后自动同步」的 effect
+ * 与 `chatStore.syncMessages` 都以 `conversations.length > 0` 为前置条件——
+ * 同步请求永远发不出去。
  * （这处接线缺失是独立的一条待办，不在本批范围内。）
  *
  * 能跑的通道在 storage 侧，而且不需要前端先猜对 id：
  *
  * 1. 挑一个 **user_id 含大写字母**的好友，调 `storageApi.requestUpload`
- *    （`src/api/storage.ts:676` 已有现成调用点），传
+ *    （`src/api/storage.ts` 的 `storageApi.uploadFile` 已有现成调用点），传
  *    `storage_location: 'friend_messages'` + `related_id: <该好友的 user_id>`；
  * 2. 响应的 `file_key` 形如 `friends-file/{conversation_uuid}/{type}/...`
  *    （`storage/文件存储管理.md:977` 路径规范、`:2392` 好友文件上传、`:2588` 响应样例），
@@ -241,7 +243,8 @@ export function buildFriendConversationId(myUserId: string, friendUserId: string
  * 而另外 19 份文档用的都是 `success: true` + `code: 200`（全仓仅此一处 `code: 0`）。
  * 两种编码习惯并存，八成是不同时期/不同人写的。
  *
- * 后果：`readEnvelope` 判失败的依据是 `success === false`（见 apiEnvelope.ts:292）。
+ * 后果：`readEnvelope` 判失败的依据是 `success === false`（见 `apiEnvelope.ts` 的
+ * `assertOk`）。
  * 这个端点没有 `success`，所以它能通过**只是因为"字段缺失"被当成"没失败"**——
  * 是巧合，不是设计。若哪天它按自己那套约定返回 `code: 1`（该约定下的失败），
  * 会被当成成功放行，`data` 缺失再由下面的 parser 兜住抛 ApiShapeError——
@@ -349,8 +352,8 @@ const sendMessageResponse: Parser<SendMessageResponse> = {
  * `getMessages` / 群侧 `getMessages` 都在模块出口翻了一次，这里**故意没翻**，因为
  * sync 本来就是 ASC：
  * - `消息同步.md:117-160` 的响应样例里 `messages` 是 seq **101 → 102**，最旧在前；
- * - `chatStore.ts:461` 也是拿 `conv.messages[conv.messages.length - 1]` 当"最新一条"
- *   去写 `lastMessage` / `lastTime`。
+ * - `chatStore.ts` 的 `syncMessages` 也是拿 `conv.messages[conv.messages.length - 1]`
+ *   当"最新一条"去写 `lastMessage` / `lastTime`。
  *
  * 翻一次会把最旧那条当成最新的写进会话列表预览。这条和上面的 DTO 分叉一样必须写下来：
  * 这批刚花了三十行把 REST 侧的顺序统一掉，下一个人很容易顺手把 sync 也"统一"了。

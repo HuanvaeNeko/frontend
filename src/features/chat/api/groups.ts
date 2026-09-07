@@ -412,9 +412,11 @@ export interface AcceptInvitationResult {
 }
 
 /**
- * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `friends.ts:136` 的
- * 同名函数逐字同型——独立定义一份而不是跨 feature 导入，是因为两边调用点
+ * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `friends.ts` 里同名的
+ * `absoluteAvatar` 逐字同型——独立定义一份而不是跨 feature 导入，是因为两边调用点
  * 分属不同的领域对象，没必要为一个三行函数建跨模块依赖。
+ * （跨文件引用只写文件名 + 符号名，不写行号；理由见 `discovery.ts` 的
+ * `absoluteAvatar` 上方那条约定。）
  *
  * `null` 与空串统一归一为 `null`（未知/无头像），不兜底成空串：空串会被
  * `<AvatarImage src="">` 当成一次真实的图片请求。
@@ -823,6 +825,15 @@ const joinRequestsResponse: Parser<JoinRequest[]> = {
  * ⚠️ 只判 404，不判 403：本端点压根没有 403（doc:674-676 只列了 404 和 401），
  * 有 403 的是 {@link groupsApi.getGroupQrCode}，那一条是 `qr_show_scope` 门槛，
  * 要原样透出后端文案，**不是**失效态、更不是登出。
+ *
+ * 📌 **本仓目前没有任何 `src` 调用点，这是有意的，别当成漏改删掉。** 它的消费方
+ * 是落地页（扫码 / 群卡片点开）与出码页，而这两个页面在本仓根本不存在：没有二维码
+ * 渲染库、没有 `group_card` 渲染器、也没有那条落地路由。也就是说
+ * {@link groupsApi.getPublicGroupInfo} / {@link groupsApi.getGroupQrCode} 这两个端点
+ * 本身同样只有 api 层和测试在用——谓词无人消费的原因和它的端点无人消费**是同一个**。
+ * 现在把它删掉，等落地页开工时只会被原样重写一遍，而那时"这条 404 是失效态不是
+ * 加载失败"这个结论就得重新考据。它由 `groups.test.ts` 的 404 用例守着（403/500
+ * 认不出来），不是一段没人验证过的死代码。
  */
 export function isGroupNotFound(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 404

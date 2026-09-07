@@ -90,11 +90,21 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
 }
 
 /**
- * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts:312`、
- * `friends.ts:136` 的同名函数逐字同型，同样按那两处的理由独立定义一份。
+ * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts`、`friends.ts`
+ * 里同名的 `absoluteAvatar` 逐字同型，同样按那两处的理由独立定义一份。
  *
  * `null` 与空串统一归一为 `null`（无头像），不兜底成空串：空串会被
  * `<AvatarImage src="">` 当成一次真实的图片请求。
+ *
+ * ---
+ * 📌 **本仓约定：跨文件引用锚在符号名上，不写行号。** 这两处原本写的是
+ * `groups.ts:312` 和 `friends.ts:136`——批 7 往 `groups.ts` 里插了约 110 行，
+ * `absoluteAvatar` 跟着往下漂，那个 `:312` 就静静地指向了别的代码。行号引用在本仓
+ * 是一次插入就失效的**哑引用**：没有编译器、没有 lint、没有测试会告诉你它坏了，
+ * 而读的人会照着它去看一段不相干的代码（本次迁移已经被这样误导过不止一次）。
+ * 符号名跟着符号走，改名有编译器和全文搜索兜底。
+ * （例外：`doc:` / `*.md:` 开头的后端文档行号照旧——那些文件在本仓之外独立版本化，
+ * 是双方约定的坐标；同文件内的行号引用也照旧。）
  */
 const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
 
@@ -109,12 +119,13 @@ const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(
  *
  * ⚠️ 这里的 `'' → null` 是**贴身冗余**，不是防 `<AvatarImage src="">` 的那道防线。
  * 唯一调用点是 `absoluteAvatar(emptyableAvatarPath(...))`，而 `absoluteAvatar` 走的
- * `toAbsoluteApiUrl` 对空串（含纯空白）已经返回 `undefined`（`apiConfig.ts:138`），
+ * `toAbsoluteApiUrl` 对空串（含纯空白）已经返回 `undefined`（`apiConfig.ts` 的
+ * `toAbsoluteApiUrl`，trim 后为空串就 `return undefined`），
  * 再 `?? null` 成 `null` —— 把本行改成 `return value` 全套测试照样绿。留着它，是为了
  * 让函数名（`emptyableAvatarPath`）对自己的返回值说真话、不依赖调用方兜底；
  * "空串不能进 `<AvatarImage>`"这条理由记在 {@link absoluteAvatar} 上，别在这里重复
- * 一遍——两处都写就成了两份会互相漂移的说法（`groups.ts:132-135` 把同一条正确地
- * 归给了 `absoluteAvatar`）。
+ * 一遍——两处都写就成了两份会互相漂移的说法（`groups.ts` 的 `GroupBase` 文档注释
+ * 把同一条正确地归给了 `absoluteAvatar`）。
  */
 function emptyableAvatarPath(payload: Record<string, unknown>, key: string): string | null {
   const value = payload[key]

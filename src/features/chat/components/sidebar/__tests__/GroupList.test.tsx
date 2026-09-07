@@ -153,6 +153,35 @@ afterEach(() => {
 })
 
 describe('GroupList 群邀请 tab 的三态', () => {
+  /**
+   * 加载态此前没有任何断言：把 `loadingInvites ?` 改成 `false ?`，整套 35 条
+   * 一条都不红——请求还在飞的时候界面会安静地渲染成「暂无群邀请」，和
+   * 「确实没有邀请」一模一样。失败/空这一对早就分开了，加载/空这一对没有。
+   *
+   * 断言落在 `data-testid` 上而不是"转圈图标"：这一态没有任何文案，`Loader2`
+   * 也不是这个组件里唯一一个（刷新按钮、申请按钮各有一个），按 class 找会
+   * 找到不相干的那些。
+   */
+  it('请求还在飞：显示加载态，既不显示"暂无群邀请"也不显示错误', async () => {
+    let resolveInvites: (rows: GroupInvitation[]) => void = () => {}
+    getInvitationsMock.mockReturnValueOnce(
+      new Promise<GroupInvitation[]>((resolve) => {
+        resolveInvites = resolve
+      }),
+    )
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+
+    expect(screen.getByTestId('invites-loading')).toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.noInvites')).not.toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.retry')).not.toBeInTheDocument()
+
+    // 落地之后加载态必须让位：三态互斥，不能两态同屏。
+    resolveInvites([])
+    await waitFor(() => expect(screen.getByText('chat.groupList.noInvites')).toBeInTheDocument())
+    expect(screen.queryByTestId('invites-loading')).not.toBeInTheDocument()
+  })
+
   it('请求失败：显示错误文案 + 重试按钮，绝不显示"暂无群邀请"', async () => {
     getInvitationsMock.mockRejectedValueOnce(new Error('网络错误，请稍后重试'))
 
@@ -770,6 +799,28 @@ describe('GroupList「我发出的申请」（GET /api/groups/requests/sent）',
     expect(screen.getByText('chat.groupList.sentStatusPending')).toBeInTheDocument()
     expect(screen.queryByText('chat.groupList.noSentRequests')).not.toBeInTheDocument()
     expect(getSentJoinRequestsMock).toHaveBeenCalledTimes(1)
+  })
+
+  /** 与群邀请那一块同型的洞：`loadingSent ?` 换成 `false ?` 全绿。见那里的注释。 */
+  it('请求还在飞：显示加载态，既不显示"暂无申请"也不显示错误', async () => {
+    let resolveSent: (rows: SentJoinRequest[]) => void = () => {}
+    getSentJoinRequestsMock.mockReturnValueOnce(
+      new Promise<SentJoinRequest[]>((resolve) => {
+        resolveSent = resolve
+      }),
+    )
+
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    expect(screen.getByTestId('sent-requests-loading')).toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.noSentRequests')).not.toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.retry')).not.toBeInTheDocument()
+
+    resolveSent([])
+    await waitFor(() =>
+      expect(screen.getByText('chat.groupList.noSentRequests')).toBeInTheDocument(),
+    )
+    expect(screen.queryByTestId('sent-requests-loading')).not.toBeInTheDocument()
   })
 
   it('请求失败：错误文案 + 重试按钮，绝不显示"暂无申请"', async () => {

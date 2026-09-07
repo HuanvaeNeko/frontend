@@ -860,7 +860,15 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
           </div>
 
           {loadingSent ? (
-            <div className="flex items-center justify-center py-6">
+            // `data-testid` 是这一态**唯一**能被断言的痕迹：加载中只有一个转圈
+            // 图标，没有文案，而失败态与空态各自有一句可 `getByText` 的话。少了它
+            // 这一支就是哑的——把 `loadingSent` 换成 `false`，加载中会安静地渲染成
+            // 「暂无待审核的加群申请」，35 条用例一条都不红。三态必须在 DOM 里
+            // 分得开，不能只有其中两态分得开。
+            <div
+              data-testid="sent-requests-loading"
+              className="flex items-center justify-center py-6"
+            >
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : sentError ? (
@@ -937,7 +945,9 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         </div>
 
         {loadingInvites ? (
-          <div className="flex items-center justify-center h-32">
+          // 同「我发出的申请」那一块：加载态没有任何文案，`data-testid` 是它在
+          // DOM 里唯一的身份。见那里的注释。
+          <div data-testid="invites-loading" className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : invitesError ? (

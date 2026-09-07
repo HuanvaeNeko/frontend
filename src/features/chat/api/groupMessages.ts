@@ -129,7 +129,7 @@ export interface GroupMessageMutationResult {
  * ⚠️ 同样不要把 `file_hash` / `filename` / `content_type` 加进来：后端不返回它们
  * （`群消息.md:591` 写明 file_hash 已从所有接收侧响应撤掉，字段表也没有另两个），
  * 写进校验器会让每一次真实响应都炸。接口与后端的这处分叉是 spec-msg-group 第 8 条，
- * 独立待办；`src/types/models.ts:161-181` 那份重复定义也一并等着收敛。
+ * 独立待办；`src/types/models.ts` 里那份重复的 `GroupMessage` 定义也一并等着收敛。
  */
 const groupMessageRow: Parser<GroupMessage> = {
   parse(input: unknown): GroupMessage {
@@ -305,7 +305,8 @@ export const groupMessagesApi = {
     })
 
     // 业务级失败：落在 `success:true` 的信封里，解包层看不出问题，必须在这里抛，
-    // 否则 ChatWindow.tsx:391 会把消息从本地列表删掉而服务端并没有删。
+    // 否则 `ChatWindow.tsx` 的 `handleDeleteMessage` 会把消息从本地列表删掉，
+    // 而服务端并没有删。
     if (!data.success) {
       throw new Error(data.message)
     }
