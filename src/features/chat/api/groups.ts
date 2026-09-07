@@ -1,12 +1,10 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { type AvatarUploadResult, storageApi } from '@/api/storage'
 import {
   type DiscoveryGroupCard,
   parseDiscoveryGroupCard,
   searchDiscovery,
 } from '@/api/discovery'
-import { ROUTES } from '@/lib/routes'
 import {
   ApiError,
   type Parser,
@@ -15,64 +13,9 @@ import {
   readEnvelopeList,
 } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
+import { fetchWithAuth } from '@/api/authedFetch'
 
 const GROUPS_BASE_URL = `${getApiBaseUrl()}/api/groups`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-// 带自动重试的 fetch 封装
-const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  if (response.status === 401 && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 // ============================================
 // 类型定义
@@ -1064,7 +1007,7 @@ export const groupsApi = {
    *    （doc:288-306，形态逐字相同：相对路径 + `?t=` 缓存戳，出口已补基址）。
    * 2. **权限在第 1 步判**：非群主/管理员在 `upload/request` 就拿 **403**
    *    （doc:285-287），预签名 URL 根本签不出来。403 是常规权限失败，
-   *    不是登录态问题——本模块的 `fetchWithAuth` 与 storage 的那一份都只对 401
+   *    不是登录态问题——共用的 `src/api/authedFetch.ts` 只对 401
    *    做刷新/登出，403 带着后端原文往上抛，调用点直接透出。
    * 3. **10 MB / 格式检查搬进了 storage 那一侧**（三档头像共用）。它是**便利**不是执行：
    *    后端在 `upload/confirm` 合并分片之前还会量一次真实字节（doc:368）。
@@ -1114,7 +1057,7 @@ export const groupsApi = {
    * `GroupManagement` 吞成一句固定的「更新失败」，是本批要修的原始症状。
    *
    * **权限：仅群主**（doc:477「管理员也不行」）。因此 `403` 是这个端点的
-   * 常规失败，不是登录态失效——本文件的 `fetchWithAuth`（:19-61）只在
+   * 常规失败，不是登录态失效——共用的 `src/api/authedFetch.ts` 只在
    * `response.status === 401` 时才会尝试刷新令牌/静默登出，403 原样穿透，
    * 交给 `readEnvelope` 抛成带后端原文的 `ApiError`。（`apiEnvelope.ts` 的
    * `isAuthApiError` 同样把 403 排除在外，但那是 `src/api/apiClient.ts`
@@ -1436,7 +1379,7 @@ export const groupsApi = {
    *
    * 另有一条 403：存量 `member_invite` 邀请在群主关掉 `allow_join_via_referral`
    * 之后不可 accept（doc:749-751 的 ⚠️、doc:1097-1099）。它由 `readEnvelope`
-   * 抛成带 `status` 的 `ApiError`，本文件的 `fetchWithAuth` 只对 401 做刷新/
+   * 抛成带 `status` 的 `ApiError`，共用的 `src/api/authedFetch.ts` 只对 401 做刷新/
    * 登出，403 原样穿透，不会把"这条邀请失效了"变成一次静默登出。
    */
   acceptInvitation: async (requestId: string): Promise<AcceptInvitationResult> => {
