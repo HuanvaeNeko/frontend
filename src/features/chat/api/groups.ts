@@ -77,7 +77,7 @@ export type ShareScope = 'all_members' | 'admins' | 'owner_only'
  * 「搜不搜得到本群」的三档范围（doc:210）。
  *
  * 🔴 最松档叫 `everyone`（任何登录用户），**不是** {@link ShareScope} 的
- * `all_members`（本群全体成员）——doc:205 写明两者「语义方向相反，故有意不同名」，
+ * `all_members`（本群全体成员）——doc:210 写明两者「语义方向相反，故有意不同名」，
  * 给 `search_scope` 传 `all_members` 会被 `400` 拒。两个类型分开写就是为了让
  * 写错的一方在 tsc 里就死掉，不用等后端 `400`。
  */
@@ -134,7 +134,7 @@ export interface GroupBase {
 }
 
 /**
- * `GET /api/groups/{group_id}` 的 `GroupInfo`（字段表 doc:194-216）：
+ * `GET /api/groups/{group_id}` 的 `GroupInfo`（字段表 doc:195-215）：
  * 基础字段 + 入群策略八字段。
  *
  * 八字段写成**必需**：字段表里它们无条件列出，且 {@link groupDetailResponse}
@@ -613,9 +613,12 @@ export const groupsApi = {
    * `GroupManagement` 吞成一句固定的「更新失败」，是本批要修的原始症状。
    *
    * **权限：仅群主**（doc:477「管理员也不行」）。因此 `403` 是这个端点的
-   * 常规失败，不是登录态失效——`isAuthApiError` 只认 401，403 会带着后端原文
-   * 一路抛到调用点（`apiEnvelope.ts` 里 `isAuthApiError` 的 JSDoc 记了原因：
-   * 403 若触发静默登出，用户得到的是「无任何解释的登出」）。
+   * 常规失败，不是登录态失效——本文件的 `fetchWithAuth`（:19-61）只在
+   * `response.status === 401` 时才会尝试刷新令牌/静默登出，403 原样穿透，
+   * 交给 `readEnvelope` 抛成带后端原文的 `ApiError`。（`apiEnvelope.ts` 的
+   * `isAuthApiError` 同样把 403 排除在外，但那是 `src/api/apiClient.ts`
+   * 另一个客户端专用的判据——本文件从不调用它，只是恰好得到同一个结论；
+   * 真正兜住这条路径的是上面这个 401-only 分支，不是 `isAuthApiError`。）
    *
    * 八个字段全部可选，**只发请求体里真正出现的那些**，未出现的保持原值
    * （doc:479-480）。所以这里直接把调用点给的 `patch` 原样序列化，不做

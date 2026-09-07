@@ -346,6 +346,65 @@ describe('GroupManagement 加入申请三态（loadJoinRequests → requestsErro
   })
 })
 
+/**
+ * `loadGroupInfo` 此前是不带绑定的 `catch {}`：`getGroupDetail` 抛出的所有信息
+ * ——后端原文（403「你不是本群成员」、404「群聊不存在」）与
+ * `groupDetailResponse` 逐字段校验失败的精确文案（如
+ * 「join_approval_required 缺失或不是布尔值」）——全部被吞掉，用户和监控看到的
+ * 永远是同一句「加载群信息失败」。这是 `handleUpdateJoinPolicy` 已经修过的
+ * 同一种症状（见那个 describe 块），这里补上对称的覆盖。
+ */
+describe('GroupManagement 群信息加载失败（loadGroupInfo）', () => {
+  beforeEach(() => {
+    groupsApiMock.getMembers.mockResolvedValue({ members: [], total: 0 })
+    groupsApiMock.getNotices.mockResolvedValue([])
+  })
+
+  it('后端错误原文能透出到 toast，不再是固定的"加载群信息失败"', async () => {
+    groupsApiMock.getGroupDetail.mockRejectedValueOnce(
+      Object.assign(new Error('你不是本群成员'), { name: 'ApiError', status: 403 }),
+    )
+
+    render(<GroupManagement groupId="g1" />)
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '你不是本群成员', variant: 'destructive' }),
+      ),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: '加载群信息失败' }),
+    )
+  })
+
+  it('parser 校验错误（字段精确文案）与非 Error 的意外失败弹出不同的文案，不是同一句兜底', async () => {
+    // parser 错误：groups.ts 的运行时校验（例如 joinPolicyOf 里 bool() 拿不到
+    // 布尔值时）抛出的字段精确文案，是一个真正的 Error，message 就是诊断信息本身。
+    groupsApiMock.getGroupDetail.mockRejectedValueOnce(
+      new Error('join_approval_required 缺失或不是布尔值'),
+    )
+
+    const { unmount } = render(<GroupManagement groupId="g1" />)
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'join_approval_required 缺失或不是布尔值' }),
+      ),
+    )
+    unmount()
+
+    // 非 Error 的意外失败（`err instanceof Error` 为 false，模拟一种完全没预料到
+    // 的失败形态）：退到通用兜底文案。这句必须和上面的 parser 精确文案不一样——
+    // 否则两种成因完全不同的失败又会被渲染成同一个画面，就是本发现要修的问题。
+    toastMock.mockReset()
+    groupsApiMock.getGroupDetail.mockRejectedValueOnce('network down')
+    render(<GroupManagement groupId="g2" />)
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '加载群信息失败' }),
+      ),
+    )
+  })
+})
 
 describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八字段 join-policy）', () => {
   beforeEach(() => {
@@ -496,6 +555,85 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
 
     await screen.findByText('群信息')
     expect(screen.queryByText('入群策略')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * 八个控件里只有 `join_approval_required`（上面「拨动开关只发那一个字段」）与
+ * `search_scope`（上面「三档 scope 下拉发的是自己那一个键和选中的档位」）钉住了
+ * 「派发的 patch 用的是哪一个键」。剩下六个此前只在渲染测试里被读值覆盖——
+ * 那能抓住「读错了字段」，抓不住「写错了字段」：把某个控件的
+ * `onCheckedChange`/`onChange` 里的 patch 键换成另一个同类型的合法字段，
+ * `tsc` 与全部 324 条测试都会绿灯，因为两个值都是合法的布尔/枚举，后端照单全收。
+ * 这六条各自断言 `updateJoinPolicy` 被调用时的**精确 patch 对象**，让这种调换
+ * 必然在这里死掉。
+ */
+describe('GroupManagement 入群策略：六个此前未钉住派发键的控件', () => {
+  beforeEach(() => {
+    groupsApiMock.getMembers.mockResolvedValue({ members: [OWNER_MEMBER], total: 1 })
+    groupsApiMock.getNotices.mockResolvedValue([])
+    groupsApiMock.getJoinRequests.mockResolvedValue([])
+    groupsApiMock.updateJoinPolicy.mockResolvedValue(GROUP)
+  })
+
+  it('允许管理员参与审核 拨动只发 admin_can_approve', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.click(screen.getByLabelText(/允许管理员参与审核/))
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { admin_can_approve: false })
+  })
+
+  it('谁能分享群卡片 下拉只发 card_share_scope', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.change(screen.getByLabelText('谁能分享群卡片'), { target: { value: 'owner_only' } })
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { card_share_scope: 'owner_only' })
+  })
+
+  it('谁能展示群二维码 下拉只发 qr_show_scope', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.change(screen.getByLabelText('谁能展示群二维码'), { target: { value: 'admins' } })
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { qr_show_scope: 'admins' })
+  })
+
+  it('允许扫码加群 拨动只发 allow_join_via_qr', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.click(screen.getByLabelText('允许扫码加群'))
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { allow_join_via_qr: false })
+  })
+
+  it('允许搜索群 ID 加群 拨动只发 allow_join_via_search', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.click(screen.getByLabelText('允许搜索群 ID 加群'))
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { allow_join_via_search: false })
+  })
+
+  it('允许好友推荐加群 拨动只发 allow_join_via_referral', async () => {
+    render(<GroupManagement groupId="g1" />)
+    await screen.findByText('入群策略')
+
+    fireEvent.click(screen.getByLabelText(/允许好友推荐加群/))
+
+    await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
+    expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { allow_join_via_referral: false })
   })
 })
 

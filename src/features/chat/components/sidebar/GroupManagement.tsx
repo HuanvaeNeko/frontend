@@ -114,6 +114,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const canApproveJoinRequests = isOwner || (isAdmin && group !== null && group.admin_can_approve)
 
   // 加载数据
+  //
+  // ⚠️ 已知 bug，本批不碰：`isAdmin` 在这里是挂载那一刻的闭包值，那时
+  // `members` 还是空数组 ⇒ 恒为 `false` ⇒ 这个自动加载从不发生，只有
+  // 页签里的「刷新」按钮能触发（第 4 节有完整分析）。留给下一个人修的陷阱：
+  // 页签的可见性已经改用 `canApproveJoinRequests`（群主，或
+  // `admin_can_approve=true` 的管理员），如果照搬同一个量把这里的
+  // `isAdmin` 也换掉，会变成对着一个「有审批权限」的量做闭包修复——
+  // 一个 `admin_can_approve=false` 的管理员本来就不该看到这个页签，也就不该
+  // 触发这次加载；`isAdmin` 换成 `canApproveJoinRequests` 才是对的方向，
+  // 不是随手把 `isAdmin` 从依赖数组里加进去就完事。
   useEffect(() => {
     loadGroupInfo()
     loadMembers()
@@ -124,6 +134,15 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
 
+  /**
+   * 加载群详情。`getGroupDetail` 现在会抛 `ApiError`，文案是后端原文
+   * （403「你不是本群成员」、404「群聊不存在」）或 `groupDetailResponse` 逐字段
+   * 校验失败时的精确文案（如「join_approval_required 缺失或不是布尔值」）——
+   * 旧代码是不带绑定的 `catch {}`，两种信息都被吞掉，用户和排查者看到的永远
+   * 是同一句「加载群信息失败」。与 150 行之外 `handleUpdateJoinPolicy` 修的是
+   * 同一种症状，这里抄同一个修法：能读到 `err.message` 就用它，读不到才退到
+   * 通用兜底。
+   */
   const loadGroupInfo = async () => {
     setLoading(true)
     try {
@@ -131,8 +150,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setGroup(data)
       setNewGroupName(data.group_name)
       setNewDescription(data.group_description || '')
-    } catch {
-      toast({ title: '错误', description: '加载群信息失败', variant: 'destructive' })
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '加载群信息失败',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }

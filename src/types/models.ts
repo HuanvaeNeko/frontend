@@ -104,6 +104,12 @@ export type MemberRole = 'owner' | 'admin' | 'member'
  * 留一个已不存在的类型在共享类型文件里，只会让下一个人以为它还能用。
  * 入群策略八字段**不补到这里**——权威定义在 `api/groups.ts` 的 `JoinPolicy`，
  * 再抄一份就是第二次分叉。
+ *
+ * 🔴 `group_avatar_url` 在这里仍是 `string`，与 `api/groups.ts` 的
+ * `GroupBase.group_avatar_url: string | null`（字段表 doc:202）不一致——同样是
+ * 本文件零 import 的既有宽松，本批没有顺手收紧：收紧它要连带回答
+ * `group_description` 要不要跟着改，那是 `api/groups.ts` 的契约问题，这份
+ * 重复定义不该抢答，以 `api/groups.ts` 为准。
  */
 export interface Group {
   group_id: string
