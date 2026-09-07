@@ -200,3 +200,126 @@ describe('authStore.refreshAccessToken —— 与 login 逐字同构的第二处
     expect(state.isAuthenticated).toBe(false)
   })
 })
+
+/**
+ * 刷新竞态（2026-09-07 线上实锤）：页面加载时 5 个请求来自 4 份不同的 `fetchWithAuth`
+ * 副本，各自发现 token 临期，于是 5 个 `POST /api/auth/refresh` 带着同一个 refresh token
+ * 同时出去；后端每次刷新都轮换一对新 token，5 个响应以任意顺序落进 store，最后写入的那对
+ * 已被后来的轮换作废 → 全部 401 → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
+ *
+ * 九份副本 + wsStore 都直接调 `refreshAccessToken`，所以锁必须在这个漏斗里。
+ */
+describe('authStore.refreshAccessToken —— 并发刷新竞态', () => {
+  const rotated = (n: number) =>
+    ok({
+      success: true,
+      code: 200,
+      data: { access_token: `AT${n}`, refresh_token: `RT${n}`, expires_in: 900 },
+    })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('并发调用只发一次 /refresh，所有调用者共享同一对新 token', async () => {
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    // 请求悬着，保证 5 个调用在第一个完成前全部进入；每次调用给一个新 Response，
+    // 这样没有单飞锁时 5 个调用都能各自成功，失败点落在"发了 5 次"这条断言上，而不是 body 被重复读。
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    fetchMock.mockImplementation(() => gate.then(() => rotated(1)))
+
+    const calls = Array.from({ length: 5 }, () => useAuthStore.getState().refreshAccessToken())
+    release()
+    await Promise.all(calls)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().accessToken).toBe('AT1')
+    expect(useAuthStore.getState().refreshToken).toBe('RT1')
+  })
+
+  it('成功轮换后 10 秒内再次调用不发请求，直接沿用 store 里的新 token', async () => {
+    // 级联场景：用旧 token 发出的请求在轮换完成后收到 401，会再次触发刷新；
+    // 若真的再刷，会把刚拿到的那对 token 又作废，T1 作废 T2、T2 作废 T3 地滚下去。
+    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    fetchMock.mockImplementationOnce(async () => rotated(1))
+
+    await useAuthStore.getState().refreshAccessToken()
+    vi.setSystemTime(new Date('2026-09-07T10:00:05Z'))
+    await useAuthStore.getState().refreshAccessToken()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().accessToken).toBe('AT1')
+  })
+
+  it('10 秒窗口过后再次调用会重新刷新', async () => {
+    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    fetchMock.mockImplementationOnce(async () => rotated(1)).mockImplementationOnce(async () => rotated(2))
+
+    await useAuthStore.getState().refreshAccessToken()
+    vi.setSystemTime(new Date('2026-09-07T10:00:11Z'))
+    await useAuthStore.getState().refreshAccessToken()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(useAuthStore.getState().accessToken).toBe('AT2')
+    expect(useAuthStore.getState().refreshToken).toBe('RT2')
+  })
+
+  it('轮换回来的 token 本身就临期时，10 秒窗口内的再次调用仍会真的刷新', async () => {
+    // 上面三条都用 expires_in: 900，新 token 离 checkTokenExpiry 的 5 分钟阈值很远，
+    // 于是「刚轮换过就跳过」的第三个合取项 `!checkTokenExpiry()` 从没被求值过——
+    // 删掉它，那三条依然全绿。这条把它钉住：后端若签发短于 5 分钟的 token，
+    // 刚拿到手就已经在该续期的区间里，此时跳过会让调用者既拿不到可用 token
+    // 又进不去刷新，10 秒内每个请求都带着临期 token 去换 401。
+    // 「刚轮换过」是用来压级联的，不是用来把自己锁在门外的。
+    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    const shortLived = (n: number) =>
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: `AT${n}`, refresh_token: `RT${n}`, expires_in: 60 },
+      })
+    fetchMock
+      .mockImplementationOnce(async () => shortLived(1))
+      .mockImplementationOnce(async () => shortLived(2))
+
+    await useAuthStore.getState().refreshAccessToken()
+    vi.setSystemTime(new Date('2026-09-07T10:00:05Z'))
+    await useAuthStore.getState().refreshAccessToken()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(useAuthStore.getState().accessToken).toBe('AT2')
+  })
+
+  it('并发刷新失败时只发一次请求、所有调用者收到同一错误、登录态只清一次，之后仍能发起新的刷新', async () => {
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    const clearAuth = vi.fn(useAuthStore.getState().clearAuth)
+    useAuthStore.setState({ clearAuth })
+    fetchMock.mockImplementation(async () =>
+      ok({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
+    )
+
+    const results = await Promise.allSettled([
+      useAuthStore.getState().refreshAccessToken(),
+      useAuthStore.getState().refreshAccessToken(),
+      useAuthStore.getState().refreshAccessToken(),
+    ])
+
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected', 'rejected'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(clearAuth).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+
+    // in-flight 槽位已释放：重新登录后再刷新会发起新的请求
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    fetchMock.mockImplementation(async () => rotated(1))
+    await useAuthStore.getState().refreshAccessToken()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(useAuthStore.getState().accessToken).toBe('AT1')
+  })
+})

@@ -110,6 +110,21 @@ const AUTH_TOKEN_LEGACY_BARE = {
   reason: '后端文档口径冲突：auth 文档:37 是信封，README:217 是裸读，且 README 变更日志未列入 login/refresh，待 curl 实测后删除',
 } as const
 
+/**
+ * 刷新单飞锁：正在进行的 `POST /api/auth/refresh`，并发调用者共享它。
+ * 放在模块级而不是 store state 里：它不该被 persist 落盘，也不该触发订阅者重渲染。
+ */
+let refreshInFlight: Promise<void> | null = null
+
+/** 上一次成功轮换 token 的时刻（毫秒时间戳）；0 = 本次会话内还没轮换过。`clearAuth` 会归零。 */
+let lastRotatedAt = 0
+
+/**
+ * 轮换之后多久以内的再次刷新请求视为「同一批旧 token 请求引发的级联」而直接跳过。
+ * 10 秒远大于一批并发请求的往返时间，又远小于 access token 的 15 分钟有效期。
+ */
+const RECENT_ROTATION_WINDOW_MS = 10_000
+
 // 仅在客户端使用 localStorage，避免 Next.js SSR 报错并保证刷新后正确恢复登录状态
 const safeStorage = {
   getItem: (name: string): string | null => {
@@ -321,51 +336,80 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       refreshAccessToken: async () => {
-        const { refreshToken } = get()
-        const authBaseUrl = getAuthApiUrl()
-        
-        if (!refreshToken) {
-          throw new Error('No refresh token available')
+        const performRefresh = async (): Promise<void> => {
+          const { refreshToken } = get()
+          const authBaseUrl = getAuthApiUrl()
+
+          if (!refreshToken) {
+            throw new Error('No refresh token available')
+          }
+
+          try {
+            const response = await fetch(`${authBaseUrl}/refresh`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                refresh_token: refreshToken,
+              }),
+            })
+
+            // 与 login 走同一个校验器——这两段原本逐字同构，而审计只报了 login。
+            // 漏修这一处的后果比 login 更重：登录失败起码会抛错，刷新失败却是
+            // 「静默把 accessToken 写成 undefined 后正常返回」，此后每个请求都不带
+            // Authorization 头，refreshToken 也被覆写成 undefined 并 persist 落盘，
+            // 401 重试分支（api/auth.ts:42 `&& authStore.refreshToken`）再也进不去。
+            // 它有 13 个调用点（chat / profile / webrtc / storage / wsStore …）。
+            const data = await readEnvelope<AuthTokenPayload>(response, {
+              endpoint: 'POST /api/auth/refresh',
+              fallbackMessage: 'Token 刷新失败',
+              parse: authTokenPayload,
+              legacyBare: AUTH_TOKEN_LEGACY_BARE,
+            })
+
+            set({
+              accessToken: data.access_token,
+              // 不写 `?? refreshToken` 兜底：后端若不回 refresh_token，
+              // 留着旧的会掩盖「刷新语义变了」这件事，而 README:217 的示例明确
+              // 用返回的 refresh_token 覆盖存储，说明它是会回的。缺失时抛错 →
+              // 下面的 catch 走 clearAuth + 跳登录，是可见且正确的降级。
+              refreshToken: data.refresh_token,
+              tokenExpiry: Date.now() + data.expires_in * 1000,
+            })
+            lastRotatedAt = Date.now()
+          } catch (error) {
+            console.error('Token refresh error:', error)
+            get().clearAuth()
+            throw error
+          }
         }
 
-        try {
-          const response = await fetch(`${authBaseUrl}/refresh`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              refresh_token: refreshToken,
-            }),
-          })
+        // 单飞：并发调用共享同一个 in-flight 请求。九份 `fetchWithAuth` 副本
+        // （apiClient / auth / profile / friends / messages / groupMessages / groups /
+        // webrtc / storage）和 wsStore 都直接调到这里，锁只有放在这个漏斗里才对所有人生效。
+        // 2026-09-07 线上实锤：页面加载时 5 个请求来自 4 份副本，各自发现 token 临期，
+        // 5 个 refresh 带着同一个 refresh token 同时出去；后端每次都轮换一对新 token，
+        // 5 个响应以任意顺序落进 store，最后写入的那对已被后来的轮换作废 → 全部 401
+        // → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
+        if (refreshInFlight) return refreshInFlight
 
-          // 与 login 走同一个校验器——这两段原本逐字同构，而审计只报了 login。
-          // 漏修这一处的后果比 login 更重：登录失败起码会抛错，刷新失败却是
-          // 「静默把 accessToken 写成 undefined 后正常返回」，此后每个请求都不带
-          // Authorization 头，refreshToken 也被覆写成 undefined 并 persist 落盘，
-          // 401 重试分支（api/auth.ts:42 `&& authStore.refreshToken`）再也进不去。
-          // 它有 13 个调用点（chat / profile / webrtc / storage / wsStore …）。
-          const data = await readEnvelope<AuthTokenPayload>(response, {
-            endpoint: 'POST /api/auth/refresh',
-            fallbackMessage: 'Token 刷新失败',
-            parse: authTokenPayload,
-            legacyBare: AUTH_TOKEN_LEGACY_BARE,
-          })
-
-          set({
-            accessToken: data.access_token,
-            // 不写 `?? refreshToken` 兜底：后端若不回 refresh_token，
-            // 留着旧的会掩盖「刷新语义变了」这件事，而 README:217 的示例明确
-            // 用返回的 refresh_token 覆盖存储，说明它是会回的。缺失时抛错 →
-            // 下面的 catch 走 clearAuth + 跳登录，是可见且正确的降级。
-            refreshToken: data.refresh_token,
-            tokenExpiry: Date.now() + data.expires_in * 1000,
-          })
-        } catch (error) {
-          console.error('Token refresh error:', error)
-          get().clearAuth()
-          throw error
+        // 刚轮换过就不再刷：用旧 token 发出去的请求会在轮换完成后收到 401，
+        // 再次触发刷新；若真的再刷，会把刚拿到的那对 token 又作废，级联下去。
+        // 这类调用者直接拿 store 里的新 token 重试即可。窗口内且 token 不在临期区间才跳过；
+        // 失败路径不记时间戳，所以刷新失败后再调一定会真的发请求。
+        if (
+          get().accessToken &&
+          Date.now() - lastRotatedAt < RECENT_ROTATION_WINDOW_MS &&
+          !get().checkTokenExpiry()
+        ) {
+          return
         }
+
+        refreshInFlight = performRefresh().finally(() => {
+          refreshInFlight = null
+        })
+        return refreshInFlight
       },
 
       setTokens: ({ accessToken, refreshToken, expiresIn }) => {
@@ -378,6 +422,8 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       clearAuth: () => {
+        // 会话没了，「刚轮换过」这个事实也随之作废；否则下一次登录后 10 秒内的刷新会被误跳过
+        lastRotatedAt = 0
         set({
           accessToken: null,
           refreshToken: null,
