@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { Message } from '@/types'
-import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '../api/messages'
+import {
+  buildFriendConversationId,
+  messagesApi,
+  type SyncConversationRequest,
+  type SyncConversationResponse,
+} from '../api/messages'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { isAuthError } from '@/api/apiClient'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
@@ -395,29 +401,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return []
     }
 
+    // 好友会话的 conversation_id 是**双方**的（`conv-{userA}-{userB}`），推导要用到自己的
+    // user_id。拿不到就没法构造合法请求——这里必须显式失败，不能拿 '' 拼一个
+    // `conv--user456` 出去：那样后端认不出，响应里不含该会话，表现回到"同步成功、0 个会话"，
+    // 也就是这条 bug 修复前的样子。
+    const myUserId = useAuthStore.getState().user?.user_id
+    if (!myUserId) {
+      console.warn('消息同步跳过：尚未拿到当前用户 user_id，无法推导好友会话 ID')
+      return []
+    }
+
     set({ isSyncing: true })
-    
+
     try {
-      // 构建同步请求
-      const syncRequests: SyncConversationRequest[] = conversations.map(conv => ({
-        conversation_id: conv.type === 'friend' 
-          ? `conv-${conv.id}` // 好友会话使用 conv- 前缀
-          : conv.id,          // 群聊直接使用 group_id
-        conversation_type: conv.type === 'friend' ? 'friend' : 'group',
-        last_seq: conv.lastSeq || 0,
-      }))
+      // conversation_id -> 本地会话 id 的反查表，和请求同时建起来。
+      //
+      // 原来的做法是对响应里的 id 做字符串切割（`conv.conversation_id.replace(/^conv-/,'')`），
+      // 对双方形式会得出 `user123-user456` 这种半截串，匹配不到任何本地会话，
+      // updateLastSeq / updateConversation 全部空转且不报错。
+      // 用发出去时就记下的映射反查，既不依赖 id 的内部结构，群会话也走同一条路。
+      const localIdByConversationId = new Map<string, string>()
+
+      const syncRequests: SyncConversationRequest[] = conversations.map(conv => {
+        const conversationId = conv.type === 'friend'
+          ? buildFriendConversationId(myUserId, conv.id)
+          : conv.id // 群聊直接用 group_id（`消息同步.md:106`）
+        localIdByConversationId.set(conversationId, conv.id)
+        return {
+          conversation_id: conversationId,
+          conversation_type: conv.type === 'friend' ? 'friend' : 'group',
+          last_seq: conv.lastSeq || 0,
+        }
+      })
 
       // 调用同步 API
       const result = await messagesApi.syncMessages(syncRequests)
-      
+
       // 更新每个会话的 lastSeq
       for (const conv of result.conversations) {
-        const originalId = conv.conversation_type === 'friend'
-          ? conv.conversation_id.replace(/^conv-/, '')
-          : conv.conversation_id
-        
+        const originalId = localIdByConversationId.get(conv.conversation_id)
+
+        // 响应里出现了我们没请求过的会话 id。多半意味着 conversation_id 的推导口径
+        // 和后端对不上（见 buildFriendConversationId 的 JSDoc：字典序是推断的）。
+        // 跳过并留一条日志——静默 continue 会让口径错误再次变成不可见状态。
+        if (!originalId) {
+          console.warn(
+            '消息同步：响应里的 conversation_id 不在本次请求中，已跳过',
+            conv.conversation_id,
+          )
+          continue
+        }
+
         get().updateLastSeq(originalId, conv.latest_seq)
-        
+
         // 如果有新消息，更新未读计数
         if (conv.messages.length > 0) {
           get().updateConversation(originalId, {

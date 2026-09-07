@@ -1,5 +1,7 @@
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { ROUTES } from '@/lib/routes'
 
 const GROUP_MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/group_messages`
@@ -109,6 +111,73 @@ export interface GetGroupMessagesResponse {
   has_more: boolean
 }
 
+/** `delete` / `recall` 的**业务级**结果，嵌在信封的 `data` 里（`群消息.md:279-287`、:327-335）。 */
+export interface GroupMessageMutationResult {
+  success: boolean
+  message: string
+}
+
+// ============================================
+// 响应校验器（喂给 readEnvelope 的 parse 档）
+// ============================================
+
+/**
+ * 逐条群消息只校验两个**承重**字段，其余原样透传——理由同 `messages.ts` 的
+ * `messageRow`：`message_uuid` 是 React key 与撤回/删除请求体，`send_time` 喂
+ * `format(new Date(...))`。
+ *
+ * ⚠️ 同样不要把 `file_hash` / `filename` / `content_type` 加进来：后端不返回它们
+ * （`群消息.md:591` 写明 file_hash 已从所有接收侧响应撤掉，字段表也没有另两个），
+ * 写进校验器会让每一次真实响应都炸。接口与后端的这处分叉是 spec-msg-group 第 8 条，
+ * 独立待办；`src/types/models.ts:161-181` 那份重复定义也一并等着收敛。
+ */
+const groupMessageRow: Parser<GroupMessage> = {
+  parse(input: unknown): GroupMessage {
+    const row = asRecord(input, 'messages[] 的元素')
+    str(row, 'message_uuid')
+    str(row, 'send_time')
+    return row as unknown as GroupMessage
+  },
+}
+
+const getGroupMessagesResponse: Parser<GetGroupMessagesResponse> = {
+  parse(input: unknown): GetGroupMessagesResponse {
+    const payload = asRecord(input, 'GET /api/group_messages 的 data')
+    return {
+      messages: arr(payload, 'messages').map((row) => groupMessageRow.parse(row)),
+      has_more: bool(payload, 'has_more'),
+    }
+  },
+}
+
+const sendGroupMessageResponse: Parser<SendGroupMessageResponse> = {
+  parse(input: unknown): SendGroupMessageResponse {
+    const payload = asRecord(input, 'POST /api/group_messages 的 data')
+    return {
+      message_uuid: str(payload, 'message_uuid'),
+      send_time: str(payload, 'send_time'),
+      seq: num(payload, 'seq'),
+    }
+  },
+}
+
+/**
+ * `data:{success, message}`。
+ *
+ * 走 `parse` 而不是 `require`：`require` 判定的是"键存在且不为 undefined"，
+ * **`null` 算存在**（`apiEnvelope.ts` 的 `EnvelopeOptions.require` JSDoc），
+ * 于是 `{success:null, message:null}` 会放行——正是这条 bug 换个位置继续踩。
+ */
+const groupMessageMutationResult: Parser<GroupMessageMutationResult> = {
+  parse(input: unknown): GroupMessageMutationResult {
+    const payload = asRecord(input, 'data')
+    return {
+      success: bool(payload, 'success'),
+      message: str(payload, 'message'),
+    }
+  },
+}
+
 // ============================================
 // API 方法
 // ============================================
@@ -126,20 +195,20 @@ export const groupMessagesApi = {
       body: JSON.stringify(request),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '发送群消息失败' }))
-      console.error('发送群消息失败:', error)
-      throw new Error(error.error || '发送群消息失败')
-    }
-
-    const result = await response.json()
-    const data = result.data ?? result
+    // 旧写法有两个叠加的洞：只看 `!response.ok`（HTTP 200 + success:false 当成功），
+    // 以及 `result.data ?? result`（没有 data 键时回退到整个信封，读出三个 undefined
+    // 并当作发送成功返回）。`群消息.md:107-116` 明确带信封，不传 legacyBare。
+    //
+    // 顺带修掉 `error.error || '通用文案'`：readEnvelope 的取值顺序是
+    // message → error → details → 响应体前 200 字符，网关 502 的 HTML 页不再被
+    // `.catch(() => ({error:'发送群消息失败'}))` 抹平成一句通用文案。
+    const data = await readEnvelope<SendGroupMessageResponse>(response, {
+      endpoint: 'POST /api/group_messages',
+      fallbackMessage: '发送群消息失败',
+      parse: sendGroupMessageResponse,
+    })
     console.log('✅ 群消息发送成功:', data.message_uuid)
-    return {
-      message_uuid: data.message_uuid,
-      send_time: data.send_time,
-      seq: data.seq,
-    }
+    return data
   },
 
   /**
@@ -167,18 +236,28 @@ export const groupMessagesApi = {
       method: 'GET',
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '获取群消息失败' }))
-      console.error('获取群消息失败:', error)
-      throw new Error(error.error || '获取群消息失败')
-    }
+    // 注释里那句"后端可能返回 X 或直接 Y"是这条 bug 的自白：形状不确定被当成
+    // 常态接受下来，于是 `Array.isArray(...) ? ... : []` 把任何不匹配都折叠成空列表、
+    // `Boolean(data.has_more)` 折叠成 false，全程不抛错。`群消息.md:191-201` 已经
+    // 坐实了信封，形状不是"可能"，收到裸响应就该炸。
+    const page = await readEnvelope<GetGroupMessagesResponse>(response, {
+      endpoint: 'GET /api/group_messages',
+      fallbackMessage: '获取群消息失败',
+      parse: getGroupMessagesResponse,
+    })
 
-    const result = await response.json()
-    // 后端可能返回 { data: { messages, has_more } } 或直接 { messages, has_more }
-    const data = result.data ?? result
+    // 后端按 DESC 返回（数组最后一条最旧）：`群消息.md:219-227` 的分页示例拿
+    // `messages.data.messages[messages.data.messages.length-1].send_time` 当 before_time。
+    // 消费方一律按 **ASC**（`MessageList` 直接 map 渲染、`chatStore.addMessage` push 到尾部、
+    // `prependMessages` 把更旧的一页拼到头部、`ChatWindow:114` 取 `messages[0]` 当游标）。
+    // 只在这里翻一次，和 `messages.ts` 的私聊路径保持同一口径——两者共用 ChatWindow
+    // 的同一段分页代码，方向必须一致。
+    //
+    // ⚠️ 不要在任何地方断言 `messages.length <= limit`：分页不切相册组，
+    // 服务端会按时间区间补齐整组，一页可能多于 limit 条（`好友消息.md:774`）。
     return {
-      messages: Array.isArray(data.messages) ? data.messages : [],
-      has_more: Boolean(data.has_more),
+      messages: [...page.messages].reverse(),
+      has_more: page.has_more,
     }
   },
 
@@ -187,23 +266,31 @@ export const groupMessagesApi = {
    * DELETE /api/group_messages/delete
    * 请求体: { message_uuid }
    */
-  deleteMessage: async (messageUuid: string): Promise<{ success: boolean; message: string }> => {
+  deleteMessage: async (messageUuid: string): Promise<GroupMessageMutationResult> => {
     console.log('🗑️ 删除群消息:', messageUuid)
     const response = await fetchWithAuth(`${GROUP_MESSAGES_BASE_URL}/delete`, {
       method: 'DELETE',
       body: JSON.stringify({ message_uuid: messageUuid }),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '删除群消息失败' }))
-      console.error('删除群消息失败:', error)
-      throw new Error(error.error || '删除群消息失败')
+    // 这里的 `result.data ?? result` 比别处更阴险：业务级 `success` 嵌在 `data` 里，
+    // 信封顶层**也叫** `success`。回退到信封时 `Boolean(data.success)` 读到的是
+    // 传输级的 `success:true`，`data.message` 落到 `?? '消息已删除'` 兜底文案——
+    // 于是一次业务失败长得和成功一模一样，ChatWindow 照样把消息从本地移除并弹成功 toast。
+    const data = await readEnvelope<GroupMessageMutationResult>(response, {
+      endpoint: 'DELETE /api/group_messages/delete',
+      fallbackMessage: '删除群消息失败',
+      parse: groupMessageMutationResult,
+    })
+
+    // 业务级失败：落在 `success:true` 的信封里，解包层看不出问题，必须在这里抛，
+    // 否则 ChatWindow.tsx:391 会把消息从本地列表删掉而服务端并没有删。
+    if (!data.success) {
+      throw new Error(data.message)
     }
 
-    const result = await response.json()
     console.log('✅ 群消息删除成功')
-    const data = result.data ?? result
-    return { success: Boolean(data.success), message: data.message ?? '消息已删除' }
+    return data
   },
 
   /**
@@ -215,23 +302,28 @@ export const groupMessagesApi = {
    * - 发送者: 只能撤回2分钟内发送的消息
    * - 群主/管理员: 可以撤回任意消息
    */
-  recallMessage: async (messageUuid: string): Promise<{ success: boolean; message: string }> => {
+  recallMessage: async (messageUuid: string): Promise<GroupMessageMutationResult> => {
     console.log('↩️ 撤回群消息:', messageUuid)
     const response = await fetchWithAuth(`${GROUP_MESSAGES_BASE_URL}/recall`, {
       method: 'POST',
       body: JSON.stringify({ message_uuid: messageUuid }),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '撤回群消息失败' }))
-      console.error('撤回群消息失败:', error)
-      throw new Error(error.error || '撤回群消息失败')
+    // 同 deleteMessage：业务级 success 和信封的 success 同名，`?? ` 回退时读到的是后者。
+    // 撤回的两种典型业务失败（超时 400「只能撤回 2 分钟内发送的消息」、权限不足 403，
+    // `群消息.md:343-361`）在旧代码里都会被读成 success:true。
+    const data = await readEnvelope<GroupMessageMutationResult>(response, {
+      endpoint: 'POST /api/group_messages/recall',
+      fallbackMessage: '撤回群消息失败',
+      parse: groupMessageMutationResult,
+    })
+
+    if (!data.success) {
+      throw new Error(data.message)
     }
 
-    const result = await response.json()
     console.log('✅ 群消息撤回成功')
-    const data = result.data ?? result
-    return { success: Boolean(data.success), message: data.message ?? '消息已撤回' }
+    return data
   },
 
   /**
@@ -247,7 +339,10 @@ export const groupMessagesApi = {
       return groupMessagesApi.getMessages(groupId, undefined, limit)
     }
 
-    const oldestTime = messages[messages.length - 1].send_time
+    // 游标取**最旧**那条。getMessages 已在出口把 DESC 归一成 ASC，最旧的是 `messages[0]`。
+    // 本方法目前全仓无调用点（ChatWindow 有自己的同名局部函数），但留着方向相反的
+    // 版本等于埋一个"看起来能用"的雷：拿最新那条当 before_time 会把同一页反复取回来。
+    const oldestTime = messages[0].send_time
     return groupMessagesApi.getMessages(groupId, oldestTime, limit)
   },
 }

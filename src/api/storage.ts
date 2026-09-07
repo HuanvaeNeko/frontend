@@ -1,6 +1,15 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import {
+  asRecord,
+  bool,
+  nullableNum,
+  nullableStr,
+  num,
+  optionalStr,
+  str,
+} from '@/lib/apiParse'
 import { ROUTES } from '@/lib/routes'
 
 /**
@@ -224,60 +233,11 @@ export interface FileListResponse {
  * 校验失败时 `readEnvelope` 会抛 `ApiShapeError` 并上报——**没有任何默认值**。
  */
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-function asRecord(input: unknown, what: string): Record<string, unknown> {
-  if (!isRecord(input)) {
-    throw new Error(`${what} 应为对象，实际是 ${input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input}`)
-  }
-  return input
-}
-
-/** 非空字符串；空串和纯空白都算缺失（`toAbsoluteApiUrl('')` 会返回 undefined）。 */
-function str(payload: Record<string, unknown>, key: string, prefix = ''): string {
-  const value = payload[key]
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${prefix}${key} 缺失或不是非空字符串`)
-  }
-  return value
-}
-
-function num(payload: Record<string, unknown>, key: string, prefix = ''): number {
-  const value = payload[key]
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${prefix}${key} 缺失或不是有限数字`)
-  }
-  return value
-}
-
-/** 文档写明"存在但可为 null"的数字字段：缺键仍然算错，`null` 才是合法的空。 */
-function nullableNum(payload: Record<string, unknown>, key: string): number | null {
-  const value = payload[key]
-  if (value === null) return null
-  return num(payload, key)
-}
-
-function nullableStr(payload: Record<string, unknown>, key: string): string | null {
-  const value = payload[key]
-  if (value === null) return null
-  return str(payload, key)
-}
-
-function bool(payload: Record<string, unknown>, key: string, prefix = ''): boolean {
-  const value = payload[key]
-  if (typeof value !== 'boolean') {
-    throw new Error(`${prefix}${key} 缺失或不是布尔值`)
-  }
-  return value
-}
-
-/** 只在好友/群文件上传时出现，缺席是正常的；出现了就必须是非空字符串。 */
-function optionalStr(payload: Record<string, unknown>, key: string): string | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  return str(payload, key)
-}
+/**
+ * 这些函数原本就地定义在本文件里。messages / groupMessages 成为第三、第四个
+ * 需要它们的模块后提到了 `@/lib/apiParse`——同一个 `str()` 复制三份必然漂移，
+ * 本仓两份 GroupMessage 定义已经分叉过一次，不再重演。行为逐字未变。
+ */
 
 /**
  * `POST /api/storage/upload/request`。
