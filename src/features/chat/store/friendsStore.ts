@@ -50,6 +50,21 @@ const silentRedirectToLogin = () => {
  * 会话失效被报告成"加好友成功"。跳转不是同步中断，rethrow 之后调用方的 catch
  * 照常跑；而且 `silentRedirectToLogin` 在已经处于登录页时什么都不做，
  * 那种情况下 `return` 就是纯粹的谎报。
+ *
+ * ## 钉住它的是哪些用例
+ *
+ * `store/__tests__/friendsStore.test.ts` 的两个 `it.each`：七个 action ×
+ * 两条分支（认证 401 → 仍 reject；403 → 写 `store.error` 且仍 reject）。
+ * **表驱动是必要的，不是风格**：上一版只钉了 4 个点，把
+ * `approveFriendRequest`（也就是上面这段话举的例子本身）换回退化写法，
+ * 那 4 条用例全绿（审阅者在完整套件上复现的是 508 条全绿）。
+ * 现在这 14 个点逐个实测过：任一处退化，对应 action 那条用例必红。
+ *
+ * 注意上面那个例子的**组件那一半没有被钉**：`FriendList.test.tsx` 用
+ * `vi.mock` 把整个 friendsStore 换成了假对象，其 `approveFriendRequest`
+ * 恒 resolve，所以本文件怎么改它都不会红；那边现有的用例只覆盖渲染与
+ * 「点同意时传的是 `request_user_id`」，`handleApprove` 的 toast 分支
+ * （成功弹绿、失败弹红）一条都没测。别把它当成本行的证据。
  */
 const handleApiError = (error: unknown, defaultMessage: string): string | null => {
   if (error instanceof Error && isAuthError(error)) {

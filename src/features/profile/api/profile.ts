@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { isBusiness401Request } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
@@ -40,8 +41,22 @@ const fetchWithAuth = async (
     },
   })
 
-  // 如果 Token 过期，尝试刷新后重试一次
-  if (response.status === 401 && authStore.refreshToken) {
+  // 如果 Token 过期，尝试刷新后重试一次。
+  //
+  // ⚠️ **业务 401 的端点不进这个分支**：`PUT /api/profile/password` 的「旧密码错误」
+  // 也是 401（backend-docs/profile/个人资料管理.md:329-333，:345 复述），它不是会话
+  // 失效。当成会话失效处理的后果，正是这一层要消灭的形态：轮换掉一对 token +
+  // 把同一个错误密码原样重发一遍（可能撞上后端的失败计数）+ 刷新失败时
+  // `clearAuth()` + 跳登录页，而用户只是打错了一次当前密码。
+  //
+  // 判定表在 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`，这里**只调不抄**
+  // （`isBusiness401Request`）——全仓库现在有十处 `fetchWithAuth` 定义（九份模块
+  // 副本 + apiClient 导出的那份），合并之后接手的那份照样调这一个函数即可。
+  //
+  // 代价写明：这类端点上**真的**会话失效不再自动刷新重试，用户会看到一条可见的
+  // 失败提示、重试一次即可（进门处的临期预刷新仍然有效，覆盖了绝大多数过期）。
+  // 可见的错误可恢复，无解释的登出不可恢复。
+  if (response.status === 401 && authStore.refreshToken && !isBusiness401Request(options.method, url)) {
     try {
       await authStore.refreshAccessToken()
       const newHeaders = getAuthHeaders()
@@ -201,8 +216,14 @@ export const profileApi = {
       console.error('修改密码失败:', error)
       // ⚠️ 这个端点的 **401 是业务失败**："旧密码错误"就返回 401，body 为
       // `{"error": "Old password is incorrect"}`（文档 :329-333，:345 复述）。
-      // `endpoint` 字符串必须与 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`
-      // 逐字一致，否则打错一次当前密码就会被静默登出。
+      //
+      // 挡住"打错一次当前密码就被登出"的是**上面 `fetchWithAuth` 的 401 分支**
+      // （`!isBusiness401Request(...)`），不是这里的 `endpoint` 字段：401 响应
+      // 走到这一行时，刷新与重发已经被跳过了。
+      // 这个 `endpoint` 串仍然要与 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`
+      // 逐字一致——它是 `isAuthError` 那一档的入参，今天没有活的消费者
+      // （见该常量注释的「谁真的会读这张表」），但两端不一致会让将来接进
+      // store / `safeApiCall` 的人踩回同一个坑。
       throw new ApiError(error.message || error.error || '修改密码失败', {
         status: response.status,
         endpoint: 'PUT /api/profile/password',

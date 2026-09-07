@@ -50,7 +50,11 @@ beforeEach(() => {
     isAuthenticated: true,
     // refreshToken 置空是刻意的：profile.ts 里那份 fetchWithAuth 收到 401 会先去
     // 打一次 /api/auth/refresh 再重试，把 mockResolvedValueOnce 的顺序整体错开。
-    // 本文件要钉的是「401 响应 → 带状态码的 ApiError」，不是刷新流程本身。
+    // 以下用例要钉的是「401 响应 → 带状态码的 ApiError」，不是刷新流程本身。
+    //
+    // ⚠️ 但**打错密码时真正走的就是那条被跳过的分支**。它由本文件最后一个
+    // describe（「401 刷新重试分支（refreshToken 非空）」）覆盖，那里自己把
+    // refreshToken 设回非空——置空的用例结构上看不见它，别再往这里加。
     refreshToken: null,
     // 远期过期时间：否则进门就会先触发一次预刷新。
     tokenExpiry: Date.now() + 3600_000,
@@ -130,6 +134,81 @@ describe('profileApi.changePassword', () => {
 
     expect((error as ApiError).status).toBe(400)
     expect(isAuthError(error as Error)).toBe(false)
+  })
+})
+
+/**
+ * **打错当前密码时真正执行的那条路径。**
+ *
+ * 上面所有用例的 `refreshToken: null` 把它整条跳过了：`profile.ts` 的
+ * `fetchWithAuth` 见到 401 且 `authStore.refreshToken` 非空时，会
+ * 「刷新 token → 把同一个密码请求原样重发一遍」，刷新失败则 `clearAuth()` +
+ * `location.href = /app/login`。
+ *
+ * `apiClient.isAuthError` 里的 `BUSINESS_401_ENDPOINTS` 那一档**到不了这里**：
+ * 它只在拿到 `ApiError` 之后做分类，而两个 UI 直接 `await profileApi.changePassword`
+ * 并自己 catch，谁也不调 `isAuthError`。所以护栏必须落在这一层，用例也必须打在这一层。
+ */
+describe('profileApi 的 401 刷新重试分支（refreshToken 非空）', () => {
+  const REFRESH_URL = `${getApiBaseUrl()}/api/auth/refresh`
+  const ROTATED = { access_token: 'AT2', refresh_token: 'RT2', expires_in: 3600 }
+
+  beforeEach(() => {
+    useAuthStore.setState({
+      accessToken: 'AT',
+      refreshToken: 'RT',
+      isAuthenticated: true,
+      tokenExpiry: Date.now() + 3600_000,
+    })
+  })
+
+  it('旧密码错误的 401：不刷新、不重发、不轮换 token，也不登出', async () => {
+    // 刷新端点故意 mock 成**会成功**：这样"多打了一次 refresh"不会伪装成网络错误，
+    // 而是如实表现为「3 次请求 + token 轮换成 RT2」。
+    fetchMock.mockImplementation(async (input: string) =>
+      input === REFRESH_URL
+        ? json({ success: true, code: 200, data: ROTATED })
+        : json({ error: 'Old password is incorrect' }, 401),
+    )
+
+    const error = await profileApi
+      .changePassword({ old_password: 'wrong1', new_password: 'newpass456' })
+      .catch((e: unknown) => e)
+
+    // 去掉 profile.ts 401 分支上的 `!isBusiness401Request(...)`，或从 apiClient 的
+    // BUSINESS_401_ENDPOINTS 删掉这个端点 → 下面四行一起变红：
+    // 请求序列变成 [密码, refresh, 密码]（错误密码被重放一次），refreshToken 变成 RT2。
+    expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([`${PROFILE_BASE}/password`])
+    expect(useAuthStore.getState().refreshToken).toBe('RT')
+    expect(useAuthStore.getState().accessToken).toBe('AT')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+
+    // 业务失败照常以**可见错误**的形态抛给 UI（两个组件都在 catch 里弹 destructive toast）
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(401)
+    expect((error as ApiError).message).toBe('Old password is incorrect')
+  })
+
+  it('对照：普通端点（PUT /api/profile）的 401 照旧刷新并重试一次', async () => {
+    // 没有这条，把 401 分支整个关掉也能让上一条变绿。
+    let profileCalls = 0
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === REFRESH_URL) return json({ success: true, code: 200, data: ROTATED })
+      profileCalls += 1
+      return profileCalls === 1
+        ? json({ error: '未认证或 Token 无效' }, 401)
+        : json({ message: 'Profile updated successfully' })
+    })
+
+    const result = await profileApi.updateProfile({ email: 'new@example.com' })
+
+    expect(result.message).toBe('Profile updated successfully')
+    expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+      PROFILE_BASE,
+      REFRESH_URL,
+      PROFILE_BASE,
+    ])
+    expect(useAuthStore.getState().refreshToken).toBe('RT2')
   })
 })
 

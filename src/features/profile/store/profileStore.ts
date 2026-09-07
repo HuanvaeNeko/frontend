@@ -1,10 +1,32 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { profileApi, type UserProfile, type UpdateProfileRequest, type ChangePasswordRequest } from '../api/profile'
+import { profileApi, type UserProfile, type UpdateProfileRequest } from '../api/profile'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 
+/**
+ * profile store 的状态与 action 契约。
+ *
+ * ## 这里为什么**没有** `changePassword`
+ *
+ * 曾经有一个，**零非测试调用点**：两个 UI（`ProfilePage.tsx:99`、
+ * `ProfileModal.tsx:404`）都直接 `await profileApi.changePassword(...)`，
+ * 自己管 `changingPassword` 局部态、自己弹 toast，从不读本 store 的
+ * `isLoading` / `error`。删掉它而不是把 UI 接过来，理由：
+ *
+ * 1. 改密码**不产生本 store 持有的任何状态**——`profile` 一个字段都不变。
+ *    接进来只会让两个 UI 共享全局 `isLoading`，与头像上传/资料加载互相串扰。
+ * 2. 接进来等于给改密码新增一条 `settleError` → `silentRedirectToLogin()` 的
+ *    静默登出路径，而它唯一的护栏是端点白名单。真正的护栏应该、而且已经
+ *    落在更靠下的一层：`profile.ts` 那份 `fetchWithAuth` 的 401 分支
+ *    （`isBusiness401Request`），它对**所有**调用方生效，不管走不走 store。
+ * 3. 留着不用最糟：它让"白名单保护了改密码"这句话在 review 里读起来是真的，
+ *    而实际执行的代码里没有它——本批修的就是这个偏差。
+ *
+ * 要改密码的行为（比如统一 toast 文案），改那两个组件；要改 401 语义，
+ * 改 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`。别在这里重新长出第三条路径。
+ */
 interface ProfileState {
   profile: UserProfile | null
   isLoading: boolean
@@ -14,7 +36,6 @@ interface ProfileState {
   loadProfile: () => Promise<void>
   updateProfile: (updates: UpdateProfileRequest) => Promise<void>
   uploadAvatar: (file: File) => Promise<void>
-  changePassword: (passwordData: ChangePasswordRequest) => Promise<void>
   clearProfile: () => void
   clearError: () => void
 }
@@ -36,7 +57,7 @@ type SetProfileState = (partial: Partial<ProfileState>) => void
 /**
  * 失败收尾：写 store 状态，认证失败时另外跳登录页。
  *
- * **调用方必须紧接着 `throw error`。** 这不是风格问题：四个 action 的认证
+ * **调用方必须紧接着 `throw error`。** 这不是风格问题：三个 action 的认证
  * 分支原来是 `set({isLoading:false}); silentRedirectToLogin(); return`，
  * `return` 让 promise **resolve**，于是
  * `ProfilePage.handleSubmit` 的 `await updateProfile(...)` 顺利往下走，
@@ -109,21 +130,6 @@ export const useProfileStore = create<ProfileState>()(
           }
         } catch (error) {
           settleError(error, '上传头像失败', set)
-          throw error
-        }
-      },
-
-      changePassword: async (passwordData: ChangePasswordRequest) => {
-        set({ isLoading: true, error: null })
-        try {
-          await profileApi.changePassword(passwordData)
-          set({ isLoading: false })
-        } catch (error) {
-          // 旧密码填错是 **401**（`backend-docs/profile/个人资料管理.md:329-333`）。
-          // 它由 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS` 排除在认证错误之外，
-          // 所以走的是下面那条可见分支：store.error 写上「旧密码不正确」的后端原文，
-          // 用户留在页面上重填，而不是被 clearAuth 送去登录页。
-          settleError(error, '修改密码失败', set)
           throw error
         }
       },

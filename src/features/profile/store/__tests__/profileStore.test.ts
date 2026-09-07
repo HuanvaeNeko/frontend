@@ -6,7 +6,7 @@ import { profileApi } from '../../api/profile'
 import { useProfileStore } from '../profileStore'
 
 /**
- * 四个 action 的失败出口。
+ * 三个 action 的失败出口。
  *
  * 修复前，认证分支是
  * `set({isLoading:false}); silentRedirectToLogin(); return` —— **`return`**。
@@ -28,14 +28,6 @@ const validationError = () =>
 
 const sessionExpired = (endpoint: string) =>
   new ApiError('未认证或 Token 无效', { status: 401, code: 401, endpoint })
-
-const wrongOldPassword = () =>
-  // backend-docs/profile/个人资料管理.md:329-333，逐字。
-  new ApiError('Old password is incorrect', {
-    status: 401,
-    code: 401,
-    endpoint: 'PUT /api/profile/password',
-  })
 
 const replaceSpy = vi.fn()
 
@@ -160,28 +152,15 @@ describe('profileStore.uploadAvatar', () => {
   })
 })
 
-describe('profileStore.changePassword', () => {
-  it('旧密码填错（401）不登出：留在页面上重填，错误可见', async () => {
-    vi.spyOn(profileApi, 'changePassword').mockRejectedValue(wrongOldPassword())
-
-    await expect(
-      useProfileStore.getState().changePassword({ old_password: 'wrong1', new_password: 'newpass456' }),
-    ).rejects.toThrow('Old password is incorrect')
-
-    expect(useProfileStore.getState().error).toBe('Old password is incorrect')
-    // 从 apiClient 的 BUSINESS_401_ENDPOINTS 删掉这个端点 → 下面两行变红。
-    expect(loggedIn()).toBe(true)
-    expect(replaceSpy).not.toHaveBeenCalled()
-  })
-
-  it('真的会话失效时仍然跳登录页且 reject', async () => {
-    vi.spyOn(profileApi, 'changePassword').mockRejectedValue(new Error('No refresh token available'))
-
-    await expect(
-      useProfileStore.getState().changePassword({ old_password: 'oldpass123', new_password: 'newpass456' }),
-    ).rejects.toThrow('No refresh token available')
-
-    expect(loggedIn()).toBe(false)
-    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
-  })
-})
+/**
+ * 本文件曾有一个 `describe('profileStore.changePassword')`，随该 action 一起删除。
+ *
+ * 它测的是一条**没有调用方**的路径：两个 UI 都直接 `await profileApi.changePassword`
+ * （`ProfilePage.tsx:99` / `ProfileModal.tsx:404`），从不经过本 store。删除的理由写在
+ * `profileStore.ts` 顶部「这里为什么没有 changePassword」。
+ *
+ * 它原本声称钉住的两件事，现在钉在真实路径上：
+ * - 「旧密码错误不导致登出」→ `profile/api/__tests__/profile.test.ts` 的
+ *   「旧密码错误不刷新、不重发、不轮换 token」（打的是真实 `fetch` 序列）；
+ * - 「端点串与白名单一致」→ 同文件「端点字段可被白名单识别」。
+ */

@@ -546,9 +546,11 @@ export function unwrapEnvelope<T>(
  * - `groups/群聊管理.md`：全模块统一口径「群存在但调用者无权 ⇒ `403`」；
  * - `profile/个人资料管理.md`：`group_avatar` 且调用者不是群主/管理员 ⇒ `403`。
  *
- * `isAuthError` 的六个消费点全部会 `silentRedirectToLogin()`
- * （`clearAuth()` + `location.replace('/login')`，不弹任何提示）或只留一句
- * `console.warn`。若 403 落进来，用户点开一个已失去权限的文件，得到的是
+ * `isAuthError` 判真的后果：`profileStore.settleError`（三个 action 共用）与
+ * `friendsStore.handleApiError`（七个 action 共用）会 `silentRedirectToLogin()`
+ * （`clearAuth()` + `location.replace('/login')`，不弹任何提示），
+ * `chatStore.syncMessages` 则把 `console.error` 降级成 `console.warn`。
+ * 若 403 落进来，用户点开一个已失去权限的文件，得到的是
  * **无任何解释的登出**——正是这一层要消灭的失败形态。
  *
  * 403 排除之后，`isAuthError` 见到非 401 的 `ApiError` 就地判假，
@@ -557,7 +559,9 @@ export function unwrapEnvelope<T>(
  * ⚠️ 反过来也不成立：**401 也不必然是会话失效**。`PUT /api/profile/password`
  * 的"旧密码错误"就是 401（`backend-docs/profile/个人资料管理.md:329-333`）。
  * 这类端点在 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS` 里逐条排除，
- * 本函数保持"纯状态码判断"的语义不变。
+ * 本函数保持"纯状态码判断"的语义不变。真正**在运行时**用到那张表的是各份
+ * `fetchWithAuth` 的 401 分支（`isBusiness401Request`，避免"打错密码 →
+ * 刷新 token 并重发"），不是本函数下游的分类。
  */
 export function isAuthApiError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 401

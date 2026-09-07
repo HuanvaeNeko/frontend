@@ -28,8 +28,8 @@ let refreshPromise: Promise<boolean> | null = null
  *
  * 这里原本是一张关键词表（`'token'` / `'无效'` / `'过期'` / `'invalid'` /
  * `'登录'` / `'认证'` …）配 `message.includes(keyword)`，也就是拿**后端任意
- * 一句话**当分类依据。而 `isAuthError` 判真 = 用户得不到任何解释
- * （六个消费点全是静默路径，见下方 `isAuthError` 的注释），于是：
+ * 一句话**当分类依据。而 `isAuthError` 判真 = 用户基本得不到任何解释
+ * （消费点见下方 `isAuthError` 的注释），于是：
  *
  *   `PUT /api/profile` 的校验失败文案，逐字是
  *   `"Validation error: email: Invalid email format"`
@@ -67,46 +67,84 @@ const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
  *
  * 「401 ⇒ 会话失效」在本后端有写在文档正文里的反例：
  *
- * - `PUT /api/profile/password`：**旧密码填错返回 401**，body 是
- *   `{"error": "Old password is incorrect"}`
- *   （`backend-docs/profile/个人资料管理.md:329-333`；同页 :345 又写了一遍
- *   「旧密码验证失败返回 401 状态码」）。若只按状态码判，用户**打错一次
- *   当前密码就被静默登出**——与这一层刚消灭掉的 403 静默登出是同一形态。
- * - 旁证（暂时到不了本分类器，webrtc 侧没有接 `isAuthError`）：
+ * - `PUT /api/profile/password`（`backend-docs/profile/个人资料管理.md:288`
+ *   的「### 4. 修改密码（受保护）」一节，端点行 :290）：**旧密码填错返回 401**，
+ *   body 是 `{"error": "Old password is incorrect"}`（同节 :329-333；:345 又写了
+ *   一遍「旧密码验证失败返回 401 状态码」）。
+ * - 旁证（两个分类器都到不了，webrtc 侧谁都没接）：
  *   `POST /api/webrtc/rooms/{id}/join` 的**房间密码错误也是 401**
  *   （`backend-docs/webrtc/WebRTC房间.md:228` 错误码表：`| 401 | 密码错误 |`）。
  *   列出来是为了说明"401 不等于会话失效"在这个后端不是孤例。
  *
- * 表里的字符串必须与 `ApiError.endpoint` 逐字一致。唯一来源是
- * `src/features/profile/api/profile.ts` 里 `changePassword` 抛的那个
- * `endpoint: 'PUT /api/profile/password'`。
+ * ## 谁真的会读这张表（别再把第 2 条当防线）
  *
- * **钉住两端一致性的是线级用例**
- * `src/features/profile/api/__tests__/profile.test.ts` 的
- * 「旧密码错误的 401 抛 ApiError，端点字段可被白名单识别」：它 mock 的是
- * 真实 fetch 响应，端点字符串任一端写错都会红（已实测：把 profile.ts 里改成
- * `.../passwords` → 该用例变红）。
- * `profileStore` 那条同名用例是手工构造 `ApiError` 的，只能钉住**本表**
- * 被删掉的情况（同样实测过），钉不住端点串的笔误——别把它当成两端的证据。
+ * 1. **`src/features/profile/api/profile.ts` 那份 `fetchWithAuth` 的 401 分支
+ *    （经 {@link isBusiness401Request}）——打错密码时唯一真正执行到的代码。**
+ *    它见到 401 会「刷新 token → 把同一个密码请求原样重发一遍」，刷新失败则
+ *    `clearAuth()` + `location.href = /app/login`。不查这张表，一次打错当前密码
+ *    = 轮换掉一对 token + 向后端重放一次错误密码（可能撞上后端的失败计数）
+ *    + 刷新失败时无解释登出。
+ * 2. `isAuthError` —— 只兜「已经拿到 `ApiError` 之后」的分类。
+ *    **今天没有任何活路径能把 `PUT /api/profile/password` 的 `ApiError` 送进来**：
+ *    两个 UI（`ProfilePage.tsx` / `ProfileModal.tsx`）都直接
+ *    `await profileApi.changePassword(...)` 并自己弹 destructive toast，
+ *    不经过 `isAuthError` 的任何消费点；原先唯一会经过的
+ *    `profileStore.changePassword` 是零调用点的死代码，已随本批删除。
+ *    这一档保留下来，是为了「将来谁把这个端点接进 store / `safeApiCall` 时
+ *    不必重新发现这条规则」，**不是当下拦住静默登出的那道防线**。
+ *
+ * 表里的字符串必须与 `ApiError.endpoint`、以及「方法 + URL 的 pathname」
+ * 两侧都逐字一致，两侧各有一条用例钉住（都在
+ * `src/features/profile/api/__tests__/profile.test.ts`）：
+ * - 端点串一致：「旧密码错误的 401 抛 ApiError，端点字段可被白名单识别」——
+ *   实测把 `profile.ts` 的抛出点改成 `.../passwords` 会红；
+ * - 表与真实请求一致：「旧密码错误不刷新、不重发、不轮换 token」——
+ *   实测删掉本表这一项会变成 3 次 fetch + token 轮换 → 红。
  */
 const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/password'])
 
 /**
+ * 这个**请求**（方法 + 路径）是不是业务 401 端点。
+ *
+ * 给各份 `fetchWithAuth` 副本在 401 分支上用：那时手里只有 `url` 与
+ * `options.method`，还没有 `ApiError`，没法走 `isAuthError`。
+ * **表只此一张**，副本里不要再抄一份字符串；正在进行的「多份 `fetchWithAuth`
+ * 合一」也只要照样调这一个函数即可。
+ *
+ * `url` 绝对地址或相对路径都行，只比较 pathname（query / hash 不参与）；
+ * 解析不出来就判假——判假 = 维持原来的刷新重试行为，不会凭空多出一条静默路径。
+ */
+export const isBusiness401Request = (method: string | undefined, url: string): boolean => {
+  let pathname: string
+  try {
+    pathname = new URL(url, BASE_URL).pathname
+  } catch {
+    return false
+  }
+  return BUSINESS_401_ENDPOINTS.has(`${(method ?? 'GET').toUpperCase()} ${pathname}`)
+}
+
+/**
  * 判断是否是认证相关的错误。
  *
- * **判真 = 用户看不到任何解释**：六个消费点全是静默路径——
- * `profileStore` 四个 action 与 `friendsStore.handleApiError` 走
- * `silentRedirectToLogin()`（`clearAuth()` + `location.replace('/login')`，
- * 不弹提示），`chatStore.syncMessages` 只留一句 `console.warn`。
+ * **判真基本等于用户看不到任何解释**，三个消费点：
+ * - `profileStore.settleError`（`loadProfile` / `updateProfile` / `uploadAvatar`
+ *   三个 action 共用）与 `friendsStore.handleApiError`（七个 action 共用）
+ *   走 `silentRedirectToLogin()`（`clearAuth()` + `location.replace('/login')`，
+ *   不弹任何提示）；
+ * - `chatStore.syncMessages` 判真后只是把 `console.error` 降级成 `console.warn`，
+ *   两条分支都 `throw`——它是唯一一个判真不静默的消费点。
  * 所以宁可漏判（错误可见地抛给用户）也不能误判。
- * （本文件的 `safeApiCall` 是第七处调用，但它全仓库零调用点，
- * 不算在"六个"里；它判真后 `return null`，同样是静默形态。）
+ * （本文件的 `safeApiCall` 是第四处调用，但它全仓库零调用点，
+ * 不算在"三个"里；它判真后 `return null`，同样是静默形态。）
  *
  * 三档，从可靠到不可靠：
  * 1. `AuthenticationError` —— 本文件自己抛的，最可信。
  * 2. `ApiError` —— 带真实 HTTP 状态码。**有状态码就只看状态码，一个字都不猜**：
  *    - 401 判真（`isAuthApiError`，401-only 的理由见它的注释），
- *      但 `BUSINESS_401_ENDPOINTS` 里的端点除外；
+ *      但 `BUSINESS_401_ENDPOINTS` 里的端点除外——**这条排除今天没有活的
+ *      生产者**（改密码的真实路径在 `profile.ts` 的 401 分支上，见
+ *      `BUSINESS_401_ENDPOINTS` 注释的「谁真的会读这张表」）；
  *    - **其余状态码一律判假并就地返回**，不再落到第 3 档。
  *      这一步是本次修复的要害：`PUT /api/profile` 的 400 校验错误
  *      正是在这里被挡下的，而不是靠"关键词表里恰好没有那个词"。

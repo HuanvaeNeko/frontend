@@ -416,7 +416,11 @@ describe('isAuthApiError', () => {
     expect(isAuthApiError(denied)).toBe(false)
   })
 
-  it('其它状态码和非 ApiError 为假（apiClient 仍回落到关键词匹配）', () => {
+  // 用例名原来写的是「apiClient 仍回落到关键词匹配」——那一档已经删了。
+  // `isAuthError` 现在见到 `ApiError` 就地按状态码判完，非 `ApiError` 只与
+  // `FRONTEND_AUTH_SENTINELS`（两条前端自己写死的哨兵）整串相等比较，
+  // 不再做任何子串匹配。留着旧名字等于告诉读者关键词表还在。
+  it('其它状态码和非 ApiError 为假（都不是 401 的 ApiError）', () => {
     expect(isAuthApiError(new ApiError('x', { status: 500, endpoint: 'GET /x' }))).toBe(false)
     expect(isAuthApiError(new Error('token 已过期'))).toBe(false)
     expect(isAuthApiError('token 已过期')).toBe(false)

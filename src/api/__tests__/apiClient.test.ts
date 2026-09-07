@@ -2,15 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { friendsApi } from '@/features/chat/api/friends'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
-import { AuthenticationError, isAuthError } from '../apiClient'
+import { getApiBaseUrl } from '@/lib/apiConfig'
+import { AuthenticationError, isAuthError, isBusiness401Request } from '../apiClient'
 
 /**
- * `isAuthError` 的六个消费点全部是**静默**路径：
- * `friendsStore` / `profileStore` 走 `silentRedirectToLogin()`
- * （`clearAuth()` + `location.replace('/login')`，不弹任何提示），
- * `chatStore` 只留一句 `console.warn`。
+ * `isAuthError` 的消费点：`friendsStore.handleApiError`（七个 action 共用）与
+ * `profileStore.settleError`（三个 action 共用）判真后走 `silentRedirectToLogin()`
+ * （`clearAuth()` + `location.replace('/login')`，不弹任何提示）；
+ * `chatStore.syncMessages` 判真只是把 `console.error` 降级成 `console.warn`。
  *
- * 所以这个函数判真 = 用户看不到任何解释。它必须只对**真正的会话失效**为真。
+ * 所以这个函数判真基本等于用户看不到任何解释。它必须只对**真正的会话失效**为真。
  */
 describe('isAuthError —— 有状态码就只看状态码', () => {
   it('400 校验失败不再被判成认证错误（这就是那条含 invalid 的文案）', () => {
@@ -60,8 +61,14 @@ describe('isAuthError —— 有状态码就只看状态码', () => {
     // backend-docs/profile/个人资料管理.md:329-333：
     //   旧密码错误（401）：{ "error": "Old password is incorrect" }
     // 同页 :345 复述「旧密码验证失败返回 401 状态码」。
-    // 若只按状态码判，用户打错一次当前密码就会被 clearAuth 静默登出。
     // 从 BUSINESS_401_ENDPOINTS 里删掉这个端点 → 这条立刻红。
+    //
+    // ⚠️ 别把这条读成"用户因此不会被静默登出"：`isAuthError` 这一档今天**没有
+    // 活的生产者**（两个 UI 直接调 `profileApi.changePassword` 并自己 catch）。
+    // 真正拦住"打错密码 → 刷新 + 重发 + 登出"的是 `profile.ts` 的 401 分支，
+    // 钉它的用例在 `features/profile/api/__tests__/profile.test.ts`。
+    // 这条钉的是分类器的契约本身：将来谁把这个端点接进 store / safeApiCall，
+    // 分类结果必须仍然是"不是会话失效"。
     const wrongPassword = new ApiError('Old password is incorrect', {
       status: 401,
       code: 401,
@@ -87,6 +94,34 @@ describe('isAuthError —— 有状态码就只看状态码', () => {
       endpoint: 'GET /api/friends',
     })
     expect(isAuthError(shape)).toBe(false)
+  })
+})
+
+/**
+ * `isBusiness401Request` —— 各份 `fetchWithAuth` 在 401 分支上真正查的那个函数。
+ * 它比 `isAuthError` 更早一步：那时手里只有 `url` 和 `options.method`。
+ * 这里钉的是"怎么算命中"的契约；命中之后的行为（不刷新、不重发、不轮换 token）
+ * 由 `features/profile/api/__tests__/profile.test.ts` 打真实 fetch 序列来钉。
+ */
+describe('isBusiness401Request', () => {
+  const BASE = getApiBaseUrl()
+
+  it('方法 + pathname 都对才命中；绝对地址、相对路径、带 query/hash 都认', () => {
+    expect(isBusiness401Request('PUT', `${BASE}/api/profile/password`)).toBe(true)
+    expect(isBusiness401Request('put', '/api/profile/password')).toBe(true)
+    expect(isBusiness401Request('PUT', `${BASE}/api/profile/password?a=1#x`)).toBe(true)
+  })
+
+  it('方法不同不命中', () => {
+    expect(isBusiness401Request('GET', `${BASE}/api/profile/password`)).toBe(false)
+    // RequestInit.method 可省略，语义是 GET。
+    expect(isBusiness401Request(undefined, `${BASE}/api/profile/password`)).toBe(false)
+  })
+
+  it('路径不同不命中 —— 否则整个 profile 模块会一起失去 401 刷新重试', () => {
+    expect(isBusiness401Request('PUT', `${BASE}/api/profile`)).toBe(false)
+    expect(isBusiness401Request('PUT', `${BASE}/api/profile/passwords`)).toBe(false)
+    expect(isBusiness401Request('GET', `${BASE}/api/friends`)).toBe(false)
   })
 })
 
