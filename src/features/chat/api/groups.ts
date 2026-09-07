@@ -97,15 +97,6 @@ export interface GroupMember {
   muted_until: string | null
 }
 
-export interface InviteCode {
-  id: string
-  code: string
-  code_type: 'direct' | 'normal'
-  expires_at: string
-  max_uses?: number
-  used_count?: number
-}
-
 export interface GroupNotice {
   id: string
   title: string
@@ -553,90 +544,6 @@ export const groupsApi = {
     }
 
     console.log('✅ 已解除禁言')
-  },
-
-  // ==========================================
-  // 邀请码管理
-  // ==========================================
-
-  /**
-   * 生成邀请码
-   * POST /api/groups/{group_id}/invite-codes
-   */
-  createInviteCode: async (groupId: string, options?: {
-    max_uses?: number
-    expires_in_hours?: number
-  }): Promise<InviteCode> => {
-    console.log('🔗 生成邀请码:', groupId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes`, {
-      method: 'POST',
-      body: JSON.stringify(options || {}),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '生成邀请码失败' }))
-      throw new Error(error.error || '生成邀请码失败')
-    }
-
-    const result = await response.json()
-    console.log('✅ 邀请码生成成功:', result.data.code)
-    return result.data
-  },
-
-  /**
-   * 获取邀请码列表
-   * GET /api/groups/{group_id}/invite-codes
-   */
-  getInviteCodes: async (groupId: string): Promise<InviteCode[]> => {
-    console.log('📋 获取邀请码列表:', groupId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes`, {
-      method: 'GET',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '获取邀请码列表失败' }))
-      throw new Error(error.error || '获取邀请码列表失败')
-    }
-
-    const result = await response.json()
-    return result.data || []
-  },
-
-  /**
-   * 撤销邀请码
-   * DELETE /api/groups/{group_id}/invite-codes/{code_id}
-   */
-  revokeInviteCode: async (groupId: string, codeId: string): Promise<void> => {
-    console.log('🗑️ 撤销邀请码:', groupId, codeId)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite_codes/${codeId}`, {
-      method: 'DELETE',
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '撤销邀请码失败' }))
-      throw new Error(error.error || '撤销邀请码失败')
-    }
-
-    console.log('✅ 邀请码已撤销')
-  },
-
-  /**
-   * 通过邀请码入群
-   * POST /api/groups/join-by-code
-   */
-  joinByCode: async (code: string): Promise<void> => {
-    console.log('🔗 通过邀请码入群:', code)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/join_by_code`, {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '入群失败' }))
-      throw new Error(error.error || '入群失败')
-    }
-
-    console.log('✅ 已成功加入群聊')
   },
 
   // ==========================================

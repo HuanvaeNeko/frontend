@@ -8,7 +8,6 @@ import {
   Plus,
   Loader2,
   Search,
-  Link,
   Check,
   X,
   RefreshCw,
@@ -97,8 +96,6 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const [submitting, setSubmitting] = useState(false)
 
   // 加入群聊状态
-  const [inviteCode, setInviteCode] = useState('')
-  const [joiningByCode, setJoiningByCode] = useState(false)
   const [searchGroupId, setSearchGroupId] = useState('')
   const [searchingGroup, setSearchingGroup] = useState(false)
   const [searchResult, setSearchResult] = useState<{
@@ -192,37 +189,6 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   }
 
 
-
-  // 通过邀请码加入
-  const handleJoinByCode = async () => {
-    if (!inviteCode.trim()) {
-      toast({
-        title: t('chat.groupList.error'),
-        description: t('chat.groupList.enterInviteCode'),
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setJoiningByCode(true)
-    try {
-      await groupsApi.joinByCode(inviteCode.trim())
-      toast({
-        title: t('chat.groupList.success'),
-        description: t('chat.groupList.joinSuccess'),
-      })
-      setInviteCode('')
-      loadMyGroups()
-    } catch (error) {
-      toast({
-        title: t('chat.groupList.failed'),
-        description: error instanceof Error ? error.message : t('chat.groupList.joinFailed'),
-        variant: 'destructive',
-      })
-    } finally {
-      setJoiningByCode(false)
-    }
-  }
 
   // 搜索群聊
   const handleSearchGroup = async () => {
@@ -522,31 +488,6 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   if (subTab === 'join') {
     return (
       <div className="flex flex-col h-full p-4 space-y-6">
-        {/* 通过邀请码加入 */}
-        <div className="p-4 rounded-xl space-y-3 border bg-card">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Link className="h-4 w-4" />
-            {t('chat.groupList.joinByInviteCode')}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              placeholder={t('chat.groupList.enterInviteCodePlaceholder')}
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-              className="flex-1 h-10 font-mono"
-              maxLength={10}
-            />
-            <Button
-              className="h-10 px-5"
-              onClick={handleJoinByCode}
-              disabled={joiningByCode || !inviteCode.trim()}
-            >
-              {joiningByCode ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.join')}
-            </Button>
-          </div>
-        </div>
-
         {/* 搜索群聊 */}
         <div className="p-4 rounded-xl space-y-3 border bg-card">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">

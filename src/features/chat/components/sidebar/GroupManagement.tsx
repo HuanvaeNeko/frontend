@@ -9,8 +9,6 @@ import {
   UserMinus,
   VolumeX,
   Volume2,
-  Link,
-  Copy,
   Check,
   Trash2,
   Edit3,
@@ -30,7 +28,6 @@ import {
   type Group,
   type GroupMember,
   type GroupNotice,
-  type InviteCode,
   type JoinMode,
   type JoinRequest
 } from '../../api/groups'
@@ -59,23 +56,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const [notices, setNotices] = useState<GroupNotice[]>([])
   const [loadingNotices, setLoadingNotices] = useState(false)
 
-  // 邀请码
-  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([])
-  const [loadingCodes, setLoadingCodes] = useState(false)
-
   // 加入请求
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
   const [processingRequest, setProcessingRequest] = useState<string | null>(null)
 
   // UI 状态
-  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'notices' | 'codes' | 'requests'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'notices' | 'requests'>('info')
   const [editingName, setEditingName] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [editingDescription, setEditingDescription] = useState(false)
   const [newDescription, setNewDescription] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
   // 弹窗状态
   const [showInviteDialog, setShowInviteDialog] = useState(false)
@@ -87,11 +79,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const [noticeContent, setNoticeContent] = useState('')
   const [noticePinned, setNoticePinned] = useState(false)
   const [creatingNotice, setCreatingNotice] = useState(false)
-
-  const [showCodeDialog, setShowCodeDialog] = useState(false)
-  const [codeMaxUses, setCodeMaxUses] = useState(10)
-  const [codeExpireHours, setCodeExpireHours] = useState(24)
-  const [generatingCode, setGeneratingCode] = useState(false)
 
   // 成员操作
   const [selectedMember, setSelectedMember] = useState<GroupMember | null>(null)
@@ -110,7 +97,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     loadMembers()
     loadNotices()
     if (isAdmin) {
-      loadInviteCodes()
       loadJoinRequests()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,18 +137,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       console.error('加载公告失败:', err)
     } finally {
       setLoadingNotices(false)
-    }
-  }
-
-  const loadInviteCodes = async () => {
-    setLoadingCodes(true)
-    try {
-      const data = await groupsApi.getInviteCodes(groupId)
-      setInviteCodes(data)
-    } catch (err) {
-      console.error('加载邀请码失败:', err)
-    } finally {
-      setLoadingCodes(false)
     }
   }
 
@@ -388,40 +362,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
-  // 邀请码操作
-  const handleGenerateCode = async () => {
-    setGeneratingCode(true)
-    try {
-      const code = await groupsApi.createInviteCode(groupId, {
-        max_uses: codeMaxUses,
-        expires_in_hours: codeExpireHours
-      })
-      setInviteCodes(prev => [code, ...prev])
-      toast({ title: '成功', description: `邀请码: ${code.code}` })
-      setShowCodeDialog(false)
-    } catch {
-      toast({ title: '错误', description: '生成失败', variant: 'destructive' })
-    } finally {
-      setGeneratingCode(false)
-    }
-  }
-
-  const handleRevokeCode = async (codeId: string) => {
-    try {
-      await groupsApi.revokeInviteCode(groupId, codeId)
-      setInviteCodes(prev => prev.filter(c => c.id !== codeId))
-      toast({ title: '成功', description: '邀请码已撤销' })
-    } catch {
-      toast({ title: '错误', description: '撤销失败', variant: 'destructive' })
-    }
-  }
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code)
-    setCopiedCode(code)
-    setTimeout(() => setCopiedCode(null), 2000)
-  }
-
   const getAvatarColor = (name: string) => {
     const colors = [
       'bg-primary', 'bg-primary/90', 'bg-primary/80', 'bg-primary/70',
@@ -464,7 +404,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           { key: 'info', label: '基本信息', icon: Settings, show: true },
           { key: 'members', label: '成员管理', icon: Users, show: true },
           { key: 'notices', label: '群公告', icon: Bell, show: true },
-          { key: 'codes', label: '邀请码', icon: Link, show: true },
           { key: 'requests', label: '加入申请', icon: UserPlus, show: isAdmin, badge: joinRequests.length }
         ].filter(tab => tab.show).map(tab => (
           <button
@@ -873,70 +812,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           </div>
         )}
 
-        {/* 邀请码 */}
-        {activeTab === 'codes' && (
-          <div className="space-y-4">
-            <Button className="w-full gap-2" onClick={() => setShowCodeDialog(true)}>
-              <Plus className="h-4 w-4" />
-              生成邀请码
-            </Button>
-
-            {loadingCodes ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : inviteCodes.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无邀请码</p>
-            ) : (
-              <div className="space-y-2">
-                {inviteCodes.map(code => (
-                  <Card key={code.id}>
-                    <CardContent className="pt-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-lg font-bold">{code.code}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              code.code_type === 'direct' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {code.code_type === 'direct' ? '直接入群' : '需审核'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            有效期至: {new Date(code.expires_at).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => copyCode(code.code)}
-                          >
-                            {copiedCode === code.code ? (
-                              <Check className="h-4 w-4 text-primary" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
-                          {isAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRevokeCode(code.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* 加入请求审批 */}
         {activeTab === 'requests' && isAdmin && (
           <div className="space-y-4">
@@ -1084,45 +959,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>取消</Button>
               <Button onClick={handleCreateNotice} disabled={creatingNotice}>
                 {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : '发布'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 生成邀请码弹窗 */}
-      <Dialog open={showCodeDialog} onOpenChange={setShowCodeDialog}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>生成邀请码</DialogTitle>
-            <DialogDescription className="sr-only">设置邀请码的使用次数和有效期</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-muted-foreground">最大使用次数</label>
-              <Input
-                type="number"
-                value={codeMaxUses}
-                onChange={e => setCodeMaxUses(parseInt(e.target.value) || 1)}
-                min={1}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-muted-foreground">有效期（小时）</label>
-              <Input
-                type="number"
-                value={codeExpireHours}
-                onChange={e => setCodeExpireHours(parseInt(e.target.value) || 1)}
-                min={1}
-                max={168}
-                className="mt-1"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowCodeDialog(false)}>取消</Button>
-              <Button onClick={handleGenerateCode} disabled={generatingCode}>
-                {generatingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
               </Button>
             </div>
           </div>
