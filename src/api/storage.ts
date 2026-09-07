@@ -178,9 +178,11 @@ export interface ConfirmUploadResponse {
 
 export interface PartUrlResponse {
   /**
-   * ⚠️ 这一个**本来就是绝对地址**（文档 :611-620 的示例是
-   * `https://api.huanvae.cn/user-file/xxx?...`），是 storage 里唯一不需要补基址的
-   * URL 字段。别顺手给它套 `toAbsoluteApiUrl`——文档 :45-49 的相对路径表里没有它。
+   * 这一个**本来就是绝对地址**（文档 :611-620 的示例是
+   * `https://api.huanvae.cn/user-file/xxx?...`），文档 :45-49 的相对路径表里没有它，
+   * 所以出口不会给它拼基址。但它是浏览器 PUT 分片的目标地址：基址指向本地去 SNI 反代时，
+   * 正式域名的 origin 必须换成反代（`toAbsoluteApiUrl` 只替换 origin、逐字保留路径与签名参数，
+   * 见 `apiConfig.ts` 的 `rewriteCanonicalApiOrigin`），否则每一片都 PUT 不出去。
    */
   part_url: string
   part_number: number
@@ -301,12 +303,15 @@ const confirmUploadResponse: Parser<ConfirmUploadResponse> = {
   },
 }
 
-/** `GET /api/storage/multipart/part_url`（文档 :611-620）。`part_url` 本就是绝对地址。 */
+/**
+ * `GET /api/storage/multipart/part_url`（文档 :611-620）。`part_url` 本就是绝对地址，
+ * 过 `toAbsoluteApiUrl` 只为在基址指向反代时把正式域名的 origin 换掉（见接口 JSDoc）。
+ */
 const partUrlResponse: Parser<PartUrlResponse> = {
   parse(input: unknown): PartUrlResponse {
     const payload = asRecord(input, 'multipart/part_url 的 data')
     return {
-      part_url: str(payload, 'part_url'),
+      part_url: toAbsoluteApiUrl(str(payload, 'part_url')),
       part_number: num(payload, 'part_number'),
       expires_in: num(payload, 'expires_in'),
     }

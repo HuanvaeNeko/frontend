@@ -124,6 +124,11 @@ export const getWsUrl = (): string => {
  *
  * 幂等：已带协议（http/https/data/blob）、协议相对（`//`）的地址原样返回，
  * 因此重复调用安全，也不会破坏预签名 URL。
+ *
+ * 唯一的例外是**本后端正式域名**的 http(s) 绝对地址：后端把预签名 URL、`part_url`、
+ * `file_url` 以 `https://api.huanvae.cn/...` 返回，当基址被指到别处（本地去 SNI 反代），
+ * 它们的 origin 会被换成当前基址，path / query / hash 逐字保留——见
+ * {@link rewriteCanonicalApiOrigin}。基址就是正式域名时这条规则是 no-op。
  */
 export function toAbsoluteApiUrl(path: string): string
 export function toAbsoluteApiUrl(path: string | null | undefined): string | undefined
@@ -134,12 +139,63 @@ export function toAbsoluteApiUrl(path: string | null | undefined): string | unde
 
   // 协议相对地址：交给浏览器按当前协议解析
   if (trimmed.startsWith('//')) return trimmed
-  // 已带任意协议（http:、https:、data:、blob:）——预签名 URL 走这条，原样返回
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed
+  // 已带任意协议（http:、https:、data:、blob:）——预签名 URL 走这条；
+  // 只有本后端正式域名的 http(s) 地址会被换成当前基址的 origin，其余原样返回
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return rewriteCanonicalApiOrigin(trimmed)
 
   try {
     return new URL(trimmed, `${getApiBaseUrl()}/`).href
   } catch {
     return trimmed
   }
+}
+
+/**
+ * 后端的正式域名。与发现面 `GET https://ca.huanvae.cn/endpoints` 返回的 `domains` 对齐。
+ */
+const CANONICAL_API_HOSTS = ['api.huanvae.cn', 'api.huanvae.com'] as const
+
+/**
+ * 匹配 `http(s)://<正式域名>[:port]`。主机名后面必须紧跟路径、查询、hash 或字符串结尾，
+ * 所以 `api.huanvae.cn.evil.com` 这类前缀相同的主机不会命中。
+ */
+const CANONICAL_API_ORIGIN_RE = new RegExp(
+  `^https?://(?:${CANONICAL_API_HOSTS.map((host) => host.replace(/\./g, '\\.')).join('|')})(?::\\d+)?(?=[/?#]|$)`,
+  'i',
+)
+
+/**
+ * 把本后端正式域名的绝对地址改写到当前基址的 origin。
+ *
+ * ## 为什么需要
+ *
+ * 后端返回的预签名 URL（MinIO 直链）、分片上传的 `part_url`、消息里的 `file_url` 都是
+ * `https://api.huanvae.cn/...` 的绝对地址。基址指向正式域名时它们本来就能直接用；
+ * 但当基址被指到本地去 SNI 反代（`http://127.0.0.1:8787`，`api.huanvae.cn` 被备案拦截时
+ * 的开发通道），浏览器直接请求正式域名会失败，必须把 origin 换成反代。
+ *
+ * ## 为什么签名不会失效
+ *
+ * SigV4 签名覆盖的是 Host 与路径、查询参数。反代转发时显式带 `Host: api.huanvae.cn`，
+ * 所以 MinIO 看到的主机与签名时一致；这里**只替换 origin 前缀**，path / query / hash 从原字符串
+ * 逐字切出来拼回去，不经 URL 解析器重新序列化，查询串一个字节都不会变。
+ * Huanvae-Chat-App 的 `secure_proxy` 把 URL 改写到 `127.0.0.1:47823` 走的是同一条逻辑。
+ *
+ * 基址的 origin 与该地址相同时原样返回，因此幂等，生产环境零改动。
+ */
+function rewriteCanonicalApiOrigin(url: string): string {
+  const match = CANONICAL_API_ORIGIN_RE.exec(url)
+  if (!match) return url
+
+  let baseOrigin: string
+  let urlOrigin: string
+  try {
+    baseOrigin = new URL(getApiBaseUrl()).origin
+    urlOrigin = new URL(url).origin
+  } catch {
+    return url
+  }
+  if (urlOrigin === baseOrigin) return url
+
+  return `${baseOrigin}${url.slice(match[0].length)}`
 }
