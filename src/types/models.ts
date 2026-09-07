@@ -88,17 +88,22 @@ export interface Message {
 }
 
 /**
- * Group Join Mode Enum
- */
-export type JoinMode = 'open' | 'approval_required' | 'invite_only' | 'admin_invite_only' | 'closed'
-
-/**
  * Group Member Role Enum
  */
 export type MemberRole = 'owner' | 'admin' | 'member'
 
 /**
  * Group Information
+ *
+ * ⚠️ 这是 `src/features/chat/api/groups.ts` 里同名类型的一份**重复定义**，
+ * 本文件目前没有任何 import（同类问题另见本文件的 GroupMessage 与
+ * `apiParse.ts` 顶部注释里记的那次分叉）。收敛成一份是独立待办。
+ *
+ * 这里跟着删掉 `join_mode` / `JoinMode`：五档入群模式连同 `groups."join-mode"`
+ * 列被 migration 043 整套删除（backend-docs/groups/群聊管理.md:442-468），
+ * 留一个已不存在的类型在共享类型文件里，只会让下一个人以为它还能用。
+ * 入群策略八字段**不补到这里**——权威定义在 `api/groups.ts` 的 `JoinPolicy`，
+ * 再抄一份就是第二次分叉。
  */
 export interface Group {
   group_id: string
@@ -107,7 +112,6 @@ export interface Group {
   group_description?: string
   creator_id?: string
   created_at?: string
-  join_mode?: JoinMode
   status?: string
   member_count?: number
 }

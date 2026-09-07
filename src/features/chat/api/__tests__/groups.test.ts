@@ -349,3 +349,269 @@ describe('approve/reject 的 403 分诊（doc:1274/:1306，admin_can_approve=fal
     expect(error).toMatchObject({ name: 'ApiError', status: 403 })
   })
 })
+
+
+// ============================================
+// 批 3：join_mode → join-policy 八字段
+// ============================================
+
+/** `PUT /{group_id}/join-policy` 的完整八值（doc:526-533 响应样例）。 */
+const JOIN_POLICY_DTO = {
+  join_approval_required: false,
+  admin_can_approve: false,
+  card_share_scope: 'all_members',
+  qr_show_scope: 'all_members',
+  search_scope: 'everyone',
+  allow_join_via_qr: true,
+  allow_join_via_search: true,
+  allow_join_via_referral: true,
+}
+
+/** `GET /{group_id}` 的 `GroupInfo`（doc:175-190 响应样例）。 */
+const GROUP_INFO_DTO = {
+  group_id: 'g1',
+  group_name: '测试群聊',
+  group_avatar_url: '',
+  group_description: '这是一个测试群',
+  creator_id: 'user_a',
+  created_at: '2025-12-03T15:54:26.686987Z',
+  ...JOIN_POLICY_DTO,
+  join_approval_required: true,
+  admin_can_approve: true,
+  status: 'active',
+  member_count: 5,
+}
+
+describe('groupsApi.updateJoinPolicy', () => {
+  it('打的是连字符 join-policy，绝不是已删除的下划线 join_mode', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(JOIN_POLICY_DTO))
+
+    await groupsApi.updateJoinPolicy('g1', { join_approval_required: false })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    // 正断言：URL 必须逐字等于连字符版本。
+    expect(url).toBe(`${GROUPS_BASE}/g1/join-policy`)
+    expect(init.method).toBe('PUT')
+    // 负断言：整个请求里不能有任何东西碰到已删路由（doc:442-446，无兼容层，
+    // 打过去只会拿 404）。两条一起写，改回下划线时两条都会红。
+    expect(url).not.toContain('join_mode')
+    for (const [calledUrl] of fetchMock.mock.calls as [string, RequestInit][]) {
+      expect(calledUrl).not.toContain('/join_mode')
+    }
+  })
+
+  it('只发 patch 里出现的键——未出现的字段由后端保持原值（doc:479-480）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(JOIN_POLICY_DTO))
+
+    await groupsApi.updateJoinPolicy('g1', {
+      join_approval_required: false,
+      admin_can_approve: false,
+    })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    // toEqual 而不是 toMatchObject：多发一个键就是把用户没动的开关一起写回去，
+    // 中间隔一次别人的修改就会被静默覆盖，必须红。
+    expect(body).toEqual({ join_approval_required: false, admin_can_approve: false })
+    expect(Object.keys(body)).toHaveLength(2)
+  })
+
+  it('单字段 patch 也只发那一个键', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(JOIN_POLICY_DTO))
+
+    await groupsApi.updateJoinPolicy('g1', { search_scope: 'owner_only' })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ search_scope: 'owner_only' })
+  })
+
+  it('响应回填完整八值，可直接喂给设置面板（doc:538）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(JOIN_POLICY_DTO))
+
+    const policy = await groupsApi.updateJoinPolicy('g1', { join_approval_required: false })
+
+    expect(policy).toEqual(JOIN_POLICY_DTO)
+  })
+
+  it('响应少一个字段就抛错，而不是返回一个缺开关的对象', async () => {
+    const { allow_join_via_referral: _dropped, ...missingOne } = JOIN_POLICY_DTO
+    fetchMock.mockResolvedValueOnce(envelope(missingOne))
+
+    await expect(groupsApi.updateJoinPolicy('g1', { join_approval_required: false })).rejects.toThrow(
+      /allow_join_via_referral/,
+    )
+  })
+
+  it('布尔字段收到 null 时抛错——null 会被渲染成"关"，和后端真实状态相反', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ ...JOIN_POLICY_DTO, admin_can_approve: null }))
+
+    await expect(groupsApi.updateJoinPolicy('g1', { admin_can_approve: true })).rejects.toThrow(
+      /admin_can_approve/,
+    )
+  })
+
+  it('search_scope 传回 all_members（那是另一张取值表）时抛错', async () => {
+    // doc:210/:552-554：search_scope 的三档是 everyone/admins/owner_only，
+    // all_members 是 card_share_scope / qr_show_scope 那张表的最松档。
+    fetchMock.mockResolvedValueOnce(envelope({ ...JOIN_POLICY_DTO, search_scope: 'all_members' }))
+
+    await expect(groupsApi.updateJoinPolicy('g1', { search_scope: 'everyone' })).rejects.toThrow(
+      /search_scope/,
+    )
+  })
+
+  it('403（不是群主）抛出后端原文，且带 status=403 供调用点分诊', async () => {
+    // doc:477 仅群主；doc:551-556 错误响应表：403 = 群存在但你不是群主。
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 403, message: '只有群主可以修改入群策略' }, 403),
+    )
+
+    const error = await groupsApi
+      .updateJoinPolicy('g1', { join_approval_required: false })
+      .catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+    expect((error as Error).message).toBe('只有群主可以修改入群策略')
+    // 关键：403 绝不能被当成登录态失效（isAuthApiError 只认 401）。
+    expect((error as Error).message).not.toBe('更新入群策略失败')
+  })
+
+  it('404（群不存在）同样透出后端原文', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 404, message: '群聊不存在' }, 404))
+
+    const error = await groupsApi
+      .updateJoinPolicy('g1', { join_approval_required: false })
+      .catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 404 })
+    expect((error as Error).message).toBe('群聊不存在')
+  })
+})
+
+describe('groupsApi.createGroup', () => {
+  it('发的是 join_approval_required，请求体里没有 join_mode', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ group_id: 'g1', group_name: '我的群聊', created_at: '2025-12-03T15:54:26.686987Z' }),
+    )
+
+    await groupsApi.createGroup({
+      group_name: '我的群聊',
+      group_description: '这是一个测试群',
+      join_approval_required: false,
+    })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(GROUPS_BASE)
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toEqual({
+      group_name: '我的群聊',
+      group_description: '这是一个测试群',
+      join_approval_required: false,
+    })
+    // doc:74-75：继续传 join_mode 不会报错，服务端静默丢弃 ⇒ 群按默认「需审核」
+    // 建出来。没有任何运行期信号，只能靠这条断言。
+    expect(body).not.toHaveProperty('join_mode')
+  })
+
+  it('不传该字段时请求体里也不出现它（后端默认 true，doc:60）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ group_id: 'g1', group_name: '我的群聊', created_at: '2025-12-03T15:54:26.686987Z' }),
+    )
+
+    await groupsApi.createGroup({ group_name: '我的群聊' })
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ group_name: '我的群聊' })
+  })
+})
+
+describe('groupsApi.getGroupDetail', () => {
+  it('从信封里解析出八个策略字段（不是从 join_mode 猜）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(GROUP_INFO_DTO))
+
+    const group = await groupsApi.getGroupDetail('g1')
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/g1`)
+    expect(group).toMatchObject({
+      group_id: 'g1',
+      group_name: '测试群聊',
+      group_description: '这是一个测试群',
+      creator_id: 'user_a',
+      status: 'active',
+      member_count: 5,
+      join_approval_required: true,
+      admin_can_approve: true,
+      card_share_scope: 'all_members',
+      qr_show_scope: 'all_members',
+      search_scope: 'everyone',
+      allow_join_via_qr: true,
+      allow_join_via_search: true,
+      allow_join_via_referral: true,
+    })
+  })
+
+  it('空串头像归一为 null，相对路径补基址', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(GROUP_INFO_DTO))
+    const empty = await groupsApi.getGroupDetail('g1')
+    expect(empty.group_avatar_url).toBeNull()
+
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...GROUP_INFO_DTO, group_avatar_url: 'avatars/g1.png' }),
+    )
+    const relative = await groupsApi.getGroupDetail('g1')
+    expect(relative.group_avatar_url).toBe('https://api.huanvae.cn/avatars/g1.png')
+  })
+
+  it('group_description 为 null 是合法的（字段表 doc:203）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ ...GROUP_INFO_DTO, group_description: null }))
+
+    const group = await groupsApi.getGroupDetail('g1')
+
+    expect(group.group_description).toBeNull()
+  })
+
+  it('缺策略字段时抛错，而不是让面板上的开关渲染成一个假状态', async () => {
+    const { join_approval_required: _dropped, ...missing } = GROUP_INFO_DTO
+    fetchMock.mockResolvedValueOnce(envelope(missing))
+
+    await expect(groupsApi.getGroupDetail('g1')).rejects.toThrow(/join_approval_required/)
+  })
+
+  it('八字段整块缺席（旧后端形状）时抛错，不能悄悄放行', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({
+        group_id: 'g1',
+        group_name: '测试群聊',
+        group_avatar_url: '',
+        group_description: '这是一个测试群',
+        creator_id: 'user_a',
+        created_at: '2025-12-03T15:54:26.686987Z',
+        status: 'active',
+        member_count: 5,
+      }),
+    )
+
+    await expect(groupsApi.getGroupDetail('g1')).rejects.toThrow()
+  })
+
+  it('data 是数组（列表端点的形状）时抛错', async () => {
+    fetchMock.mockResolvedValueOnce(envelope([GROUP_INFO_DTO]))
+
+    await expect(groupsApi.getGroupDetail('g1')).rejects.toThrow()
+  })
+
+  it('裸响应（没有 data 包裹）时抛错，不做 json.data ?? json 兜底', async () => {
+    fetchMock.mockResolvedValueOnce(ok(GROUP_INFO_DTO))
+
+    await expect(groupsApi.getGroupDetail('g1')).rejects.toThrow(/data/)
+  })
+
+  it('403（不是本群活跃成员）透出后端原文（doc:152-154）', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, message: '你不是本群成员' }, 403))
+
+    const error = await groupsApi.getGroupDetail('g1').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+    expect((error as Error).message).toBe('你不是本群成员')
+  })
+})

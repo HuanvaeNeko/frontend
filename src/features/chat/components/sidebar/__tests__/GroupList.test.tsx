@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { GroupInvitation } from '@/features/chat/api/groups'
 import GroupList from '../GroupList'
 
@@ -114,6 +114,7 @@ beforeEach(() => {
   toastMock.mockReset()
   groupStoreState.selectionError = null
   groupStoreState.clearSelectionError.mockReset()
+  groupStoreState.createGroup.mockClear()
   // 真实 store 里 `clearSelectionError` 会把 `selectionError` 写回 null——
   // mock 也照做，这样下面的测试才能断言"清除之后不会再弹一次 toast"，而不是
   // 因为 mock 本身什么都不做而巧合地只弹一次。
@@ -211,5 +212,53 @@ describe('GroupList selectionError → toast 消费（groupStore.selectGroup 失
       expect.objectContaining({ description: '第二次失败' })
     )
     expect(groupStoreState.clearSelectionError).toHaveBeenCalledTimes(2)
+  })
+})
+
+
+describe('GroupList 建群对话框：join_mode 五档 → join_approval_required 布尔', () => {
+  /** 打开建群对话框并填好群名。 */
+  const openCreateDialog = async () => {
+    fireEvent.click(await screen.findByText('chat.groupList.createGroup'))
+    const nameInput = await screen.findByPlaceholderText('chat.groupList.enterGroupNamePlaceholder')
+    fireEvent.change(nameInput, { target: { value: '我的群聊' } })
+    return nameInput
+  }
+
+  it('只有两档，五档里被取消的那三档不再出现', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
+    await openCreateDialog()
+
+    const select = screen.getByLabelText('chat.groupList.joinApprovalLabel') as HTMLSelectElement
+    expect(Array.from(select.options).map(o => o.value)).toEqual(['required', 'open'])
+    // 五档模型的三个 i18n key 已随类型一起删除（doc:64-75：invite_only /
+    // admin_invite_only / closed 无替代）。
+    expect(screen.queryByText('chat.groupList.joinModeInviteOnlyDesc')).not.toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.joinModeLabel')).not.toBeInTheDocument()
+  })
+
+  it('默认值是「需要审核」——与后端不传该字段时的默认一致（doc:60）', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
+    await openCreateDialog()
+
+    expect(screen.getByLabelText('chat.groupList.joinApprovalLabel')).toHaveValue('required')
+
+    fireEvent.click(screen.getByText('chat.groupList.create'))
+
+    await waitFor(() => expect(groupStoreState.createGroup).toHaveBeenCalledTimes(1))
+    expect(groupStoreState.createGroup).toHaveBeenCalledWith('我的群聊', undefined, true)
+  })
+
+  it('选「无需审核」时第三个实参是 false（不是字符串 "open"）', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
+    await openCreateDialog()
+
+    fireEvent.change(screen.getByLabelText('chat.groupList.joinApprovalLabel'), {
+      target: { value: 'open' },
+    })
+    fireEvent.click(screen.getByText('chat.groupList.create'))
+
+    await waitFor(() => expect(groupStoreState.createGroup).toHaveBeenCalledTimes(1))
+    expect(groupStoreState.createGroup).toHaveBeenCalledWith('我的群聊', undefined, false)
   })
 })

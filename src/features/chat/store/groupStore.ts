@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { groupsApi, type Group, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
+import { groupsApi, type GroupBase, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
 import { loadGroups } from '@/data'
 
 interface GroupState {
@@ -34,9 +34,21 @@ interface GroupState {
   loadGroupMembers: (groupId: string) => Promise<void>
   loadGroupNotices: (groupId: string) => Promise<void>
   selectGroup: (group: MyGroup | null) => void
-  createGroup: (name: string, description?: string, joinMode?: string) => Promise<{ group_id: string; group_name: string; created_at: string }>
-  searchGroups: (query: string) => Promise<Group[]>
-  updateGroup: (groupId: string, updates: Partial<Group>) => Promise<void>
+  /**
+   * 第三个形参是「是否需要入群审核」。批 3 之前它是五档 `joinMode?: string`，
+   * 随 `groups."join-mode"` 列（migration 043 DROP）一起删掉，
+   * 见 backend-docs/groups/群聊管理.md:64-75。不传 ⇒ 后端默认 `true`（需审核）。
+   */
+  createGroup: (name: string, description?: string, joinApprovalRequired?: boolean) => Promise<{ group_id: string; group_name: string; created_at: string }>
+  searchGroups: (query: string) => Promise<GroupBase[]>
+  /**
+   * 形参就是 `PUT /api/groups/{group_id}` 的请求体（doc:227-231），不是
+   * `Partial<Group>`：本 action 只做转发，而 `Group` 上的 `group_description`
+   * / `group_avatar_url` 是 `string | null`（读侧的"未设置"），请求体侧
+   * 没有 `null` 这一档——沿用 `Partial<Group>` 会逼出一个把"清空简介"
+   * 悄悄变成"不改"的 `?? undefined`。
+   */
+  updateGroup: (groupId: string, updates: { group_name?: string; group_description?: string; group_avatar_url?: string }) => Promise<void>
   clearError: () => void
   clearSelectionError: () => void
 }
@@ -121,13 +133,13 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 
-  createGroup: async (name: string, description?: string, joinMode?: string) => {
+  createGroup: async (name: string, description?: string, joinApprovalRequired?: boolean) => {
     set({ isLoading: true, error: null })
     try {
-      const group = await groupsApi.createGroup({ 
+      const group = await groupsApi.createGroup({
         group_name: name,
         group_description: description,
-        join_mode: joinMode as 'open' | 'approval_required' | 'invite_only' | 'admin_invite_only' | 'closed'
+        join_approval_required: joinApprovalRequired
       })
       // 重新加载群列表
       await get().loadMyGroups()
@@ -153,7 +165,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 
-  updateGroup: async (groupId: string, updates: Partial<Group>) => {
+  updateGroup: async (groupId: string, updates: { group_name?: string; group_description?: string; group_avatar_url?: string }) => {
     set({ isLoading: true, error: null })
     try {
       await groupsApi.updateGroup(groupId, {

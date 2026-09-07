@@ -106,18 +106,24 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [groupDescription, setGroupDescription] = useState('')
-  const [joinMode, setJoinMode] = useState<'open' | 'approval_required' | 'invite_only'>('open')
+  // 建群时是否需要入群审核。批 3 之前这里是五档 `joinMode`，那套模型连同
+  // `groups."join-mode"` 列一起被 migration 043 删掉了（doc:64-75）。
+  // 初值取后端默认值 true（不传该字段时后端就按需审核建群，doc:60）。
+  const [joinApprovalRequired, setJoinApprovalRequired] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
   // 加入群聊状态
   const [searchGroupId, setSearchGroupId] = useState('')
   const [searchingGroup, setSearchingGroup] = useState(false)
+  // `join_mode` 已从这里删掉：后端两个响应结构里都没有这个字段了（doc:460-461），
+  // 读到的恒为 undefined，旧代码的三处 `|| 'approval_required'` 把这件事
+  // 完整地藏了起来。"申请提交后是直接进群还是落待审"要等批 4 —— 那时
+  // `applyToJoin` 会返回 `{status}`，由后端直答，而不是前端拿一个不存在的字段猜。
   const [searchResult, setSearchResult] = useState<{
     group_id: string
     group_name: string
-    group_avatar_url?: string
+    group_avatar_url?: string | null
     member_count?: number
-    join_mode?: string
   } | null>(null)
   const [applyReason, setApplyReason] = useState('')
   const [applying, setApplying] = useState(false)
@@ -189,7 +195,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
     setSubmitting(true)
     try {
-      await createGroup(groupName.trim(), groupDescription.trim() || undefined, joinMode)
+      await createGroup(groupName.trim(), groupDescription.trim() || undefined, joinApprovalRequired)
       toast({
         title: t('chat.groupList.success'),
         description: t('chat.groupList.createSuccess'),
@@ -197,7 +203,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       setShowCreateDialog(false)
       setGroupName('')
       setGroupDescription('')
-      setJoinMode('open')
+      setJoinApprovalRequired(true)
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
@@ -253,16 +259,18 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     setApplying(true)
     try {
       await groupsApi.applyToJoin(searchResult.group_id, applyReason)
+      // 恒定"已提交申请"：`join_mode` 删除后前端无从判断这次是直接进群还是
+      // 落待审，而旧代码的 `(join_mode || 'approval_required') === 'open'`
+      // 早就恒为 false——这一支从来没走到过，所以这里不是行为变更，
+      // 是把那条死分支删掉。批 4 会让 `applyToJoin` 返回 `{status}`，
+      // 到那时由后端直答，再据此决定文案和要不要刷新群列表。
       toast({
         title: t('chat.groupList.success'),
-        description: (searchResult.join_mode || 'approval_required') === 'open' ? t('chat.groupList.joinSuccess') : t('chat.groupList.applySubmitted'),
+        description: t('chat.groupList.applySubmitted'),
       })
       setSearchResult(null)
       setSearchGroupId('')
       setApplyReason('')
-      if ((searchResult.join_mode || 'approval_required') === 'open') {
-        loadMyGroups()
-      }
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
@@ -309,17 +317,6 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     } finally {
       setProcessingInvite(null)
     }
-  }
-
-  const getJoinModeText = (mode: string) => {
-    const modes: Record<string, string> = {
-      open: t('chat.groupList.joinMode.open'),
-      approval_required: t('chat.groupList.joinMode.approval'),
-      invite_only: t('chat.groupList.joinMode.inviteOnly'),
-      admin_invite_only: t('chat.groupList.joinMode.adminInviteOnly'),
-      closed: t('chat.groupList.joinMode.closed')
-    }
-    return modes[mode] || mode
   }
 
   // 主列表 - 我的群聊
@@ -452,15 +449,17 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.groupList.joinModeLabel')}</label>
+                      <label htmlFor="create-group-join-approval" className="text-sm font-medium text-foreground mb-1.5 block">
+                        {t('chat.groupList.joinApprovalLabel')}
+                      </label>
                       <select
+                        id="create-group-join-approval"
                         className="w-full h-10 px-3 rounded-md border border-input bg-background text-foreground outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] cursor-pointer"
-                        value={joinMode}
-                        onChange={(e) => setJoinMode(e.target.value as typeof joinMode)}
+                        value={joinApprovalRequired ? 'required' : 'open'}
+                        onChange={(e) => setJoinApprovalRequired(e.target.value === 'required')}
                       >
-                        <option value="open">{t('chat.groupList.joinModeOpenDesc')}</option>
-                        <option value="approval_required">{t('chat.groupList.joinModeApprovalDesc')}</option>
-                        <option value="invite_only">{t('chat.groupList.joinModeInviteOnlyDesc')}</option>
+                        <option value="required">{t('chat.groupList.joinApprovalRequiredDesc')}</option>
+                        <option value="open">{t('chat.groupList.joinApprovalOpenDesc')}</option>
                       </select>
                     </div>
                   </div>
@@ -473,7 +472,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                         setShowCreateDialog(false)
                         setGroupName('')
                         setGroupDescription('')
-                        setJoinMode('open')
+                        setJoinApprovalRequired(true)
                       }}
                       disabled={submitting}
                     >
@@ -542,7 +541,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10 shrink-0">
-                    <AvatarImage src={searchResult.group_avatar_url} />
+                    <AvatarImage src={searchResult.group_avatar_url ?? undefined} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {searchResult.group_name[0]?.toUpperCase()}
                     </AvatarFallback>
@@ -550,24 +549,22 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <div className="flex-1">
                   <div className="font-medium text-foreground">{searchResult.group_name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {t('chat.groupList.memberCount', { count: searchResult.member_count ?? 0 })} · {getJoinModeText(searchResult.join_mode || 'approval_required')}
+                    {t('chat.groupList.memberCount', { count: searchResult.member_count ?? 0 })}
                   </div>
                 </div>
               </div>
 
-              {(searchResult.join_mode || 'approval_required') !== 'open' && (
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">{t('chat.groupList.applyReason')}</label>
-                  <Input
-                    type="text"
-                    placeholder={t('chat.groupList.applyReasonPlaceholder')}
-                    value={applyReason}
-                    onChange={(e) => setApplyReason(e.target.value)}
-                    className="h-10"
-                    maxLength={100}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">{t('chat.groupList.applyReason')}</label>
+                <Input
+                  type="text"
+                  placeholder={t('chat.groupList.applyReasonPlaceholder')}
+                  value={applyReason}
+                  onChange={(e) => setApplyReason(e.target.value)}
+                  className="h-10"
+                  maxLength={100}
+                />
+              </div>
 
               <div className="flex gap-2">
                 <Button
@@ -586,13 +583,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   onClick={handleApplyJoin}
                   disabled={applying}
                 >
-                  {applying ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (searchResult.join_mode || 'approval_required') === 'open' ? (
-                    t('chat.groupList.join')
-                  ) : (
-                    t('chat.groupList.applyJoin')
-                  )}
+                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.applyJoin')}
                 </Button>
               </div>
             </motion.div>

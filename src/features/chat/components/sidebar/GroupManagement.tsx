@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,8 +29,10 @@ import {
   type Group,
   type GroupMember,
   type GroupNotice,
-  type JoinMode,
-  type JoinRequest
+  type JoinPolicy,
+  type JoinRequest,
+  type SearchScope,
+  type ShareScope
 } from '../../api/groups'
 import { ApiError } from '@/lib/apiEnvelope'
 import { useToast } from '@/hooks/use-toast'
@@ -74,6 +77,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const [editingDescription, setEditingDescription] = useState(false)
   const [newDescription, setNewDescription] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [savingPolicy, setSavingPolicy] = useState(false)
 
   // 弹窗状态
   const [showInviteDialog, setShowInviteDialog] = useState(false)
@@ -96,6 +100,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const myMember = members.find(m => m.user_id === user?.user_id)
   const isOwner = myMember?.role === 'owner'
   const isAdmin = myMember?.role === 'owner' || myMember?.role === 'admin'
+
+  /**
+   * 谁能列/批/拒入群申请：群主恒可；管理员**只在** `admin_can_approve=true`
+   * 时可以，否则三条审批端点一律 `403`（doc:1255、:1274、:1306，权限总表 :2256）。
+   * 旧代码用的是 `isAdmin`，等于给 `admin_can_approve=false` 的群里的管理员
+   * 渲染一个每次点都 403 的页签。
+   *
+   * `group === null` 只在群详情还没到或加载失败时出现，那时管理员一侧取不到
+   * 判据——不猜，按最小可见处理（只有群主看得到）。这里刻意不写
+   * `group?.admin_can_approve ?? true` 之类的兜底：猜错的方向就是那个 403 页签。
+   */
+  const canApproveJoinRequests = isOwner || (isAdmin && group !== null && group.admin_can_approve)
 
   // 加载数据
   useEffect(() => {
@@ -245,13 +261,32 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
-  const handleUpdateJoinMode = async (mode: JoinMode) => {
+  /**
+   * 改一项入群策略。只发被改的那一个字段——`PUT /{id}/join-policy` 的八个
+   * 字段全部可选，「未出现的字段保持原值」（doc:479-480）。整份回填会把
+   * 用户没动的开关也写回去，中间隔一次别人的修改就静默覆盖。
+   *
+   * 回填用**响应**里的完整八值（doc:538），不是本地乐观拼接：服务端可能
+   * 因为联动规则回吐和请求不同的值，乐观拼接会让面板显示一个后端没有的状态。
+   *
+   * 失败时透出后端原文。这个端点**仅群主**可用（doc:477），所以 403 是常规
+   * 失败而不是登录态问题——固定文案「更新失败」正是本批要修的症状：
+   * 端点被删（404）之后，群主每次改设置都只看到这四个字。
+   */
+  const handleUpdateJoinPolicy = async (patch: Partial<JoinPolicy>) => {
+    setSavingPolicy(true)
     try {
-      await groupsApi.updateJoinMode(groupId, mode)
-      setGroup(prev => prev ? { ...prev, join_mode: mode } : null)
-      toast({ title: '成功', description: '入群模式已更新' })
-    } catch {
-      toast({ title: '错误', description: '更新失败', variant: 'destructive' })
+      const policy = await groupsApi.updateJoinPolicy(groupId, patch)
+      setGroup(prev => prev ? { ...prev, ...policy } : null)
+      toast({ title: '成功', description: '入群策略已更新' })
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '更新入群策略失败',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingPolicy(false)
     }
   }
 
@@ -403,17 +438,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     return null
   }
 
-  const getJoinModeName = (mode?: JoinMode) => {
-    const modes: Record<JoinMode, string> = {
-      open: '开放入群',
-      approval_required: '需要审核',
-      invite_only: '仅邀请',
-      admin_invite_only: '仅管理员邀请',
-      closed: '禁止入群'
-    }
-    return modes[mode || 'approval_required']
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -430,7 +454,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           { key: 'info', label: '基本信息', icon: Settings, show: true },
           { key: 'members', label: '成员管理', icon: Users, show: true },
           { key: 'notices', label: '群公告', icon: Bell, show: true },
-          { key: 'requests', label: '加入申请', icon: UserPlus, show: isAdmin, badge: joinRequests.length }
+          { key: 'requests', label: '加入申请', icon: UserPlus, show: canApproveJoinRequests, badge: joinRequests.length }
         ].filter(tab => tab.show).map(tab => (
           <button
             key={tab.key}
@@ -461,7 +485,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             <div className="flex items-center gap-4">
               <div className="relative">
                 <Avatar className="h-20 w-20">
-                  <AvatarImage src={group?.group_avatar_url} />
+                  <AvatarImage src={group?.group_avatar_url ?? undefined} />
                   <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                     {group?.group_name?.[0]?.toUpperCase()}
                   </AvatarFallback>
@@ -550,24 +574,139 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               </CardContent>
             </Card>
 
-            {/* 入群模式 */}
-            {isOwner && (
+            {/* 入群策略：八个字段各自独立，`PUT /{id}/join-policy` 仅群主可用（doc:477）。
+                旧代码这里是一个五档 `join_mode` 下拉框，那套模型连同它写的数据库列
+                一起被 migration 043 删掉了（doc:442-468）。 */}
+            {isOwner && group && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">入群模式</CardTitle>
+                  <CardTitle className="text-sm">入群策略</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <select
-                    value={group?.join_mode || 'approval_required'}
-                    onChange={e => handleUpdateJoinMode(e.target.value as JoinMode)}
-                    className="w-full p-2 border rounded-lg"
-                  >
-                    <option value="open">开放入群（任何人可直接加入）</option>
-                    <option value="approval_required">需要审核（默认）</option>
-                    <option value="invite_only">仅邀请（只能通过邀请加入）</option>
-                    <option value="admin_invite_only">仅管理员邀请</option>
-                    <option value="closed">禁止入群</option>
-                  </select>
+                <CardContent className="space-y-5">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-join-approval" className="text-sm">
+                        需要入群审核
+                        <span className="block text-xs text-muted-foreground">
+                          开启后申请落待审；关闭则符合条件的人直接入群
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-join-approval"
+                        checked={group.join_approval_required}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ join_approval_required: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-admin-approve" className="text-sm">
+                        允许管理员参与审核
+                        <span className="block text-xs text-muted-foreground">
+                          关闭后只有群主能列出、通过或拒绝入群申请
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-admin-approve"
+                        checked={group.admin_can_approve}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ admin_can_approve: checked })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 三档范围：管「看得到 / 拿得到」。与下面三个开关正交（doc:498-507）。 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <p className="text-xs text-muted-foreground">谁能把这个群传播出去</p>
+
+                    <div className="space-y-1">
+                      <label htmlFor="policy-card-share-scope" className="text-sm">谁能分享群卡片</label>
+                      <select
+                        id="policy-card-share-scope"
+                        value={group.card_share_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ card_share_scope: e.target.value as ShareScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="all_members">全体成员</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="policy-qr-show-scope" className="text-sm">谁能展示群二维码</label>
+                      <select
+                        id="policy-qr-show-scope"
+                        value={group.qr_show_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ qr_show_scope: e.target.value as ShareScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="all_members">全体成员</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+
+                    {/* 🔴 最松档叫 everyone（任何登录用户），不是上面两档的 all_members
+                        （本群全体成员）——语义方向相反，传错会被后端 400（doc:210、:552-554）。 */}
+                    <div className="space-y-1">
+                      <label htmlFor="policy-search-scope" className="text-sm">谁能搜到这个群</label>
+                      <select
+                        id="policy-search-scope"
+                        value={group.search_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ search_scope: e.target.value as SearchScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="everyone">任何登录用户</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* 三个开关：管「能不能进」。关掉搜索加群不会让群从搜索结果里消失，
+                      那是上面的 search_scope 管的事（doc:498-507）。 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <p className="text-xs text-muted-foreground">哪几条加群通道是开的</p>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-qr" className="text-sm">允许扫码加群</label>
+                      <Switch
+                        id="policy-allow-qr"
+                        checked={group.allow_join_via_qr}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_qr: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-search" className="text-sm">允许搜索群 ID 加群</label>
+                      <Switch
+                        id="policy-allow-search"
+                        checked={group.allow_join_via_search}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_search: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-referral" className="text-sm">
+                        允许好友推荐加群
+                        <span className="block text-xs text-muted-foreground">
+                          同时管住普通成员发起的邀请；群主与管理员的邀请不受它约束
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-allow-referral"
+                        checked={group.allow_join_via_referral}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_referral: checked })}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -587,8 +726,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                   <span>{group?.created_at ? new Date(group.created_at).toLocaleDateString() : '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">入群模式</span>
-                  <span>{getJoinModeName(group?.join_mode)}</span>
+                  <span className="text-muted-foreground">入群审核</span>
+                  <span>{group ? (group.join_approval_required ? '需要审核' : '无需审核') : '-'}</span>
                 </div>
               </CardContent>
             </Card>
@@ -744,8 +883,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </span>
                     </div>
 
-                    {/* 成员操作 */}
-                    {isAdmin && member.user_id !== user?.user_id && member.role !== 'owner' && (
+                    {/* 成员操作。
+                        旧条件 `isAdmin && !self && role !== 'owner'` 漏了一档：
+                        管理员**不能动另一个管理员**——移除成员「管理员：只能移除普通成员」
+                        （doc:840-842）、禁言「管理员：只能禁言普通成员」（doc:976-978），
+                        权限总表 :2262-2263 也是这么写的。漏这一档的后果是给管理员渲染
+                        一排点下去必然 403 的按钮。群主不受此限（可动任何成员）。 */}
+                    {isAdmin
+                      && member.user_id !== user?.user_id
+                      && member.role !== 'owner'
+                      && (isOwner || member.role !== 'admin') && (
                       <div className="flex gap-1">
                         {member.muted_until && new Date(member.muted_until) > new Date() ? (
                           <Button
@@ -880,7 +1027,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         )}
 
         {/* 加入请求审批 */}
-        {activeTab === 'requests' && isAdmin && (
+        {activeTab === 'requests' && canApproveJoinRequests && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">

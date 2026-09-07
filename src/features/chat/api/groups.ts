@@ -2,7 +2,7 @@ import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { type Parser, assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
-import { arr, asRecord, num, str } from '@/lib/apiParse'
+import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 
 const GROUPS_BASE_URL = `${getApiBaseUrl()}/api/groups`
 
@@ -66,36 +66,94 @@ const fetchWithAuth = async (
 // 类型定义
 // ============================================
 
-export type JoinMode = 'open' | 'approval_required' | 'invite_only' | 'admin_invite_only' | 'closed'
 export type MemberRole = 'owner' | 'admin' | 'member'
 
-// ⚠️ `Group`（`GET /{group_id}` 的 `GroupInfo`）与 `createGroup` 的请求体
-// 属于批 3：`join_mode` 要整个换成 `join_approval_required` + 八字段策略，
-// 这里刻意保持原样不动，避免同一个类型在两批 review 里各改一次。
-export interface Group {
+/**
+ * 「看得到 / 拿得到」的三档范围：`card_share_scope` / `qr_show_scope`（doc:208-209）。
+ */
+export type ShareScope = 'all_members' | 'admins' | 'owner_only'
+
+/**
+ * 「搜不搜得到本群」的三档范围（doc:210）。
+ *
+ * 🔴 最松档叫 `everyone`（任何登录用户），**不是** {@link ShareScope} 的
+ * `all_members`（本群全体成员）——doc:205 写明两者「语义方向相反，故有意不同名」，
+ * 给 `search_scope` 传 `all_members` 会被 `400` 拒。两个类型分开写就是为了让
+ * 写错的一方在 tsc 里就死掉，不用等后端 `400`。
+ */
+export type SearchScope = 'everyone' | 'admins' | 'owner_only'
+
+/**
+ * 入群策略八字段（doc:195-215 字段表、doc:473-560 `PUT /{group_id}/join-policy`）。
+ *
+ * 它们合起来取代了 2026-08-17 连同 `groups."join-mode"` 列（migration 043 DROP）
+ * 一起删掉的五档 `join_mode`（doc:442-468）。旧五档里只有两档有去处：
+ * `open` ⇒ `join_approval_required=false`、`approval_required` ⇒ `true`；
+ * `closed` 只有「不让别人搜到」半边落到 `search_scope='owner_only'`，
+ * `invite_only` / `admin_invite_only` **无替代**。
+ *
+ * 🔴 三档 scope 与三个 `allow_join_via_*` 是两组正交的东西（doc:498-507）：
+ * scope 管「谁能把码/卡片拿出去、谁搜得到」，开关管「拿到了能不能进」。
+ * 关掉 `allow_join_via_search` **不会**让群从搜索结果里消失，反之亦然。
+ */
+export interface JoinPolicy {
+  /** `true` ⇒ `POST /{group_id}/apply` 落待审；`false` ⇒ 直接入群（doc:542）。 */
+  join_approval_required: boolean
+  /** `false` ⇒ **仅群主**能列/批/拒入群申请，管理员一律 `403`（doc:543）。 */
+  admin_can_approve: boolean
+  card_share_scope: ShareScope
+  qr_show_scope: ShareScope
+  search_scope: SearchScope
+  allow_join_via_qr: boolean
+  allow_join_via_search: boolean
+  allow_join_via_referral: boolean
+}
+
+/**
+ * `Group` / `MyGroup` / `searchGroups` 三处共有的那部分。
+ *
+ * 入群策略八字段**不在这里**：doc:195-196 写明 `GroupInfo` 字段表
+ * 「**只有** `GET /{group_id}` 用它」，`GET /my`（doc:131-140 字段表共 7 个字段）
+ * 与已删除的 `/search` 都不返回它们——把八字段放进基类会让类型声称
+ * 它们存在而运行时没有，正是本次迁移要消灭的形态。
+ *
+ * `group_avatar_url` 是 `string | null`：字段表（doc:202）写的就是 `string | null`，
+ * 而两份响应样例（doc:177、doc:121）给的是 `""`。api 出口统一把 `''`
+ * 与绝对化交给 `absoluteAvatar`，空串会被 `<AvatarImage src="">` 当成一次
+ * 真实的图片请求。
+ */
+export interface GroupBase {
   group_id: string
   group_name: string
-  group_avatar_url: string
-  group_description?: string
+  group_avatar_url: string | null
+  group_description?: string | null
   creator_id?: string
   created_at?: string
-  join_mode?: JoinMode
   status?: string
   member_count?: number
 }
 
 /**
+ * `GET /api/groups/{group_id}` 的 `GroupInfo`（字段表 doc:194-216）：
+ * 基础字段 + 入群策略八字段。
+ *
+ * 八字段写成**必需**：字段表里它们无条件列出，且 {@link groupDetailResponse}
+ * 会在运行时逐个校验。写成可选就会把调用点逐个逼出 `?? true` 之类的
+ * 兜底，而兜底正是本次迁移要删的东西。
+ */
+export interface Group extends GroupBase, JoinPolicy {}
+
+/**
  * `GET /api/groups/my` 的一条记录。字段表 + 样例：
  * backend-docs/groups/群聊管理.md:113-140。
  *
- * `group_avatar_url` 用 `Omit` 覆盖掉 `Group` 的同名字段，改成 `string | null`：
- * 字段表写的类型是 `string`，但样例值是 `""`（未设置头像）——和 friends.ts 的
- * `friend_avatar_url` 是同一种情形，空串会被 `<AvatarImage src="">` 当成一次
- * 真实的图片请求。api 出口统一把 `''` 和绝对化都交给 `absoluteAvatar`，
- * 因此这里的类型必须是 `string | null`，不能沿用 `Group` 的 `string`。
+ * 继承 {@link GroupBase} 而不是 `Group`：`/my` 的字段表只有 7 个字段，
+ * **不含**入群策略八字段——批 3 之前这里写的是 `Omit<Group, 'group_avatar_url'>`，
+ * 那时 `Group` 上没有必需字段所以无害；`Group` 补上八个必需字段之后再继承它，
+ * 就等于声称 `/my` 的每一行都带策略，而运行时一个都没有。
+ * 空串头像归一为 `null` 的理由见 {@link GroupBase}。
  */
-export interface MyGroup extends Omit<Group, 'group_avatar_url'> {
-  group_avatar_url: string | null
+export interface MyGroup extends GroupBase {
   role: MemberRole
   unread_count: number | null
   last_message_content: string | null
@@ -229,6 +287,109 @@ const muteMemberResponse: Parser<{ muted_until: string }> = {
   },
 }
 
+const SHARE_SCOPES: readonly ShareScope[] = ['all_members', 'admins', 'owner_only']
+const SEARCH_SCOPES: readonly SearchScope[] = ['everyone', 'admins', 'owner_only']
+
+/**
+ * 三档枚举字段：先过 `str()`（拒空串），再核对取值在本档位表里。
+ *
+ * 为什么不只用 `str()`：`card_share_scope`/`qr_show_scope` 与 `search_scope`
+ * 的取值表**不同名**（doc:210、doc:552-554），后端对越档取值返回 `400`。
+ * 只校验「是非空字符串」会让一个 `search_scope: "all_members"` 一路进到 UI，
+ * 渲染成一个选不中任何选项的下拉框——又是一次「坏形状伪装成数据」。
+ */
+function scopeOf<T extends string>(
+  payload: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+): T {
+  const value = str(payload, key)
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new Error(`${key} 取值 ${value} 不在 ${allowed.join(' / ')} 之内`)
+  }
+  return value as T
+}
+
+/**
+ * 入群策略八字段的逐字段校验（doc:538-549 响应字段表）。
+ *
+ * 八个全部走 `bool()` / `scopeOf()` 实打实校验一次，一个都不给默认值：
+ * 这份 `data` 的用途就是**直接回填设置面板**（doc:538），少一个字段就意味着
+ * 面板上有一个开关会被渲染成它实际不是的状态——这比抛错难查得多。
+ */
+function joinPolicyOf(payload: Record<string, unknown>): JoinPolicy {
+  return {
+    join_approval_required: bool(payload, 'join_approval_required'),
+    admin_can_approve: bool(payload, 'admin_can_approve'),
+    card_share_scope: scopeOf(payload, 'card_share_scope', SHARE_SCOPES),
+    qr_show_scope: scopeOf(payload, 'qr_show_scope', SHARE_SCOPES),
+    search_scope: scopeOf(payload, 'search_scope', SEARCH_SCOPES),
+    allow_join_via_qr: bool(payload, 'allow_join_via_qr'),
+    allow_join_via_search: bool(payload, 'allow_join_via_search'),
+    allow_join_via_referral: bool(payload, 'allow_join_via_referral'),
+  }
+}
+
+/**
+ * `PUT /api/groups/{group_id}/join-policy` 的 `data`：更新**之后**的完整八值
+ * （doc:521-535 样例 + doc:538-549 字段表）。
+ */
+const joinPolicyResponse: Parser<JoinPolicy> = {
+  parse(input: unknown) {
+    return joinPolicyOf(asRecord(input, 'PUT /{group_id}/join-policy 的 data'))
+  },
+}
+
+/**
+ * 文档写明 `string | null`、但响应样例里实际给 `""` 的字段——
+ * `GroupInfo.group_avatar_url`（字段表 doc:202，样例 doc:177 是 `""`）与
+ * `group_description`（字段表 doc:203）。`''` 与 `null` 一并归一成 `null`
+ * （= 未设置），其余非字符串抛错。
+ *
+ * 不能直接用 `apiParse` 的 `nullableStr`：它把 `''` 判成"缺失"并抛错（在别的
+ * 端点上这个判断是对的），而这里 `''` 是文档自己给出的合法值——照抄文档样例
+ * 的一次请求就会让整个群详情加载失败。
+ */
+function emptyableStr(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key]
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new Error(`${key} 缺失或不是字符串`)
+  }
+  return value === '' ? null : value
+}
+
+/**
+ * `GET /api/groups/{group_id}` 的 `data`（`GroupInfo`，字段表 doc:195-215、
+ * 样例 doc:165-193）。
+ *
+ * `member_count` / `status` / `creator_id` / `created_at` 走 `num`/`str`
+ * 必需档：字段表里它们和 `group_id` 一样无条件列出，样例里也都有值。
+ * `group_description` 与 `group_avatar_url` 走 {@link emptyableStr}——字段表
+ * 明写 `string | null`，且样例里头像就是 `""`。
+ *
+ * ⚠️ `group_avatar_url` 在出口过 `absoluteAvatar`。这一条是**同族推断，不是直证**：
+ * 本字段表只写「群头像」，没写相对路径；直证只在 `GET /my` 的字段表上
+ * （doc:136「群头像相对路径（需拼接 `STORAGE_BASE_URL`）」）。两处是同一列数据，
+ * 不补基址会出现「群列表里头像正常、群设置面板里头像裂开」。
+ */
+const groupDetailResponse: Parser<Group> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'GET /{group_id} 的 data')
+    return {
+      group_id: str(payload, 'group_id'),
+      group_name: str(payload, 'group_name'),
+      group_avatar_url: absoluteAvatar(emptyableStr(payload, 'group_avatar_url')),
+      group_description: emptyableStr(payload, 'group_description'),
+      creator_id: str(payload, 'creator_id'),
+      created_at: str(payload, 'created_at'),
+      status: str(payload, 'status'),
+      member_count: num(payload, 'member_count'),
+      ...joinPolicyOf(payload),
+    }
+  },
+}
+
 // ============================================
 // API 方法
 // ============================================
@@ -242,12 +403,20 @@ export const groupsApi = {
    * 创建群聊
    * POST /api/groups
    *
-   * ⚠️ 批 3 范围（`join_mode` → `join_approval_required`），本批不动。
+   * 请求体第三个字段从 `join_mode?: string`（五档）换成
+   * `join_approval_required?: boolean`（doc:55-62 请求体、doc:64-75 破坏性变更表）。
+   *
+   * 🔴 继续传 `join_mode` **不会报错**——doc:74-75 写明「服务端忽略未知字段，
+   * 会被静默丢弃 ⇒ 群按默认『需审核』建出来」。所以这里没有任何编译期或
+   * 运行期信号能提醒漏改，只能靠把旧字段从类型里删干净 + 测试断言
+   * 请求体里**没有** `join_mode`。
+   *
+   * 不传该字段时后端默认 `true`（需审核，doc:60）。
    */
   createGroup: async (data: {
     group_name: string
     group_description?: string
-    join_mode?: JoinMode
+    join_approval_required?: boolean
   }): Promise<{ group_id: string; group_name: string; created_at: string }> => {
     console.log('➕ 创建群聊:', data.group_name)
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}`, {
@@ -299,8 +468,12 @@ export const groupsApi = {
    *
    * ⚠️ 该端点已于 2026-08-17 整套删除，替代端点在 discovery 模块（批 6），
    * 本批不动——这里改的是解包方式，不是"搜索群聊"这个功能本身还能不能用。
+   *
+   * 返回类型由 `Group[]` 收窄成 `GroupBase[]`：批 3 给 `Group` 补上了八个
+   * **必需**的策略字段，而这个（已删的）端点从来不返回它们。这是删字段带来的
+   * 类型连带修正，不是对本端点的迁移——它的解包方式仍留给批 6。
    */
-  searchGroups: async (query: string): Promise<Group[]> => {
+  searchGroups: async (query: string): Promise<GroupBase[]> => {
     console.log('🔍 搜索群聊:', query)
     const params = new URLSearchParams({ query })
 
@@ -321,21 +494,25 @@ export const groupsApi = {
    * 获取群聊详情
    * GET /api/groups/{group_id}
    *
-   * ⚠️ 批 3 范围（`GroupInfo` 要接八字段入群策略），本批不动。
+   * doc:165-193 给了完整信封样例，`data` 是 `GroupInfo` 对象。走 `parse` 而不是
+   * `require`：`require` 认 `null` 为「存在」，而这里最要命的正是
+   * `join_approval_required: null` 这类值——面板上的开关会被渲染成 `false`
+   * （「无需审核」），和后端真实状态相反且没有任何报错。
+   *
+   * 错误分诊按 doc:152-163 的全模块统一口径：群不存在 ⇒ `404`，
+   * 群存在但不是活跃成员 ⇒ `403`。两者都由 `readEnvelope` 抛成带 `status`
+   * 的 `ApiError`，文案取后端原文。
    */
   getGroupDetail: async (groupId: string): Promise<Group> => {
-    console.log('ℹ️ 获取群聊详情:', groupId)
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}`, {
       method: 'GET',
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '获取群聊详情失败' }))
-      throw new Error(error.error || '获取群聊详情失败')
-    }
-
-    const result = await response.json()
-    return result.data
+    return readEnvelope<Group>(response, {
+      endpoint: 'GET /api/groups/{group_id}',
+      fallbackMessage: '获取群聊详情失败',
+      parse: groupDetailResponse,
+    })
   },
 
   /**
@@ -427,26 +604,38 @@ export const groupsApi = {
   },
 
   /**
-   * 修改入群模式
-   * PUT /api/groups/{group_id}/join_mode
+   * 修改入群策略
+   * PUT /api/groups/{group_id}/join-policy
    *
-   * ⚠️ 该端点已于 2026-08-17 整套删除（migration 043），批 3 换成
-   * `updateJoinPolicy` → `PUT /{id}/join-policy`。给已删路由接解包层是在给
-   * 死代码做质量投资，本批不动，交给批 3 直接删除。
+   * 🔴 URL 是**连字符** `join-policy`，不是下划线。被它取代的
+   * `PUT /{group_id}/join_mode` 已于 2026-08-17 整套删除、**无兼容层**
+   * （doc:442-446），今天调用它只会拿到 404。这条 404 过去被
+   * `GroupManagement` 吞成一句固定的「更新失败」，是本批要修的原始症状。
+   *
+   * **权限：仅群主**（doc:477「管理员也不行」）。因此 `403` 是这个端点的
+   * 常规失败，不是登录态失效——`isAuthApiError` 只认 401，403 会带着后端原文
+   * 一路抛到调用点（`apiEnvelope.ts` 里 `isAuthApiError` 的 JSDoc 记了原因：
+   * 403 若触发静默登出，用户得到的是「无任何解释的登出」）。
+   *
+   * 八个字段全部可选，**只发请求体里真正出现的那些**，未出现的保持原值
+   * （doc:479-480）。所以这里直接把调用点给的 `patch` 原样序列化，不做
+   * 「补齐成八个」的规范化——补齐会把用户没动的开关也一并写回，
+   * 中间隔着一次别人的修改就会被静默覆盖。
+   *
+   * 返回值是更新**之后**的完整八值（doc:538「可直接回填设置面板」），
+   * 调用点应当用它覆盖本地状态，而不是自己乐观地拼一个。
    */
-  updateJoinMode: async (groupId: string, joinMode: JoinMode): Promise<void> => {
-    console.log('🔒 修改入群模式:', groupId, joinMode)
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/join_mode`, {
+  updateJoinPolicy: async (groupId: string, patch: Partial<JoinPolicy>): Promise<JoinPolicy> => {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/join-policy`, {
       method: 'PUT',
-      body: JSON.stringify({ join_mode: joinMode }),
+      body: JSON.stringify(patch),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '修改入群模式失败' }))
-      throw new Error(error.error || '修改入群模式失败')
-    }
-
-    console.log('✅ 入群模式修改成功')
+    return readEnvelope<JoinPolicy>(response, {
+      endpoint: 'PUT /api/groups/{group_id}/join-policy',
+      fallbackMessage: '更新入群策略失败',
+      parse: joinPolicyResponse,
+    })
   },
 
   /**
