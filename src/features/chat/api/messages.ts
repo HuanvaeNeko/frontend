@@ -237,6 +237,17 @@ export function buildFriendConversationId(myUserId: string, friendUserId: string
  * **`POST /api/messages/sync` 也明确有信封**：`消息同步.md:117-120` 是
  * `{"code":0,"message":"success","data":{…}}`。
  *
+ * ⚠️ 但注意它的形状和全站其余端点不一样：**`code: 0` 且没有 `success` 字段**，
+ * 而另外 19 份文档用的都是 `success: true` + `code: 200`（全仓仅此一处 `code: 0`）。
+ * 两种编码习惯并存，八成是不同时期/不同人写的。
+ *
+ * 后果：`readEnvelope` 判失败的依据是 `success === false`（见 apiEnvelope.ts:292）。
+ * 这个端点没有 `success`，所以它能通过**只是因为"字段缺失"被当成"没失败"**——
+ * 是巧合，不是设计。若哪天它按自己那套约定返回 `code: 1`（该约定下的失败），
+ * 会被当成成功放行，`data` 缺失再由下面的 parser 兜住抛 ApiShapeError——
+ * 报错能出来，但归因会指向"形状不对"而不是"后端说失败了"。
+ * 真要收紧，得让 readEnvelope 支持第二种失败判据，那是全局改动，不在本批次。
+ *
  * **好友侧一个信封样例都没有**：`grep -c '"code"' messages/好友消息.md` = **0**，
  * `'"data"'` = **0**。POST(:115-121)、GET(:206-236)、delete(:335-340) 三个响应样例
  * 全是裸的，连 Fetch 示例都直接写 `messages.messages`。
