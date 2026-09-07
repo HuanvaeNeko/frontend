@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl, getAuthApiUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '../authStore'
+import { migrateAuthPersist, useAuthStore } from '../authStore'
 
 /**
  * 这批用例针对的是一种**静默**故障：信封化之后 `data.access_token` 恒为
@@ -321,5 +321,81 @@ describe('authStore.refreshAccessToken —— 并发刷新竞态', () => {
     await useAuthStore.getState().refreshAccessToken()
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(useAuthStore.getState().accessToken).toBe('AT1')
+  })
+})
+
+describe('auth-storage 的 persist 迁移', () => {
+  const absolute = (path: string) => `${getApiBaseUrl()}/${path}`
+
+  it('把落盘的相对头像路径搬成绝对地址', () => {
+    // main 上写的是 `avatar_url: data.avatar_url`，也就是后端原样给的相对路径
+    // （backend-docs/profile/个人资料管理.md:98「头像相对路径（需拼接 STORAGE_BASE_URL）」）。
+    const migrated = migrateAuthPersist({
+      accessToken: 'AT',
+      user: { user_id: 'u1', nickname: 'n', avatar_url: 'avatars/u1.png?t=1' },
+    }) as { accessToken: string; user: { user_id: string; nickname: string; avatar_url?: string } }
+
+    expect(migrated.user.avatar_url).toBe(absolute('avatars/u1.png?t=1'))
+    // 其余字段逐字保留——迁移不是重建 state。
+    expect(migrated.accessToken).toBe('AT')
+    expect(migrated.user.user_id).toBe('u1')
+    expect(migrated.user.nickname).toBe('n')
+  })
+
+  it('已经是绝对地址时是 no-op（幂等，重复迁移不会拼两次基址）', () => {
+    const already = absolute('avatars/u1.png?t=1')
+
+    const migrated = migrateAuthPersist({ user: { avatar_url: already } }) as {
+      user: { avatar_url?: string }
+    }
+
+    expect(migrated.user.avatar_url).toBe(already)
+  })
+
+  it('空串变成 undefined（"没有头像"），而不是一个会被 || 选中的假地址', () => {
+    // 空串非 null，但 `Navigation` 的 `||` 链要的是"继续往后找"。
+    const migrated = migrateAuthPersist({ user: { avatar_url: '' } }) as {
+      user: { avatar_url?: string }
+    }
+
+    expect(migrated.user.avatar_url).toBeUndefined()
+  })
+
+  it('形状不认识时原样返回，不编造 state', () => {
+    // 迁移函数不是校验层：落盘数据坏了应该看得见，而不是被一个默认值盖住。
+    const noUser = { accessToken: 'AT' }
+    expect(migrateAuthPersist(noUser)).toBe(noUser)
+
+    const userIsNull = { user: null }
+    expect(migrateAuthPersist(userIsNull)).toBe(userIsNull)
+
+    // 没登录过头像的用户：`avatar_url` 压根不存在，不该被写成 undefined 键
+    const noAvatar = { user: { user_id: 'u1' } }
+    expect(migrateAuthPersist(noAvatar)).toBe(noAvatar)
+
+    expect(migrateAuthPersist(null)).toBeNull()
+    expect(migrateAuthPersist('不是对象')).toBe('不是对象')
+  })
+
+  it('rehydrate 时真的被 persist 调用（v0 落盘 → 内存里已是绝对地址）', async () => {
+    // 上面几条只证明函数本身对；这一条证明它**接上了**——把 persist 配置里的
+    // `migrate:` 或 `version:` 拿掉，本条红。
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: {
+          accessToken: 'AT',
+          refreshToken: 'RT',
+          isAuthenticated: true,
+          tokenExpiry: Date.now() + 3600_000,
+          user: { user_id: 'u1', avatar_url: 'avatars/u1.png?t=9' },
+        },
+        version: 0,
+      }),
+    )
+
+    await useAuthStore.persist.rehydrate()
+
+    expect(useAuthStore.getState().user?.avatar_url).toBe(absolute('avatars/u1.png?t=9'))
   })
 })

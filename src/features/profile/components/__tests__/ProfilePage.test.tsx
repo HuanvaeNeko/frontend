@@ -479,12 +479,16 @@ describe('ProfilePage 上传头像', () => {
     // 紧接着还被 `profileStore.settleError` 静默送去登录页。
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
 
-    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
-      `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`,
-    )
     // ⚠️ 跳登录页**依然会发生**，而且是对的：`GET /api/profile` 的 401 就是会话真的
     // 失效了，那是 profileStore 对所有 action 的统一口径。本批修的不是这个跳转，
     // 是"跳转之前先告诉用户他刚做的事失败了"这句谎话。
     expect(window.location.replace).toHaveBeenCalledWith('/app/login')
+
+    // 会话既然结束了，store 里就不该再留着这个人的资料——`clearAuth` 会走
+    // `endSession()`，把 profile 连同 `profile-storage` 一起清掉。
+    // 与上一条 500 用例正好构成差分：同一次上传、同一个 `file_url`，
+    // 500（会话仍在）时它留在 store 里并渲染出来，401（会话结束）时它跟着账号一起消失。
+    expect(useProfileStore.getState().profile).toBeNull()
+    expect(localStorage.getItem('profile-storage')).toBeNull()
   })
 })

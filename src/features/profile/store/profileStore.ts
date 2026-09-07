@@ -5,6 +5,7 @@ import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
+import { registerSessionReset } from '@/lib/sessionScope'
 
 /**
  * profile store 的状态与 action 契约。
@@ -222,9 +223,23 @@ export const useProfileStore = create<ProfileState>()(
         set({ profile: { ...currentProfile, user_avatar_url: url } })
       },
 
+      /**
+       * 把本 store 恢复成"没有登录过任何人"的状态。
+       *
+       * 它此前**零调用点**——写好了，没人接——于是登出之后 `profile` 原封不动地
+       * 留在内存和 `profile-storage` 里，下一个登录的人在每一个 `/app` 页面的侧栏上
+       * 看到的是上一个人的昵称首字母和头像（`Navigation` 挂在所有 `/app` 页面上，
+       * 而只有 `ChatPage` / `ProfilePage` / `ProfileModal` 三处会调 `loadProfile()`）。
+       * 现在它的调用点是本文件底部登记给 `endSession` 的那一个，不需要谁再去接。
+       *
+       * `isLoading` 一并归零：登出时若正好有一个 `loadProfile()` 在飞，
+       * 它的 `set({isLoading:false})` 会在 reject 之后才到，中间这段时间
+       * 两个页面的"保存更改"按钮是灰的。
+       */
       clearProfile: () => {
         set({
           profile: null,
+          isLoading: false,
           error: null,
         })
       },
@@ -244,3 +259,11 @@ export const useProfileStore = create<ProfileState>()(
     }
   )
 )
+
+// 会话结束时把 profile 从内存里也清掉。`profile-storage` 的落盘副本由
+// `endSession` 的反向名单负责，这里补的是内存那一半——`authStore.logout` 和
+// `DevicesPage` 撤销当前设备走的是客户端跳转，不整页加载，内存里的 profile
+// 会一路活到下一个人的会话里。
+registerSessionReset(() => {
+  useProfileStore.getState().clearProfile()
+})

@@ -4,6 +4,7 @@ import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { loadFriends } from '@/data'
+import { registerPristineStoreReset } from '@/lib/sessionScope'
 
 interface FriendsState {
   friends: Friend[]
@@ -199,3 +200,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     set({ error: null })
   },
 }))
+
+// 会话结束时恢复到初始状态。本 store 没有 persist，所以 `create()` 刚返回时的
+// `getState()` 就是干净的初始快照，不需要在这里再抄一遍字段名单——将来往
+// state 里加字段，重置自动覆盖它。
+registerPristineStoreReset(useFriendsStore)

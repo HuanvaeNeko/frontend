@@ -4,6 +4,7 @@ import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
 import { getAuthApiUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { assertEnvelopeOk, type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import { endSession } from '@/lib/sessionScope'
 
 /**
  * `POST /api/auth/login` 与 `POST /api/auth/refresh` 的 data 部分。
@@ -151,6 +152,56 @@ const safeStorage = {
       // ignore
     }
   },
+}
+
+/**
+ * 落盘格式版本。`1` = `user.avatar_url` 是**绝对地址**。
+ *
+ * 版本号从"没有版本号"（zustand 视作 `0`）跳到 `1`：`main` 上写的是
+ * `avatar_url: data.avatar_url`，也就是后端原样给的**相对路径**
+ * （`backend-docs/profile/个人资料管理.md:98`：
+ * 「`user_avatar_url` | string\|null | 头像相对路径（需拼接 `STORAGE_BASE_URL`）」，
+ * 样例见 :74 `"user_avatar_url": "avatars/testuser001.jpg?t=1706000000"`），
+ * 本分支才改成 `toAbsoluteApiUrl(...)`。`auth-storage` 此前没有 version 也没有
+ * migrate，`refreshAccessToken` 又从不重写 `user`，所以**每一个已部署用户**
+ * 的落盘值都会一直是相对路径。
+ */
+const AUTH_PERSIST_VERSION = 1
+
+/**
+ * 把落盘的旧值搬到当前格式：只做一件事——`user.avatar_url` 补基址。
+ *
+ * ## 为什么读时归一还不够
+ *
+ * `Navigation` 已经在渲染时过一次 `toAbsoluteApiUrl`（提交 `3571e6c`），
+ * 那条防线只覆盖它自己那个 `<img>`。落盘值还有第二个消费点，而且不是渲染而是
+ * **发给后端**：`VideoMeeting` 加入房间时带 `avatar_url: user?.avatar_url || undefined`，
+ * 后端把它转给房间里所有人当头像地址。相对路径从那里出去，坏的是**别人**屏幕上的
+ * 头像，而且是在服务端留了痕的——补一处渲染点救不回来。所以这一层要在源头把值改对。
+ *
+ * ## 只搬 `avatar_url`
+ *
+ * `nickname` / `email` 的形状同样漂移过（`main` 写 `data.nickname || ''`，
+ * 本分支写 `optionalString(...)`，即 `''` → `undefined`），但那是**观测不到**的漂移：
+ * 全部消费点都是 `||` 兜底（`MessageItem` 的 `user?.nickname?.[0] || 'U'`、
+ * `VideoMeeting` 的 `user?.nickname || '访客'`、`Navigation` 的首字母块），
+ * `''` 和 `undefined` 一样落到兜底分支。给它写迁移，只能断言迁移函数自己的输出，
+ * 那是一句同义反复，钉不住任何行为。
+ *
+ * `toAbsoluteApiUrl` 幂等（已带协议的原样返回），对已经绝对的值是 no-op；
+ * `''` → `undefined`，也就是"没有头像"，正是 `User.avatar_url` 可选的含义。
+ * 形状不认识时**原样返回**：迁移函数不是校验层，在这里编造一个默认 state
+ * 只会把"落盘数据坏了"变成一个看不见的状态。
+ */
+export function migrateAuthPersist(persisted: unknown): unknown {
+  if (typeof persisted !== 'object' || persisted === null) return persisted
+  const state = persisted as { user?: unknown }
+  if (typeof state.user !== 'object' || state.user === null) return persisted
+
+  const user = state.user as { avatar_url?: unknown }
+  if (typeof user.avatar_url !== 'string') return persisted
+
+  return { ...state, user: { ...user, avatar_url: toAbsoluteApiUrl(user.avatar_url) } }
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -421,6 +472,21 @@ export const useAuthStore = create<AuthStore>()(
         })
       },
 
+      /**
+       * 结束会话。全仓**唯一**的清理原语：登出按钮、各 API 模块 `fetchWithAuth`
+       * 副本的 401 静默跳转、刷新失败、撤销当前设备、切换服务器——每一条路径最后
+       * 都走到这里（`grep -rn 'clearAuth()' src`）。
+       *
+       * 所以 `endSession()` 挂在这一行，等于挂在全部路径上。它清的是**这个账号的
+       * 其余落盘副本**（profile / AI 密钥 / 上次访问路径 / 以及将来任何新增的切片），
+       * 名单是反向的：不在设备级白名单里的键一律删，见 `lib/sessionScope.ts`。
+       * 在此之前这里只清 auth 自己那五个字段，于是下一个登录的人会在侧栏上看到
+       * 上一个人的昵称和头像、用上一个人的 AI 密钥发请求。
+       *
+       * 顺序是有意的：先 `set()` 让 persist 把 `auth-storage` 写成全 null，
+       * 再 `endSession()` 把这个键连同其它账号级键一起删掉。反过来的话，
+       * persist 的这次写入会在清盘之后重新落一个键。
+       */
       clearAuth: () => {
         // 会话没了，「刚轮换过」这个事实也随之作废；否则下一次登录后 10 秒内的刷新会被误跳过
         lastRotatedAt = 0
@@ -431,6 +497,7 @@ export const useAuthStore = create<AuthStore>()(
           isAuthenticated: false,
           tokenExpiry: null,
         })
+        endSession()
       },
 
       checkTokenExpiry: () => {
@@ -452,6 +519,8 @@ export const useAuthStore = create<AuthStore>()(
         tokenExpiry: state.tokenExpiry,
         isAuthenticated: state.isAuthenticated,
       }),
+      version: AUTH_PERSIST_VERSION,
+      migrate: migrateAuthPersist,
     }
   )
 )

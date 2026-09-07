@@ -8,6 +8,7 @@ import {
 } from '../api/messages'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { isAuthError } from '@/api/apiClient'
+import { registerPristineStoreReset } from '@/lib/sessionScope'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 
@@ -501,3 +502,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 }))
+
+// 会话结束时恢复到初始状态。本 store 没有 persist，所以 `create()` 刚返回时的
+// `getState()` 就是干净的初始快照，不需要在这里再抄一遍字段名单——将来往
+// state 里加字段，重置自动覆盖它。
+registerPristineStoreReset(useChatStore)

@@ -18,8 +18,12 @@ import { DesktopSidebar } from '../Navigation'
  *   当成图片再下载一遍。而且这里没有 `<AvatarFallback>` 兜底，坏 src 留下的是碎图标。
  *
  * 所以本文件钉的是两件事：**空值一律不渲染 `<img>`**；有值时渲染出去的是
- * **绝对**地址——包括从 `auth-storage` 里 rehydrate 出来的那份存量相对路径
- * （给 `login` 补基址的提交还没进 main，`auth-storage` 无 version / 无 migrate）。
+ * **绝对**地址。
+ *
+ * 存量相对路径现在有**两道**防线，本文件把它们分开钉，各自能被单独打红：
+ * - `auth-storage` 的 persist migrate（`migrateAuthPersist`）把落盘的旧值搬成绝对；
+ * - 本组件读的时候再过一次 `toAbsoluteApiUrl`（幂等，每次渲染重新求值），
+ *   兜住迁移之后又变回相对的来源（换基址、将来新的写入点）。
  */
 
 const renderSidebar = () =>
@@ -127,16 +131,16 @@ describe('DesktopSidebar 的头像', () => {
     expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
   })
 
-  it('落盘 auth-storage 里是**相对**路径时，渲染出去的仍然是绝对地址', async () => {
+  it('存量 auth-storage（v0，相对路径）rehydrate 之后渲染出绝对地址', async () => {
     // 这不是假想的形状，是**当前线上每一个用户**的形状：给 `login` 加补基址的那个
-    // 提交还在本分支上、没进 main；`auth-storage` 没有 `version` 也没有 `migrate`，
-    // `refreshAccessToken` 也从不重写 `user`。所以存量落盘值就是后端原样给的相对路径。
+    // 提交还在本分支上、没进 main；`refreshAccessToken` 也从不重写 `user`。
+    // 所以存量落盘值就是后端原样给的相对路径。
     //
     // 它非空 ⇒ `||` 会选中它 ⇒ 本组件那个首字母兜底根本不会触发，用户拿到的正是
     // 兜底本该防住的碎图标（裸 `<img>` 会拿相对路径去请求前端自己的源）。
     //
-    // 从 localStorage 走一遍 rehydrate 而不是直接 setState：要钉的就是"落盘的东西
-    // 进来时没人洗过"这件事。把 `avatarSrc` 上的 `toAbsoluteApiUrl` 拿掉 → 本条红。
+    // 这一条走完整的 localStorage → rehydrate 链路，钉的是 **migrate 那一层**：
+    // 把 `authStore` 的 `migrate: migrateAuthPersist` 拿掉 → 中间那条正对照红。
     localStorage.setItem(
       'auth-storage',
       JSON.stringify({
@@ -151,14 +155,30 @@ describe('DesktopSidebar 的头像', () => {
       }),
     )
     await useAuthStore.persist.rehydrate()
-    // 正对照：落盘的那个相对值确实原样进了 store（否则下面那条断言测的是别的东西）。
-    expect(useAuthStore.getState().user?.avatar_url).toBe('avatars/u1.png?t=1')
+    // 迁移已经把落盘的相对路径搬成绝对地址——这一层要紧，因为落盘值还有一个
+    // **不经过本组件**的消费点：`VideoMeeting` 把 `user?.avatar_url` 发给后端当
+    // 会议里的头像地址，读时归一救不到那里。
+    expect(useAuthStore.getState().user?.avatar_url).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
 
     useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: null } })
 
     renderSidebar()
 
     expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+  })
+
+  it('authStore 里就是相对路径时，读的时候补基址（不指望 migrate 跑过）', () => {
+    // 第二道防线，单独钉：直接把相对路径 setState 进 store，绕开 persist / migrate。
+    // migrate 只在版本号对不上时跑一次，且把值冻结在跑的那一刻的基址上——本项目会
+    // 故意改基址（本地无 SNI 反代）。把 `avatarSrc` 上的 `toAbsoluteApiUrl` 拿掉 → 本条红。
+    useAuthStore.setState({
+      user: { user_id: 'u1', nickname: '测试用户', avatar_url: 'avatars/u1.png?t=3' },
+    })
+    useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: null } })
+
+    renderSidebar()
+
+    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=3`)
   })
 
   it('profile 落盘的相对路径同样在读的时候补基址（不指望 persist migrate 跑过）', () => {

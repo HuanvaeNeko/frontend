@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getWsUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { registerSessionReset } from '@/lib/sessionScope'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）
@@ -623,3 +624,19 @@ export const useWSMessageHandler = <T>(type: string, handler: MessageHandler<T>)
   // 实际使用时应在 useEffect 中调用返回的注销函数
   return () => registerHandler<T>(type, handler)
 }
+
+/**
+ * 会话结束时断开连接。
+ *
+ * 用 `disconnect()` 而不是把状态整体重置：这条连接是**用上一个账号的 token
+ * 建立的**，只把 `ws` 字段设成 null 会留下一个仍在投递消息、仍在指数退避重连的
+ * socket——`scheduleReconnect` 的失败分支自己又会调 `clearAuth()`，正是把这个
+ * 回调挂上去的那条路径。`disconnect()` 会清定时器、递增 `activeWsId` 让旧回调
+ * 全部失效、再关掉 socket。
+ *
+ * 不清 `messageHandlers`：它是各组件在 effect 里注册、卸载时自己注销的，
+ * 与账号无关。
+ */
+registerSessionReset(() => {
+  useWSStore.getState().disconnect()
+})
