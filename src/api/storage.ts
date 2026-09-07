@@ -83,16 +83,56 @@ const fetchWithAuth = async (
 // 类型定义
 // ============================================
 
-export type FileType = 
+/**
+ * `'avatar'` 是 2026-08-28 并进来的第 10 档：用户头像 / 资料背景图 / 群头像三条旧
+ * `multipart/form-data` 端点（`POST /api/profile/avatar`、`POST /api/profile/background`、
+ * `POST /api/groups/{id}/avatar`）整套删除后，三者共用这一条预签名分片链路
+ * （`backend-docs/storage/文件存储管理.md:116`「头像类固定填 `avatar`」、
+ * :946-955 的类型与上限表）。
+ *
+ * 🔴 它与 `storage_location: 'avatars'` 是**双向绑定**，任一侧单独出现都是 400
+ * （同文档 :136-139）。而这条绑定是 **10 MB 上限的承重件**——上限按 `file_type` 取，
+ * 不绑就等于没上限。所以这两个字段只允许由 {@link buildAvatarUploadPayload}
+ * 成对写出，调用点不要自己拼。
+ */
+export type FileType =
   | 'user_image' | 'user_video' | 'user_document'
   | 'friend_image' | 'friend_video' | 'friend_document'
   | 'group_image' | 'group_video' | 'group_document'
+  | 'avatar'
 
 export type StorageLocation = 'user_files' | 'friend_messages' | 'group_files' | 'avatars'
+
+/**
+ * 头像三档落点（文档 :118「三档取值」）。取值非法 → 400（后端手工解析 `Option<String>`，
+ * **不是** 422）。
+ */
+export type AvatarTarget = 'user_avatar' | 'user_background' | 'group_avatar'
+
+/**
+ * 落点 + `related_id` 的合法组合，只有这两种。
+ *
+ * 文档 :119：`group_avatar` **必填且必须是群 UUID**；`user_avatar` / `user_background`
+ * **携带它就是 400**——注意是"携带"，不是"值不对"，所以不能传 `related_id: undefined`
+ * 之外的任何东西，`buildAvatarUploadPayload` 里靠**不写这个键**来保证。
+ *
+ * ⚠️ 这个联合是给调用点用的便利与文档，**不是**保证：`as` 一下就能绕过去
+ * （本仓已经实测过一次"可辨识联合让坏写法写不出来"这个说法是假的，
+ * 见 {@link storageApi.uploadWithMultipart} 里的注释）。真正钉住三条约束的是
+ * `buildAvatarUploadPayload` 的构造方式 + groups.test.ts 里那组 body 断言。
+ */
+export type AvatarUploadTarget =
+  | { avatar_target: 'group_avatar'; related_id: string }
+  | { avatar_target: 'user_avatar' | 'user_background' }
 
 export interface UploadRequestPayload {
   file_type: FileType
   storage_location: StorageLocation
+  /**
+   * 条件必填：`storage_location=avatars` 时必填，其余落点**携带即 400**
+   * （文档 :118）。
+   */
+  avatar_target?: AvatarTarget
   related_id?: string | null
   filename: string
   file_size: number
@@ -102,6 +142,13 @@ export interface UploadRequestPayload {
   estimated_upload_time?: number
   image_width?: number
   image_height?: number
+}
+
+/** {@link buildAvatarUploadPayload} 的产物：第 1 步请求体，逐字对齐 groups 文档 :270-284。 */
+export type AvatarUploadRequestPayload = UploadRequestPayload & {
+  file_type: 'avatar'
+  storage_location: 'avatars'
+  avatar_target: AvatarTarget
 }
 
 /** `POST /api/storage/upload/request` 两种响应共有的字段。 */
@@ -284,6 +331,34 @@ const uploadRequestResponse: Parser<UploadRequestResponse> = {
       chunk_size: num(payload, 'chunk_size'),
       total_chunks: num(payload, 'total_chunks'),
     }
+  },
+}
+
+/**
+ * 头像档专用的 `upload/request` 校验器：在通用校验之上，再把「秒传」判成形状错误。
+ *
+ * 文档 :140-141：头像三档**一律不走秒传**，`instant_upload` 由服务端强制恒为 `false`，
+ * 也不建 UUID 映射。所以真收到 `instant_upload: true` 只有两种可能——请求被路由到了
+ * 别的落点（`file_type`/`storage_location` 那条双向绑定被写坏），或后端行为变了。
+ * 两种都必须响亮地失败，不能顺着秒传分支返回一个 `existing_file_url` 当头像用：
+ * 那个 URL 是 `api/storage/file/{uuid}` 形态，写进 `group_avatar_url` 会得到一张
+ * 永远加载不出来的头像，而且后端根本没写 `groups."group-avatar-url"`。
+ *
+ * ⚠️ **防线是这个 parser，不是返回类型**。{@link storageApi.requestAvatarUpload} 的
+ * 返回类型收窄成 {@link MultipartUploadSession} 只是让调用点不必再判别一次；
+ * 类型不会在运行时拦住任何东西（同 `uploadWithMultipart` 里那条实测结论）。
+ * 放在解包处是为了拿得到 Response——失败时 `readEnvelope` 抛的是带 endpoint +
+ * payload 的 `ApiShapeError` 并会走上报，放在下游只能抛一个没有出处的裸 Error。
+ */
+const avatarUploadRequestResponse: Parser<MultipartUploadSession> = {
+  parse(input: unknown): MultipartUploadSession {
+    const session = uploadRequestResponse.parse(input)
+    if (session.instant_upload) {
+      throw new Error(
+        '头像档不应返回秒传响应（instant_upload=true），服务端对 avatars 落点强制 false（文档 :140-141）',
+      )
+    }
+    return session
   },
 }
 
@@ -482,8 +557,155 @@ interface CachedPresignedUrl {
 const presignedUrlCache: Record<string, CachedPresignedUrl> = {}
 
 // ============================================
+// 头像上传（三档共用的四步链路）
+// ============================================
+
+/**
+ * 头像档上限，由后端**量两次**（文档 :142-145）：`upload/request` 校自报的 `file_size`，
+ * `upload/confirm` 在合并分片**之前**再量一次真实字节。
+ *
+ * 所以下面这道客户端检查是**便利，不是执行**——它省掉一次注定失败的往返，
+ * 并给用户一句当场能看懂的话；真正的闸在服务端，绕过前端也照样超不了限
+ * （而且 confirm 那一档拒绝时**不会碰现有的那张头像**）。
+ */
+export const AVATAR_MAX_SIZE = 10 * 1024 * 1024
+
+/**
+ * 允许的图片格式（群聊文档 :375「扩展名不在 jpg/jpeg/png/gif/webp → 400」）。
+ * 这里按 MIME 判，`image/jpeg` 同时覆盖 jpg 与 jpeg 两个扩展名。
+ */
+export const AVATAR_ALLOWED_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+] as const
+
+function validateAvatarFile(file: File): void {
+  if (file.size > AVATAR_MAX_SIZE) {
+    throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
+  }
+  if (!(AVATAR_ALLOWED_CONTENT_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
+  }
+}
+
+/**
+ * 拼第 1 步的请求体。三条约束全部由**构造方式**保证，而不是由类型保证：
+ *
+ * - `file_type: 'avatar'` 与 `storage_location: 'avatars'` 成对写死（文档 :136-139 双向绑定，
+ *   任一侧单独出现都是 400，而这条绑定是 10 MB 上限的承重件）；
+ * - `related_id` 只在 `group_avatar` 档**出现这个键**——另两档"携带即 400"，
+ *   所以不能写成 `related_id: target.related_id ?? undefined`：
+ *   `JSON.stringify` 虽然会丢掉 undefined 值，但那是靠序列化的副作用兜住一条协议约束，
+ *   下一个人把 body 换成别的编码就会静默破掉（文档 :119）；
+ * - 群 UUID 原样透传：服务端自 2026-08-29 起归一成规范小写再拼 object key
+ *   （群聊文档 :308-312），客户端**不必**自己归一，但也不能指望用大小写变体拿到不同对象。
+ */
+export function buildAvatarUploadPayload(
+  file: File,
+  target: AvatarUploadTarget,
+  fileHash: string,
+): AvatarUploadRequestPayload {
+  const base = {
+    file_type: 'avatar',
+    storage_location: 'avatars',
+    avatar_target: target.avatar_target,
+    filename: file.name,
+    file_size: file.size,
+    content_type: file.type,
+    file_hash: fileHash,
+  } as const
+
+  return target.avatar_target === 'group_avatar'
+    ? { ...base, related_id: target.related_id }
+    : { ...base }
+}
+
+/**
+ * 单飞键。头像的 object key 是**确定性**的（`{user_id}.{ext}` / `group-{group_id}.{ext}`），
+ * 同一个落点只有一行上传会话：并发或重复发起 `upload/request` 会让先手方之后的每一次
+ * `part_url` / `confirm` 都变成 409（文档 :643-646、群聊文档 :369）。
+ *
+ * 群 ID 在键里小写化，是因为服务端会把 UUID 归一成规范小写再拼 key —— 大小写不同的
+ * 两个字符串落在**同一个对象**上，键不小写化就等于给同一个落点开了两条并发通道。
+ */
+function avatarSingleFlightKey(target: AvatarUploadTarget): string {
+  return target.avatar_target === 'group_avatar'
+    ? `group_avatar:${target.related_id.toLowerCase()}`
+    : target.avatar_target
+}
+
+const avatarUploadsInFlight = new Map<string, Promise<AvatarUploadResult>>()
+
+export interface AvatarUploadResult {
+  /**
+   * 后端返回的是**相对路径**（`avatars/group-{id}.{ext}?t=…`，群聊文档 :288-306），
+   * 这里已在 api 出口过 {@link toAbsoluteApiUrl}。组件里不要再拼基址。
+   *
+   * 🔴 字段名是 `file_url`，不是旧端点的 `avatar_url`——旧的那个字段随
+   * `POST /api/groups/{id}/avatar` 一起在 2026-08-28 删掉了，形态逐字相同、名字变了。
+   */
+  file_url: string
+  file_key: string
+}
+
+export interface AvatarUploadProgress {
+  percent: number
+  loaded: number
+  total: number
+  currentChunk: number
+  totalChunks: number
+}
+
+async function runAvatarUpload(
+  file: File,
+  target: AvatarUploadTarget,
+  onProgress?: (progress: AvatarUploadProgress) => void,
+): Promise<AvatarUploadResult> {
+  const fileHash = await calculateFileHash(file)
+
+  // 第 1 步。权限判定就在这里：非群主/管理员拿到的是 **403**（群聊文档 :285-287），
+  // 预签名 URL 根本签不出来。readEnvelope 会把后端原文（`message` 字段）原样带出去。
+  const session = await storageApi.requestAvatarUpload(
+    buildAvatarUploadPayload(file, target, fileHash),
+  )
+
+  // 第 2+3 步：逐片换 URL 并 PUT 字节（头像通常只有 1 片）。
+  await storageApi.uploadWithMultipart(file, session, onProgress)
+
+  // 第 4 步：后端在这里写 `groups."group-avatar-url"` 并下发 group_avatar_updated。
+  const confirmed = await storageApi.confirmUpload(session.file_key)
+  return { file_url: confirmed.file_url, file_key: confirmed.file_key }
+}
+
+// ============================================
 // API 方法
 // ============================================
+
+/**
+ * `POST /api/storage/upload/request` 的公共发送段，通用档与头像档只差一个校验器。
+ *
+ * 旧代码 `const data = await response.json()` 直接把**信封**当成了 data
+ * （文档 :163-205 的响应示例里，真实字段全在 `data` 下一层），于是
+ * `data.instant_upload` 恒为 undefined、`data.chunk_size` 恒为 undefined，
+ * 再被下游的 `|| 30MB` / `!` 兜住，整条上传拿着一堆 undefined 往下跑。
+ */
+async function postUploadRequest<T>(
+  payload: UploadRequestPayload,
+  parse: Parser<T>,
+): Promise<T> {
+  const response = await fetchWithAuth(`${STORAGE_BASE_URL}/upload/request`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  return readEnvelope<T>(response, {
+    endpoint: 'POST /api/storage/upload/request',
+    fallbackMessage: '请求上传失败',
+    parse,
+  })
+}
 
 export const storageApi = {
   /**
@@ -492,26 +714,32 @@ export const storageApi = {
    */
   requestUpload: async (payload: UploadRequestPayload): Promise<UploadRequestResponse> => {
     console.log('📤 请求上传:', payload.filename)
-    const response = await fetchWithAuth(`${STORAGE_BASE_URL}/upload/request`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-
-    // 旧代码 `const data = await response.json()` 直接把**信封**当成了 data
-    // （文档 :163-205 的响应示例里，真实字段全在 `data` 下一层），于是
-    // `data.instant_upload` 恒为 undefined、`data.chunk_size` 恒为 undefined，
-    // 再被下游的 `|| 30MB` / `!` 兜住，整条上传拿着一堆 undefined 往下跑。
-    const data = await readEnvelope<UploadRequestResponse>(response, {
-      endpoint: 'POST /api/storage/upload/request',
-      fallbackMessage: '请求上传失败',
-      parse: uploadRequestResponse,
-    })
+    const data = await postUploadRequest(payload, uploadRequestResponse)
 
     if (data.instant_upload) {
       console.log('⚡ 秒传成功!')
     }
 
     return data
+  },
+
+  /**
+   * 请求头像上传（三档落点共用）
+   * POST /api/storage/upload/request
+   *
+   * 与 {@link storageApi.requestUpload} 是同一个端点，只有校验器不同：头像档一律不走秒传
+   * （文档 :140-141），所以返回类型收窄成 {@link MultipartUploadSession}，调用点不必再判别。
+   * **收窄由 {@link avatarUploadRequestResponse} 在运行时保证，不是由类型保证。**
+   *
+   * 🔴 403 在这一步就会抛出（群聊文档 :285-287：非群主/管理员在签发预签名 URL 之前
+   * 就被拒）。它是一次**常规的权限失败**，不是登录态问题——`fetchWithAuth` 只对 401
+   * 做刷新/登出，403 原样带着后端文案往上抛，调用点直接透出即可。
+   */
+  requestAvatarUpload: async (
+    payload: AvatarUploadRequestPayload,
+  ): Promise<MultipartUploadSession> => {
+    console.log('📤 请求头像上传:', payload.avatar_target, payload.filename)
+    return postUploadRequest(payload, avatarUploadRequestResponse)
   },
 
   /**
@@ -715,6 +943,59 @@ export const storageApi = {
         isInstant: false,
       messageUuid: confirmResult.message_uuid,
     }
+  },
+
+  /**
+   * 头像上传的完整四步链路（用户头像 / 资料背景图 / 群头像三档共用）。
+   *
+   * ```
+   * 1) POST /api/storage/upload/request     ← file_type=avatar + storage_location=avatars
+   *                                            + avatar_target（+ group_avatar 档的 related_id）
+   * 2) GET  /api/storage/multipart/part_url
+   * 3) PUT  <预签名 URL>                     ← 字节直传对象存储
+   * 4) POST /api/storage/upload/confirm     ← 返回 file_url，后端顺带下发 WS 通知
+   * ```
+   *
+   * 三条旧 `multipart/form-data` 端点（`POST /api/profile/avatar`、
+   * `POST /api/profile/background`、`POST /api/groups/{id}/avatar`）已于 2026-08-28
+   * **整套删除、无兼容层**（群聊文档 :250-252、storage 文档 :959-962）。
+   *
+   * ## 单飞（不是自动重试）
+   *
+   * 同一个落点同时只允许一次上传在飞。头像 object key 是确定性的，同一个群的群主与
+   * 任一管理员会落在**同一行**上传会话上：后发的 `upload/request` 会接管这一行，
+   * 先手方之后每一次 `part_url` / `confirm` 都变 409（文档 :643-646、群聊文档 :369）。
+   * 文档给客户端的处方是**防抖 / 单飞**，所以这里直接拒绝第二次调用，而不是：
+   * - 自动重发（文档 :526-534 写明 409 语义是"重发同一条永远不会成功"，
+   *   而重走整条链路又会去接管别人的会话，两边互相打架）；
+   * - 复用第一次的 promise（用户第二次选的可能是**另一张图**，把第一张的 URL
+   *   还给他就是把"我传的不是这张"变成一次静默的错误结果）。
+   *
+   * @throws {Error} 文件超 10 MB 或格式不在白名单（客户端便利检查，见 {@link AVATAR_MAX_SIZE}）
+   * @throws {Error} 同一落点已有上传在飞
+   * @throws {ApiError} 第 1 步 403（无权限）、任意步骤 409（会话已死，用
+   *   {@link isUploadSessionExpired} 分诊）等后端失败，文案是后端原文
+   */
+  uploadAvatar: async (
+    file: File,
+    target: AvatarUploadTarget,
+    onProgress?: (progress: AvatarUploadProgress) => void,
+  ): Promise<AvatarUploadResult> => {
+    validateAvatarFile(file)
+
+    const key = avatarSingleFlightKey(target)
+    if (avatarUploadsInFlight.has(key)) {
+      throw new Error('该头像正在上传中，请等待当前上传完成后再试')
+    }
+
+    // 「查表 → 落表」之间没有任何 await：await 之前的代码是同步执行的，
+    // 所以这一段不可能被另一次调用插进来。
+    const task = runAvatarUpload(file, target, onProgress).finally(() => {
+      avatarUploadsInFlight.delete(key)
+    })
+    avatarUploadsInFlight.set(key, task)
+
+    return task
   },
 
   /**

@@ -1,5 +1,6 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { type AvatarUploadResult, storageApi } from '@/api/storage'
 import { ROUTES } from '@/lib/routes'
 import { type Parser, assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
@@ -756,49 +757,42 @@ export const groupsApi = {
   },
 
   /**
-   * 上传群头像
-   * POST /api/groups/{group_id}/avatar
+   * 上传群头像 —— 已不再是本模块的一个端点
    *
-   * ⚠️ 该端点已于 2026-08-28 删除，群头像改走 storage 统一预签名分片直传链路
-   * （批 5，需要同时改 `storage.ts` 的 `FileType`/`avatar_target`），本批不动。
+   * 🔴 `POST /api/groups/{group_id}/avatar`（`multipart/form-data`）于 2026-08-28
+   * **删除、无兼容层**（doc:250-252）。群头像与用户头像 / 资料背景图一起并入 storage
+   * 模块的统一预签名分片直传四步链路，本方法只是这个模块的入口，实现在
+   * {@link storageApi.uploadAvatar}（`src/api/storage.ts`）。
+   *
+   * 保留在 groupsApi 上的理由有两条：调用点（`GroupManagement`）不必知道链路搬去了哪；
+   * 以及"群头像的 `avatar_target` / `related_id` 该填什么"是**群模块的知识**，
+   * 写在这里比散在组件里可靠。
+   *
+   * ## 三个跟着一起变的东西
+   *
+   * 1. **返回字段改名**：旧响应是 `data.avatar_url`，现在是 confirm 的 `data.file_url`
+   *    （doc:288-306，形态逐字相同：相对路径 + `?t=` 缓存戳，出口已补基址）。
+   * 2. **权限在第 1 步判**：非群主/管理员在 `upload/request` 就拿 **403**
+   *    （doc:285-287），预签名 URL 根本签不出来。403 是常规权限失败，
+   *    不是登录态问题——本模块的 `fetchWithAuth` 与 storage 的那一份都只对 401
+   *    做刷新/登出，403 带着后端原文往上抛，调用点直接透出。
+   * 3. **10 MB / 格式检查搬进了 storage 那一侧**（三档头像共用）。它是**便利**不是执行：
+   *    后端在 `upload/confirm` 合并分片之前还会量一次真实字节（doc:368）。
+   *
+   * 单飞由 `storageApi.uploadAvatar` 按落点（这里是群 ID）保证：同一个群的群主与任一
+   * 管理员落在同一行上传会话上，并发发起会让先手方的 `part_url` / `confirm` 变 409
+   * （doc:369）。
    */
-  uploadGroupAvatar: async (groupId: string, file: File): Promise<{ avatar_url: string }> => {
+  uploadGroupAvatar: async (groupId: string, file: File): Promise<AvatarUploadResult> => {
     console.log('📸 上传群头像:', groupId, file.name)
 
-    // 验证文件大小
-    const maxSize = 10 * 1024 * 1024 // 10MB
-    if (file.size > maxSize) {
-      throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
-    }
-
-    // 验证文件类型
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
-    }
-
-    const formData = new FormData()
-    formData.append('avatar', file)
-
-    const authStore = useAuthStore.getState()
-    const accessToken = authStore.accessToken
-
-    const response = await fetch(`${GROUPS_BASE_URL}/${groupId}/avatar`, {
-      method: 'POST',
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: formData,
+    const result = await storageApi.uploadAvatar(file, {
+      avatar_target: 'group_avatar',
+      related_id: groupId,
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '上传群头像失败' }))
-      throw new Error(error.error || '上传群头像失败')
-    }
-
-    const result = await response.json()
-    console.log('✅ 群头像上传成功:', result.data.avatar_url)
-    return result.data
+    console.log('✅ 群头像上传成功:', result.file_url)
+    return result
   },
 
   /**

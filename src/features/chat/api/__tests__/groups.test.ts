@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { type ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { isUploadSessionExpired, storageApi } from '@/api/storage'
 import { groupsApi } from '../groups'
 
 /**
@@ -940,5 +941,234 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
     fetchMock.mockResolvedValueOnce(envelope({ requests: [missing] }))
 
     await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/user_accepted/)
+  })
+})
+
+/**
+ * 批 5：群头像改走 storage 的四步预签名链路。
+ *
+ * `POST /api/groups/{group_id}/avatar`（multipart）于 2026-08-28 删除、无兼容层
+ * （doc:250-252），今天调用它只会拿到 404——而旧实现拿 404 的响应体去读
+ * `result.data.avatar_url`，抛的是一句 `Cannot read properties of undefined`，
+ * 指不到"端点没了"这个真正的原因。
+ *
+ * 这一组用例的纪律：**第 1 步的请求体必须逐字段断言**，不能用快照。
+ * 少一个 `avatar_target` 或 `related_id` 都是 400（doc:364-365），
+ * 而快照会在"顺手更新一下"里把这种回归批准掉。
+ */
+describe('groupsApi.uploadGroupAvatar（四步预签名链路）', () => {
+  const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
+  const GROUP_ID = '019ae4ec-0dfe-7ac1-966e-876e9755561c'
+
+  const pngFile = () => new File(['x'], 'logo.png', { type: 'image/png' })
+
+  /** 头像档的 upload/request 响应：一片（doc:270-284 的链路示例说明群头像通常 1 片）。 */
+  const AVATAR_SESSION = {
+    mode: 'multipart',
+    preview_support: 'inline_preview',
+    multipart_upload_id: 'upload-id-avatar',
+    expires_in: 3600,
+    chunk_size: 31457280,
+    total_chunks: 1,
+    file_key: `group-${GROUP_ID}.png`,
+    max_file_size: 10485760,
+    instant_upload: false,
+    existing_file_url: null,
+  }
+
+  const PART_URL_DATA = {
+    part_url: 'https://api.huanvae.cn/avatars/x?uploadId=u&partNumber=1&X-Amz-Signature=sig',
+    part_number: 1,
+    expires_in: 3600,
+  }
+
+  /** doc:290-302：`file_url` 是**相对路径** + `?t=` 缓存戳。 */
+  const AVATAR_CONFIRM_DATA = {
+    file_url: `avatars/group-${GROUP_ID}.png?t=1706000000`,
+    file_key: `group-${GROUP_ID}.png`,
+    file_size: 40960,
+    content_type: 'image/png',
+    preview_support: 'inline_preview',
+  }
+
+  const mockHappyPath = () => {
+    fetchMock
+      .mockResolvedValueOnce(envelope(AVATAR_SESSION))
+      .mockResolvedValueOnce(envelope(PART_URL_DATA))
+      .mockResolvedValueOnce(envelope(AVATAR_CONFIRM_DATA))
+  }
+
+  beforeEach(() => {
+    // calculateFileHash 走 crypto.subtle，与本次迁移无关，固定掉以免依赖运行环境。
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+    // 第 3 步是往预签名 URL 直接 PUT 字节（XMLHttpRequest），不经 fetch。
+    vi.spyOn(storageApi, 'uploadChunk').mockResolvedValue(undefined)
+  })
+
+  it('四步按顺序发出，且第 1 步的请求体逐字段与 doc:270-284 一致', async () => {
+    mockHappyPath()
+
+    await groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    // 1) upload/request
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(requestUrl).toBe(`${STORAGE_BASE}/upload/request`)
+    expect(requestInit.method).toBe('POST')
+    expect(JSON.parse(String(requestInit.body))).toEqual({
+      file_type: 'avatar',
+      storage_location: 'avatars',
+      avatar_target: 'group_avatar',
+      related_id: GROUP_ID,
+      filename: 'logo.png',
+      file_size: 1,
+      content_type: 'image/png',
+      file_hash: '0'.repeat(64),
+    })
+
+    // 2) part_url
+    const partUrlRequest = String(fetchMock.mock.calls[1][0])
+    expect(partUrlRequest).toContain(`${STORAGE_BASE}/multipart/part_url?`)
+    expect(partUrlRequest).toContain('upload_id=upload-id-avatar')
+    expect(partUrlRequest).toContain('part_number=1')
+    expect(partUrlRequest).not.toContain('undefined')
+
+    // 3) PUT 字节到预签名 URL（不经 fetch）。part_url 本就是绝对地址，出口只把
+    //    正式域名的 origin 换成当前基址（本机是去 SNI 反代），**签名逐字保留**——
+    //    路径与 query 少一个字节，MinIO 就会拒掉这一片。
+    expect(storageApi.uploadChunk).toHaveBeenCalledTimes(1)
+    const putTarget = String(
+      (storageApi.uploadChunk as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0],
+    )
+    expect(putTarget).toBe(
+      `${getApiBaseUrl()}/avatars/x?uploadId=u&partNumber=1&X-Amz-Signature=sig`,
+    )
+    expect(putTarget.endsWith(PART_URL_DATA.part_url.slice('https://api.huanvae.cn'.length))).toBe(
+      true,
+    )
+
+    // 4) confirm
+    const [confirmUrl, confirmInit] = fetchMock.mock.calls[2] as [string, RequestInit]
+    expect(confirmUrl).toBe(`${STORAGE_BASE}/upload/confirm`)
+    expect(JSON.parse(String(confirmInit.body))).toEqual({ file_key: `group-${GROUP_ID}.png` })
+  })
+
+  it('没有任何一次请求打到已删除的 POST /api/groups/{id}/avatar', async () => {
+    mockHappyPath()
+
+    await groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+    expect(urls.some((url) => url.includes(`${GROUPS_BASE}/${GROUP_ID}/avatar`))).toBe(false)
+    expect(urls.some((url) => url.endsWith('/avatar'))).toBe(false)
+    // multipart/form-data 的形态也一并钉住：链路上没有任何一个 FormData body。
+    const bodies = fetchMock.mock.calls.map((call) => (call[1] as RequestInit | undefined)?.body)
+    expect(bodies.some((body) => body instanceof FormData)).toBe(false)
+  })
+
+  it('confirm 的相对 file_url 在 api 出口补成绝对地址（组件里不再拼基址）', async () => {
+    mockHappyPath()
+
+    const result = await groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())
+
+    expect(result.file_url).toBe(
+      `${getApiBaseUrl()}/avatars/group-${GROUP_ID}.png?t=1706000000`,
+    )
+    // 不能是相对路径原样返回——那也是"非 undefined"，只断言真假抓不出来。
+    expect(result.file_url.startsWith('http')).toBe(true)
+    expect(result.file_key).toBe(`group-${GROUP_ID}.png`)
+  })
+
+  it('第 1 步的 403 透出后端原文，且不再往下走链路', async () => {
+    // doc:285-287 / doc:366：非群主/管理员在签发预签名 URL 之前就被拒。
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 403, message: '只有群主或管理员可以修改群头像' }, 403),
+    )
+
+    const error = await groupsApi.uploadGroupAvatar(GROUP_ID, pngFile()).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+    expect((error as Error).message).toBe('只有群主或管理员可以修改群头像')
+    // 自造文案会把这句话盖掉
+    expect((error as Error).message).not.toBe('上传群头像失败')
+    // part_url / confirm 一步都没发
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('409（会话被同一个群的新请求接管）可分诊，且不自动重试', async () => {
+    fetchMock
+      .mockResolvedValueOnce(envelope(AVATAR_SESSION))
+      .mockResolvedValueOnce(
+        ok(
+          {
+            success: false,
+            code: 409,
+            message: '该上传会话已被同一目标的新请求接管，请重新发起上传',
+          },
+          409,
+        ),
+      )
+
+    const error = await groupsApi.uploadGroupAvatar(GROUP_ID, pngFile()).catch((e: unknown) => e)
+
+    expect(isUploadSessionExpired(error)).toBe(true)
+    expect((error as ApiError).status).toBe(409)
+    expect((error as Error).message).toBe('该上传会话已被同一目标的新请求接管，请重新发起上传')
+    // 400 与 409 必须分得开：前者改一下参数还能成，后者必须整条重来
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 400, message: '上传会话不存在，请重新发起上传' }, 400),
+    )
+    const notExpired = await groupsApi
+      .uploadGroupAvatar(GROUP_ID, pngFile())
+      .catch((e: unknown) => e)
+    expect(isUploadSessionExpired(notExpired)).toBe(false)
+
+    // 没有静默重试：第一次是 request + part_url 两发就停，第二次一发就停
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('单飞：同一个群第二次并发上传被就地拒绝，不会再发一条 upload/request', async () => {
+    // doc:369 / storage 文档 :643-646：群头像 object key 由群 ID 决定，群主与任一
+    // 管理员落在同一行会话上，后发的 request 会接管先手方，先手方之后每一次
+    // part_url / confirm 都变 409。文档给的处方是防抖/单飞。
+    let releaseFirstRequest: (value: Response) => void = () => {}
+    const pendingRequest = new Promise<Response>((resolve) => {
+      releaseFirstRequest = resolve
+    })
+    fetchMock
+      .mockReturnValueOnce(pendingRequest)
+      .mockResolvedValueOnce(envelope(PART_URL_DATA))
+      .mockResolvedValueOnce(envelope(AVATAR_CONFIRM_DATA))
+
+    const first = groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())
+    // 让第一次走到 fetch（calculateFileHash 是异步的，要把微任务放完）
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    await expect(groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())).rejects.toThrow(/正在上传中/)
+    // 关键断言：第二次**没有**发出第二条 upload/request 去接管第一次的会话
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    releaseFirstRequest(envelope(AVATAR_SESSION))
+    await expect(first).resolves.toMatchObject({ file_key: `group-${GROUP_ID}.png` })
+
+    // 第一次结束后单飞位释放，同一个群可以重新上传
+    fetchMock
+      .mockResolvedValueOnce(envelope(AVATAR_SESSION))
+      .mockResolvedValueOnce(envelope(PART_URL_DATA))
+      .mockResolvedValueOnce(envelope(AVATAR_CONFIRM_DATA))
+    await expect(groupsApi.uploadGroupAvatar(GROUP_ID, pngFile())).resolves.toBeTruthy()
+  })
+
+  it('超 10MB / 非白名单格式在本地就拒掉，一条请求都不发', async () => {
+    const huge = new File([], 'big.png', { type: 'image/png' })
+    Object.defineProperty(huge, 'size', { value: 10 * 1024 * 1024 + 1 })
+
+    await expect(groupsApi.uploadGroupAvatar(GROUP_ID, huge)).rejects.toThrow(/最大 10MB/)
+    await expect(
+      groupsApi.uploadGroupAvatar(GROUP_ID, new File(['x'], 'a.bmp', { type: 'image/bmp' })),
+    ).rejects.toThrow(/不支持的文件格式/)
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

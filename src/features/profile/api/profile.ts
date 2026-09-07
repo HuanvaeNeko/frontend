@@ -180,6 +180,26 @@ export const profileApi = {
    * 请求体: multipart/form-data (avatar 或 file 字段)
    * 支持格式: jpg, jpeg, png, gif, webp
    * 大小限制: 最大 10MB
+   *
+   * 🔴 **本端点已于 2026-08-28 删除、无兼容层**，与
+   * `POST /api/groups/{id}/avatar`、`POST /api/profile/background` 同一批
+   * （`backend-docs/storage/文件存储管理.md:959-962`）。今天调用它只会拿到 404。
+   *
+   * 迁移到已经写好的那条四步预签名链路即可：**`storageApi.uploadAvatar(file, target)`**
+   * （`src/api/storage.ts`）。群头像已在批 5 接上，本模块留给自己的那一批
+   * （profile 是另一个模块，它的 `background` 与展示字段有各自的连锁改动，
+   * 不该混进群模块那次 review）。
+   *
+   * 与群头像的调用只差两个参数：
+   * 1. `avatar_target: 'user_avatar'`（背景图那个方法则是 `'user_background'`），
+   *    不是 `'group_avatar'`；
+   * 2. **不传 `related_id`**——`user_avatar` / `user_background` 携带它就是 400
+   *    （storage 文档 :119）。`AvatarUploadTarget` 联合的另一支正是为此而设：
+   *    写 `{ avatar_target: 'user_avatar' }` 即可，那一支上没有 `related_id` 这个键。
+   *
+   * 其余完全一致：10 MB / 格式检查、单飞、四步顺序、`file_url` 出口补基址
+   * 都在 `storageApi.uploadAvatar` 里，不要在这里复制一份。
+   * 返回字段也跟着改名：旧的 `data.avatar_url` → confirm 的 `data.file_url`。
    */
   uploadAvatar: async (file: File): Promise<AvatarUploadResponse> => {
     console.log('📸 上传头像:', file.name)

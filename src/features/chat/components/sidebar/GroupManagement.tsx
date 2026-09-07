@@ -36,6 +36,7 @@ import {
   type ShareScope
 } from '../../api/groups'
 import { ApiError } from '@/lib/apiEnvelope'
+import { isUploadSessionExpired } from '@/api/storage'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/features/auth/store/authStore'
 
@@ -269,6 +270,20 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
+  /**
+   * 群头像走 storage 的四步预签名链路（`POST /api/groups/{id}/avatar` 已于
+   * 2026-08-28 删除，doc:250-252）。组件这一侧只有三点要知道：
+   *
+   * - 结果字段叫 **`file_url`**，不是旧响应的 `avatar_url`（doc:288-306）；
+   *   它已在 api 出口补成绝对地址，这里不再拼基址。
+   * - 失败一律透出**后端原文**：第 1 步的 403「不是群主/管理员」（doc:285-287）
+   *   和 confirm 的「文件大小超过限制…（实际 N 字节）」都是有用的话，
+   *   套一句自造的「上传失败」等于把它们扔掉。403 也**不是**登录态问题，
+   *   不触发登出。
+   * - 409 = 上传会话被同一个群的另一个管理员接管 / 已过期（doc:369）：
+   *   重发同一条永远不会成功，必须整条重来。这里只把话说清楚让用户重选文件，
+   *   **不自动重试**——自动重走链路会去接管别人的会话，两边互相打架。
+   */
   const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -276,10 +291,13 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     setUploadingAvatar(true)
     try {
       const result = await groupsApi.uploadGroupAvatar(groupId, file)
-      setGroup(prev => prev ? { ...prev, group_avatar_url: result.avatar_url } : null)
+      setGroup(prev => prev ? { ...prev, group_avatar_url: result.file_url } : null)
       toast({ title: '成功', description: '群头像已更新' })
     } catch (err) {
-      toast({ title: '错误', description: err instanceof Error ? err.message : '上传失败', variant: 'destructive' })
+      const description = isUploadSessionExpired(err)
+        ? `${err.message}（可能是本群另一位管理员同时在换头像）`
+        : err instanceof Error ? err.message : '上传失败'
+      toast({ title: '错误', description, variant: 'destructive' })
     } finally {
       setUploadingAvatar(false)
     }

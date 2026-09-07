@@ -662,3 +662,96 @@ describe('storageApi.uploadFile（整条链路）', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
+
+/**
+ * 批 5：头像三档共用的四步链路。
+ *
+ * 群头像那一档的端到端断言在 `features/chat/api/__tests__/groups.test.ts` 里
+ * （它才是本批真正接线的消费者）。这里只钉两件**共用层**的事：
+ * ① 另外两档（profile 那一批要用的）的请求体形状；② 头像档不接受秒传响应。
+ */
+describe('storageApi.uploadAvatar（三档共用层）', () => {
+  const pngFile = () => new File(['x'], 'me.png', { type: 'image/png' })
+
+  const AVATAR_SESSION = {
+    mode: 'multipart',
+    preview_support: 'inline_preview',
+    multipart_upload_id: 'upload-id-avatar',
+    expires_in: 3600,
+    chunk_size: 31457280,
+    total_chunks: 1,
+    file_key: 'alice.png',
+    max_file_size: 10485760,
+    instant_upload: false,
+    existing_file_url: null,
+  }
+
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+    vi.spyOn(storageApi, 'uploadChunk').mockResolvedValue(undefined)
+  })
+
+  it('user_avatar 档不带 related_id——带了就是 400（文档 :119）', async () => {
+    // profile 那一批（`POST /api/profile/avatar` 同批删除）要用的正是这一支：
+    // 与群头像只差 avatar_target 与"不传 related_id"两处。
+    fetchMock
+      .mockResolvedValueOnce(envelope(AVATAR_SESSION))
+      .mockResolvedValueOnce(
+        envelope({ part_url: 'https://api.huanvae.cn/avatars/a?X-Amz-Signature=s', part_number: 1, expires_in: 3600 }),
+      )
+      .mockResolvedValueOnce(envelope({ ...CONFIRM_DATA, file_url: 'avatars/alice.png?t=1' }))
+
+    const result = await storageApi.uploadAvatar(pngFile(), { avatar_target: 'user_avatar' })
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(body).toEqual({
+      file_type: 'avatar',
+      storage_location: 'avatars',
+      avatar_target: 'user_avatar',
+      filename: 'me.png',
+      file_size: 1,
+      content_type: 'image/png',
+      file_hash: '0'.repeat(64),
+    })
+    // "键不存在"和"键在但值是 null/undefined"对后端是两回事
+    expect('related_id' in body).toBe(false)
+    expect(result.file_url).toBe(`${getApiBaseUrl()}/avatars/alice.png?t=1`)
+  })
+
+  it('头像档收到 instant_upload:true ⇒ 形状错误，不会把秒传 URL 当头像用', async () => {
+    // 文档 :140-141：avatars 落点服务端强制 instant_upload=false。真收到 true
+    // 只可能是请求被路由去了别的落点（双向绑定被写坏）或后端行为变了；
+    // 顺着秒传分支走会把 `api/storage/file/{uuid}` 写进头像字段，
+    // 而后端**根本没写** groups."group-avatar-url"。
+    fetchMock.mockResolvedValueOnce(envelope(INSTANT_DATA))
+
+    await expect(
+      storageApi.uploadAvatar(pngFile(), { avatar_target: 'user_background' }),
+    ).rejects.toThrow(/instant_upload/)
+
+    // 没有往下走链路
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('不同落点各占一个单飞位，互不阻塞', async () => {
+    // 单飞是按"落点"而不是按"整个客户端"锁的：换头像不该挡住换背景图。
+    let releaseAvatar: (value: Response) => void = () => {}
+    fetchMock
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { releaseAvatar = resolve }))
+      .mockResolvedValueOnce(envelope(AVATAR_SESSION))
+      .mockResolvedValueOnce(
+        envelope({ part_url: 'https://api.huanvae.cn/avatars/b?X-Amz-Signature=s', part_number: 1, expires_in: 3600 }),
+      )
+      .mockResolvedValueOnce(envelope({ ...CONFIRM_DATA, file_url: 'avatars/alice-bg.png?t=1' }))
+
+    const avatar = storageApi.uploadAvatar(pngFile(), { avatar_target: 'user_avatar' })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    await expect(
+      storageApi.uploadAvatar(pngFile(), { avatar_target: 'user_background' }),
+    ).resolves.toBeTruthy()
+
+    releaseAvatar(ok({ success: false, code: 400, message: '文件大小超过限制' }, 400))
+    await expect(avatar).rejects.toThrow('文件大小超过限制')
+  })
+})
