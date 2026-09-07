@@ -590,15 +590,48 @@ const presignedUrlCache: Record<string, CachedPresignedUrl> = {}
 export const AVATAR_MAX_SIZE = 10 * 1024 * 1024
 
 /**
- * 允许的图片格式（群聊文档 :375「扩展名不在 jpg/jpeg/png/gif/webp → 400」）。
- * 这里按 MIME 判，`image/jpeg` 同时覆盖 jpg 与 jpeg 两个扩展名。
+ * 后端对头像类有**两条互不替代**的格式规则，客户端这一侧照抄两条：
+ *
+ * 1. `content_type` 白名单（`个人资料管理.md:392`：`jpeg / png / gif / webp / jpg / tiff`）；
+ * 2. **扩展名**白名单（同文档 :391「必须是 jpg / jpeg / png / gif / webp」，
+ *    违反是 400，:453「避免造出 `{uid}.exe` 这种孤儿对象」）——扩展名会成为
+ *    object key 的后缀（:420 `{user_id}.{ext}`），所以它不是 MIME 的同义词。
+ *
+ * 🔴 `image/jpg` 是这次补上的：它不是注册类型，但部分 Windows 来源的 JPEG 就报这个，
+ * 后端 :392 明确收，而客户端此前把它挡在门外——一个后端会接受的文件被前端拒了。
+ *
+ * `image/tiff` 后端 :392 收，这里**故意不收**：:391 的扩展名白名单里没有 tiff，
+ * 任何 `.tif`/`.tiff` 都会在第 1 步 400。收 MIME 而挡扩展名等于让用户多走一趟。
  */
 export const AVATAR_ALLOWED_CONTENT_TYPES = [
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/gif',
   'image/webp',
 ] as const
+
+/** 文档 :391 的扩展名白名单，逐字。它决定 object key 的后缀，与 MIME 是两道闸。 */
+export const AVATAR_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'] as const
+
+/**
+ * `<input type="file">` 的 `accept`，由上面两张白名单**推导**而来。
+ *
+ * 存在的理由是防漂移：这个串此前在 `ProfilePage` / `ProfileModal` 里各手写了一份
+ * （连同 `profile.ts` 里那份 MIME 数组，同一张表全仓共四份），改一处漏三处。
+ * 浏览器对 `accept` 只做过滤提示，真正的拦截仍是 {@link validateAvatarFile} 与后端。
+ */
+export const AVATAR_FILE_ACCEPT = [
+  ...AVATAR_ALLOWED_CONTENT_TYPES,
+  ...AVATAR_ALLOWED_EXTENSIONS.map((ext) => `.${ext}`),
+].join(',')
+
+/** 文件名末尾的扩展名（小写，不含点）；没有点或点在末尾时返回空串。 */
+function fileExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.')
+  if (dot < 0 || dot === filename.length - 1) return ''
+  return filename.slice(dot + 1).toLowerCase()
+}
 
 function validateAvatarFile(file: File): void {
   if (file.size > AVATAR_MAX_SIZE) {
@@ -606,6 +639,12 @@ function validateAvatarFile(file: File): void {
   }
   if (!(AVATAR_ALLOWED_CONTENT_TYPES as readonly string[]).includes(file.type)) {
     throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
+  }
+  // 扩展名单独判：MIME 与扩展名在后端是两条独立规则，而且**扩展名**才是拼进
+  // object key 的那一个（文档 :391、:420、:453）。`photo.bmp` 被改名成
+  // `image/png` 的 MIME 照样过不了后端那一关。
+  if (!(AVATAR_ALLOWED_EXTENSIONS as readonly string[]).includes(fileExtension(file.name))) {
+    throw new Error('文件扩展名不支持，请使用 .jpg / .jpeg / .png / .gif / .webp')
   }
 }
 

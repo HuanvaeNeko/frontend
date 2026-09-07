@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
+import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { useProfileStore } from '../../store/profileStore'
@@ -139,5 +140,223 @@ describe('ProfilePage 保存个人资料', () => {
     )
     expect(fetchMock.mock.calls[1][0]).toBe(PROFILE_BASE)
     expect(fetchMock.mock.calls[1][1].method).toBe('PUT')
+  })
+})
+
+/**
+ * 头像上传的消费端。
+ *
+ * `POST /api/profile/avatar` 于 2026-08-28 删除、无兼容层
+ * （`个人资料管理.md:352-355`），改走 storage 的四步预签名链路（doc:362-369）。
+ * 这里同样**不 mock store、不 mock profileApi**，只 stub 全局 fetch 与那两处
+ * 非 fetch 的边界（SHA-256 与分片 PUT 用的 XHR），验的是整条链路在屏幕上的结果。
+ */
+describe('ProfilePage 上传头像', () => {
+  const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
+
+  const envelope = (data: unknown) => json({ success: true, code: 200, data })
+
+  const SESSION = {
+    mode: 'multipart',
+    preview_support: 'inline_preview',
+    multipart_upload_id: 'upload-id-avatar',
+    expires_in: 3600,
+    // 两片：第一片传完是 50%，第二片传完是 100%。
+    chunk_size: 2,
+    total_chunks: 2,
+    file_key: 'u1.png',
+    max_file_size: 10485760,
+    instant_upload: false,
+    existing_file_url: null,
+  }
+
+  const CONFIRM = {
+    file_url: 'avatars/u1.png?t=1706000000',
+    file_key: 'u1.png',
+    file_size: 4,
+    content_type: 'image/png',
+    preview_support: 'inline_preview',
+  }
+
+  const avatarFile = () => new File(['abcd'], 'me.png', { type: 'image/png' })
+
+  const fileInput = (): HTMLInputElement => {
+    const input = document.querySelector('input[type="file"]')
+    if (!(input instanceof HTMLInputElement)) throw new Error('找不到头像 input')
+    return input
+  }
+
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+    vi.spyOn(storageApi, 'uploadChunk').mockResolvedValue(undefined)
+  })
+
+  it('accept 来自共享白名单：含后端收而客户端此前拒的 image/jpg，也含扩展名', async () => {
+    // 这张表此前在 profile.ts、storage.ts、两个组件的 accept 里各有一份（共 4 份）。
+    // 断言写成字面量而不是 `toBe(AVATAR_FILE_ACCEPT)`：后者只测"接上了"，
+    // 测不出表本身被改坏（例如又把 image/jpg 删掉）。
+    fetchMock.mockResolvedValue(json({ success: true, code: 200, data: PROFILE_DTO }))
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    expect(fileInput().getAttribute('accept')).toBe(
+      'image/jpeg,image/jpg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp',
+    )
+  })
+
+  it('上传中显示真实分片进度，完成后弹成功', async () => {
+    // 第二片的 part_url 挂住，让链路停在"第一片已传完"这一刻。
+    let releaseSecondPart: () => void = () => {}
+    const secondPart = new Promise<void>((resolve) => { releaseSecondPart = () => resolve() })
+    let partUrlCalls = 0
+
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        return json({ success: true, code: 200, data: PROFILE_DTO })
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) return envelope(SESSION)
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        partUrlCalls += 1
+        if (partUrlCalls === 2) await secondPart
+        return envelope({
+          part_url: `https://api.huanvae.cn/avatars/u1.png?partNumber=${partUrlCalls}&X-Amz-Signature=s`,
+          part_number: partUrlCalls,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+
+    try {
+      // 4 字节的文件切成 2 片，第一片传完 = 50%。把这个值写死成任何常数
+      // （或退回原来那个不确定态的转圈）→ 本行红。
+      expect(await screen.findByText('50%')).toBeTruthy()
+    } finally {
+      // 无论上一行成不成立都要放行：`storageApi` 的单飞锁是**模块级**状态，
+      // 卡住一次上传会让同文件后面的用例全部收到「该头像正在上传中」，
+      // 一条失败伪装成一片失败。
+      releaseSecondPart()
+    }
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+    // 进度指示在收尾时清掉，不会挂在那儿。
+    await waitFor(() => expect(screen.queryByText('100%')).toBeNull())
+  })
+
+  it('后端 400（group- 保留命名空间）：屏幕上是后端原文，且绝不弹「成功」', async () => {
+    // doc:454：`user_id` 以 `group-` 开头的存量账号永远传不上头像。套一句自造的
+    // 「请稍后重试」会把一条**永久**失败说成瞬时故障。
+    const backendText = '用户 ID 以 group- 开头，该命名空间保留给群头像，无法上传用户头像'
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        return json({ success: true, code: 200, data: PROFILE_DTO })
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) {
+        return json({ success: false, code: 400, message: backendText }, 400)
+      }
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: '上传失败',
+        description: backendText,
+        variant: 'destructive',
+      }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
+  })
+
+  it('整条链路里没有一个请求打到已删除的 POST /api/profile/avatar，也没有回写 PUT', async () => {
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        return json({ success: true, code: 200, data: PROFILE_DTO })
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) return envelope({ ...SESSION, total_chunks: 1, chunk_size: 4 })
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        return envelope({
+          part_url: 'https://api.huanvae.cn/avatars/u1.png?partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+
+    const log = fetchMock.mock.calls.map(
+      (call: unknown[]) => `${(call[1] as RequestInit | undefined)?.method ?? 'GET'} ${String(call[0])}`,
+    )
+    // 正对照：链路确实跑完了（否则下面两条"没有 X"是恒真的空话）。
+    expect(log).toContain(`POST ${STORAGE_BASE}/upload/confirm`)
+    expect(log.some((line) => line.includes('/api/profile/avatar'))).toBe(false)
+    // doc:411：后端已在 confirm 写回 `users."user-avatar-url"`，客户端无需回写。
+    expect(log.filter((line) => line.startsWith('PUT '))).toEqual([])
+  })
+
+  it('上传成功后渲染的是**绝对**头像地址（confirm 给的是相对路径）', async () => {
+    // 上传后 loadProfile() 重新拉一次资料；后端此时返回的 `user_avatar_url`
+    // 是相对路径（doc:74、:98），补基址在 `profileApi.getProfile` 出口。
+    // 少了那一步，`<AvatarImage>` 会以当前页面路径为基准发请求并 404。
+    let profileGets = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        profileGets += 1
+        return json({
+          success: true,
+          code: 200,
+          data: profileGets === 1
+            ? PROFILE_DTO
+            : { ...PROFILE_DTO, user_avatar_url: 'avatars/u1.png?t=1706000000' },
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) return envelope({ ...SESSION, total_chunks: 1, chunk_size: 4 })
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        return envelope({
+          part_url: 'https://api.huanvae.cn/avatars/u1.png?partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
+      `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`,
+    )
   })
 })

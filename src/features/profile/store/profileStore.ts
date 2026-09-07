@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { profileApi, type UserProfile, type UpdateProfileRequest } from '../api/profile'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 
 /**
@@ -86,6 +87,41 @@ const settleError = (error: unknown, defaultMessage: string, set: SetProfileStat
   set({ error: error instanceof Error ? error.message : defaultMessage, isLoading: false })
 }
 
+/**
+ * 落盘格式版本。`1` = `profile.user_avatar_url` 是**绝对地址**。
+ *
+ * 版本号从"没有版本号"（zustand 视作 `0`）跳到 `1`，是因为本批之前落盘的
+ * `user_avatar_url` 是后端原样给的**相对路径**（`avatars/{uid}.png?t=…`，
+ * `个人资料管理.md:98`）。补基址现在做在 `getProfile` 的出口，但**已经在**
+ * 用户 localStorage 里的那些旧值不会自己变好：`profile` 是持久化字段，刷新后
+ * 立刻被 rehydrate 出来渲染，而 `Navigation` 在每个 `/app` 页面上都挂着，
+ * 会先于任何 `loadProfile()` 用那个相对路径发一次注定 404 的图片请求。
+ */
+const PROFILE_PERSIST_VERSION = 1
+
+/**
+ * 把落盘的旧值搬到当前格式：只做一件事——`user_avatar_url` 补基址。
+ *
+ * `toAbsoluteApiUrl` 幂等（已带协议的地址原样返回），所以对已经是绝对地址的值
+ * 是 no-op；`null` / 空串 → `undefined` → 归一回 `null`。
+ *
+ * 形状不认识时（不是对象、`profile` 不是对象）**原样返回**：迁移函数不是校验层，
+ * 在这里编造一个默认 state 只会把"落盘数据坏了"变成一个看不见的状态。
+ */
+export function migrateProfilePersist(persisted: unknown): unknown {
+  if (typeof persisted !== 'object' || persisted === null) return persisted
+  const state = persisted as { profile?: unknown }
+  if (typeof state.profile !== 'object' || state.profile === null) return persisted
+
+  const profile = state.profile as { user_avatar_url?: unknown }
+  if (typeof profile.user_avatar_url !== 'string') return persisted
+
+  return {
+    ...state,
+    profile: { ...profile, user_avatar_url: toAbsoluteApiUrl(profile.user_avatar_url) ?? null },
+  }
+}
+
 export const useProfileStore = create<ProfileState>()(
   persist(
     (set, get) => ({
@@ -117,16 +153,33 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
+      /**
+       * ⚠️ 字段名是 **`file_url`**：旧的 `avatar_url` 随
+       * `POST /api/profile/avatar` 一起在 2026-08-28 删除
+       * （`个人资料管理.md:352-355`），confirm 返回的是 `file_url`
+       * （doc:396-409，形态逐字相同，已在 api 出口补成绝对地址）。
+       * 这里此前解构的正是那个不再存在的名字，`user_avatar_url` 会被写成
+       * `undefined`——比 404 更难查，因为上传"成功"了。
+       *
+       * ⚠️ **本 action 今天没有非测试调用点**：两个 UI
+       * （`ProfilePage` / `ProfileModal` 的 `handleAvatarChange`）都直接
+       * `await profileApi.uploadAvatar(...)`，自管局部 `uploadingAvatar` 与进度。
+       * 保持那样是有意的——本 store 的 `isLoading` 同时驱动"保存更改"按钮
+       * （`ProfilePage` / `ProfileModal` 都从本 store 解构它），把头像上传接进来
+       * 会让传头像时保存按钮跟着转圈变灰。这和 `changePassword` 被删掉的理由
+       * 是同一条（见本文件顶部），区别在于那一条是无状态操作，而这一条**确实**
+       * 产生本 store 持有的状态（`profile.user_avatar_url`），所以留着而不是删掉。
+       */
       uploadAvatar: async (file: File) => {
         set({ isLoading: true, error: null })
         try {
-          const { avatar_url } = await profileApi.uploadAvatar(file)
+          const { file_url } = await profileApi.uploadAvatar(file)
           // 更新当前 profile 中的头像
           const currentProfile = get().profile
           if (currentProfile) {
-            set({ 
-              profile: { ...currentProfile, user_avatar_url: avatar_url },
-              isLoading: false 
+            set({
+              profile: { ...currentProfile, user_avatar_url: file_url },
+              isLoading: false
             })
           } else {
             set({ isLoading: false })
@@ -154,6 +207,8 @@ export const useProfileStore = create<ProfileState>()(
       partialize: (state) => ({
         profile: state.profile,
       }),
+      version: PROFILE_PERSIST_VERSION,
+      migrate: migrateProfilePersist,
     }
   )
 )

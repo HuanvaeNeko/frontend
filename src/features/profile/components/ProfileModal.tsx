@@ -17,6 +17,7 @@ import {
   Check,
   Info
 } from 'lucide-react'
+import { AVATAR_FILE_ACCEPT } from '@/api/storage'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -193,6 +194,13 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     signature: '',
   })
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  /**
+   * 分片直传的真实进度（0-100），`null` = 还没有任何一片传完。
+   *
+   * 链路的前两段（算 SHA-256、`upload/request`）没有进度可报，第一片 PUT 完成
+   * 才有第一个数——所以 `null` 期间照旧显示不确定态的转圈，不假装是 0%。
+   */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
@@ -240,13 +248,21 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     fileInputRef.current?.click()
   }
 
+  /**
+   * 与 `ProfilePage.handleAvatarChange` 逐条同构（同一条四步链路、同一套错误口径），
+   * 理由写在那一处，不在这里复述一遍——两份注释会各自漂移。
+   * 简版：失败透出后端原文（`group-` 前缀账号是**永久** 400，doc:454；超限文案带真实
+   * 字节数，doc:444）、409 不自动重试（doc:445）、成功不回写（doc:411），
+   * 成功的信号是 toast 而不是"图变了"（`?t=` 是秒级缓存戳，doc:413-414）。
+   */
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setUploadingAvatar(true)
+    setUploadProgress(null)
     try {
-      await profileApi.uploadAvatar(file)
+      await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
       await loadProfile()
       toast({ title: '成功', description: '头像上传成功' })
     } catch (error) {
@@ -257,6 +273,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
       })
     } finally {
       setUploadingAvatar(false)
+      setUploadProgress(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -275,7 +292,8 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
       <div className="flex flex-col items-center py-4">
         <div className="relative group mb-3">
           <Avatar className="h-24 w-24 border-4 border-background shadow-lg">
-            <AvatarImage src={profile?.user_avatar_url || ''} alt={displayName} />
+            {/* 补基址在 `profileApi.getProfile` 出口，理由见 ProfilePage 同一处的注释。 */}
+            <AvatarImage src={profile?.user_avatar_url ?? undefined} alt={displayName} />
             <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
               {displayName[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
@@ -283,12 +301,16 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           <motion.button
             onClick={handleAvatarClick}
             disabled={uploadingAvatar}
-            className="absolute inset-0 flex items-center justify-center bg-foreground/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            className="absolute inset-0 flex items-center justify-center bg-foreground/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-100"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             {uploadingAvatar ? (
-              <Loader2 className="h-6 w-6 text-background animate-spin" />
+              uploadProgress === null ? (
+                <Loader2 className="h-6 w-6 text-background animate-spin" />
+              ) : (
+                <span className="text-sm font-semibold text-background">{Math.round(uploadProgress)}%</span>
+              )
             ) : (
               <Camera className="h-6 w-6 text-background" />
             )}
@@ -297,7 +319,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
+          accept={AVATAR_FILE_ACCEPT}
           className="hidden"
           onChange={handleAvatarChange}
         />

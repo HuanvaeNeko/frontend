@@ -1,5 +1,6 @@
-import { getApiBaseUrl } from '@/lib/apiConfig'
+import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { isBusiness401Request } from '@/api/apiClient'
+import { storageApi, type AvatarUploadProgress, type AvatarUploadResult } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
@@ -104,10 +105,21 @@ export interface ChangePasswordRequest {
   new_password: string
 }
 
-export interface AvatarUploadResponse {
-  avatar_url: string
-  message: string
-}
+/**
+ * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts` / `friends.ts` /
+ * `discovery.ts` 里同名的 `absoluteAvatar` 逐字同型，按那三处的理由各自定义一份。
+ *
+ * **这是必需的，不是防御性的。** `user_avatar_url` 后端给的是**相对路径**
+ * （`个人资料管理.md:98`「头像相对路径（需拼接 `STORAGE_BASE_URL`）」，:74 的样例
+ * 是 `"avatars/testuser001.jpg?t=1706000000"`）。原样交给
+ * `<AvatarImage src="avatars/….png?t=1">`，Radix 会按相对 URL 的规则以**当前页面地址**
+ * 为基准解析，把请求打到前端自己的源上并 404。整个 profile 模块此前一处都没补基址
+ * （`git grep toAbsoluteApiUrl b873fef -- src/features/profile/` 为空）。
+ *
+ * `null` 与空串一并归一为 `null`（= 没有头像）：`toAbsoluteApiUrl` 对 null / 空串
+ * 返回 `undefined`，这里 `?? null` 只是把它换回本 DTO 声明的 `null`，不是兜底掩盖缺失。
+ */
+const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
 
 // ============================================
 // API 方法
@@ -137,6 +149,10 @@ export const profileApi = {
   /**
    * 获取个人信息
    * GET /api/profile
+   *
+   * ⚠️ 本批只在这个方法里动了**一件事**：把 `user_avatar_url` 补成绝对地址
+   * （见 {@link absoluteAvatar}）。信封解包（`data.data || data`）与缺失的 8 个
+   * `UserProfile` 字段属于下一批，故意不碰——本批要能被单独 review。
    */
   getProfile: async (): Promise<UserProfile> => {
     console.log('👤 获取个人资料')
@@ -157,7 +173,8 @@ export const profileApi = {
     }
 
     const data = await response.json()
-    return data.data || data
+    const profile: UserProfile = data.data || data
+    return { ...profile, user_avatar_url: absoluteAvatar(profile.user_avatar_url) }
   },
 
   /**
@@ -237,76 +254,60 @@ export const profileApi = {
   },
 
   /**
-   * 上传头像
-   * POST /api/profile/avatar
-   * 请求体: multipart/form-data (avatar 或 file 字段)
-   * 支持格式: jpg, jpeg, png, gif, webp
-   * 大小限制: 最大 10MB
+   * 上传用户头像 —— 已不再是本模块的一个端点
    *
-   * 🔴 **本端点已于 2026-08-28 删除、无兼容层**，与
-   * `POST /api/groups/{id}/avatar`、`POST /api/profile/background` 同一批
-   * （`backend-docs/storage/文件存储管理.md:959-962`）。今天调用它只会拿到 404。
+   * 🔴 `POST /api/profile/avatar`（`multipart/form-data`）于 2026-08-28
+   * **删除、无兼容层**，与 `POST /api/profile/background`、
+   * `POST /api/groups/{id}/avatar` 同一批（`个人资料管理.md:352-355`）。
+   * 本方法此前仍在打它，**每一次头像上传都是 404**。
    *
-   * 迁移到已经写好的那条四步预签名链路即可：**`storageApi.uploadAvatar(file, target)`**
-   * （`src/api/storage.ts`）。群头像已在批 5 接上，本模块留给自己的那一批
-   * （profile 是另一个模块，它的 `background` 与展示字段有各自的连锁改动，
-   * 不该混进群模块那次 review）。
+   * 现在走 storage 的四步预签名分片直传链路（doc:362-369），实现在
+   * {@link storageApi.uploadAvatar}——群头像已经在用同一支。留一个本模块的入口，
+   * 是因为「用户头像的 `avatar_target` 该填什么」是 profile 模块的知识
+   * （同 `groups.ts` 的 `uploadGroupAvatar` 的理由）。
    *
-   * 与群头像的调用只差两个参数：
-   * 1. `avatar_target: 'user_avatar'`（背景图那个方法则是 `'user_background'`），
-   *    不是 `'group_avatar'`；
-   * 2. **不传 `related_id`**——`user_avatar` / `user_background` 携带它就是 400
-   *    （storage 文档 :119）。`AvatarUploadTarget` 联合的另一支正是为此而设：
-   *    写 `{ avatar_target: 'user_avatar' }` 即可，那一支上没有 `related_id` 这个键。
+   * ## 与群头像那一档的两处差异（doc:389-390）
    *
-   * 其余完全一致：10 MB / 格式检查、单飞、四步顺序、`file_url` 出口补基址
-   * 都在 `storageApi.uploadAvatar` 里，不要在这里复制一份。
-   * 返回字段也跟着改名：旧的 `data.avatar_url` → confirm 的 `data.file_url`。
+   * 1. `avatar_target: 'user_avatar'`；
+   * 2. **不传 `related_id`**——`user_avatar` / `user_background` 携带它就是 400，
+   *    doc:440 写明「不静默忽略」。`AvatarUploadTarget` 联合的另一支上根本没有
+   *    这个键，`buildAvatarUploadPayload` 也不会写出它。键的**有无**由两组
+   *    `Object.hasOwn` 断言钉住：`storage.test.ts` 直接调构造函数的那组，
+   *    以及本模块 `profile.test.ts` 里截住 `requestAvatarUpload` 入参的那条。
+   *    都不能改成读 `JSON.parse(init.body)`——`JSON.stringify` 会丢掉 undefined
+   *    值，wire-level 断言对这条约束**恒真**（已实测：把 `related_id: undefined`
+   *    加回去，只有这两组变红）。
+   *
+   * ## 三件跟着变的事
+   *
+   * - **返回字段改名**：旧响应是 `avatar_url`，现在是 confirm 的 `file_url`
+   *   （doc:396-409，形态「逐字相同」：相对路径 + `?t=` 缓存戳，出口已补基址）。
+   * - **不要回写**：后端已在 confirm 里把它写进 `users."user-avatar-url"`，
+   *   doc:411 明写客户端「**无需**再调 `PUT /api/profile` 回写」。多打那一次
+   *   既是无用写入，又会把一次上传的失败面扩大到 profile 的更新端点上。
+   * - **10 MB / 格式 / 扩展名检查、单飞、四步顺序、`file_url` 补基址**全在
+   *   `storageApi.uploadAvatar` 里，这里不复制。客户端那道大小检查只是省一次
+   *   注定失败的往返：真正的闸在后端，且 confirm 会在**合并分片之前**按真实字节
+   *   再量一次（doc:444），拒绝时**不碰用户现有的那张头像**。
+   *
+   * @param onProgress 分片进度。头像通常只有 1 片，但 10 MB 上限下大图会分多片，
+   *   doc 要求给大文件一个进度指示；不传就是没有进度，链路不受影响。
+   * @throws {Error} 超 10 MB / MIME 不在白名单 / 扩展名不在白名单（客户端便利检查）
+   * @throws {Error} 同一落点已有上传在飞（单飞拒绝，doc:445 要求客户端防抖/单飞）
+   * @throws {ApiError} 后端失败，文案是**后端原文**：`user_id` 以 `group-` 开头的
+   *   存量账号是**永久** 400（doc:454，那是群头像 object key 的保留命名空间，
+   *   这个账号的头像上传永远不会成功）；409 是会话被接管/已过期
+   *   （doc:445、:447-450），用 `isUploadSessionExpired` 分诊，**不要自动重试**。
    */
-  uploadAvatar: async (file: File): Promise<AvatarUploadResponse> => {
+  uploadAvatar: async (
+    file: File,
+    onProgress?: (progress: AvatarUploadProgress) => void,
+  ): Promise<AvatarUploadResult> => {
     console.log('📸 上传头像:', file.name)
-    
-    // 验证文件大小
-    const maxSize = 10 * 1024 * 1024 // 10MB
-    if (file.size > maxSize) {
-      throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
-    }
-    
-    // 验证文件类型
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
-    }
-    
-    const formData = new FormData()
-    formData.append('avatar', file)
 
-    const authStore = useAuthStore.getState()
-    const accessToken = authStore.accessToken
+    const result = await storageApi.uploadAvatar(file, { avatar_target: 'user_avatar' }, onProgress)
 
-    const response = await fetch(`${PROFILE_BASE_URL}/avatar`, {
-      method: 'POST',
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: formData,
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `上传头像失败 (${response.status})` 
-      }))
-      console.error('上传头像失败:', error)
-      throw new Error(error.message || error.error || '上传头像失败')
-    }
-
-    const data = await response.json()
-    console.log('✅ 头像上传成功:', data.avatar_url ?? data.data?.avatar_url)
-    // 后端返回 { avatar_url, message } 或 { data: { avatar_url }, message }
-    const resolved = data.avatar_url != null ? data : (data.data ?? data)
-    return {
-      avatar_url: resolved.avatar_url ?? '',
-      message: resolved.message ?? 'Avatar uploaded successfully',
-    }
+    console.log('✅ 头像上传成功:', result.file_url)
+    return result
   },
 }

@@ -93,7 +93,32 @@ export function DesktopSidebar() {
   const pathname = usePathname()
   const { user, logout } = useAuthStore()
   const { profile } = useProfileStore()
-  
+
+  /**
+   * 侧栏头像的地址。两个来源都**已经是绝对地址**：`authStore` 登录时就过了
+   * `toAbsoluteApiUrl`，`profile.user_avatar_url` 由 `profileApi.getProfile` 出口补基址
+   * （落盘的旧相对值由 `profileStore` 的 persist migrate 一次性搬平）。
+   *
+   * 这里不是 `<Avatar>` 而是一个**裸 `<img>`**，所以它比另外两个渲染点更脆：
+   * - `src=""` 会让 React 打出
+   *   `An empty string ("") was passed to the src attribute. This may cause the browser
+   *   to download the whole page again over the network.`（React 19 dev 构建原文，
+   *   `react-dom/cjs/react-dom-client.development.js`），处方也是 React 自己给的：
+   *   **不渲染这个元素**，或者传 null。Radix 的 `<AvatarImage>` 不会有这个问题
+   *   （1.2.6 实测 `if (!src) { setLoadingStatus('error'); return }`，压根不发请求），
+   *   裸 `<img>` 没有那层短路。
+   * - 没有 `<AvatarFallback>` 兜底，src 不可用时留下的是一个碎图标。
+   *
+   * 所以：先归一（`''`/`null`/`undefined` 一律当成"没有头像"），有值才渲染 `<img>`，
+   * 没有就渲染和 `<AvatarFallback>` 同形的首字母块。`||` 而不是 `??` 是有意的——
+   * 空串必须继续往后找 `user?.avatar_url`，而不是被当成一个有效地址。
+   *
+   * （`Navigation.test.tsx` 用一条渲染裸 `<img src="">` 的**正对照**先证明这句警告
+   * 在本环境真的会出现，再断言本组件不产生它——否则"没有警告"是句空话。）
+   */
+  const avatarSrc = profile?.user_avatar_url || user?.avatar_url || null
+  const avatarInitial = (profile?.user_nickname || user?.nickname || 'U')[0]?.toUpperCase() ?? 'U'
+
   // Save last visited path
   useEffect(() => {
     if (pathname && pathname.startsWith('/app') && pathname !== ROUTES.auth.login && pathname !== ROUTES.auth.register) {
@@ -111,11 +136,17 @@ export function DesktopSidebar() {
              whileTap={{ scale: 0.95 }}
              className="w-12 h-12 rounded-2xl overflow-hidden ring-2 ring-border hover:ring-primary transition-all shadow-sm cursor-pointer"
            >
-              <img 
-                src={profile?.user_avatar_url || user?.avatar_url} 
-                alt="Avatar" 
-                className="w-full h-full object-cover bg-muted"
-              />
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt="Avatar"
+                  className="w-full h-full object-cover bg-muted"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-muted text-sm font-semibold text-muted-foreground">
+                  {avatarInitial}
+                </div>
+              )}
            </motion.div>
          </Link>
       </div>

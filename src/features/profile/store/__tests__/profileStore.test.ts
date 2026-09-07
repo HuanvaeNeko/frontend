@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import { profileApi } from '../../api/profile'
-import { useProfileStore } from '../profileStore'
+import { migrateProfilePersist, useProfileStore } from '../profileStore'
 
 /**
  * 三个 action 的失败出口。
@@ -164,3 +165,130 @@ describe('profileStore.uploadAvatar', () => {
  *   「旧密码错误不刷新、不重发、不轮换 token」（打的是真实 `fetch` 序列）；
  * - 「端点串与白名单一致」→ 同文件「端点字段可被白名单识别」。
  */
+
+/**
+ * 头像上传成功后写回 store 的那一步。
+ *
+ * confirm 的响应字段叫 **`file_url`**（`个人资料管理.md:396-409`）；旧的 `avatar_url`
+ * 随 `POST /api/profile/avatar` 一起在 2026-08-28 删掉了。本 action 此前解构的正是
+ * 那个不再存在的名字——上传"成功"，`user_avatar_url` 被写成 `undefined`。
+ */
+describe('profileStore.uploadAvatar 成功路径', () => {
+  const PROFILE = {
+    user_id: 'u1',
+    user_nickname: '测试用户',
+    user_email: 'a@example.com',
+    user_signature: null,
+    user_avatar_url: 'https://api.huanvae.cn/avatars/u1.png?t=1706000000',
+    admin: 'false',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-02T00:00:00Z',
+  }
+
+  it('把 confirm 的 file_url 写进 user_avatar_url（不是已删除的 avatar_url）', async () => {
+    useProfileStore.setState({ profile: PROFILE })
+    vi.spyOn(profileApi, 'uploadAvatar').mockResolvedValue({
+      file_url: 'https://api.huanvae.cn/avatars/u1.png?t=1706000099',
+      file_key: 'u1.png',
+    })
+
+    await useProfileStore.getState().uploadAvatar(new File(['x'], 'u1.png', { type: 'image/png' }))
+
+    // 改回 `const { avatar_url } = ...` → 这里变成 undefined，本行红。
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
+      'https://api.huanvae.cn/avatars/u1.png?t=1706000099',
+    )
+    // 其余字段不受影响，isLoading 收干净。
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('测试用户')
+    expect(useProfileStore.getState().isLoading).toBe(false)
+  })
+
+  it('秒级缓存戳导致 file_url 与旧值逐字相同时，仍然按成功收尾', async () => {
+    // doc:413-414：`?t=` 是**秒**级，同一秒内连换两次头像拿到的 URL 逐字相同，
+    // 浏览器不会重新加载那张图。客户端能做的是**不把"URL 变了"当成成功判据**——
+    // 这里断言 promise 正常 resolve、不写 error、不登出（调用方据此弹成功提示）。
+    useProfileStore.setState({ profile: PROFILE })
+    vi.spyOn(profileApi, 'uploadAvatar').mockResolvedValue({
+      file_url: PROFILE.user_avatar_url,
+      file_key: 'u1.png',
+    })
+
+    await expect(
+      useProfileStore.getState().uploadAvatar(new File(['x'], 'u1.png', { type: 'image/png' })),
+    ).resolves.toBeUndefined()
+
+    expect(useProfileStore.getState().error).toBeNull()
+    expect(loggedIn()).toBe(true)
+  })
+})
+
+/**
+ * 落盘数据的迁移。
+ *
+ * `profile` 是持久化字段，而本批之前落盘的 `user_avatar_url` 是后端原样给的
+ * **相对路径**（doc:98）。补基址做在 `getProfile` 出口只管得住新拉的数据；
+ * 已经在用户 localStorage 里的那些旧值会在刷新后被 rehydrate 出来直接渲染，
+ * 而 `Navigation` 挂在每个 `/app` 页面上，会先于任何 `loadProfile()` 用那个
+ * 相对路径发一次注定 404 的图片请求。
+ *
+ * 用 `persist.rehydrate()` 而不是直接调 `migrateProfilePersist`：这样连
+ * 「version 号有没有真的接上」一起测了——只导出函数不改 `version`，迁移永远不会跑。
+ */
+describe('profileStore 的 persist 迁移（v0 → v1）', () => {
+  /**
+   * `version: 0` 是**旧数据真实的形状**：本批之前这份 persist 配置没写 `version`，
+   * 而 zustand 的默认值就是 `0`，落盘时照样会把 `"version":0` 写进去
+   * （`node_modules/zustand/esm/middleware.mjs`，`version: 0` 默认值 + 落盘处
+   * `version: options.version`）。迁移的触发条件也在那里：
+   * `typeof persisted.version === 'number' && persisted.version !== options.version`
+   * ——所以**压根没有 version 键**的 blob 是不会被迁移的，本仓不存在那种形状。
+   */
+  const seed = (persisted: unknown, version = 0) =>
+    localStorage.setItem('profile-storage', JSON.stringify({ state: persisted, version }))
+
+  const baseProfile = {
+    user_id: 'u1',
+    user_nickname: '测试用户',
+    user_email: null,
+    user_signature: null,
+    admin: 'false',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-02T00:00:00Z',
+  }
+
+  it('旧版本落盘的相对路径 rehydrate 后是绝对地址', async () => {
+    seed({ profile: { ...baseProfile, user_avatar_url: 'avatars/u1.png?t=1706000000' } })
+
+    await useProfileStore.persist.rehydrate()
+
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
+      `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`,
+    )
+  })
+
+  it('已经是绝对地址的值不被再拼一次（toAbsoluteApiUrl 幂等）', async () => {
+    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    seed({ profile: { ...baseProfile, user_avatar_url: absolute } })
+
+    await useProfileStore.persist.rehydrate()
+
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(absolute)
+  })
+
+  it('null 保持 null，其余字段原样', async () => {
+    seed({ profile: { ...baseProfile, user_avatar_url: null } })
+
+    await useProfileStore.persist.rehydrate()
+
+    expect(useProfileStore.getState().profile).toEqual({ ...baseProfile, user_avatar_url: null })
+  })
+
+  it('迁移函数本身：形状不认识时原样返回，不编造默认 state', () => {
+    // 迁移不是校验层。在这里兜一个空 profile 只会把"落盘数据坏了"变成看不见的状态。
+    expect(migrateProfilePersist(null)).toBeNull()
+    expect(migrateProfilePersist({ profile: null })).toEqual({ profile: null })
+    expect(migrateProfilePersist({ profile: { user_avatar_url: 42 } })).toEqual({
+      profile: { user_avatar_url: 42 },
+    })
+  })
+})
