@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { getAuthApiUrl } from '@/lib/apiConfig'
 import { authApi } from '../auth'
 
 /**
@@ -14,7 +15,9 @@ import { authApi } from '../auth'
  * 设备页显示"暂无设备信息"。所以断言必须落在设备条目本身上。
  */
 
-const AUTH_BASE = 'https://api.huanvae.cn/api/auth'
+// getAuthApiUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const AUTH_BASE = getAuthApiUrl()
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })

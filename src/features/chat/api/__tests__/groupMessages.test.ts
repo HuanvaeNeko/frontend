@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 import { groupMessagesApi } from '../groupMessages'
 
 /**
@@ -16,7 +17,9 @@ import { groupMessagesApi } from '../groupMessages'
  *   坏代码在那条断言下同样通过。
  */
 
-const GROUP_BASE = 'https://api.huanvae.cn/api/group_messages'
+// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const GROUP_BASE = `${getApiBaseUrl()}/api/group_messages`
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })

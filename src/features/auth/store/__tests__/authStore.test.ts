@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { getApiBaseUrl, getAuthApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '../authStore'
 
 /**
@@ -12,7 +13,9 @@ import { useAuthStore } from '../authStore'
  * 恰恰是这个 bug 当年的表现，不能当成证明。
  */
 
-const AUTH_BASE = 'https://api.huanvae.cn/api/auth'
+// getAuthApiUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const AUTH_BASE = getAuthApiUrl()
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -27,8 +30,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   // zustand persist 会往 localStorage 写 auth-storage；不清会污染下一条用例。
-  // 同时 getApiBaseUrl() 也读 localStorage（huanvae.api-base-url），
-  // 清空后走默认的 https://api.huanvae.cn。
+  // 同时 getApiBaseUrl() 也读 localStorage（huanvae.api-base-url），清空后走
+  // import.meta.env.VITE_API_URL（Vitest 加载的 .env）或默认的 https://api.huanvae.cn。
   localStorage.clear()
   useAuthStore.getState().clearAuth()
   setApiShapeErrorReporter(() => {})
@@ -146,7 +149,7 @@ describe('authStore.login —— 信封解包', () => {
 
     await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
 
-    expect(useAuthStore.getState().user?.avatar_url).toBe('https://api.huanvae.cn/avatars/x.jpg')
+    expect(useAuthStore.getState().user?.avatar_url).toBe(`${getApiBaseUrl()}/avatars/x.jpg`)
   })
 
   it('avatar_url 已经是绝对地址时原样保留，不会被二次拼接破坏', async () => {

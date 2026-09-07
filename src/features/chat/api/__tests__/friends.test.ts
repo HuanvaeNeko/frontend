@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 import { friendsApi } from '../friends'
 
 /**
@@ -16,7 +17,9 @@ import { friendsApi } from '../friends'
  * `not.toThrow()` 的话，坏代码返回的空数组同样满足，等于没测。
  */
 
-const FRIENDS_BASE = 'https://api.huanvae.cn/api/friends'
+// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const FRIENDS_BASE = `${getApiBaseUrl()}/api/friends`
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -129,7 +132,7 @@ describe('friendsApi.getFriendsList', () => {
 
     const [friend] = await friendsApi.getFriendsList()
 
-    expect(friend.friend_avatar_url).toBe('https://api.huanvae.cn/avatars/u1.jpg?t=1')
+    expect(friend.friend_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u1.jpg?t=1`)
   })
 
   it('头像为 null 时保持 null，不兜底成空串', async () => {
@@ -189,7 +192,7 @@ describe('friendsApi.getPendingRequests', () => {
 
     const [request] = await friendsApi.getPendingRequests()
 
-    expect(request.requester_avatar_url).toBe('https://api.huanvae.cn/avatars/u2.jpg')
+    expect(request.requester_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u2.jpg`)
   })
 })
 
@@ -223,7 +226,7 @@ describe('friendsApi.getSentRequests', () => {
 
     const [request] = await friendsApi.getSentRequests()
 
-    expect(request.sent_to_avatar_url).toBe('https://api.huanvae.cn/avatars/u3.jpg')
+    expect(request.sent_to_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u3.jpg`)
   })
 })
 

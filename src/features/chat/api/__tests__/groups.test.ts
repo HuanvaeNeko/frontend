@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 import { groupsApi } from '../groups'
 
 /**
@@ -20,7 +21,9 @@ import { groupsApi } from '../groups'
  * nickname :392-433）。
  */
 
-const GROUPS_BASE = 'https://api.huanvae.cn/api/groups'
+// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const GROUPS_BASE = `${getApiBaseUrl()}/api/groups`
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -126,7 +129,7 @@ describe('groupsApi.getMyGroups', () => {
 
     const [group] = await groupsApi.getMyGroups()
 
-    expect(group.group_avatar_url).toBe('https://api.huanvae.cn/avatars/g1.png?t=1')
+    expect(group.group_avatar_url).toBe(`${getApiBaseUrl()}/avatars/g1.png?t=1`)
   })
 
   it('空串头像归一为 null，不兜底成空串喂给 <img src="">', async () => {
@@ -182,7 +185,7 @@ describe('groupsApi.getMembers', () => {
 
     const [member] = (await groupsApi.getMembers('g1')).members
 
-    expect(member.user_avatar_url).toBe('https://api.huanvae.cn/avatars/user_a.png')
+    expect(member.user_avatar_url).toBe(`${getApiBaseUrl()}/avatars/user_a.png`)
   })
 })
 
@@ -228,8 +231,8 @@ describe('groupsApi.getInvitations', () => {
 
     const [invitation] = await groupsApi.getInvitations()
 
-    expect(invitation.group_avatar_url).toBe('https://api.huanvae.cn/avatars/g1.png')
-    expect(invitation.inviter_avatar_url).toBe('https://api.huanvae.cn/avatars/user_a.png')
+    expect(invitation.group_avatar_url).toBe(`${getApiBaseUrl()}/avatars/g1.png`)
+    expect(invitation.inviter_avatar_url).toBe(`${getApiBaseUrl()}/avatars/user_a.png`)
   })
 
   it('inviter_nickname 为 null 时保持 null（users JOIN 缺失是合法状态）', async () => {
@@ -559,7 +562,7 @@ describe('groupsApi.getGroupDetail', () => {
       envelope({ ...GROUP_INFO_DTO, group_avatar_url: 'avatars/g1.png' }),
     )
     const relative = await groupsApi.getGroupDetail('g1')
-    expect(relative.group_avatar_url).toBe('https://api.huanvae.cn/avatars/g1.png')
+    expect(relative.group_avatar_url).toBe(`${getApiBaseUrl()}/avatars/g1.png`)
   })
 
   it('group_description 为 null 是合法的（字段表 doc:203）', async () => {
@@ -894,7 +897,7 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
       envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_avatar_url: 'avatars/u9.png?t=1' }] }),
     )
     const [withAvatar] = await groupsApi.getJoinRequests('g1')
-    expect(withAvatar.user_avatar_url).toBe('https://api.huanvae.cn/avatars/u9.png?t=1')
+    expect(withAvatar.user_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u9.png?t=1`)
 
     fetchMock.mockResolvedValueOnce(
       envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_avatar_url: null }] }),

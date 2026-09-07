@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isUploadSessionExpired, storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { clearApiBaseUrl, getApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
 
 /**
  * storage 模块的信封解包 + 相对路径补基址。
@@ -18,7 +19,9 @@ import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
  * 相对路径本身也是非 undefined。
  */
 
-const STORAGE_BASE = 'https://api.huanvae.cn/api/storage'
+// 用 getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
+// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -152,7 +155,7 @@ describe('storageApi.requestUpload', () => {
 
     expect(info.instant_upload).toBe(true)
     expect(info.existing_file_url).toBe(
-      'https://api.huanvae.cn/api/storage/file/f5f23929-1689-4b04-98e7-0073fac1eea4',
+      `${STORAGE_BASE}/file/f5f23929-1689-4b04-98e7-0073fac1eea4`,
     )
     // 误用带 /api/storage 后缀的 STORAGE_BASE_URL 拼接会拼出双份前缀
     expect(info.existing_file_url).not.toContain('/api/storage/api/storage/')
@@ -232,39 +235,54 @@ describe('storageApi.requestUpload', () => {
 })
 
 describe('storageApi.getPartUrl', () => {
-  it('从信封里取出真实的 part_url / part_number', async () => {
-    fetchMock.mockResolvedValueOnce(
-      envelope({
-        part_url: 'https://api.huanvae.cn/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
-        part_number: 1,
-        expires_in: 3600,
-      }),
-    )
+  it('从信封里取出真实的 part_url / part_number（基址是正式域名时地址原样保留）', async () => {
+    // 显式钉住基址：vitest 会加载开发者本机的 .env，VITE_API_URL 指向反代时 origin 会被改写。
+    setApiBaseUrl('https://api.huanvae.cn')
+    try {
+      fetchMock.mockResolvedValueOnce(
+        envelope({
+          part_url: 'https://api.huanvae.cn/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        }),
+      )
 
-    const part = await storageApi.getPartUrl('k', 'up', 1)
+      const part = await storageApi.getPartUrl('k', 'up', 1)
 
-    expect(part.part_number).toBe(1)
-    expect(part.expires_in).toBe(3600)
-    expect(part.part_url).toBe(
-      'https://api.huanvae.cn/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
-    )
+      expect(part.part_number).toBe(1)
+      expect(part.expires_in).toBe(3600)
+      expect(part.part_url).toBe(
+        'https://api.huanvae.cn/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
+      )
+    } finally {
+      clearApiBaseUrl()
+    }
   })
 
-  it('part_url 本就是绝对地址，不会被再拼一次基址', async () => {
-    // 反向护栏：文档 :45-49 的相对路径表里没有 part_url，
-    // 给它套 toAbsoluteApiUrl 是错的（也正因为幂等，错了不会自己暴露）。
-    fetchMock.mockResolvedValueOnce(
-      envelope({
-        part_url: 'https://api.huanvae.cn/user-file/x?X-Amz-Signature=s',
-        part_number: 1,
-        expires_in: 3600,
-      }),
-    )
+  it('part_url 是浏览器 PUT 分片的目标：基址指向反代时只换 origin，路径与签名参数逐字保留', async () => {
+    // part_url 本就是绝对地址（文档 :611-620），此前刻意不过 toAbsoluteApiUrl 以免被再拼一次基址。
+    // 现在出口对正式域名只替换 origin、不拼路径：基址指向本地去 SNI 反代（~/.config/huanvae-edge）
+    // 时分片才 PUT 得出去，签名参数一个字节不动（反代转发时带 Host: api.huanvae.cn，SigV4 仍成立）。
+    setApiBaseUrl('http://127.0.0.1:8787')
+    try {
+      fetchMock.mockResolvedValueOnce(
+        envelope({
+          part_url: 'https://api.huanvae.cn/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        }),
+      )
 
-    const { part_url } = await storageApi.getPartUrl('k', 'up', 1)
+      const { part_url } = await storageApi.getPartUrl('k', 'up', 1)
 
-    expect(part_url).toBe('https://api.huanvae.cn/user-file/x?X-Amz-Signature=s')
-    expect(part_url).not.toContain('https://api.huanvae.cn/https://')
+      expect(part_url).toBe(
+        'http://127.0.0.1:8787/user-file/x?uploadId=u&partNumber=1&X-Amz-Signature=s',
+      )
+      // 仍然是"只换 origin"，不是"再拼一次基址"
+      expect(part_url).not.toContain('https://')
+    } finally {
+      clearApiBaseUrl()
+    }
   })
 
   it('409 是可分诊的：保留 status，isUploadSessionExpired 认得出来', async () => {
@@ -313,7 +331,7 @@ describe('storageApi.confirmUpload', () => {
     expect(result.file_size).toBe(6400000)
     expect(result.content_type).toBe('image/jpeg')
     expect(result.file_url).toBe(
-      'https://api.huanvae.cn/api/storage/file/f5f23929-1689-4b04-98e7-0073fac1eea4',
+      `${STORAGE_BASE}/file/f5f23929-1689-4b04-98e7-0073fac1eea4`,
     )
     expect(result.file_url).not.toContain('/api/storage/api/storage/')
   })
@@ -398,7 +416,7 @@ describe('storageApi.getPresignedUrl', () => {
     const url = await storageApi.getPresignedUrl('u1')
 
     expect(url).toBe(
-      'https://api.huanvae.cn/user-file/alice/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=sig',
+      `${getApiBaseUrl()}/user-file/alice/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=sig`,
     )
   })
 
@@ -412,11 +430,35 @@ describe('storageApi.getPresignedUrl', () => {
     expect(url).not.toContain('/api/storage/user-file')
   })
 
-  it('已经是绝对地址的预签名 URL 原样返回（幂等，签名不会被破坏）', async () => {
-    const absolute = 'https://api.huanvae.cn/user-file/x?X-Amz-Signature=s'
-    fetchMock.mockResolvedValueOnce(envelope({ ...PRESIGNED_DATA, presigned_url: absolute }))
+  it('基址是正式域名时，已经是绝对地址的预签名 URL 原样返回（幂等，签名不会被破坏）', async () => {
+    // 显式钉住基址：vitest 会加载开发者本机的 .env，VITE_API_URL 指向反代时这条会变成"改写"用例。
+    setApiBaseUrl('https://api.huanvae.cn')
+    try {
+      const absolute = 'https://api.huanvae.cn/user-file/x?X-Amz-Signature=s'
+      fetchMock.mockResolvedValueOnce(envelope({ ...PRESIGNED_DATA, presigned_url: absolute }))
 
-    expect(await storageApi.getPresignedUrl('u1')).toBe(absolute)
+      expect(await storageApi.getPresignedUrl('u1')).toBe(absolute)
+    } finally {
+      clearApiBaseUrl()
+    }
+  })
+
+  it('基址指向反代时，正式域名的预签名 URL 只换 origin，签名参数逐字保留', async () => {
+    setApiBaseUrl('http://127.0.0.1:8787')
+    try {
+      fetchMock.mockResolvedValueOnce(
+        envelope({
+          ...PRESIGNED_DATA,
+          presigned_url: 'https://api.huanvae.cn/user-file/x?X-Amz-Credential=k%2Faws4_request&X-Amz-Signature=s',
+        }),
+      )
+
+      expect(await storageApi.getPresignedUrl('u1')).toBe(
+        'http://127.0.0.1:8787/user-file/x?X-Amz-Credential=k%2Faws4_request&X-Amz-Signature=s',
+      )
+    } finally {
+      clearApiBaseUrl()
+    }
   })
 
   it('带前导斜杠的相对路径不会拼出 //user-file', async () => {
@@ -426,7 +468,7 @@ describe('storageApi.getPresignedUrl', () => {
 
     const url = await storageApi.getPresignedUrl('u1')
 
-    expect(url).toBe('https://api.huanvae.cn/user-file/x?X-Amz-Signature=s')
+    expect(url).toBe(`${getApiBaseUrl()}/user-file/x?X-Amz-Signature=s`)
     expect(url).not.toContain('//user-file')
   })
 
@@ -438,7 +480,7 @@ describe('storageApi.getPresignedUrl', () => {
 
     expect(second).toBe(first)
     expect(second).toBe(
-      'https://api.huanvae.cn/user-file/alice/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=sig',
+      `${getApiBaseUrl()}/user-file/alice/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=sig`,
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -468,7 +510,7 @@ describe('另外三条预签名端点', () => {
 
     const url = await storageApi.getExtendedPresignedUrl('u1', 86400)
 
-    expect(url).toBe('https://api.huanvae.cn/user-file/big.mp4?X-Amz-Signature=s')
+    expect(url).toBe(`${getApiBaseUrl()}/user-file/big.mp4?X-Amz-Signature=s`)
     expect(fetchMock.mock.calls[0][0]).toBe(`${STORAGE_BASE}/file/u1/presigned_url/extended`)
   })
 
@@ -480,7 +522,7 @@ describe('另外三条预签名端点', () => {
     const first = await storageApi.getFriendFilePresignedUrl('u1')
     const second = await storageApi.getFriendFilePresignedUrl('u1')
 
-    expect(first).toBe('https://api.huanvae.cn/friends-file/conv-a-b/x.jpg?X-Amz-Signature=s')
+    expect(first).toBe(`${getApiBaseUrl()}/friends-file/conv-a-b/x.jpg?X-Amz-Signature=s`)
     expect(second).toBe(first)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe(`${STORAGE_BASE}/friends_file/u1/presigned_url`)
@@ -493,7 +535,7 @@ describe('另外三条预签名端点', () => {
 
     const url = await storageApi.getFriendFileExtendedPresignedUrl('u1', 86400)
 
-    expect(url).toBe('https://api.huanvae.cn/friends-file/big.mp4?X-Amz-Signature=s')
+    expect(url).toBe(`${getApiBaseUrl()}/friends-file/big.mp4?X-Amz-Signature=s`)
     expect(fetchMock.mock.calls[0][0]).toBe(
       `${STORAGE_BASE}/friends_file/u1/presigned_url/extended`,
     )
@@ -519,7 +561,7 @@ describe('storageApi.getFileList', () => {
     const result = await storageApi.getFileList()
 
     expect(result.files[0].file_url).toBe(
-      'https://api.huanvae.cn/api/storage/file/f5f23929-1689-4b04-98e7-0073fac1eea4',
+      `${STORAGE_BASE}/file/f5f23929-1689-4b04-98e7-0073fac1eea4`,
     )
     expect(result.files[0].file_url).not.toContain('/api/storage/api/storage/')
   })
@@ -572,7 +614,7 @@ describe('storageApi.uploadFile（整条链路）', () => {
 
     expect(result.isInstant).toBe(true)
     expect(result.fileUrl).toBe(
-      'https://api.huanvae.cn/api/storage/file/f5f23929-1689-4b04-98e7-0073fac1eea4',
+      `${STORAGE_BASE}/file/f5f23929-1689-4b04-98e7-0073fac1eea4`,
     )
   })
 
@@ -599,7 +641,7 @@ describe('storageApi.uploadFile（整条链路）', () => {
     expect(uploadChunk).toHaveBeenCalledTimes(1)
     expect(result.isInstant).toBe(false)
     expect(result.fileUrl).toBe(
-      'https://api.huanvae.cn/api/storage/file/f5f23929-1689-4b04-98e7-0073fac1eea4',
+      `${STORAGE_BASE}/file/f5f23929-1689-4b04-98e7-0073fac1eea4`,
     )
   })
 
