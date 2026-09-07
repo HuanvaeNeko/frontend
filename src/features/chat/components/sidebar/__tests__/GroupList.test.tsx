@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { GroupInvitation } from '@/features/chat/api/groups'
+import type { GroupInvitation, SentJoinRequest } from '@/features/chat/api/groups'
 import type { DiscoveryGroupCard } from '@/api/discovery'
 import { ApiError } from '@/lib/apiEnvelope'
 import GroupList from '../GroupList'
@@ -58,6 +58,7 @@ const {
   searchGroupsMock,
   applyToJoinMock,
   acceptInvitationMock,
+  getSentJoinRequestsMock,
 } = vi.hoisted(() => ({
   groupStoreState: {
     myGroups: [] as { group_id: string }[],
@@ -73,6 +74,7 @@ const {
   searchGroupsMock: vi.fn(),
   applyToJoinMock: vi.fn(),
   acceptInvitationMock: vi.fn(),
+  getSentJoinRequestsMock: vi.fn(),
 }))
 
 vi.mock('@/features/chat/store/groupStore', () => ({
@@ -90,6 +92,7 @@ vi.mock('@/features/chat/api/groups', () => ({
     applyToJoin: applyToJoinMock,
     acceptInvitation: acceptInvitationMock,
     declineInvitation: vi.fn(),
+    getSentJoinRequests: getSentJoinRequestsMock,
   },
 }))
 
@@ -126,6 +129,10 @@ beforeEach(() => {
   searchGroupsMock.mockReset()
   applyToJoinMock.mockReset()
   acceptInvitationMock.mockReset()
+  getSentJoinRequestsMock.mockReset()
+  // 默认空列表：「加入群聊」页一挂载就会拉这个端点，不给默认值的话每一条
+  // 既有搜索/申请用例都会撞进 sentError 失败态。
+  getSentJoinRequestsMock.mockResolvedValue([])
   groupStoreState.loadMyGroups.mockReset()
   groupStoreState.loadMyGroups.mockResolvedValue(undefined)
   groupStoreState.myGroups = []
@@ -731,5 +738,137 @@ describe('GroupList 接受邀请：已入群 / 待审批 / 无法确认三态', 
     )
     const row = screen.getByText('Test Group').closest('.p-4') as HTMLElement
     expect(row.querySelectorAll('button')).toHaveLength(0)
+  })
+})
+
+/**
+ * 批 7：`GET /api/groups/requests/sent` 接进「加入群聊」页。
+ *
+ * 三态与群邀请那一组同构，且理由相同：请求失败和"确实没有申请"必须在屏幕上
+ * 长得不一样。另外两条盯的是这个端点特有的两件事——**没有撤回接口**
+ * （群聊管理.md:1334，by design），以及**申请落待审之后列表要当场刷新**
+ * （否则 toast 弹完什么都没变，和"申请没发出去"分不开）。
+ */
+describe('GroupList「我发出的申请」（GET /api/groups/requests/sent）', () => {
+  const SENT_REQUEST: SentJoinRequest = {
+    request_id: 'sr1',
+    group_id: 'g9',
+    group_name: 'Sent Group',
+    group_avatar_url: null,
+    message: '想加入学习',
+    status: 'pending',
+    created_at: '2026-01-02T00:00:00Z',
+  }
+
+  it('进入「加入群聊」页就会拉一次，成功时渲染真实行（群名 + 附言 + 状态徽章）', async () => {
+    getSentJoinRequestsMock.mockResolvedValue([SENT_REQUEST])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    expect(await screen.findByText('Sent Group')).toBeInTheDocument()
+    expect(screen.getByText('想加入学习')).toBeInTheDocument()
+    expect(screen.getByText('chat.groupList.sentStatusPending')).toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.noSentRequests')).not.toBeInTheDocument()
+    expect(getSentJoinRequestsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('请求失败：错误文案 + 重试按钮，绝不显示"暂无申请"', async () => {
+    getSentJoinRequestsMock.mockRejectedValueOnce(new Error('获取我发出的加群申请失败'))
+
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('获取我发出的加群申请失败')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('chat.groupList.noSentRequests')).not.toBeInTheDocument()
+  })
+
+  it('真正的空列表：显示"暂无待审核的加群申请"，不显示错误', async () => {
+    getSentJoinRequestsMock.mockResolvedValue([])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('chat.groupList.noSentRequests')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('获取我发出的加群申请失败')).not.toBeInTheDocument()
+  })
+
+  /**
+   * 后端 by design 没有 `DELETE`/`cancel`（群聊管理.md:1334）。这一条钉的是
+   * 「这一行里除了刷新按钮之外没有任何按钮」——渲染一颗点了只会 404 的
+   * 「撤回」，等于替后端编一个它没有的能力。
+   *
+   * ⚠️ 断言落在**申请行本身**（`.p-3` 那个容器），不是整块卡片：卡片头部有
+   * 刷新按钮，对整块 `querySelectorAll('button')` 断言 0 会恒红，对
+   * "有没有撤回按钮"却一无所知。
+   */
+  it('申请行不渲染撤回按钮，并且明说申请无法撤回', async () => {
+    getSentJoinRequestsMock.mockResolvedValue([SENT_REQUEST])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    const row = (await screen.findByText('Sent Group')).closest('.p-3') as HTMLElement
+    expect(row).not.toBeNull()
+    expect(row.querySelectorAll('button')).toHaveLength(0)
+    expect(screen.getByText('chat.groupList.sentNoWithdrawHint')).toBeInTheDocument()
+  })
+
+  it('申请落待审（status=pending）之后当场重拉一次，新申请立刻出现在列表里', async () => {
+    searchGroupsMock.mockResolvedValue([
+      {
+        group_id: 'g9',
+        group_name: 'Sent Group',
+        avatar_url: null,
+        member_count: 3,
+        join_approval_required: true,
+        is_member: false,
+      } satisfies DiscoveryGroupCard,
+    ])
+    applyToJoinMock.mockResolvedValue({ status: 'pending', message: '申请已提交' })
+    // 第一次挂载时还没有申请；apply 之后后端才有这一条。
+    getSentJoinRequestsMock.mockResolvedValueOnce([]).mockResolvedValue([SENT_REQUEST])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await waitFor(() =>
+      expect(screen.getByText('chat.groupList.noSentRequests')).toBeInTheDocument(),
+    )
+
+    fireEvent.change(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+      { target: { value: 'Sent Group' } },
+    )
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+    fireEvent.click(await screen.findByText('chat.groupList.applyJoin'))
+
+    await waitFor(() => expect(getSentJoinRequestsMock).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('想加入学习')).toBeInTheDocument()
+  })
+
+  it('直接入群（status=joined）走的是刷新群列表那条路，不重拉申请列表', async () => {
+    // 两条路必须分开：joined 的人根本不会有待审申请，多打一次请求只是噪声。
+    searchGroupsMock.mockResolvedValue([
+      {
+        group_id: 'g9',
+        group_name: 'Sent Group',
+        avatar_url: null,
+        member_count: 3,
+        join_approval_required: false,
+        is_member: false,
+      } satisfies DiscoveryGroupCard,
+    ])
+    applyToJoinMock.mockResolvedValue({ status: 'joined', message: '已加入' })
+    getSentJoinRequestsMock.mockResolvedValue([])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    fireEvent.change(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+      { target: { value: 'Sent Group' } },
+    )
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+    fireEvent.click(await screen.findByText('chat.groupList.applyJoin'))
+
+    await waitFor(() => expect(groupStoreState.loadMyGroups).toHaveBeenCalledTimes(1))
+    expect(getSentJoinRequestsMock).toHaveBeenCalledTimes(1)
   })
 })

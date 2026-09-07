@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
@@ -11,7 +11,8 @@ import {
   Check,
   X,
   RefreshCw,
-  Mail
+  Mail,
+  Send
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -20,7 +21,12 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useGroupStore } from '@/features/chat/store/groupStore'
-import { groupsApi, type GroupInvitation, type JoinSource } from '@/features/chat/api/groups'
+import {
+  groupsApi,
+  type GroupInvitation,
+  type JoinSource,
+  type SentJoinRequest,
+} from '@/features/chat/api/groups'
 import type { DiscoveryGroupCard } from '@/api/discovery'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ConversationItem } from './ConversationItem'
@@ -140,6 +146,13 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // 按钮一起转圈，用户看不出自己点的是哪一个。
   const [applyingGroupId, setApplyingGroupId] = useState<string | null>(null)
 
+  // 我发出的、仍在待审的加群申请（`GET /api/groups/requests/sent`，doc:1330-1369）。
+  // 三态与群邀请列表同构：加载中 / 失败 / (空 | 列表)——"请求失败"和"确实没有
+  // 申请"必须分开渲染，否则又是 apiEnvelope.ts 开篇那类看不见的失败。
+  const [sentRequests, setSentRequests] = useState<SentJoinRequest[]>([])
+  const [loadingSent, setLoadingSent] = useState(false)
+  const [sentError, setSentError] = useState<string | null>(null)
+
   // 群邀请状态
   const [invitations, setInvitations] = useState<GroupInvitation[]>([])
   const [loadingInvites, setLoadingInvites] = useState(false)
@@ -223,6 +236,41 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       setLoadingInvites(false)
     }
   }
+
+  /**
+   * 拉「我发出的加群申请」。
+   *
+   * 这是本批三个新端点里唯一有现成落点的一个：用户在下面的搜索卡片里点了
+   * 「申请加入」、拿到 `status: 'pending'` 之后，此前**没有任何界面**能告诉他
+   * 这条申请还在不在——后端 doc:1330-1369 一直有这个端点，前端从来没实现。
+   *
+   * 包 `useCallback` 是为了能把它如实写进下面 effect 的依赖数组：函数每次渲染
+   * 换引用的话，要么 effect 每次渲染都重跑，要么依赖数组撒谎。
+   * （上面 `loadInvitations` 的 `[subTab]` 是既有欠账，biome 至今在警告它，
+   * 不在这一批里顺手动。）
+   */
+  const loadSentRequests = useCallback(async () => {
+    setLoadingSent(true)
+    setSentError(null)
+    try {
+      // 空列表和形状漂移在 api 层已经被分开了（`data.requests` 拿不到数组就抛），
+      // 所以这里不需要 Array.isArray 之类的兜底把"解析错了"变成"暂无申请"。
+      setSentRequests(await groupsApi.getSentJoinRequests())
+    } catch (error) {
+      console.error('Failed to load sent join requests:', error)
+      setSentError(
+        error instanceof Error ? error.message : t('chat.groupList.loadSentRequestsFailed'),
+      )
+    } finally {
+      setLoadingSent(false)
+    }
+  }, [t])
+
+  useEffect(() => {
+    if (subTab === 'join') {
+      void loadSentRequests()
+    }
+  }, [subTab, loadSentRequests])
 
   // 创建群聊
   const handleCreateGroup = async () => {
@@ -355,6 +403,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
       })
       if (result.status === 'joined') {
         await loadMyGroups()
+      } else {
+        // 落待审 ⇒ 这条申请此刻就该出现在下面「我发出的申请」里。不刷新的话，
+        // 用户看到的是一句 toast 之后什么都没变，和"申请没发出去"分不开。
+        await loadSentRequests()
       }
       clearSearchResults()
       setSearchKeyword('')
@@ -652,7 +704,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // 加入群聊
   if (subTab === 'join') {
     return (
-      <div className="flex flex-col h-full p-4 space-y-6">
+      <div className="flex flex-col h-full overflow-y-auto p-4 space-y-6">
         {/* 搜索群聊 */}
         <div className="p-4 rounded-xl space-y-3 border bg-card">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -784,6 +836,85 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               )}
             </motion.div>
           ))}
+        </div>
+
+        {/*
+          我发出的加群申请（`GET /api/groups/requests/sent`，doc:1330-1369）。
+          放在「加入群聊」这一页而不是「群邀请」页：这里是申请发出去的地方，
+          用户提交完之后要找的也是这里。方向也不同——邀请是别人发给我的。
+        */}
+        <div className="p-4 rounded-xl space-y-3 border bg-card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Send className="h-4 w-4" />
+              {t('chat.groupList.sentRequests')}
+            </div>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={loadSentRequests}
+              disabled={loadingSent}
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingSent ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+
+          {loadingSent ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          ) : sentError ? (
+            // 失败态和"确实没有申请"分开渲染：两者在屏幕上长得一样，就等于
+            // 又造了一个没人会报的 bug。
+            <div className="flex flex-col items-center gap-2 py-4 text-center">
+              <p className="text-sm text-destructive">{sentError}</p>
+              <Button variant="outline" size="sm" onClick={loadSentRequests}>
+                {t('chat.groupList.retry')}
+              </Button>
+            </div>
+          ) : sentRequests.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              {t('chat.groupList.noSentRequests')}
+            </p>
+          ) : (
+            <>
+              {sentRequests.map((request) => (
+                <div
+                  key={request.request_id}
+                  className="p-3 rounded-xl flex items-start gap-3 border bg-accent/30"
+                >
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={request.group_avatar_url ?? undefined} />
+                    <AvatarFallback className="bg-primary text-primary-foreground">
+                      {request.group_name[0]?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-foreground truncate">{request.group_name}</div>
+                    {request.message !== null && (
+                      <div className="text-sm text-muted-foreground truncate">{request.message}</div>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(request.created_at), 'yyyy/MM/dd')}
+                    </div>
+                  </div>
+                  {/*
+                    只有状态徽章，**没有「撤回」按钮**：doc:1334 写明后端 by design
+                    不提供 `DELETE`/`cancel` 端点。画一颗点了只会 404 的按钮，等于
+                    替后端编一个它没有的能力；下面那句提示是它的替代品。
+                    徽章文案写死成「等待审核」而不读 `request.status`，是因为解包层
+                    已经把该字段钉在闭集 `pending` 上（非 pending 会抛错），两者等价。
+                  */}
+                  <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                    {t('chat.groupList.sentStatusPending')}
+                  </span>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                {t('chat.groupList.sentNoWithdrawHint')}
+              </p>
+            </>
+          )}
         </div>
       </div>
     )

@@ -404,6 +404,15 @@ const zhCN = {
       groupInvites: '群邀请',
       noInvites: '暂无群邀请',
       invitedBy: '{name} 邀请你加入',
+      // 我发出的加群申请（GET /api/groups/requests/sent）。与「群邀请」方向相反：
+      // 那些是别人发给我的，这些是我发出去的。
+      sentRequests: '我发出的申请',
+      noSentRequests: '暂无待审核的加群申请',
+      loadSentRequestsFailed: '加载我发出的申请失败',
+      sentStatusPending: '等待审核',
+      // 后端 by design 没有撤回接口（群聊管理.md:1334），所以列表上不给撤回按钮。
+      // 这句话是那颗按钮的替代品：不说清楚，用户只会以为撤回入口藏在别处。
+      sentNoWithdrawHint: '申请提交后无法撤回，请等待群主或管理员处理',
     },
     fileManager: {
       loadFailedTitle: '加载失败',
@@ -901,6 +910,12 @@ const enUS = {
       groupInvites: 'Group invites',
       noInvites: 'No group invites',
       invitedBy: '{name} invited you to join',
+      sentRequests: 'My applications',
+      noSentRequests: 'No pending join applications',
+      loadSentRequestsFailed: 'Failed to load your join applications',
+      sentStatusPending: 'Awaiting review',
+      sentNoWithdrawHint:
+        'Applications cannot be withdrawn once submitted; please wait for the owner or an admin',
     },
     fileManager: {
       loadFailedTitle: 'Load failed',

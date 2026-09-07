@@ -3,7 +3,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { type ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { isUploadSessionExpired, storageApi } from '@/api/storage'
-import { groupsApi } from '../groups'
+import { groupsApi, isGroupNotFound } from '../groups'
 
 /**
  * 批 2：20 个"形状不变"的方法接入信封解包层。
@@ -1335,5 +1335,300 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
     expect(error).toMatchObject({ name: 'ApiError', status: 403, message: '权限不足' })
     // 只有 401 会触发刷新重试，403 不进那条分支
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ============================================
+// 批 7：三个此前前端从未实现的端点
+// ============================================
+
+/**
+ * `GET /{group_id}/public` 的 `data`（`PublicGroupInfo`，样例 doc:620-641）。
+ *
+ * 🔴 **照抄样例，也就是说这里 `card_share_scope` / `qr_show_scope` / `search_scope`
+ * 三个键一个都没有**（doc:644-649 的破坏性变更）。这份 DTO 本身就是一条断言：
+ * 谁要是"顺手统一"把 `publicGroupInfoResponse` 接回 `joinPolicyOf`，下面每一条
+ * 用例都会红在「card_share_scope 缺失」上——一个**完全合规**的响应被判成形状错误。
+ */
+const PUBLIC_GROUP_DTO = {
+  group_id: '019ae4ec-0dfe-7ac1-966e-876e9755561c',
+  group_name: '测试群聊',
+  group_avatar_url: '',
+  group_description: '这是一个测试群',
+  creator_id: 'user_a',
+  created_at: '2025-12-03T15:54:26.686987Z',
+  join_approval_required: true,
+  admin_can_approve: true,
+  allow_join_via_qr: true,
+  allow_join_via_search: true,
+  allow_join_via_referral: true,
+  status: 'active',
+  member_count: 5,
+}
+
+describe('groupsApi.getPublicGroupInfo（非成员视角的窄结构）', () => {
+  it('打的是 /{group_id}/public，方法 GET——不是成员视角的 /{group_id}', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(PUBLIC_GROUP_DTO))
+
+    await groupsApi.getPublicGroupInfo('g1')
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/g1/public`)
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+  })
+
+  it('照抄文档样例（无三档 scope）必须解析成功，字段逐个到位（头像另有一条）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(PUBLIC_GROUP_DTO))
+
+    const info = await groupsApi.getPublicGroupInfo('g1')
+
+    expect(info.group_id).toBe('019ae4ec-0dfe-7ac1-966e-876e9755561c')
+    expect(info.group_name).toBe('测试群聊')
+    expect(info.group_description).toBe('这是一个测试群')
+    expect(info.creator_id).toBe('user_a')
+    expect(info.created_at).toBe('2025-12-03T15:54:26.686987Z')
+    expect(info.status).toBe('active')
+    expect(info.member_count).toBe(5)
+    expect(info.join_approval_required).toBe(true)
+    expect(info.admin_can_approve).toBe(true)
+    expect(info.allow_join_via_qr).toBe(true)
+    expect(info.allow_join_via_search).toBe(true)
+    expect(info.allow_join_via_referral).toBe(true)
+  })
+
+  it('后端多下发三档 scope 时也不能漏进结果——它们是群主设置项，落地页无权知道', async () => {
+    // 反方向的守卫：上一条守「别要求它们」，这一条守「别把它们带出去」。
+    // 谁把 `...joinPolicyOf(payload)` 或 `...payload` 塞进 publicGroupInfoResponse，
+    // 这条就红。
+    fetchMock.mockResolvedValueOnce(
+      envelope({
+        ...PUBLIC_GROUP_DTO,
+        card_share_scope: 'all_members',
+        qr_show_scope: 'admins',
+        search_scope: 'everyone',
+      }),
+    )
+
+    const info = await groupsApi.getPublicGroupInfo('g1')
+
+    expect(info).not.toHaveProperty('card_share_scope')
+    expect(info).not.toHaveProperty('qr_show_scope')
+    expect(info).not.toHaveProperty('search_scope')
+  })
+
+  it('相对头像补基址，空串与 null 都归一成 null', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ ...PUBLIC_GROUP_DTO, group_avatar_url: 'avatars/g1.png?t=1' }),
+    )
+    expect((await groupsApi.getPublicGroupInfo('g1')).group_avatar_url).toBe(
+      `${getApiBaseUrl()}/avatars/g1.png?t=1`,
+    )
+
+    // 样例给的就是 ""（doc:629），不能原样出去喂给 <AvatarImage src="">
+    fetchMock.mockResolvedValueOnce(envelope(PUBLIC_GROUP_DTO))
+    expect((await groupsApi.getPublicGroupInfo('g1')).group_avatar_url).toBeNull()
+
+    fetchMock.mockResolvedValueOnce(envelope({ ...PUBLIC_GROUP_DTO, group_avatar_url: null }))
+    expect((await groupsApi.getPublicGroupInfo('g1')).group_avatar_url).toBeNull()
+  })
+
+  it('三个 allow_join_via_* 缺失 / 为 null 时抛错——落地页靠它们决定按钮长什么样', async () => {
+    const { allow_join_via_qr: _dropped, ...withoutQrSwitch } = PUBLIC_GROUP_DTO
+    fetchMock.mockResolvedValueOnce(envelope(withoutQrSwitch))
+    await expect(groupsApi.getPublicGroupInfo('g1')).rejects.toThrow(/allow_join_via_qr/)
+
+    fetchMock.mockResolvedValueOnce(envelope({ ...PUBLIC_GROUP_DTO, join_approval_required: null }))
+    await expect(groupsApi.getPublicGroupInfo('g1')).rejects.toThrow(/join_approval_required/)
+  })
+
+  it('404（群不存在或已解散）能被 isGroupNotFound 单独认出来，403/500 认不出来', async () => {
+    // doc:675 两者同形；doc:1759-1761 要求落地页渲染成「群聊不存在」失效态，
+    // 而不是「加载失败 + 重试」。判据是状态码，不是文案。
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 404, message: '群聊不存在' }, 404))
+    const notFound = await groupsApi.getPublicGroupInfo('nope').catch((e: unknown) => e)
+    expect(isGroupNotFound(notFound)).toBe(true)
+    expect(notFound).toMatchObject({ name: 'ApiError', status: 404, message: '群聊不存在' })
+
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, message: '权限不足' }, 403))
+    expect(isGroupNotFound(await groupsApi.getPublicGroupInfo('g1').catch((e: unknown) => e))).toBe(
+      false,
+    )
+
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 500, message: '服务器错误' }, 500))
+    expect(isGroupNotFound(await groupsApi.getPublicGroupInfo('g1').catch((e: unknown) => e))).toBe(
+      false,
+    )
+
+    // 非 ApiError 的任何东西都不是「群不存在」
+    expect(isGroupNotFound(new Error('群聊不存在'))).toBe(false)
+  })
+})
+
+/** `GET /{group_id}/qr` 的 `data`（样例 doc:1801-1809）。 */
+const QR_DTO = {
+  group_id: '550e8400-e29b-41d4-a716-446655440000',
+  payload: 'huanvae://group/join?id=550e8400-e29b-41d4-a716-446655440000',
+  group_name: '技术交流群',
+  group_avatar_url: 'https://cdn.example.com/avatar.png',
+  member_count: 42,
+}
+
+describe('groupsApi.getGroupQrCode（后端给字符串，不给图片）', () => {
+  it('打的是 /{group_id}/qr，拿到的是 payload 字符串与出码页要的展示字段', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(QR_DTO))
+
+    const qr = await groupsApi.getGroupQrCode('g1')
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/g1/qr`)
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+    expect(qr.payload).toBe('huanvae://group/join?id=550e8400-e29b-41d4-a716-446655440000')
+    // doc:1815：group_name 随码一起下发，正是为了出码页不必再打一次 /public
+    expect(qr.group_name).toBe('技术交流群')
+    expect(qr.member_count).toBe(42)
+    // 只发一条请求：不能顺手替调用点补一次 /public
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('已是绝对地址的头像原样保留（absoluteAvatar 幂等），相对路径补基址，null 出去是 null', async () => {
+    fetchMock.mockResolvedValueOnce(envelope(QR_DTO))
+    expect((await groupsApi.getGroupQrCode('g1')).group_avatar_url).toBe(
+      'https://cdn.example.com/avatar.png',
+    )
+
+    fetchMock.mockResolvedValueOnce(envelope({ ...QR_DTO, group_avatar_url: 'avatars/g1.png' }))
+    expect((await groupsApi.getGroupQrCode('g1')).group_avatar_url).toBe(
+      `${getApiBaseUrl()}/avatars/g1.png`,
+    )
+
+    fetchMock.mockResolvedValueOnce(envelope({ ...QR_DTO, group_avatar_url: null }))
+    expect((await groupsApi.getGroupQrCode('g1')).group_avatar_url).toBeNull()
+  })
+
+  it('payload 缺失或为空串时抛错——空串会被画成一张扫了什么都不会发生的码', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ ...QR_DTO, payload: '' }))
+    await expect(groupsApi.getGroupQrCode('g1')).rejects.toThrow(/payload/)
+
+    const { payload: _dropped, ...withoutPayload } = QR_DTO
+    fetchMock.mockResolvedValueOnce(envelope(withoutPayload))
+    await expect(groupsApi.getGroupQrCode('g1')).rejects.toThrow(/payload/)
+  })
+
+  it('403（qr_show_scope 不满足）透出后端原文，且绝不触发刷新/登出', async () => {
+    // 门槛是被展示群的 qr_show_scope（doc:1828、doc:209、矩阵 doc:2259），
+    // 是常规权限失败。本文件的 fetchWithAuth 只对 401 做刷新重试 + 失败登出；
+    // 把 403 并进那条分支，这条用例会在三个断言上同时红：请求发了两次、
+    // 拿到的不是 ApiError、登录态被清空。
+    useAuthStore.setState({ accessToken: 'AT', refreshToken: 'RT', isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 403, message: '你的角色不满足该群的二维码展示范围' }, 403),
+    )
+
+    const error = await groupsApi.getGroupQrCode('g1').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({
+      name: 'ApiError',
+      status: 403,
+      message: '你的角色不满足该群的二维码展示范围',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().accessToken).toBe('AT')
+  })
+})
+
+/** `GET /api/groups/requests/sent` 的一行（样例 doc:1346-1354）。 */
+const SENT_REQUEST_DTO = {
+  request_id: '019ae4ec-7a9e-77a3-82f4-98ca71fc97de',
+  group_id: '019ae4ec-0dfe-7ac1-966e-876e9755561c',
+  group_name: '测试群聊',
+  group_avatar_url: '',
+  message: '你好，我想加入这个群',
+  status: 'pending',
+  created_at: '2025-12-03T15:54:54.494997Z',
+}
+
+/** 信封的 `data` 是**对象**，数组挂在 `requests` 上（doc:1344-1356）。 */
+const sentEnvelope = (rows: unknown) => envelope({ requests: rows })
+
+describe('groupsApi.getSentJoinRequests（data.requests，不是裸数组）', () => {
+  it('打的是 /api/groups/requests/sent，且不带 group_id', async () => {
+    fetchMock.mockResolvedValueOnce(sentEnvelope([SENT_REQUEST_DTO]))
+
+    await groupsApi.getSentJoinRequests()
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/requests/sent`)
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+  })
+
+  it('从 data.requests 里取出真实行，字段值逐个到位', async () => {
+    fetchMock.mockResolvedValueOnce(sentEnvelope([SENT_REQUEST_DTO]))
+
+    const rows = await groupsApi.getSentJoinRequests()
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].request_id).toBe('019ae4ec-7a9e-77a3-82f4-98ca71fc97de')
+    expect(rows[0].group_id).toBe('019ae4ec-0dfe-7ac1-966e-876e9755561c')
+    expect(rows[0].group_name).toBe('测试群聊')
+    expect(rows[0].message).toBe('你好，我想加入这个群')
+    expect(rows[0].status).toBe('pending')
+    expect(rows[0].created_at).toBe('2025-12-03T15:54:54.494997Z')
+  })
+
+  it('空 requests 数组 = 真的没有待审申请，返回 []（不是错误）', async () => {
+    fetchMock.mockResolvedValueOnce(sentEnvelope([]))
+
+    await expect(groupsApi.getSentJoinRequests()).resolves.toEqual([])
+  })
+
+  it('裸数组 / 缺席 / null / 换字段名一律抛错——这正是「稳定返回空列表」的成因', async () => {
+    // 把 data 当裸数组解（本模块 /my 就是那个形状）会让这一条静默通过，
+    // 用户明明刚提交过申请，屏幕上却是「暂无」。
+    fetchMock.mockResolvedValueOnce(envelope([SENT_REQUEST_DTO]))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/应为对象/)
+
+    fetchMock.mockResolvedValueOnce(envelope({}))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/requests 应为数组/)
+
+    fetchMock.mockResolvedValueOnce(sentEnvelope(null))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/requests 应为数组/)
+
+    // /invitations 的字段名，串台了也要炸
+    fetchMock.mockResolvedValueOnce(envelope({ invitations: [SENT_REQUEST_DTO] }))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/requests 应为数组/)
+  })
+
+  it('相对头像补基址；空串与 null 归一成 null；附言可为 null', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sentEnvelope([{ ...SENT_REQUEST_DTO, group_avatar_url: 'avatars/g1.png?t=1' }]),
+    )
+    expect((await groupsApi.getSentJoinRequests())[0].group_avatar_url).toBe(
+      `${getApiBaseUrl()}/avatars/g1.png?t=1`,
+    )
+
+    fetchMock.mockResolvedValueOnce(sentEnvelope([SENT_REQUEST_DTO]))
+    expect((await groupsApi.getSentJoinRequests())[0].group_avatar_url).toBeNull()
+
+    fetchMock.mockResolvedValueOnce(
+      sentEnvelope([{ ...SENT_REQUEST_DTO, group_avatar_url: null, message: null }]),
+    )
+    const [row] = await groupsApi.getSentJoinRequests()
+    expect(row.group_avatar_url).toBeNull()
+    expect(row.message).toBeNull()
+  })
+
+  it('status 落在 pending 之外要抛错——本端点的前提就是「只返回待审申请」', async () => {
+    // doc:1368 写死恒为 pending。若哪天真回了 approved/rejected，说明这个列表
+    // 的语义（以及「没有撤回接口」这条前提）都得重看，宁可炸。
+    fetchMock.mockResolvedValueOnce(sentEnvelope([{ ...SENT_REQUEST_DTO, status: 'approved' }]))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/status/)
+
+    const { status: _dropped, ...withoutStatus } = SENT_REQUEST_DTO
+    fetchMock.mockResolvedValueOnce(sentEnvelope([withoutStatus]))
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow(/status/)
+  })
+
+  it('HTTP 200 但 success:false 也算失败，不能变成空列表', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 500, message: '群聊服务不可用' }))
+
+    await expect(groupsApi.getSentJoinRequests()).rejects.toThrow('群聊服务不可用')
   })
 })

@@ -7,7 +7,13 @@ import {
   searchDiscovery,
 } from '@/api/discovery'
 import { ROUTES } from '@/lib/routes'
-import { type Parser, assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
+import {
+  ApiError,
+  type Parser,
+  assertEnvelopeOk,
+  readEnvelope,
+  readEnvelopeList,
+} from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 
 const GROUPS_BASE_URL = `${getApiBaseUrl()}/api/groups`
@@ -154,6 +160,99 @@ export interface GroupBase {
  * 兜底，而兜底正是本次迁移要删的东西。
  */
 export interface Group extends GroupBase, JoinPolicy {}
+
+/**
+ * `GET /api/groups/{group_id}/public` 的 `data`（`PublicGroupInfo`，
+ * 字段表 doc:651-667、样例 doc:620-641）。非成员视角的落地数据：群详情弹窗
+ * （doc:607，如搜索结果点开预览），以及扫码 / 群卡片 / 搜群 ID 三种加群方式
+ * 共用的那条落地路径（doc:1703-1704：拿到 `group_id` → `/public` → `/apply`）。
+ *
+ * 🔴 **它和 {@link Group} 不同构，既不能用 `Group` 顶替，也不能把它塞进
+ * {@link GroupBase}**：2026-08-17 的破坏性变更（doc:644-649）把
+ * `card_share_scope` / `qr_show_scope` / `search_scope` 从**本端点这一个响应**
+ * 里收掉了——三档是群主的设置项，本端点又无成员门控，它们对「要不要加入
+ * 这个群」的决定毫无帮助。成员视角的 `GET /{group_id}` 仍然照常返回这三个键
+ * （doc:647-648，群设置面板靠它回填），所以收的是**响应**不是模型。
+ * 复用 `Group` 会让类型声称这三档存在而运行时永远没有，正是本次迁移在消灭的形态。
+ *
+ * 🔴 三个 `allow_join_via_*` **在**这里（doc:662-664、doc:669-672）：它们直接决定
+ * 「这条加群方式开不开」，性质与 `join_approval_required` 相同，落地页正是靠它把
+ * 按钮渲染成「加入群聊」还是「群主已关闭此加群方式」。别因为它们和三档 scope
+ * 都出自 {@link JoinPolicy} 就"顺手统一"成八个。
+ *
+ * 不继承 {@link GroupBase}：那里的 `group_description` / `creator_id` / `created_at`
+ * / `status` / `member_count` 五个是**可选**的（`/my` 不返回它们），而本端点的字段表
+ * 把它们和 `group_id` 一样无条件列出，{@link publicGroupInfoResponse} 也逐个实打实
+ * 校验。继承过来再声明成必需只会让两处定义互相牵制，写平更省事也更诚实。
+ *
+ * `group_avatar_url` 与 `group_description` 的 `''` ⇒ `null` 归一见
+ * {@link emptyableStr}：字段表写 `string | null`（doc:656-657），样例给的却是 `""`。
+ */
+export interface PublicGroupInfo {
+  group_id: string
+  group_name: string
+  /** 相对路径，已在 api 出口过 {@link absoluteAvatar}（doc:656）。 */
+  group_avatar_url: string | null
+  group_description: string | null
+  creator_id: string
+  created_at: string
+  join_approval_required: boolean
+  admin_can_approve: boolean
+  allow_join_via_qr: boolean
+  allow_join_via_search: boolean
+  allow_join_via_referral: boolean
+  status: string
+  member_count: number
+}
+
+/**
+ * `GET /api/groups/{group_id}/qr` 的 `data`（字段表 doc:1811-1817、样例 doc:1801-1809）。
+ *
+ * 🔴 后端**不返回图片**（doc:1819-1820）：尺寸 / 纠错级别 / 深浅主题全是渲染侧的事，
+ * 客户端拿 {@link payload} 自己画。所以这里到货的是一串字符，不是 base64 图片。
+ *
+ * `group_name` / `group_avatar_url` / `member_count` 一并下发，是为了让出码页
+ * **不必再打一次 `/public`**（doc:1815）——所以它们要真的被消费，别丢掉再去拉一次。
+ */
+export interface GroupQrCode {
+  group_id: string
+  /**
+   * 要被编码进二维码的那串字符：`huanvae://group/join?id=<group_id>`（doc:1814）。
+   * 无签名、无时效（doc:1822-1825），也不构成免审核凭证——扫码方从 `id=` 取出
+   * `group_id` 之后仍要走 `/public` + `/apply`，是否落待审由被扫群的
+   * `join_approval_required` 决定。
+   */
+  payload: string
+  group_name: string
+  /** 已在 api 出口过 {@link absoluteAvatar}；样例给的是绝对地址，该函数幂等。 */
+  group_avatar_url: string | null
+  member_count: number
+}
+
+/**
+ * `GET /api/groups/requests/sent` 的一行（`SentJoinRequestInfo`，
+ * 字段表 doc:1360-1369、样例 doc:1341-1357）。
+ *
+ * 只包含当前用户**主动经搜索发起、且仍是 `pending`** 的申请（doc:1334）。
+ * 🔴 **没有撤回接口**（doc:1334 明写 by design，无 `DELETE`/`cancel`），
+ * 所以列表上不要渲染「撤回」按钮——渲染一颗按不动的按钮，等于替后端编一个
+ * 它没有的能力。
+ *
+ * ⚠️ 与 {@link GroupInvitation}（收到的邀请）方向相反、与 {@link JoinRequest}
+ * （我管理的群收到的申请）视角相反，三者字段名多有重合但不可混用。
+ */
+export interface SentJoinRequest {
+  request_id: string
+  group_id: string
+  group_name: string
+  /** 相对路径，已在 api 出口过 {@link absoluteAvatar}（doc:1366）。 */
+  group_avatar_url: string | null
+  /** 申请附言（doc:1367）。 */
+  message: string | null
+  /** 恒为 `pending`（doc:1368）；{@link sentJoinRequestsResponse} 按闭集钉死。 */
+  status: 'pending'
+  created_at: string
+}
 
 /**
  * `GET /api/groups/my` 的一条记录。字段表 + 样例：
@@ -479,6 +578,99 @@ const groupDetailResponse: Parser<Group> = {
 }
 
 /**
+ * `GET /api/groups/{group_id}/public` 的 `data`（字段表 doc:651-667、
+ * 样例 doc:620-641）→ {@link PublicGroupInfo}。
+ *
+ * 🔴 **刻意不复用 {@link groupDetailResponse}，也刻意不调 {@link joinPolicyOf}**：
+ * 那两处会要求 `card_share_scope` / `qr_show_scope` / `search_scope` 三个键，
+ * 而本端点 2026-08-17 起就不再下发它们（doc:644-649）——照抄一份合规的
+ * `/public` 响应进去，`scopeOf` 会当场抛「card_share_scope 缺失」，把一个
+ * **完全正常**的响应判成形状错误。反过来，若哪天真的把 `joinPolicyOf` 接回来，
+ * 解析出的对象会凭空长出三档群主设置项，落地页上就有三个来路不明的值。
+ * 两个方向都由测试盯着（见 `groups.test.ts` 的「三档 scope」两条）。
+ *
+ * 五个策略字段（`join_approval_required` / `admin_can_approve` + 三个
+ * `allow_join_via_*`）逐个走 `bool()`：doc:660-664 无条件列出它们，而落地页
+ * 正是靠它们决定按钮是「加入群聊」「等待审核」还是「群主已关闭此加群方式」
+ * （doc:669-672）。放行 `undefined` 会让真值判断把「后端没给」读成一个确定结论。
+ */
+const publicGroupInfoResponse: Parser<PublicGroupInfo> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'GET /{group_id}/public 的 data')
+    return {
+      group_id: str(payload, 'group_id'),
+      group_name: str(payload, 'group_name'),
+      group_avatar_url: absoluteAvatar(emptyableStr(payload, 'group_avatar_url')),
+      group_description: emptyableStr(payload, 'group_description'),
+      creator_id: str(payload, 'creator_id'),
+      created_at: str(payload, 'created_at'),
+      join_approval_required: bool(payload, 'join_approval_required'),
+      admin_can_approve: bool(payload, 'admin_can_approve'),
+      allow_join_via_qr: bool(payload, 'allow_join_via_qr'),
+      allow_join_via_search: bool(payload, 'allow_join_via_search'),
+      allow_join_via_referral: bool(payload, 'allow_join_via_referral'),
+      status: str(payload, 'status'),
+      member_count: num(payload, 'member_count'),
+    }
+  },
+}
+
+/**
+ * `GET /api/groups/{group_id}/qr` 的 `data`（字段表 doc:1811-1817、
+ * 样例 doc:1801-1809）→ {@link GroupQrCode}。
+ *
+ * `payload` 走 `str()`（拒空串）：它就是要被画成二维码的那串字符，空串会被画成
+ * 一张扫了什么都不会发生的图——比报错难查得多。这里**不**解析 `id=`、
+ * 也不校验 scheme：那是扫码方的事（doc:1822），出码页只负责把它原样画出来。
+ */
+const groupQrResponse: Parser<GroupQrCode> = {
+  parse(input: unknown) {
+    const data = asRecord(input, 'GET /{group_id}/qr 的 data')
+    return {
+      group_id: str(data, 'group_id'),
+      payload: str(data, 'payload'),
+      group_name: str(data, 'group_name'),
+      group_avatar_url: absoluteAvatar(emptyableStr(data, 'group_avatar_url')),
+      member_count: num(data, 'member_count'),
+    }
+  },
+}
+
+/** {@link SentJoinRequest.status} 的闭集：本端点只返回待审申请（doc:1368）。 */
+const SENT_JOIN_REQUEST_STATUSES: readonly SentJoinRequest['status'][] = ['pending']
+
+/**
+ * `GET /api/groups/requests/sent` 的 `data` → {@link SentJoinRequest} 数组。
+ *
+ * 🔴 **数组挂在 `data.requests` 上，`data` 本身不是数组**（样例 doc:1341-1357）。
+ * 这一条是本轮迁移的原始症状本身：把它当裸数组解，得到的是稳定的
+ * 「暂无申请」，而用户明明刚提交过申请——一次报错都没有。同模块三种容器形状
+ * 并存（`/my` 裸数组 doc:113-129、`/invitations` 是 `data.invitations`
+ * doc:1146-1170、本端点是 `data.requests`），不能"统一处理"，只能逐个对样例。
+ *
+ * `status` 走闭集而不是 `str()`：doc:1368 写明它恒为 `pending`。落到闭集外
+ * 说明这个端点不再"只返回待审申请"了，那时列表的语义（以及「没有撤回接口」
+ * 这条前提）都需要重看，宁可炸出来。
+ */
+const sentJoinRequestsResponse: Parser<SentJoinRequest[]> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'GET /api/groups/requests/sent 的 data')
+    return arr(payload, 'requests').map((row) => {
+      const item = asRecord(row, '我发出的申请行')
+      return {
+        request_id: str(item, 'request_id'),
+        group_id: str(item, 'group_id'),
+        group_name: str(item, 'group_name'),
+        group_avatar_url: absoluteAvatar(emptyableStr(item, 'group_avatar_url')),
+        message: emptyableStr(item, 'message'),
+        status: scopeOf(item, 'status', SENT_JOIN_REQUEST_STATUSES),
+        created_at: str(item, 'created_at'),
+      }
+    })
+  },
+}
+
+/**
  * `POST /api/groups/{group_id}/invite` 的 `data`（doc:782-796）：
  * `{ results: [{ user_id, success, message }] }`。
  *
@@ -619,6 +811,23 @@ const joinRequestsResponse: Parser<JoinRequest[]> = {
   },
 }
 
+/**
+ * `GET /api/groups/{group_id}/public` 的 `404`：**群不存在，或已解散**
+ * （doc:675——两者有意同形，不泄露已解散群的存在性）。
+ *
+ * 单独给一个谓词，是因为这条 404 的正确处置和别的错误**不一样**：doc:1759-1761
+ * 要求落地页（群卡片点开 / 扫码进来）把卡片渲染成「群聊不存在」的**失效态**，
+ * 而不是弹一句「加载失败」再配一颗重试按钮——这个群不会因为多点几次就回来。
+ * 判据是状态码，不要 match 文案（同 `storage.ts` 的 `isUploadSessionExpired`）。
+ *
+ * ⚠️ 只判 404，不判 403：本端点压根没有 403（doc:674-676 只列了 404 和 401），
+ * 有 403 的是 {@link groupsApi.getGroupQrCode}，那一条是 `qr_show_scope` 门槛，
+ * 要原样透出后端文案，**不是**失效态、更不是登出。
+ */
+export function isGroupNotFound(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 404
+}
+
 // ============================================
 // API 方法
 // ============================================
@@ -748,6 +957,58 @@ export const groupsApi = {
       endpoint: 'GET /api/groups/{group_id}',
       fallbackMessage: '获取群聊详情失败',
       parse: groupDetailResponse,
+    })
+  },
+
+  /**
+   * 获取群聊公开信息（未加入群也能看）
+   * GET /api/groups/{group_id}/public
+   *
+   * 与上面的 {@link getGroupDetail} 是**两个端点、两种响应结构**（doc:649）：
+   * 这一个无成员门控（doc:615：共用 `auth_guard`，必须登录，但不校验成员身份），
+   * 返回的是窄结构 {@link PublicGroupInfo}——没有三档 scope。要读那三档只能用
+   * 成员视角的 `GET /{group_id}`。
+   *
+   * 也**不受 `search_scope` 影响**（doc:612-613）：那一档管的是"能不能被搜出来"，
+   * 本端点按群 ID 直取，是扫码 / 群卡片落地页的数据源。
+   *
+   * 404 = 群不存在**或已解散**（doc:675，两者有意同形）。它需要和别的错误分开处置，
+   * 判据用 {@link isGroupNotFound}，理由写在那个函数上。
+   */
+  getPublicGroupInfo: async (groupId: string): Promise<PublicGroupInfo> => {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/public`, {
+      method: 'GET',
+    })
+
+    return readEnvelope<PublicGroupInfo>(response, {
+      endpoint: 'GET /api/groups/{group_id}/public',
+      fallbackMessage: '获取群聊公开信息失败',
+      parse: publicGroupInfoResponse,
+    })
+  },
+
+  /**
+   * 获取群二维码的**内容串**（不是图片）
+   * GET /api/groups/{group_id}/qr
+   *
+   * 后端只给 `payload`，位图由客户端本地绘制（doc:1819-1820）。本仓目前没有
+   * 二维码渲染库，所以这里只到 api 这一层为止。
+   *
+   * 🔴 **403 是这个端点的常规失败，不是登录态失效**：门槛是被展示群的
+   * `qr_show_scope`（doc:1828、doc:209、权限矩阵 doc:2259），不是活跃成员同样 403。
+   * 本文件的 `fetchWithAuth` 只在 `response.status === 401` 时刷新令牌 / 静默登出
+   * （见文件头那段），403 原样穿透，由 `readEnvelope` 抛成带 `status` 的 `ApiError`，
+   * 文案取后端原文——调用点直接透出这句话，别把它变成一次无解释的登出。
+   */
+  getGroupQrCode: async (groupId: string): Promise<GroupQrCode> => {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/qr`, {
+      method: 'GET',
+    })
+
+    return readEnvelope<GroupQrCode>(response, {
+      endpoint: 'GET /api/groups/{group_id}/qr',
+      fallbackMessage: '获取群二维码失败',
+      parse: groupQrResponse,
     })
   },
 
@@ -1219,6 +1480,31 @@ export const groupsApi = {
       endpoint: 'GET /api/groups/{group_id}/requests',
       fallbackMessage: '获取申请失败',
       parse: joinRequestsResponse,
+    })
+  },
+
+  /**
+   * 获取**我发出的**加群申请（仍在待审的那些）
+   * GET /api/groups/requests/sent
+   *
+   * 与上面的 {@link getJoinRequests} 视角相反：那个是"我管的群收到的申请"，
+   * 这个是"我向别人的群发出的申请"，URL 里也没有 `{group_id}`。
+   *
+   * 🔴 数组挂在 `data.requests` 上（doc:1344-1356），不是裸数组——当裸数组解
+   * 会稳定得到「暂无申请」，而用户明明刚提交过。形状对不上一律抛
+   * `ApiShapeError`，见 {@link sentJoinRequestsResponse}。
+   *
+   * 🔴 **没有撤回接口**（doc:1334，by design）：调用点不要渲染「撤回」按钮。
+   */
+  getSentJoinRequests: async (): Promise<SentJoinRequest[]> => {
+    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/requests/sent`, {
+      method: 'GET',
+    })
+
+    return readEnvelope<SentJoinRequest[]>(response, {
+      endpoint: 'GET /api/groups/requests/sent',
+      fallbackMessage: '获取我发出的加群申请失败',
+      parse: sentJoinRequestsResponse,
     })
   },
 
