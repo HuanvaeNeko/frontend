@@ -139,6 +139,32 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // 已同意、但复核后发现人还没进群（群开着入群审核 ⇒ 落在待审队列里，
   // doc:1194-1203）的邀请。这些行留在列表里并改标成「等待管理员审核」——
   // 删掉它们就等于把用户唯一的状态入口一起删掉。
+  //
+  // 🔴 **这是纯组件内存，撑不过一次刷新，而且前端修不了这一条**：
+  // `InvitationInfo`（`GET /api/groups/invitations` 的行，doc:1176-1189
+  // 字段表）里**没有** `user_accepted` 字段——`JoinRequest.user_accepted`
+  // 有（doc:1258-1260），`InvitationInfo` 没有。也就是说页面一刷新，
+  // `pendingApprovalIds` 归零，而前端手里**没有任何数据源**能重新算出
+  // "这条邀请我已经同意过、正在等审批"这件事，因为后端压根没把这个状态
+  // 吐给这个端点。
+  //
+  // 刷新之后会撞上两种同样不理想的结局之一（取决于这条记录刷新后还在不在
+  // `GET /invitations` 里返回，文档没写）：
+  // - 还在 ⇒ 这一行重新长出「同意/拒绝」两个按钮，用户能对着一条自己已经
+  //   `user_accepted=true` 的记录再点一次「同意」——文档完全没说对一条
+  //   已同意的记录再次 accept 会发生什么，这是本次迁移留下的一处未定义
+  //   行为，不是本次要补的兜底；
+  // - 不在了 ⇒ 用户回到最初那句抱怨：刷新一次之后，「我已经同意了，正在
+  //   等审批」这件事在界面上彻底没有入口，只能干等或去找管理员确认。
+  //
+  // 前端能做的补丁（比如"只要发过 accept 请求就写 localStorage 永久记住"）
+  // record 的是"这台设备发过这个请求"，不是"这条邀请此刻的真实状态"——
+  // 换设备、清缓存、甚至只是被另一个管理员批准/拒绝之后，这份本地记录都会
+  // 和后端脱节，伪造出一种它并不具备的可靠性，正是本次迁移要消灭的那类
+  // "看着能用、实际是假的"形态。真正的修法在后端：给 `InvitationInfo` 加一个
+  // `user_accepted: boolean`（同名同义于 `JoinRequest.user_accepted`），
+  // 前端才有一个真实字段可以在每次挂载时重新推导这份状态，而不是拿组件
+  // 生命周期顶替数据库。
   const [pendingApprovalIds, setPendingApprovalIds] = useState<string[]>([])
 
   // 确保 myGroups 是数组
@@ -319,6 +345,22 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   }
 
   /**
+   * accept 的 403 同样只有通用文案「权限不足」（doc:1093-1099 没有为这个端点
+   * 单独定义文案）。文档记录的唯一成因就是 `groups.ts` 里 `acceptInvitation`
+   * 上方那段注释：存量 `member_invite` 邀请在群主关掉 `allow_join_via_referral`
+   * 之后不可 accept（doc:749-751 的 ⚠️、doc:1097-1099——同一道门在
+   * `POST /{group_id}/apply` 上也有一份，见 {@link describeApplyError}）。
+   * 文档没有再列出这个端点的其它 403 成因，所以按状态码单值映射是安全的——
+   * 不像 apply 那样还要按 `source` 分支。
+   */
+  const describeAcceptError = (error: unknown): string => {
+    if (error instanceof ApiError && error.status === 403) {
+      return t('chat.groupList.inviteAcceptClosed')
+    }
+    return error instanceof Error ? error.message : t('chat.groupList.acceptInviteFailed')
+  }
+
+  /**
    * 接受群邀请。
    *
    * 🔴 accept 成功**不等于**入群：开着入群审核的群里，同意邀请只是把
@@ -371,7 +413,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
-        description: error instanceof Error ? error.message : t('chat.groupList.acceptInviteFailed'),
+        description: describeAcceptError(error),
         variant: 'destructive',
       })
     } finally {
@@ -743,8 +785,18 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                     </div>
                   </div>
                   {pendingApprovalIds.includes(invitation.request_id) ? (
-                    // 已同意但还没进群：这一行保留，按钮换成状态说明——再点一次
-                    // 同意没有意义（后端那条记录已经是 user_accepted=true）。
+                    // 已同意但还没进群：这一行保留，两个按钮**都**换成状态说明。
+                    // 「同意」没有意义的理由见上（后端那条记录已经是
+                    // user_accepted=true）。「拒绝」一并去掉，是刻意的选择而不是
+                    // 漏改：accept 已经把这条记录送进了 `GET /{group_id}/requests`
+                    // 待审队列（doc:1258-1260），此刻它在语义上已经不是"一条待
+                    // 我表态的邀请"，而是"一条待审批人处理的申请"——真正能动它
+                    // 的下一步在审批人手里（批准/拒绝申请），不在邀请人这一侧。
+                    // 文档也没有给出反证：`POST /invitations/{id}/decline`
+                    // （doc:1236-1247）连响应样例都没有，对一条
+                    // `user_accepted=true` 的记录调用它会不会撤销已经生效的同意、
+                    // 或者对着一条已经不在原队列里的记录报错，完全没有说明——
+                    // 与其猜一个可能撤销用户刚做出的同意的操作，不如不给这个入口。
                     <div className="text-xs text-muted-foreground shrink-0 max-w-[8rem] text-right">
                       {t('chat.groupList.inviteAcceptedPendingApproval')}
                     </div>

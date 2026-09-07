@@ -891,6 +891,22 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         {/* 成员管理 */}
         {activeTab === 'members' && (
           <div className="space-y-4">
+            {/*
+             * ⚠️ 已知漂移，本批不碰：doc:719 记录 2026-08-17 起「邀请成员」
+             * 已经**去掉**了角色门槛（普通成员也能邀请，受 doc:743-752 的
+             * allow_join_via_referral 前置行约束，不是 isAdmin），这里的
+             * `isAdmin` 门是没跟上的一处。批 4 复核过权限总表
+             * （doc:2247-2268）确认这是**单独一处**漂移，不是一整族——本文件
+             * 其它角色门（转让群主、设管理员、移除成员等）逐条对过表格都是
+             * 对的。
+             *
+             * 复核者的意见：修复大概率不是直接去掉这道门变成无条件展示——
+             * 一个在 `allow_join_via_referral=false` 的群里的普通成员点了会
+             * 拿到一屏全失败的 toast（doc:743-752 的前置行：非群主/管理员在
+             * 这个开关关着时，逐个被邀请人必然失败）。更贴近文档语义的方向是
+             * `isAdmin || group?.allow_join_via_referral`——按钮的可见性
+             * 跟着"点了是否至少有机会成功"走，而不是跟着角色走。留给下一批。
+             */}
             {isAdmin && (
               <Button className="w-full gap-2" onClick={() => setShowInviteDialog(true)}>
                 <UserPlus className="h-4 w-4" />

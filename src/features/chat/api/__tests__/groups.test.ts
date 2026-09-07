@@ -822,6 +822,50 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
     await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/requests 应为数组/)
   })
 
+  /**
+   * finding 3：两种形状都收的容忍此前没有任何运行时信号——`until: 2026-12-31`
+   * 只活在注释里，没人能靠日志证明线上到底命中了哪一支。现在两支各打一条
+   * `console.warn`，格式仿 `apiEnvelope.ts` 的 `legacyBare` 命中日志
+   * （同一个 `[api-envelope]` 前缀，`grep` 得到），不是新开一条上报通道。
+   */
+  describe('容器形状的猜测分支：运行时信号（finding 3）', () => {
+    it('data.requests 形状命中时，打一条标明"{requests:[...]}"分支的信号', async () => {
+      const warn = console.warn as unknown as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValueOnce(envelope({ requests: [JOIN_REQUEST_ROW] }))
+
+      await groupsApi.getJoinRequests('g1')
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      const [message] = warn.mock.calls[0] as [string]
+      expect(message).toContain('[api-envelope]')
+      expect(message).toContain('GET /api/groups/{group_id}/requests')
+      expect(message).toContain('{requests:[...]}')
+      expect(message).not.toContain('裸数组')
+    })
+
+    it('裸数组形状命中时，打一条标明"裸数组"分支的信号', async () => {
+      const warn = console.warn as unknown as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValueOnce(envelope([JOIN_REQUEST_ROW]))
+
+      await groupsApi.getJoinRequests('g1')
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      const [message] = warn.mock.calls[0] as [string]
+      expect(message).toContain('[api-envelope]')
+      expect(message).toContain('裸数组')
+      expect(message).not.toContain('{requests:[...]}')
+    })
+
+    it('形状既不是裸数组也不是 {requests:[...]} 时不打信号——那不是"猜对了"', async () => {
+      const warn = console.warn as unknown as ReturnType<typeof vi.fn>
+      fetchMock.mockResolvedValueOnce(envelope({}))
+
+      await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/requests 应为数组/)
+
+      expect(warn).not.toHaveBeenCalled()
+    })
+  })
+
   it('data.requests 为 null ⇒ 抛错（`|| []` 会把它变成"暂无申请"）', async () => {
     fetchMock.mockResolvedValueOnce(envelope({ requests: null }))
 
@@ -857,8 +901,16 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
     )
     const [withoutAvatar] = await groupsApi.getJoinRequests('g1')
     expect(withoutAvatar.user_avatar_url).toBeNull()
+
     // 空串同样归一成 null：<AvatarImage src=""> 会打一次指向当前页的请求。
-    const [emptyAvatar] = [withAvatar]
+    // `JOIN_REQUEST_ROW` 本身就带 `user_avatar_url: ''`（第 788 行），这里
+    // 才是真正驱动那个默认值走一遍的用例——上面两条各自显式传了非空/null，
+    // 谁都没有替空串这条分支断言过。
+    fetchMock.mockResolvedValueOnce(
+      envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_avatar_url: '' }] }),
+    )
+    const [emptyAvatar] = await groupsApi.getJoinRequests('g1')
+    expect(emptyAvatar.user_avatar_url).toBeNull()
     expect(emptyAvatar.user_avatar_url).not.toBe('')
   })
 

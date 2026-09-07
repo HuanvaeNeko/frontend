@@ -354,6 +354,9 @@ const zhCN = {
       joinClosedQr: '群主已关闭扫码加群',
       joinClosedSearch: '群主已关闭搜索加群',
       joinClosedReferral: '群主已关闭好友推荐加群',
+      // accept 的 403 同一道门（doc:749-751、:1097-1099）：群主关掉好友推荐
+      // 加群之后，翻关之前就已经躺在库里的邀请不能再被同意。
+      inviteAcceptClosed: '群主已关闭好友推荐加群，这条邀请已失效',
       joinedViaInvite: '已加入群聊',
       // 开着入群审核的群：同意邀请之后人还在待审队列里（doc:1194-1203），
       // 这一句和上面那句必须不同，否则两种结局在屏幕上无法区分。
@@ -846,6 +849,7 @@ const enUS = {
       joinClosedQr: 'The owner has disabled joining by QR code',
       joinClosedSearch: 'The owner has disabled joining by search',
       joinClosedReferral: 'The owner has disabled joining by referral',
+      inviteAcceptClosed: 'The owner has disabled referral joining; this invite is no longer valid',
       joinedViaInvite: 'Joined group',
       inviteAcceptedPendingApproval: 'Invitation accepted, waiting for admin approval',
       inviteAcceptedUnconfirmed:

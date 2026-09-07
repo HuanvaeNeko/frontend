@@ -785,7 +785,7 @@ describe('GroupManagement 邀请成员：逐条结果落地到 UI', () => {
     expect(screen.getByPlaceholderText('user1, user2, user3')).toHaveValue('user_c')
   })
 
-  it('部分失败：标题给出成功/失败人数，描述是失败那几行的后端文案', async () => {
+  it('部分失败：标题给出成功/失败人数，描述是失败那几行的后端文案，且弹窗不关、输入框不清', async () => {
     groupsApiMock.inviteMembers.mockResolvedValueOnce({ results: [OK_ROW, FAIL_ROW] })
 
     render(<GroupManagement groupId="g1" />)
@@ -800,6 +800,10 @@ describe('GroupManagement 邀请成员：逐条结果落地到 UI', () => {
         }),
       ),
     )
+    // 部分失败与全部失败共用同一条纪律：用户必须还能看到自己刚输入的
+    // user id，弹窗也不能被悄悄关掉——否则失败了一半的那几个人是谁，
+    // 用户自己都找不回来。
+    expect(screen.getByPlaceholderText('user1, user2, user3')).toHaveValue('user_b, user_c')
   })
 
   it('全部成功：成功 toast 用的是后端文案，并且这时才关弹窗清输入框', async () => {

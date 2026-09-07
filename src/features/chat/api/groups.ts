@@ -566,12 +566,28 @@ const JOIN_REQUEST_TYPES: readonly JoinRequestType[] = [
  *   把形状钉死，然后删掉其中一条分支、把注释换成直证。
  * - 已知：后端文档缺本端点的响应样例，需要向后端补。
  * 半年后看到这段的人不必重新考据：上面三条把"这是猜的、怎么收尾"写全了。
+ *
+ * ⚠️ **猜测本身不能是哑的**：`until` 只活在这段注释里，没有任何运行时信号
+ * 记录过线上到底命中了哪一支——不像 `apiEnvelope.ts` 的 `legacyBare`（见
+ * `unwrapData` 里那段 `console.warn`），命中一次就打一次、格式统一带
+ * `[api-envelope]` 前缀、`grep` 得到。下面这行照抄同一个约定，不新开一条
+ * 上报通道：线上一有一次真实请求命中，日志里就能看出这次到底是裸数组还是
+ * `{requests:[...]}`，`until` 到期时不用再靠"重新考据"来决定删哪一支。
  */
 const joinRequestsResponse: Parser<JoinRequest[]> = {
   parse(input: unknown) {
-    const rows = Array.isArray(input)
+    const isBareArray = Array.isArray(input)
+    const rows = isBareArray
       ? input
       : arr(asRecord(input, 'GET /{group_id}/requests 的 data'), 'requests')
+
+    // 只在成功识别出两种已知形状之一时才打——`arr()` 校验不通过会在上面一行
+    // 先抛错，那种「两种都不是」的情况不该被记成"猜对了"。
+    console.warn(
+      `[api-envelope] GET /api/groups/{group_id}/requests data 形状：` +
+        `${isBareArray ? '裸数组' : '{requests:[...]}'}（两种猜测分支之一，` +
+        `until 2026-12-31，见 joinRequestsResponse 注释）`,
+    )
 
     return rows.map((row) => {
       const item = asRecord(row, '待审申请行')

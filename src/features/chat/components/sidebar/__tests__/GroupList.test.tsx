@@ -489,7 +489,15 @@ describe('GroupList 接受邀请：已入群 / 待审批 / 无法确认三态', 
     expect(screen.getByText('Test Group')).toBeInTheDocument()
   })
 
-  it('accept 自己失败（403：群主关掉好友推荐后存量 member_invite 不可 accept）走失败分支', async () => {
+  /**
+   * 批 4 findings：accept 的 403 此前落回 `error.message`，那正是后端给的
+   * 通用「权限不足」（doc:1093-1099 没有为这个端点单独定义文案）——用户
+   * 点了同意，得到一句什么都没解释的错误。`describeAcceptError` 是
+   * `describeApplyError` 的 accept 侧双胞胎：同一道 403（doc:749-751、
+   * :1097-1099，群主关掉 allow_join_via_referral 之后存量 member_invite
+   * 不可 accept）现在给出具体解释，不再原样透出后端的通用文案。
+   */
+  it('accept 自己失败（403：群主关掉好友推荐后存量 member_invite 不可 accept）给出具体解释', async () => {
     acceptInvitationMock.mockRejectedValueOnce(
       new ApiError('权限不足', {
         status: 403,
@@ -502,10 +510,57 @@ describe('GroupList 接受邀请：已入群 / 待审批 / 无法确认三态', 
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ description: '权限不足', variant: 'destructive' }),
+        expect.objectContaining({
+          description: 'chat.groupList.inviteAcceptClosed',
+          variant: 'destructive',
+        }),
       ),
     )
+    // 通用的「权限不足」对用户什么也没解释，不能就这么原样丢出去——
+    // 这一条是本次要修的原始症状，必须一次都不出现。
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ description: '权限不足' }))
     expect(groupStoreState.loadMyGroups).not.toHaveBeenCalled()
     expect(screen.getByText('Test Group')).toBeInTheDocument()
+  })
+
+  it('accept 非 403 的失败仍然透出后端原文（不是每个错误都套用 403 的解释）', async () => {
+    acceptInvitationMock.mockRejectedValueOnce(
+      new ApiError('邀请已过期', {
+        status: 400,
+        endpoint: 'POST /api/groups/invitations/{request_id}/accept',
+      }),
+    )
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '邀请已过期', variant: 'destructive' }),
+      ),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.inviteAcceptClosed' }),
+    )
+  })
+
+  /**
+   * 批 4 finding 6：待审批行**两个**按钮都被换成状态说明，不只是「同意」。
+   * 「拒绝」被一并去掉是刻意的（见 GroupList.tsx 里那段注释），这里钉住
+   * 现在的行为——回归成"只去掉同意，拒绝还在"不该被悄悄放过。
+   */
+  it('待审批行不渲染任何按钮（同意、拒绝都被换成状态说明）', async () => {
+    groupStoreState.loadMyGroups.mockImplementation(async () => {
+      groupStoreState.myGroups = []
+    })
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(screen.getByText('chat.groupList.inviteAcceptedPendingApproval')).toBeInTheDocument(),
+    )
+    const row = screen.getByText('Test Group').closest('.p-4') as HTMLElement
+    expect(row.querySelectorAll('button')).toHaveLength(0)
   })
 })
