@@ -1,16 +1,24 @@
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { isAuthApiError } from '@/lib/apiEnvelope'
-import { ROUTES } from '@/lib/routes'
+import { fetchWithAuth } from './authedFetch'
 
 const BASE_URL = getApiBaseUrl()
 
-// 请求超时时间（毫秒）
+/**
+ * `apiClient` 的请求超时（毫秒）。
+ * 2026-09-07 合并前它属于本文件私有的 `fetchWithTimeout`；现在作为
+ * `fetchWithAuth` 的可选能力传进去，只有本文件这两个调用方（lowcode /
+ * diagnostic）启用，其余九个模块保持无超时的既有行为。
+ */
 const REQUEST_TIMEOUT = 30000
 
 /**
  * 认证错误类
  * 用于区分认证相关的错误和其他错误
+ *
+ * 2026-09-07 起本文件不再抛出它（传输层已合并进 `authedFetch.ts`，那一份统一
+ * 返回 `Response`）。类保留是因为它仍是 `isAuthError` 最可信的一档：调用方若
+ * 要表达「这是一次认证失败」，抛它即可，不必依赖文案关键词。
  */
 export class AuthenticationError extends Error {
   constructor(message: string) {
@@ -18,10 +26,6 @@ export class AuthenticationError extends Error {
     this.name = 'AuthenticationError'
   }
 }
-
-// 标记是否正在进行 Token 刷新（防止并发刷新）
-let isRefreshing = false
-let refreshPromise: Promise<boolean> | null = null
 
 // 认证相关错误的标识
 const AUTH_ERROR_MESSAGES = [
@@ -41,19 +45,23 @@ const AUTH_ERROR_MESSAGES = [
  * 判断是否是认证相关的错误
  *
  * 三档，从可靠到不可靠：
- * 1. `AuthenticationError` —— 本文件自己抛的，最可信。
+ * 1. `AuthenticationError` —— 调用方显式标注的认证失败，最可信。
  * 2. `isAuthApiError` —— 解包层的 `ApiError` 带真实 HTTP 状态码，**401** 直接判定。
  *    **这一档不能省**：解包层抛出的错误文案是后端原文，很可能一个
  *    AUTH_ERROR_MESSAGES 关键词都不含（例如"您的会话已结束"），只靠下面的
  *    关键词匹配会让 401 不再触发静默重定向——那是一次实打实的回归。
  *    **`403` 刻意不在这一档**：本后端的 403 是普通权限不足（`权限不足`），
  *    不是 token 失效；判成认证错误会让"打开一个没权限的文件"变成
- *    `silentRedirectToLogin()` 的无提示登出，或 `chatStore` 的 `return []`。
- *    详见 `isAuthApiError` 的注释。
+ *    `friendsStore` / `profileStore` 里 `silentRedirectToLogin()` 的无提示登出，
+ *    或 `chatStore` 的 `return []`。详见 `isAuthApiError` 的注释。
  * 3. 关键词匹配 —— 兜住那些还没接入解包层的裸 `Error` / 字符串，
  *    等三个模块全部迁完之后可以再评估要不要删。
  *    403 落到这一档后，因为文案「权限不足」不含任何关键词，会正确地
  *    作为可见错误继续上抛，而不是被静默吞掉。
+ *
+ * 三个消费点（`chatStore` / `friendsStore` / `profileStore`）全部是**静默**路径，
+ * 判真 = 用户看不到任何解释，所以它必须只对真正的认证失败为真。
+ * 由 `__tests__/apiClient.test.ts` 守着 401/403 的分界。
  */
 const isAuthError = (error: Error | string): boolean => {
   // AuthenticationError 直接返回 true
@@ -72,213 +80,55 @@ const isAuthError = (error: Error | string): boolean => {
 }
 
 /**
- * 静默重定向到登录页面
- * 不抛出错误，不显示 Toast
- */
-const silentRedirectToLogin = () => {
-  const authStore = useAuthStore.getState()
-  authStore.clearAuth()
-  
-  // 使用 replace 而不是 href，避免在历史记录中留下痕迹
-  if (typeof window !== 'undefined' && window.location.pathname !== ROUTES.auth.login) {
-    window.location.replace(ROUTES.auth.login)
-  }
-}
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-/**
- * 带超时控制的 fetch 封装
- */
-const fetchWithTimeout = async (
-  url: string,
-  options: RequestInit = {},
-  timeout: number = REQUEST_TIMEOUT
-): Promise<Response> => {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeout)
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    })
-    clearTimeout(timeoutId)
-    return response
-  } catch (error) {
-    clearTimeout(timeoutId)
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('请求超时，请检查网络连接', { cause: error })
-    }
-    throw error
-  }
-}
-
-/**
- * 尝试刷新 Token
- * 返回 true 表示刷新成功，false 表示刷新失败
- */
-const tryRefreshToken = async (): Promise<boolean> => {
-  const authStore = useAuthStore.getState()
-  
-  if (!authStore.refreshToken) {
-    return false
-  }
-
-  // 如果已经在刷新中，等待刷新完成
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise
-  }
-
-  isRefreshing = true
-  refreshPromise = (async () => {
-    try {
-      await authStore.refreshAccessToken()
-      return true
-    } catch (error) {
-      console.warn('Token 刷新失败:', error)
-      return false
-    } finally {
-      isRefreshing = false
-      refreshPromise = null
-    }
-  })()
-
-  return refreshPromise
-}
-
-/**
- * 带自动重试和超时的 fetch 封装
- * 当遇到认证错误时，自动尝试刷新 Token 或静默重定向到登录页面
- */
-export const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {},
-  skipAuthRedirect = false
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-
-  // 检查 Token 是否即将过期，如果是则预先刷新
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    const refreshed = await tryRefreshToken()
-    if (!refreshed && !skipAuthRedirect) {
-      silentRedirectToLogin()
-      // 抛出错误让调用者知道认证失败，而不是让 Promise 永久挂起
-      throw new AuthenticationError('Token 刷新失败，正在重定向到登录页面')
-    }
-  }
-
-  const headers = getAuthHeaders()
-
-  let response = await fetchWithTimeout(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  // 如果 Token 过期，尝试刷新后重试一次
-  if (response.status === 401) {
-    const refreshed = await tryRefreshToken()
-    
-    if (refreshed) {
-      // 刷新成功，重试请求
-      const newHeaders = getAuthHeaders()
-      response = await fetchWithTimeout(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-      
-      // 如果刷新后仍然 401，说明 refresh token 也无效
-      if (response.status === 401) {
-        if (!skipAuthRedirect) {
-          silentRedirectToLogin()
-        }
-        // 无论是否跳过重定向，都抛出明确的认证错误
-        throw new AuthenticationError('Token 刷新后认证仍然失败')
-      }
-    } else {
-      if (!skipAuthRedirect) {
-        // 刷新失败，静默重定向
-        silentRedirectToLogin()
-      }
-      // 无论是否跳过重定向，都抛出明确的认证错误
-      throw new AuthenticationError('Token 刷新失败，需要重新登录')
-    }
-  }
-
-  return response
-}
-
-/**
- * 安全的 API 调用包装器
- * 自动处理认证错误，不会向用户显示认证相关的错误提示
- */
-export const safeApiCall = async <T>(
-  apiCall: () => Promise<T>,
-  options?: {
-    onAuthError?: () => void
-    skipAuthRedirect?: boolean
-  }
-): Promise<T | null> => {
-  try {
-    return await apiCall()
-  } catch (error) {
-    if (error instanceof Error && isAuthError(error)) {
-      // 认证错误，静默处理
-      if (options?.onAuthError) {
-        options.onAuthError()
-      } else if (!options?.skipAuthRedirect) {
-        silentRedirectToLogin()
-      }
-      return null
-    }
-    // 非认证错误，继续抛出
-    throw error
-  }
-}
-
-/**
- * 通用 API 客户端，自动处理认证和超时
+ * 通用 API 客户端，自动处理认证和超时。
+ *
+ * 传输层是全仓唯一那份 `authedFetch.ts`：**只对 401 刷新重试一次，永远返回
+ * `Response`**。本文件合并前另有一份会在认证失败时静默 `location.replace` 到
+ * 登录页并抛 `AuthenticationError` 的实现，已于 2026-09-07 删除——它的两个
+ * 调用方（`lowcode` / `diagnostic`）本就只读 `response.ok`，从不 catch 那个错误，
+ * 于是「刷新后仍 401」表现为一次无解释的跳转。现在它会作为带后端原文的可见
+ * 错误从调用方的 `if (!response.ok)` 抛出。refresh token 真失效时，
+ * `authedFetch` 仍会 clearAuth 并跳登录页。
  */
 export const apiClient = {
   get: async (path: string, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, { ...options, method: 'GET' })
+    return fetchWithAuth(`${BASE_URL}${path}`, { ...options, method: 'GET' }, { timeoutMs: REQUEST_TIMEOUT })
   },
 
   post: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
-      ...options,
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
-    })
+    return fetchWithAuth(
+      `${BASE_URL}${path}`,
+      {
+        ...options,
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      { timeoutMs: REQUEST_TIMEOUT }
+    )
   },
 
   put: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
-      ...options,
-      method: 'PUT',
-      body: data ? JSON.stringify(data) : undefined,
-    })
+    return fetchWithAuth(
+      `${BASE_URL}${path}`,
+      {
+        ...options,
+        method: 'PUT',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      { timeoutMs: REQUEST_TIMEOUT }
+    )
   },
 
   delete: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
-      ...options,
-      method: 'DELETE',
-      body: data ? JSON.stringify(data) : undefined,
-    })
+    return fetchWithAuth(
+      `${BASE_URL}${path}`,
+      {
+        ...options,
+        method: 'DELETE',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      { timeoutMs: REQUEST_TIMEOUT }
+    )
   },
 }
 

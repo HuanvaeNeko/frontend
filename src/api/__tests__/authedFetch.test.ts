@@ -247,6 +247,59 @@ describe('fetchWithAuth —— 刷新汇进 authStore 的单飞漏斗', () => {
   })
 })
 
+describe('fetchWithAuth —— 可选超时', () => {
+  /**
+   * 超时是为 `apiClient` 对象（lowcode / diagnostic 两个调用点）保留的能力：
+   * 合并前它在 `apiClient.ts` 的 `fetchWithTimeout` 里，30 秒。
+   * 默认**不启用**——九个已迁移模块合并前就没有超时，不能借这次合并偷偷改掉它们。
+   */
+  it('不传 timeoutMs 时不挂 signal，请求不会被中断', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
+
+    await fetchWithAuth(RESOURCE)
+
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeUndefined()
+  })
+
+  it('超过 timeoutMs 未响应时中断请求并抛出超时错误', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchMock.mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => {
+              const error = new Error('aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+      )
+
+      const pending = fetchWithAuth(RESOURCE, {}, { timeoutMs: 30_000 })
+      const assertion = expect(pending).rejects.toThrow(/超时/)
+      await vi.advanceTimersByTimeAsync(30_001)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('在 timeoutMs 内响应则正常返回，不会误报超时', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
+
+      const response = await fetchWithAuth(RESOURCE, {}, { timeoutMs: 30_000 })
+
+      expect(response.status).toBe(200)
+      // 定时器必须被清掉，否则每个请求都会留一个 30 秒的悬挂 timer
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('fetchWithAuth —— 请求构造', () => {
   it('调用方的 headers 覆盖默认头，method/body 原样透传', async () => {
     fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
