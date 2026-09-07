@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { GroupInvitation } from '@/features/chat/api/groups'
+import type { DiscoveryGroupCard } from '@/api/discovery'
 import { ApiError } from '@/lib/apiEnvelope'
 import GroupList from '../GroupList'
 
@@ -288,15 +289,19 @@ describe('GroupList 建群对话框：join_mode 五档 → join_approval_require
  * 「申请已提交」，免审核群里加群成功也不刷新群列表。
  */
 describe('GroupList 申请入群：source 必填 + status 两态', () => {
-  const SEARCH_RESULT = {
+  // discovery 的 GroupCard（`发现搜索.md:100-107`），不是群模块的 GroupBase：
+  // 头像键是 `avatar_url`，另有 `join_approval_required` / `is_member`。
+  const SEARCH_RESULT: DiscoveryGroupCard = {
     group_id: 'g1',
     group_name: 'Test Group',
-    group_avatar_url: null,
+    avatar_url: null,
     member_count: 3,
+    join_approval_required: true,
+    is_member: false,
   }
 
   const searchThenApply = async (reason?: string) => {
-    fireEvent.change(await screen.findByPlaceholderText('chat.groupList.enterGroupIdPlaceholder'), {
+    fireEvent.change(await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'), {
       target: { value: 'g1' },
     })
     fireEvent.click(screen.getByText('chat.groupList.search'))
@@ -309,6 +314,43 @@ describe('GroupList 申请入群：source 必填 + status 两态', () => {
 
   beforeEach(() => {
     searchGroupsMock.mockResolvedValue([SEARCH_RESULT])
+  })
+
+  it('搜索结果卡片按 join_approval_required 显示审核角标（不是按已删的 join_mode 猜）', async () => {
+    render(<GroupList subTab="join" searchQuery="" />)
+    fireEvent.change(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+      { target: { value: 'Test Group' } },
+    )
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+
+    expect(await screen.findByText('chat.groupList.needApproval')).toBeTruthy()
+    expect(screen.queryByText('chat.groupList.noApproval')).toBeNull()
+  })
+
+  it('join_approval_required=false ⇒ 角标是「免审核」，两种状态在屏幕上必须能区分', async () => {
+    searchGroupsMock.mockResolvedValue([{ ...SEARCH_RESULT, join_approval_required: false }])
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    fireEvent.change(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+      { target: { value: 'Test Group' } },
+    )
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+
+    expect(await screen.findByText('chat.groupList.noApproval')).toBeTruthy()
+    expect(screen.queryByText('chat.groupList.needApproval')).toBeNull()
+  })
+
+  it('输入框文案说的是「完整群名或群 ID」——发现搜索是完全匹配，不是子串联想', async () => {
+    // 这一条盯的是产品语义上的静默失败：文案若还写「输入群ID」或暗示模糊搜索，
+    // 用户输入子串永远返回空，看起来就是搜索功能坏了。
+    render(<GroupList subTab="join" searchQuery="" />)
+
+    expect(
+      await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder'),
+    ).toBeTruthy()
+    expect(screen.queryByPlaceholderText('chat.groupList.enterGroupIdPlaceholder')).toBeNull()
   })
 
   it('请求带上 source（本入口是搜索）与附言，三个实参逐个断言', async () => {

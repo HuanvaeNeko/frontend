@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useGroupStore } from '@/features/chat/store/groupStore'
 import { groupsApi, type GroupInvitation, type JoinSource } from '@/features/chat/api/groups'
+import type { DiscoveryGroupCard } from '@/api/discovery'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ConversationItem } from './ConversationItem'
 import { useI18n } from '@/i18n/I18nProvider'
@@ -113,19 +114,18 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const [joinApprovalRequired, setJoinApprovalRequired] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
-  // 加入群聊状态
-  const [searchGroupId, setSearchGroupId] = useState('')
+  // 加入群聊状态。输入框接受「完整群名」或「群 ID」两种——发现搜索是完全匹配
+  // （大小写不敏感的 ILIKE，无通配，发现搜索.md:164），子串不再命中。
+  const [searchKeyword, setSearchKeyword] = useState('')
   const [searchingGroup, setSearchingGroup] = useState(false)
   // `join_mode` 已从这里删掉：后端两个响应结构里都没有这个字段了（doc:460-461），
   // 读到的恒为 undefined，旧代码的三处 `|| 'approval_required'` 把这件事
   // 完整地藏了起来。批 4 起「申请提交后是直接进群还是落待审」由
   // `applyToJoin` 返回的 `data.status` 直答（doc:1128-1132），前端不再猜。
-  const [searchResult, setSearchResult] = useState<{
-    group_id: string
-    group_name: string
-    group_avatar_url?: string | null
-    member_count?: number
-  } | null>(null)
+  //
+  // 批 6 起类型就是到货的那一个：discovery 的 `GroupCard`。此前这里手写了一个
+  // 结构字面量，字段名（`group_avatar_url`）和可选性都是照着已删端点写的。
+  const [searchResult, setSearchResult] = useState<DiscoveryGroupCard | null>(null)
   const [applyReason, setApplyReason] = useState('')
   const [applying, setApplying] = useState(false)
 
@@ -250,10 +250,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
 
   // 搜索群聊
   const handleSearchGroup = async () => {
-    if (!searchGroupId.trim()) {
+    if (!searchKeyword.trim()) {
       toast({
         title: t('chat.groupList.error'),
-        description: t('chat.groupList.enterGroupId'),
+        description: t('chat.groupList.enterGroupKeyword'),
         variant: 'destructive',
       })
       return
@@ -262,7 +262,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     setSearchingGroup(true)
     setSearchResult(null)
     try {
-      const results = await groupsApi.searchGroups(searchGroupId.trim())
+      const results = await groupsApi.searchGroups(searchKeyword.trim())
       if (results.length > 0) {
         setSearchResult(results[0])
       } else {
@@ -331,7 +331,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
         await loadMyGroups()
       }
       setSearchResult(null)
-      setSearchGroupId('')
+      setSearchKeyword('')
       setApplyReason('')
     } catch (error) {
       toast({
@@ -637,16 +637,16 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder={t('chat.groupList.enterGroupIdPlaceholder')}
-              value={searchGroupId}
-              onChange={(e) => setSearchGroupId(e.target.value)}
+              placeholder={t('chat.groupList.enterGroupKeywordPlaceholder')}
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
               className="flex-1 h-10"
             />
             <Button
               variant="outline"
               className="h-10 px-5"
               onClick={handleSearchGroup}
-              disabled={searchingGroup || !searchGroupId.trim()}
+              disabled={searchingGroup || !searchKeyword.trim()}
             >
               {searchingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : t('chat.groupList.search')}
             </Button>
@@ -661,7 +661,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10 shrink-0">
-                    <AvatarImage src={searchResult.group_avatar_url ?? undefined} />
+                    <AvatarImage src={searchResult.avatar_url ?? undefined} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {searchResult.group_name[0]?.toUpperCase()}
                     </AvatarFallback>
@@ -669,9 +669,19 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <div className="flex-1">
                   <div className="font-medium text-foreground">{searchResult.group_name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {t('chat.groupList.memberCount', { count: searchResult.member_count ?? 0 })}
+                    {t('chat.groupList.memberCount', { count: searchResult.member_count })}
                   </div>
                 </div>
+                {/*
+                  「要不要审核」的唯一判据是 `join_approval_required`：五档 join_mode
+                  连同数据库列一起被 migration 043 删了（发现搜索.md:109-112）。
+                  卡片上直接显示，用户按下「申请加入」之前就知道会不会落待审。
+                */}
+                <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                  {searchResult.join_approval_required
+                    ? t('chat.groupList.needApproval')
+                    : t('chat.groupList.noApproval')}
+                </span>
               </div>
 
               <div>
@@ -692,7 +702,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                   className="flex-1 h-10"
                   onClick={() => {
                     setSearchResult(null)
-                    setSearchGroupId('')
+                    setSearchKeyword('')
                     setApplyReason('')
                   }}
                 >

@@ -1,6 +1,11 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { type AvatarUploadResult, storageApi } from '@/api/storage'
+import {
+  type DiscoveryGroupCard,
+  parseDiscoveryGroupCard,
+  searchDiscovery,
+} from '@/api/discovery'
 import { ROUTES } from '@/lib/routes'
 import { type Parser, assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
@@ -111,12 +116,18 @@ export interface JoinPolicy {
 }
 
 /**
- * `Group` / `MyGroup` / `searchGroups` 三处共有的那部分。
+ * `Group` 与 `MyGroup` 两处共有的那部分。
+ *
+ * 🔴 **搜索结果不再用它**：`searchGroups` 走的 `GET /api/discovery/search`
+ * 返回的是 discovery 模块自己的 `GroupCard`（`avatar_url` 而不是
+ * `group_avatar_url`，无描述/创建者/创建时间/状态），已单独建型为
+ * `DiscoveryGroupCard`（`src/api/discovery.ts`）。批 6 之前这里写着
+ * 「已删除的 `/search`」而下面 `searchGroups` 仍在打那个端点，是文件自相矛盾。
  *
  * 入群策略八字段**不在这里**：doc:195-196 写明 `GroupInfo` 字段表
  * 「**只有** `GET /{group_id}` 用它」，`GET /my`（doc:131-140 字段表共 7 个字段）
- * 与已删除的 `/search` 都不返回它们——把八字段放进基类会让类型声称
- * 它们存在而运行时没有，正是本次迁移要消灭的形态。
+ * 不返回它们——把八字段放进基类会让类型声称它们存在而运行时没有，
+ * 正是本次迁移要消灭的形态。
  *
  * `group_avatar_url` 是 `string | null`：字段表（doc:202）写的就是 `string | null`，
  * 而两份响应样例（doc:177、doc:121）给的是 `""`。api 出口统一把 `''`
@@ -681,31 +692,38 @@ export const groupsApi = {
   },
 
   /**
-   * 搜索群聊
-   * GET /api/groups/search?query=xxx
+   * 搜索群聊 —— `GET /api/discovery/search?keyword=<kw>&limit=<n>`。
    *
-   * ⚠️ 该端点已于 2026-08-17 整套删除，替代端点在 discovery 模块（批 6），
-   * 本批不动——这里改的是解包方式，不是"搜索群聊"这个功能本身还能不能用。
+   * 🔴 旧端点 `GET /api/groups/search?query=` 已于 2026-08-17 整套删除，
+   * 群模块文档自己把去处写在 `群聊管理.md:609-611`：「搜索群聊不在本文档，
+   * 统一走 `GET /api/discovery/search`」。传输层落在 {@link searchDiscovery}
+   * （`src/api/discovery.ts`）——那一次请求同时返回人 / 群 / bot 三段，
+   * 这里**只消费 `groups` 段**，另两段留给将来的消费点，各自解析各自的 DTO。
    *
-   * 返回类型由 `Group[]` 收窄成 `GroupBase[]`：批 3 给 `Group` 补上了八个
-   * **必需**的策略字段，而这个（已删的）端点从来不返回它们。这是删字段带来的
-   * 类型连带修正，不是对本端点的迁移——它的解包方式仍留给批 6。
+   * 三处与旧实现的实质差异：
+   * - 参数名 `query` → `keyword`（`发现搜索.md:47`）；trim 后为空是后端的
+   *   `400`，文案由后端给，前端不再自己造一句；
+   * - 返回类型 `GroupBase[]` → {@link DiscoveryGroupCard}`[]`。这不是收窄，
+   *   是**换了一个 DTO**：到货的头像字段叫 `avatar_url` 而不是
+   *   `group_avatar_url`，并且没有 `group_description` / `creator_id` /
+   *   `created_at` / `status`，另有 `join_approval_required` / `is_member`。
+   *   旧签名是一句关于到货内容的谎话，把 `GroupBase` 放宽到能同时装下两种
+   *   形状只会把谎话摊薄到更多调用点；
+   * - 末尾的 `result.data || []` 删除。它让"真的没搜到"和"响应形状漂了"
+   *   落在同一句「没有找到匹配的群聊」上，是本轮迁移要消灭的形态本身。
+   *
+   * ⚠️ 匹配是**完全匹配**（大小写不敏感的 `ILIKE`，无通配）或 `group_id`
+   * 精确匹配（`发现搜索.md:164`），子串不再命中。UI 文案已跟着改成「输入
+   * 完整群名或群 ID」——否则每一次部分输入都返回空，看起来就是功能坏了。
    */
-  searchGroups: async (query: string): Promise<GroupBase[]> => {
-    console.log('🔍 搜索群聊:', query)
-    const params = new URLSearchParams({ query })
-
-    const response = await fetchWithAuth(`${GROUPS_BASE_URL}/search?${params}`, {
-      method: 'GET',
+  searchGroups: async (keyword: string, limit?: number): Promise<DiscoveryGroupCard[]> => {
+    console.log('🔍 搜索群聊:', keyword)
+    return searchDiscovery<DiscoveryGroupCard>({
+      keyword,
+      limit,
+      section: 'groups',
+      row: parseDiscoveryGroupCard,
     })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '搜索群聊失败' }))
-      throw new Error(error.error || '搜索群聊失败')
-    }
-
-    const result = await response.json()
-    return result.data || []
   },
 
   /**

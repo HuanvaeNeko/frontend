@@ -1172,3 +1172,162 @@ describe('groupsApi.uploadGroupAvatar（四步预签名链路）', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * 批 6：`searchGroups` 从已删除的 `GET /api/groups/search?query=` 换到
+ * `GET /api/discovery/search?keyword=&limit=`（`backend-docs/discovery/发现搜索.md`）。
+ *
+ * 每一条断言都对应一个**可被还原的**变异：把 `result.data || []` 加回来、
+ * 把 `keyword` 改回 `query`、把 URL 指回 `/api/groups/search`、去掉头像绝对化，
+ * 都必须至少让下面某一条红掉。只断言"没抛错"或"是数组"对这批 bug 形同虚设。
+ */
+describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
+  const DISCOVERY_SEARCH = `${getApiBaseUrl()}/api/discovery/search`
+
+  // 发现搜索.md:66 的响应样例（groups 段一行）
+  const GROUP_CARD = {
+    group_id: '019ae4ec-0dfe-7ac1-966e-876e9755561c',
+    group_name: '张三的群',
+    avatar_url: null,
+    member_count: 12,
+    join_approval_required: false,
+    is_member: false,
+  }
+
+  const sections = (over: Record<string, unknown> = {}) =>
+    envelope({ people: [], groups: [GROUP_CARD], bots: [], ...over })
+
+  it('打的是 /api/discovery/search，参数名是 keyword 且带 limit——一条都不发去已删的 /api/groups/search', async () => {
+    fetchMock.mockResolvedValueOnce(sections())
+
+    await groupsApi.searchGroups('张三的群')
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toBe(`${DISCOVERY_SEARCH}?keyword=${encodeURIComponent('张三的群')}&limit=20`)
+    // 参数名改过：`query=` 是已删端点的写法，出现即回归
+    expect(url).not.toContain('query=')
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain(`${GROUPS_BASE}/search`)
+    }
+  })
+
+  it('limit 在前端就钳到 1..=50（默认 20），URL 不再说一件不会发生的事', async () => {
+    // 每次都要一个新的 Response：同一个实例的 body 只能读一次
+    fetchMock.mockImplementation(() => Promise.resolve(sections()))
+
+    await groupsApi.searchGroups('kw', 500)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('limit=50')
+
+    await groupsApi.searchGroups('kw', 0)
+    expect(String(fetchMock.mock.calls[1][0])).toContain('limit=1')
+
+    await groupsApi.searchGroups('kw', 7)
+    expect(String(fetchMock.mock.calls[2][0])).toContain('limit=7')
+  })
+
+  it('只消费 groups 段：people/bots 里的行既不混进结果，形状怎么漂也打不挂找群', async () => {
+    // 三段互相独立（doc:87）。把 people 换成一堆非法行——找群不该受影响，
+    // 否则就是凭空造出来的耦合：后端动一次 PersonCard 就把找群一起打挂。
+    fetchMock.mockResolvedValueOnce(
+      sections({
+        people: [{ user_id: 'u1' }, null, 42],
+        bots: null,
+      }),
+    )
+
+    const result = await groupsApi.searchGroups('张三的群')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].group_id).toBe('019ae4ec-0dfe-7ac1-966e-876e9755561c')
+    expect(result.map((card) => card.group_name)).toEqual(['张三的群'])
+  })
+
+  it('groups 为空数组 = 真的没搜到，返回 []（不是错误）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ people: [], groups: [], bots: [] }))
+
+    await expect(groupsApi.searchGroups('查无此群')).resolves.toEqual([])
+  })
+
+  it('groups 段缺席 / 为 null = 形状漂了，必须抛错而不是返回 []', async () => {
+    // 旧实现的 `result.data || []` 让这两种情况和上一条塌成同一句
+    // 「没有找到匹配的群聊」，半年没人报 bug 就是这么来的。
+    fetchMock.mockResolvedValueOnce(envelope({ people: [], bots: [] }))
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/groups 应为数组/)
+
+    fetchMock.mockResolvedValueOnce(envelope({ people: [], groups: null, bots: [] }))
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/groups 应为数组/)
+
+    // 旧端点的形状（data 直接是群数组）今天也必须抛，不能蒙混过关
+    fetchMock.mockResolvedValueOnce(envelope([GROUP_CARD]))
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/应为对象/)
+  })
+
+  it('相对 avatar_url 在 api 出口补基址，null 与空串都归一为 null', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sections({ groups: [{ ...GROUP_CARD, avatar_url: 'avatars/g1.png?t=1' }] }),
+    )
+    const [withAvatar] = await groupsApi.searchGroups('kw')
+    expect(withAvatar.avatar_url).toBe(`${getApiBaseUrl()}/avatars/g1.png?t=1`)
+
+    fetchMock.mockResolvedValueOnce(sections())
+    const [noAvatar] = await groupsApi.searchGroups('kw')
+    expect(noAvatar.avatar_url).toBeNull()
+
+    // 空串不能原样出去：<AvatarImage src=""> 会发一次真实图片请求
+    fetchMock.mockResolvedValueOnce(sections({ groups: [{ ...GROUP_CARD, avatar_url: '' }] }))
+    const [emptyAvatar] = await groupsApi.searchGroups('kw')
+    expect(emptyAvatar.avatar_url).toBeNull()
+  })
+
+  it('DTO 是 discovery 的 GroupCard：avatar_url 而不是 group_avatar_url，且带两个布尔', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sections({ groups: [{ ...GROUP_CARD, join_approval_required: true, is_member: true }] }),
+    )
+
+    const [card] = await groupsApi.searchGroups('kw')
+
+    expect(card.join_approval_required).toBe(true)
+    expect(card.is_member).toBe(true)
+    expect(card.member_count).toBe(12)
+    expect(card).not.toHaveProperty('group_avatar_url')
+  })
+
+  it('join_approval_required 缺失 / 为 null 时抛错——真值判断会把它读成一个确定结论', async () => {
+    // 五档 join_mode 随 migration 043 删除（doc:109-112），这是「要不要审核」
+    // 的唯一判据；放行 undefined 等于在卡片上印一个编造的「免审核」。
+    const { join_approval_required: _dropped, ...withoutFlag } = GROUP_CARD
+    fetchMock.mockResolvedValueOnce(sections({ groups: [withoutFlag] }))
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/join_approval_required/)
+
+    fetchMock.mockResolvedValueOnce(
+      sections({ groups: [{ ...GROUP_CARD, join_approval_required: null }] }),
+    )
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/join_approval_required/)
+
+    // 已删的 join_mode 就算还在响应里，也不能顶替它
+    fetchMock.mockResolvedValueOnce(
+      sections({ groups: [{ ...withoutFlag, join_mode: 'approval_required' }] }),
+    )
+    await expect(groupsApi.searchGroups('kw')).rejects.toThrow(/join_approval_required/)
+  })
+
+  it('keyword trim 后为空 ⇒ 后端 400，透出后端原文而不是前端自造的一句', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 400, message: '搜索关键词不能为空' }, 400),
+    )
+
+    await expect(groupsApi.searchGroups('   ')).rejects.toThrow('搜索关键词不能为空')
+    // 前端不做空串前置拦截：这一条 400 由后端定义（doc:47、doc:166）
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('403 抛出带 status 的 ApiError，透出后端原文，不触发登出', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, message: '权限不足' }, 403))
+
+    const error = await groupsApi.searchGroups('kw').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403, message: '权限不足' })
+    // 只有 401 会触发刷新重试，403 不进那条分支
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})

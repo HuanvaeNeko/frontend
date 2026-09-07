@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { groupsApi, type GroupBase, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
+import { groupsApi, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
+import type { DiscoveryGroupCard } from '@/api/discovery'
 import { loadGroups } from '@/data'
 
 interface GroupState {
@@ -40,7 +41,11 @@ interface GroupState {
    * 见 backend-docs/groups/群聊管理.md:64-75。不传 ⇒ 后端默认 `true`（需审核）。
    */
   createGroup: (name: string, description?: string, joinApprovalRequired?: boolean) => Promise<{ group_id: string; group_name: string; created_at: string }>
-  searchGroups: (query: string) => Promise<GroupBase[]>
+  /**
+   * 转发 `GET /api/discovery/search` 的 `groups` 段（见 `groupsApi.searchGroups`）。
+   * 返回的是 discovery 的 `GroupCard`，不是本模块的 `GroupBase`——两者字段集不同。
+   */
+  searchGroups: (keyword: string) => Promise<DiscoveryGroupCard[]>
   /**
    * 形参就是 `PUT /api/groups/{group_id}` 的请求体（doc:227-231），不是
    * `Partial<Group>`：本 action 只做转发，而 `Group` 上的 `group_description`
@@ -152,10 +157,10 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 
-  searchGroups: async (query: string) => {
+  searchGroups: async (keyword: string) => {
     set({ isLoading: true, error: null })
     try {
-      const groups = await groupsApi.searchGroups(query)
+      const groups = await groupsApi.searchGroups(keyword)
       set({ isLoading: false })
       return groups
     } catch (error) {

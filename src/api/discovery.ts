@@ -1,0 +1,240 @@
+import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
+import { useAuthStore } from '@/features/auth/store/authStore'
+import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
+import { ROUTES } from '@/lib/routes'
+
+/**
+ * 统一发现搜索 `GET /api/discovery/search`（`backend-docs/discovery/发现搜索.md`）。
+ *
+ * ## 为什么单独成模块，而不是留在 groups.ts 里
+ *
+ * 这一个端点一次返回 `people` / `groups` / `bots` **三段**（doc:58-72 的响应样例）：它属于
+ * discovery 模块，不属于群模块——`groups/群聊管理.md:609-611` 自己写着
+ * 「🔍 搜索群聊不在本文档：群搜索统一走 `GET /api/discovery/search`」。
+ * 今天只有「输入群名/群 ID 找群」一个消费点（`groupsApi.searchGroups`），
+ * 但「按昵称找人加好友」「找 bot」用的是同一次请求、同一个信封、同一套
+ * `limit` 钳制规则。传输层放在这里，将来那两个消费点各自写一个 rowParser
+ * 就能复用，不必把 friends / bots 反向依赖到 chat 的群模块上。
+ *
+ * 与批 5 把三档头像的公共链路落在 `storageApi.uploadAvatar` 是同一个判断：
+ * **端点属于谁，链路就放在谁那里**，消费方只负责把自己那一段解析成自己的 DTO。
+ *
+ * ## 刻意不建 people / bots 的 DTO
+ *
+ * 本批没有找人 / 找 bot 的界面，凭文档先写两个 Card 类型就是无人验证的猜测，
+ * 等真接的时候还得对着当天的文档重核一遍。{@link searchDiscovery} 的 `section`
+ * 参数已经把入口留好了，需要时补一个 rowParser 即可。
+ */
+
+const DISCOVERY_BASE_URL = `${getApiBaseUrl()}/api/discovery`
+
+// 获取认证头
+const getAuthHeaders = (): HeadersInit => {
+  const accessToken = useAuthStore.getState().accessToken
+  return {
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  }
+}
+
+/**
+ * 带一次刷新重试的 fetch。与 `groups.ts` / `friends.ts` / `storage.ts` 的同名函数
+ * 逐字同型（本仓四个 api 模块各带一份，是既有约定）。
+ *
+ * **只对 401 做刷新与登出**。403 原样返回给解包层，抛成带 `status` 的 `ApiError`
+ * 交给调用点——本端点的 403 只可能是普通权限不足，把它并进认证失败会变成一次
+ * 无任何解释的登出（`apiEnvelope.isAuthApiError` 的注释记录了这条口径）。
+ */
+const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const authStore = useAuthStore.getState()
+
+  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
+    try {
+      await authStore.refreshAccessToken()
+    } catch (error) {
+      console.error('Failed to refresh token:', error)
+    }
+  }
+
+  const headers = getAuthHeaders()
+
+  let response = await fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...options.headers,
+    },
+  })
+
+  if (response.status === 401 && authStore.refreshToken) {
+    try {
+      await authStore.refreshAccessToken()
+      const newHeaders = getAuthHeaders()
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          ...newHeaders,
+          ...options.headers,
+        },
+      })
+    } catch (error) {
+      console.error('Token refresh failed, redirecting to login')
+      authStore.clearAuth()
+      window.location.href = ROUTES.auth.login
+      throw error
+    }
+  }
+
+  return response
+}
+
+/**
+ * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts:312`、
+ * `friends.ts:136` 的同名函数逐字同型，同样按那两处的理由独立定义一份。
+ *
+ * `null` 与空串统一归一为 `null`（无头像），不兜底成空串：空串会被
+ * `<AvatarImage src="">` 当成一次真实的图片请求。
+ */
+const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
+
+/**
+ * 头像路径字段：`null` 与 `''` 一并归一成 `null`（= 没有头像），其余非字符串抛错。
+ *
+ * 本端点的字段表（doc:104）与样例都写 `null`，但同一列数据在群模块的两份样例里
+ * 给的是 `""`（`groups.ts` 的 `emptyableStr` 上方记着这件事）。用 `apiParse` 的
+ * `nullableStr` 会把 `''` 判成"缺失"并抛错，于是一个纯装饰性的字段能把整次
+ * 群搜索打挂；而放行 `''` 又会让 `<AvatarImage src="">` 发一次真实图片请求。
+ * 归一成 `null` 两头都躲开，同时保留"不是字符串就抛"这条真正的形状防线。
+ */
+function emptyableAvatarPath(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key]
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new Error(`${key} 缺失或不是字符串`)
+  }
+  return value === '' ? null : value
+}
+
+/** 三段结果的段名（`DiscoverySearchResponse` 字段表 doc:83-85）。 */
+export type DiscoverySection = 'people' | 'groups' | 'bots'
+
+/**
+ * `data.groups` 的一行（`GroupCard`，字段表 doc:100-107）。
+ *
+ * 🔴 **这不是本仓 `groups.ts` 的 `GroupBase`**，两者字段名和字段集都不同：
+ * 头像叫 `avatar_url`（**不是** `group_avatar_url`），并且**没有**
+ * `group_description` / `creator_id` / `created_at` / `status`；反过来
+ * `GroupBase` 没有 `join_approval_required` / `is_member`。
+ * 迁移前 `searchGroups` 声明返回 `GroupBase[]`，那是对到货内容的一句谎话；
+ * 修法是引入这个类型，**不是**把 `GroupBase` 放宽到能同时装下两种形状。
+ *
+ * `join_approval_required` 是「要不要审核」的**唯一**判据：五档 `join_mode`
+ * 连同 `groups."join-mode"` 列随 migration 043 于 2026-08-17 整套删除
+ * （doc:109-112），读它恒为 `undefined`。
+ *
+ * `search_scope` **有意不在这里**（doc:114-116）：那是群主的设置项，搜索方
+ * 不需要知道「这个群为什么搜得到」。
+ */
+export interface DiscoveryGroupCard {
+  group_id: string
+  group_name: string
+  /** 相对路径，已在 api 出口过 {@link absoluteAvatar}；无头像为 `null`（doc:104）。 */
+  avatar_url: string | null
+  member_count: number
+  join_approval_required: boolean
+  is_member: boolean
+}
+
+/** `limit` 的默认值与钳制区间（doc:48）。 */
+export const DISCOVERY_LIMIT_DEFAULT = 20
+export const DISCOVERY_LIMIT_MIN = 1
+export const DISCOVERY_LIMIT_MAX = 50
+
+/**
+ * 把 `limit` 钳到 `1..=50`，非有限数字回落到默认值 20。
+ *
+ * 服务端**自己也会钳**且不报错（doc:48、doc:167）。这里再钳一次不是防御性
+ * 冗余，而是让 URL 说真话：传 `limit=500` 而实际只会回 50 条，是一次"请求与
+ * 结果对不上、又没有任何信号"的静默偏差——正是本轮迁移在消灭的那一类。
+ *
+ * ⚠️ 它是**每一段各自**的条数上限，不是三段合计（doc:48）。
+ */
+export function clampDiscoveryLimit(limit?: number): number {
+  if (limit === undefined || !Number.isFinite(limit)) return DISCOVERY_LIMIT_DEFAULT
+  return Math.min(DISCOVERY_LIMIT_MAX, Math.max(DISCOVERY_LIMIT_MIN, Math.trunc(limit)))
+}
+
+/**
+ * 只校验「被点名的那一段是数组」，然后逐行喂给调用方的 `row`。
+ *
+ * **另外两段有意不校验**：doc:87 写明三段互相独立、各自都可以是空数组。
+ * 若把 `people` 也一并强校验，后端哪天动了 `PersonCard` 就会连带把"找群"
+ * 打挂——那是凭空造出来的耦合。真正的形状漂移（`data` 不是对象、点名的那段
+ * 不见了或不是数组、行里字段名变了）在这里全都会抛，且因为挂在
+ * `readEnvelope` 的 `parse` 档上，抛出的是可被上报的 `ApiShapeError`。
+ *
+ * 于是「真的没搜到」（`groups: []` ⇒ 返回 `[]`）与「形状漂了」（抛错）是两件
+ * 可区分的事，而不是旧 `result.data || []` 下同一句"没有找到匹配的群聊"。
+ */
+function sectionRows<T>(section: DiscoverySection, row: (input: unknown) => T): Parser<T[]> {
+  return {
+    parse(input: unknown) {
+      const payload = asRecord(input, 'GET /api/discovery/search 的 data')
+      return arr(payload, section).map((entry) => row(entry))
+    },
+  }
+}
+
+/**
+ * 发一次统一发现搜索，只取出 `section` 那一段。
+ *
+ * `keyword` **原样发出，不做空串前置拦截**：trim 后为空是后端定义的 `400`
+ * （doc:47、doc:166），由它给出文案，前端再造一句只会和后端两份说法。
+ *
+ * @param section 取哪一段；将来接"找人 / 找 bot"时改这个参数并配一个 `row`。
+ * @param row 单行解析器，由消费方提供——每一段是自己的 DTO。
+ */
+export async function searchDiscovery<T>(options: {
+  keyword: string
+  limit?: number
+  section: DiscoverySection
+  row: (input: unknown) => T
+}): Promise<T[]> {
+  const params = new URLSearchParams({
+    keyword: options.keyword,
+    limit: String(clampDiscoveryLimit(options.limit)),
+  })
+
+  const response = await fetchWithAuth(`${DISCOVERY_BASE_URL}/search?${params}`, {
+    method: 'GET',
+  })
+
+  return readEnvelope<T[]>(response, {
+    endpoint: 'GET /api/discovery/search',
+    fallbackMessage: '搜索失败',
+    parse: sectionRows(options.section, options.row),
+  })
+}
+
+/**
+ * `data.groups` 的一行 → {@link DiscoveryGroupCard}。
+ *
+ * 六个字段全部实打实校验：`member_count` 用 `num()`、两个布尔用 `bool()`。
+ * 布尔尤其不能放过 `undefined`／`null`——`if (card.join_approval_required)`
+ * 会把它读成"免审核"，`!card.join_approval_required` 会把它读成"需审核"，
+ * 两种写法都会把「后端没给这个字段」伪装成一个确定的业务结论。
+ *
+ * `avatar_url` 走 {@link emptyableAvatarPath}：doc:104 明写可为 `null`。
+ */
+export function parseDiscoveryGroupCard(input: unknown): DiscoveryGroupCard {
+  const payload = asRecord(input, 'discovery search 的 groups[]')
+  return {
+    group_id: str(payload, 'group_id'),
+    group_name: str(payload, 'group_name'),
+    avatar_url: absoluteAvatar(emptyableAvatarPath(payload, 'avatar_url')),
+    member_count: num(payload, 'member_count'),
+    join_approval_required: bool(payload, 'join_approval_required'),
+    is_member: bool(payload, 'is_member'),
+  }
+}
