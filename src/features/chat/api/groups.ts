@@ -215,17 +215,89 @@ export interface GroupInvitation {
   expires_at: string | null
 }
 
-// ⚠️ `JoinRequest`（`GET /{group_id}/requests` 的响应行）属于批 4：这是全模块
-// 唯一一个文档没有响应样例的列表端点，形状要先打一次真实请求钉住再改，
-// 这里刻意不动。
+/**
+ * 待审申请行的四类来源（doc:1258-1260 的 📌 + doc:1280-1288 approve 的四类表）。
+ *
+ * 2026-08-17 起 `join_approval_required=true` 的群里，**所有**邀请（群主 /
+ * 管理员 / 普通成员发出的）都会落进 `GET /{group_id}/requests` 这一个列表，
+ * 与用户自己发起的 `search_apply` 混在一起（doc:2301-2302 注意事项 7 ③）。
+ * 四类现在都能批（doc:1276-1288 记录了 2026-08-17 之前 owner_invite /
+ * admin_invite 点同意恒 400 的那个 bug 已修），所以 UI 不能给邀请行禁用按钮。
+ */
+export type JoinRequestType = 'search_apply' | 'owner_invite' | 'admin_invite' | 'member_invite'
+
+/**
+ * `GET /api/groups/{group_id}/requests` 的一行。
+ *
+ * ⚠️ **证据强度分两档，代码里的严格程度也跟着分两档**（见
+ * {@link joinRequestsResponse} 的注释）：
+ * - 行内字段：`request_type` / `user_accepted` 由 doc:1258-1260 的正文**直接
+ *   点名**是"列表项"的属性，`message`（申请附言）来自 apply 请求体
+ *   （doc:1049-1054）与发出方 DTO（doc:1360-1369）——两处都叫 `message`，
+ *   文档全篇没有任何响应字段叫 `reason`（`reason` 只是 `POST …/reject` 的
+ *   **请求体**字段，doc:1308-1312）。所以行内逐字段严格校验。
+ * - 容器形状：本端点是全模块**唯一没有响应样例**的列表端点（doc:1251-1266
+ *   只有权限说明与那条 📌），同文档三个先例互相矛盾（`/my` 是裸数组
+ *   doc:113-129、`/invitations` 是 `data.invitations` doc:1150-1170、
+ *   `/requests/sent` 是 `data.requests` doc:1338-1357），类推不出结论。
+ */
 export interface JoinRequest {
   request_id: string
   user_id: string
-  user_nickname: string
-  user_avatar_url?: string
+  /** users JOIN；未设为 `null`（同族推断，见 {@link GroupMember.user_nickname}）。 */
+  user_nickname: string | null
+  /** 相对路径，已在 api 出口过 {@link absoluteAvatar}。 */
+  user_avatar_url: string | null
+  /** 申请附言。后端字段名是 `message`，**不是** `reason`。 */
   message: string | null
-  reason?: string | null
+  request_type: JoinRequestType
+  /** 被邀请人是否已经同意（`auto_accept` 的人上架即为 `true`，doc:1260）。 */
+  user_accepted: boolean
   created_at: string
+}
+
+/**
+ * `POST /api/groups/{group_id}/invite` 的逐条结果（doc:782-796 响应样例）。
+ *
+ * 🔴 这里的 `success` 是**逐个被邀请人**的成败，是本模块唯一一处
+ * "HTTP 200 里表达业务失败"（doc:733-741 行为矩阵、doc:743-752 的 2026-08-21
+ * 前置行）。其余端点的失败一律是状态码。`message` 是后端为这一档专门写的
+ * 文案（如 `该群未开放好友推荐加群` / `对方已设置自动拒绝群邀请`），
+ * doc:2299-2300 要求前端**照抄**它，不要按"我是不是管理员"自己预测结果。
+ */
+export interface InviteResult {
+  user_id: string
+  success: boolean
+  message: string
+}
+
+/** `POST /api/groups/{group_id}/apply` 的三条来源（doc:1049-1062）。 */
+export type JoinSource = 'qr' | 'search' | 'referral'
+
+/**
+ * `POST /api/groups/{group_id}/apply` 的 `data`（`ApplyJoinResponse`，
+ * 字段表 doc:1128-1132、样例 doc:1108-1126）。
+ *
+ * `status` 是**唯一**的两态判据；doc:1131 明写「不要靠解析 `message` 文案」。
+ * doc:1134-1136 记录了契约变更：`data` 从 `SuccessResponse{success,message}`
+ * 换成了这个形状，**`success` 已从 `data` 里移除**。
+ */
+export interface ApplyJoinResult {
+  status: 'joined' | 'pending'
+  message: string
+}
+
+/**
+ * `POST /api/groups/invitations/{request_id}/accept` 的 `data`（doc:1213-1231）。
+ *
+ * ⚠️ 这个 `success` 在 `data` **里面**，和信封顶层的 `success` 是两个字段——
+ * 它对两种结局恒为 `true`，不是判据。两种结局（真入群 / 落待审）HTTP 全是
+ * 200、信封 `success` 全是 true，唯一区别在 `message`，而 doc:1202-1203 明写
+ * **不要解析文案**：accept 之后重新拉 `GET /api/groups/my` 确认。
+ */
+export interface AcceptInvitationResult {
+  success: boolean
+  message: string
 }
 
 /**
@@ -291,12 +363,16 @@ const SHARE_SCOPES: readonly ShareScope[] = ['all_members', 'admins', 'owner_onl
 const SEARCH_SCOPES: readonly SearchScope[] = ['everyone', 'admins', 'owner_only']
 
 /**
- * 三档枚举字段：先过 `str()`（拒空串），再核对取值在本档位表里。
+ * 闭集枚举字段：先过 `str()`（拒空串），再核对取值在给定的档位表里。
  *
  * 为什么不只用 `str()`：`card_share_scope`/`qr_show_scope` 与 `search_scope`
  * 的取值表**不同名**（doc:210、doc:552-554），后端对越档取值返回 `400`。
  * 只校验「是非空字符串」会让一个 `search_scope: "all_members"` 一路进到 UI，
  * 渲染成一个选不中任何选项的下拉框——又是一次「坏形状伪装成数据」。
+ *
+ * 批 4 起同样用于两个非 scope 的闭集：`ApplyJoinResult.status`
+ * （`joined`/`pending`，doc:1131 明写它是唯一判据）与 `JoinRequest.request_type`
+ * （四类，doc:1280-1288）。落到闭集外说明后端又改了取值表，那正是要炸的场景。
  */
 function scopeOf<T extends string>(
   payload: Record<string, unknown>,
@@ -387,6 +463,131 @@ const groupDetailResponse: Parser<Group> = {
       member_count: num(payload, 'member_count'),
       ...joinPolicyOf(payload),
     }
+  },
+}
+
+/**
+ * `POST /api/groups/{group_id}/invite` 的 `data`（doc:782-796）：
+ * `{ results: [{ user_id, success, message }] }`。
+ *
+ * 三个字段都实打实校验：`success` 用 `bool()` 而不是真值判断——`undefined`
+ * 会被 `if (r.success)` 判成失败、被 `!r.success` 判成失败，两种写法都会
+ * 把「后端没给这个字段」伪装成一个确定的业务结论。`message` 用 `str()`：
+ * 它是要**逐字展示给用户**的后端文案（doc:2299-2300），空串意味着 UI 上
+ * 出现一行没有原因的失败。
+ */
+const inviteResultsResponse: Parser<{ results: InviteResult[] }> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'POST /{group_id}/invite 的 data')
+    return {
+      results: arr(payload, 'results').map((row) => {
+        const item = asRecord(row, 'results[] 的元素')
+        return {
+          user_id: str(item, 'user_id'),
+          success: bool(item, 'success'),
+          message: str(item, 'message'),
+        }
+      }),
+    }
+  },
+}
+
+const APPLY_JOIN_STATUSES: readonly ApplyJoinResult['status'][] = ['joined', 'pending']
+
+/**
+ * `POST /api/groups/{group_id}/apply` 的 `data`（doc:1108-1132）。
+ *
+ * `status` 走闭集校验而不是 `str()`：它是「我到底进群了没有」的唯一判据
+ * （doc:1131），落到 `joined`/`pending` 之外说明后端换了取值表——那时宁可
+ * 报错，也不能挑一个默认值继续往下走（选 `pending` 会把已入群说成等审批，
+ * 选 `joined` 会把等审批说成已入群，两个方向都在骗用户）。
+ */
+const applyJoinResponse: Parser<ApplyJoinResult> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'POST /{group_id}/apply 的 data')
+    return {
+      status: scopeOf(payload, 'status', APPLY_JOIN_STATUSES),
+      message: str(payload, 'message'),
+    }
+  },
+}
+
+/**
+ * `POST /api/groups/invitations/{request_id}/accept` 的 `data`（doc:1213-1231）。
+ *
+ * 读出内层 `success` 只是为了**校验形状**（doc 的两份样例里它都在），
+ * 调用点绝不能拿它当「我进群了没有」的判据：两种结局它恒为 `true`。
+ * 真正的判据在 accept 之后重新拉的 `GET /api/groups/my`（doc:1202-1203）。
+ */
+const acceptInvitationResponse: Parser<AcceptInvitationResult> = {
+  parse(input: unknown) {
+    const payload = asRecord(input, 'POST /invitations/{request_id}/accept 的 data')
+    return {
+      success: bool(payload, 'success'),
+      message: str(payload, 'message'),
+    }
+  },
+}
+
+const JOIN_REQUEST_TYPES: readonly JoinRequestType[] = [
+  'search_apply',
+  'owner_invite',
+  'admin_invite',
+  'member_invite',
+]
+
+/**
+ * `GET /api/groups/{group_id}/requests` 的 `data` → {@link JoinRequest} 数组。
+ *
+ * ## 为什么这一个 parser 里容器和行内的严格程度不一样
+ *
+ * **行内逐字段严格**：`request_type` / `user_accepted` 由 doc:1258-1260 的
+ * 正文直接点名为"列表项"的属性，`message` 由 apply 请求体（doc:1051）与
+ * `SentJoinRequestInfo` 字段表（doc:1367）两处互证。有直证就按直证校验。
+ *
+ * **容器两种形状都收，但收不到就抛**：本端点是全模块唯一没有响应样例的
+ * 列表端点（doc:1251-1266 只有权限说明和一行 `await api(...)`），而同一份
+ * 文档里三个先例互相矛盾——`/my` 是裸数组（doc:113-129）、`/invitations` 是
+ * `data.invitations`（doc:1150-1170）、`/requests/sent` 是 `data.requests`
+ * （doc:1338-1357）。两条路都走不通：
+ * - 猜 `field: 'requests'`：若真实形状是裸数组，就把一个**今天正常工作的**
+ *   页面改成每次都报错（旧代码 `result.data || []` 在裸数组下是对的）。
+ * - 猜裸数组：若真实形状是 `{requests:[…]}`，同样每次都报错。
+ *
+ * 所以这里两种都认，**其余一律抛**——`data:{}`、`data:{requests:null}`、
+ * `data:{items:[…]}` 全部炸出 `ApiShapeError` 并进 Sentry（tag
+ * `endpoint:GET /api/groups/{group_id}/requests`）。这和被删掉的
+ * `result.data || []` 不是一回事：那句对**任何**真值都返回真值，包括
+ * `{}` 和 `{requests:null}`，也包括 HTTP 200 + `success:false`。
+ *
+ * ⚠️ **这是一条带期限的猜测链，不是终局**：
+ * - until: 2026-12-31
+ * - 待办：打一次带 token 的真实请求（`GET /api/groups/{group_id}/requests`）
+ *   把形状钉死，然后删掉其中一条分支、把注释换成直证。
+ * - 已知：后端文档缺本端点的响应样例，需要向后端补。
+ * 半年后看到这段的人不必重新考据：上面三条把"这是猜的、怎么收尾"写全了。
+ */
+const joinRequestsResponse: Parser<JoinRequest[]> = {
+  parse(input: unknown) {
+    const rows = Array.isArray(input)
+      ? input
+      : arr(asRecord(input, 'GET /{group_id}/requests 的 data'), 'requests')
+
+    return rows.map((row) => {
+      const item = asRecord(row, '待审申请行')
+      return {
+        request_id: str(item, 'request_id'),
+        user_id: str(item, 'user_id'),
+        // 三个可空字段走 emptyableStr（`null` 与 `''` 都归一成 null），
+        // 但**键必须存在**：整键缺席说明形状变了，要炸。
+        user_nickname: emptyableStr(item, 'user_nickname'),
+        user_avatar_url: absoluteAvatar(emptyableStr(item, 'user_avatar_url')),
+        message: emptyableStr(item, 'message'),
+        request_type: scopeOf(item, 'request_type', JOIN_REQUEST_TYPES),
+        user_accepted: bool(item, 'user_accepted'),
+        created_at: str(item, 'created_at'),
+      }
+    })
   },
 }
 
@@ -694,25 +895,32 @@ export const groupsApi = {
    * 邀请成员入群
    * POST /api/groups/{group_id}/invite
    *
-   * ⚠️ 批 4 范围（`results[]` 逐条结果要落地到 UI），本批不动。
+   * 🔴 **本模块唯一一处「HTTP 200 里表达失败」**：整批请求成功（200 + 信封
+   * `success:true`）的同时，每个被邀请人的成败各自躺在 `data.results[].success`
+   * 里（doc:733-741 行为矩阵、doc:743-752 的 2026-08-21 前置行、doc:782-796
+   * 响应样例）。所以 `assertEnvelopeOk` 不够——它按定义只看整批。
+   *
+   * 旧代码 `return result.data` 之后调用点整个丢弃返回值、无条件弹「邀请已发送」：
+   * 邀请 10 个人 8 个被群设置挡掉，和 10 个全发出去，屏幕上一模一样。
+   * 这里把逐条结果原样交给调用点，由它按 `results[].message` 显示后端文案
+   * （doc:2299-2300 要求照抄，不要按"我是不是管理员"预测结果——2026-08-17
+   * 之后三类邀请行为完全一致，那个预测本来就不成立了）。
    */
-  inviteMembers: async (groupId: string, userIds: string[], message?: string): Promise<{
-    results: Array<{ user_id: string; success: boolean; message: string }>
-  }> => {
-    console.log('📩 邀请成员入群:', groupId, userIds)
+  inviteMembers: async (
+    groupId: string,
+    userIds: string[],
+    message?: string,
+  ): Promise<{ results: InviteResult[] }> => {
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/invite`, {
       method: 'POST',
       body: JSON.stringify({ user_ids: userIds, message }),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '邀请成员失败' }))
-      throw new Error(error.error || '邀请成员失败')
-    }
-
-    const result = await response.json()
-    console.log('✅ 邀请已发送')
-    return result.data
+    return readEnvelope<{ results: InviteResult[] }>(response, {
+      endpoint: 'POST /api/groups/{group_id}/invite',
+      fallbackMessage: '邀请成员失败',
+      parse: inviteResultsResponse,
+    })
   },
 
   /**
@@ -850,25 +1058,40 @@ export const groupsApi = {
   // ==========================================
 
   /**
-   * 申请入群
+   * 申请入群（扫码 / 搜索 / 好友推荐三条来源共用本端点）
    * POST /api/groups/{group_id}/apply
    *
-   * ⚠️ 批 4 范围：`source` 改必填、`data` 换成 `ApplyJoinResponse{status,message}`
-   * （`success` 字段已从 `data` 里移除），本批不动。
+   * 🔴 `source` 是**必填形参**，不是可选项：服务端【有意不给默认值】，
+   * 缺失与非法取值一律 `400`（doc:1049-1062）。理由在文档里写死了——三个
+   * `allow_join_via_*` 开关的全部意义就是按来源分流，给任何默认值都等于开了
+   * 一条绕过开关的路。放在第二个形参位（而不是可选的第三个）就是为了让
+   * 漏传变成编译错误：旧签名 `(groupId, message?)` 一个字都不发 `source`，
+   * 而 `JSON.stringify` 收 any，typecheck 阶段毫无信号。
+   *
+   * `message` 为空时**不发这个键**：`JSON.stringify({message: undefined})`
+   * 得到的是 `{}`，看着没问题，但把"用户没写附言"和"发了一个空附言"混成
+   * 一件事；显式不发更贴近文档里 `message?` 的可选语义。
+   *
+   * 返回 `{status, message}`：`status` 是「本次到底进群了没有」的唯一判据
+   * （doc:1131），调用点必须按它分支。403 的响应体只有通用文案「权限不足」
+   * （doc:1093-1099），所以"这条路被群主关了"**只能靠状态码 + 本次传的
+   * `source`** 判定，不要 match 消息体字符串——那部分是调用点的事。
    */
-  applyToJoin: async (groupId: string, message?: string): Promise<void> => {
-    console.log('📝 申请入群:', groupId)
+  applyToJoin: async (
+    groupId: string,
+    source: JoinSource,
+    message?: string,
+  ): Promise<ApplyJoinResult> => {
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/apply`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(message ? { source, message } : { source }),
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '申请入群失败' }))
-      throw new Error(error.error || '申请入群失败')
-    }
-
-    console.log('✅ 申请已提交')
+    return readEnvelope<ApplyJoinResult>(response, {
+      endpoint: 'POST /api/groups/{group_id}/apply',
+      fallbackMessage: '申请入群失败',
+      parse: applyJoinResponse,
+    })
   },
 
   /**
@@ -900,22 +1123,32 @@ export const groupsApi = {
    * 接受邀请
    * POST /api/groups/invitations/{request_id}/accept
    *
-   * ⚠️ 批 4 范围：accept 之后是否真的入群由被邀请群的 `join_approval_required`
-   * 决定，前端不能靠解析文案预测结果，必须在 accept 后重新拉 `GET /api/groups/my`
-   * 确认——这是调用点的语义改动，本批不动。
+   * 🔴 accept 成功**不等于**入群：结局由被邀请群的 `join_approval_required`
+   * 决定（doc:1194-1203）——关着就直接进群，开着就只是把 `user_accepted`
+   * 置真、继续在待审队列里等审批人。两种结局 HTTP 全是 200、信封 `success`
+   * 全是 `true`、内层 `data.success` 也全是 `true`，**唯一区别在 `data.message`**，
+   * 而 doc:1202-1203 明写不要解析文案，要重新拉 `GET /api/groups/my` 确认。
+   *
+   * 旧代码声明 `Promise<void>` 且只看 `!response.ok`，调用点于是无条件弹
+   * 「已加入群聊」——在开了审核的群里这句话与事实相反。这里返回整个
+   * `data`（形状校验过）让"读到了什么"可被断言，但**判据仍在调用点的复核**：
+   * 见 `GroupList.handleAcceptInvite`。
+   *
+   * 另有一条 403：存量 `member_invite` 邀请在群主关掉 `allow_join_via_referral`
+   * 之后不可 accept（doc:749-751 的 ⚠️、doc:1097-1099）。它由 `readEnvelope`
+   * 抛成带 `status` 的 `ApiError`，本文件的 `fetchWithAuth` 只对 401 做刷新/
+   * 登出，403 原样穿透，不会把"这条邀请失效了"变成一次静默登出。
    */
-  acceptInvitation: async (requestId: string): Promise<void> => {
-    console.log('✅ 接受邀请:', requestId)
+  acceptInvitation: async (requestId: string): Promise<AcceptInvitationResult> => {
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}/invitations/${requestId}/accept`, {
       method: 'POST',
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '接受邀请失败' }))
-      throw new Error(error.error || '接受邀请失败')
-    }
-
-    console.log('✅ 已接受邀请')
+    return readEnvelope<AcceptInvitationResult>(response, {
+      endpoint: 'POST /api/groups/invitations/{request_id}/accept',
+      fallbackMessage: '接受邀请失败',
+      parse: acceptInvitationResponse,
+    })
   },
 
   /**
@@ -935,29 +1168,30 @@ export const groupsApi = {
   },
 
   /**
-   * 获取待处理申请（管理员）
+   * 获取待处理申请（有审批权者：群主恒可，管理员看 `admin_can_approve`）
    * GET /api/groups/{group_id}/requests
    *
-   * ⚠️ 全模块唯一没有响应样例的列表端点（doc:1251-1267 只有权限说明）。
-   * `result.data || []` 对「`data` 是数组」和「`data` 是 `{requests:[...]}`」
-   * 两种形状都返回真值——同文档里 `invitations` 用 `.invitations`、
-   * `requests/sent` 用 `.requests`、`my` 却是裸数组，三个先例互相矛盾，
-   * 类比推不出真实形状。批 4 的第一个动作是打一次真实请求把形状钉住，
-   * 在那之前保持原状，不在这里瞎猜第二条兼容链。
+   * 删掉的是 `result.data || []`：它对「`data` 是数组」「`data` 是
+   * `{requests:[…]}`」「`data` 是 `{}`」三种形状**都**返回真值，形状漂移会
+   * 变成一句「暂无加入申请」；同时 HTTP 200 + 信封 `success:false` 也会被
+   * 当成空列表。现在两种真实形状之外一律抛 `ApiShapeError`（容器与行内的
+   * 严格程度为何不同，见 {@link joinRequestsResponse}）。
+   *
+   * 403（`admin_can_approve=false` 时的管理员，doc:1255-1256、doc:1871）
+   * 现在抛带 `status` 的 `ApiError` 而不是变成空列表——调用点
+   * `GroupManagement.loadJoinRequests` 已经把它渲染成失败态（批 3），
+   * 「群里没人申请」和「你没有审批权」在屏幕上不再是同一句话。
    */
   getJoinRequests: async (groupId: string): Promise<JoinRequest[]> => {
-    console.log('📋 获取待处理申请:', groupId)
     const response = await fetchWithAuth(`${GROUPS_BASE_URL}/${groupId}/requests`, {
       method: 'GET',
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '获取申请失败' }))
-      throw new Error(error.error || '获取申请失败')
-    }
-
-    const result = await response.json()
-    return result.data || []
+    return readEnvelope<JoinRequest[]>(response, {
+      endpoint: 'GET /api/groups/{group_id}/requests',
+      fallbackMessage: '获取申请失败',
+      parse: joinRequestsResponse,
+    })
   },
 
   /**

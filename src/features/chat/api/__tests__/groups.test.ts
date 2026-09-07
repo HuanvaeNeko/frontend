@@ -615,3 +615,275 @@ describe('groupsApi.getGroupDetail', () => {
     expect((error as Error).message).toBe('你不是本群成员')
   })
 })
+
+// ============================================
+// 批 4：加群三条链的语义（invite / apply / accept / requests）
+// ============================================
+
+/**
+ * 这一批的四个方法与批 2/3 不同：它们**读对了字段也会得出错误结论**。
+ * 所以每条测试断言的都是「两种结局能不能被区分开」，而不是「有没有抛错」——
+ * 迁移前的实现同样不抛错（inviteMembers 丢弃 results、applyToJoin/
+ * acceptInvitation 返回 undefined、getJoinRequests 返回 []），只断言
+ * `resolves` / `not.toThrow()` 对它们全部通过，等于没测。
+ */
+
+/** doc:782-796 的响应样例：`data.results[]`，逐条带自己的 success/message。 */
+const INVITE_OK_ROW = { user_id: 'user_b', success: true, message: '邀请已发送，待对方同意' }
+/** doc:743-752 的 2026-08-21 前置行：普通成员在 allow_join_via_referral=false 的群里邀请。 */
+const INVITE_FAIL_ROW = { user_id: 'user_c', success: false, message: '该群未开放好友推荐加群' }
+
+describe('groupsApi.inviteMembers（本模块唯一的 HTTP 200 内业务失败）', () => {
+  it('逐条结果原样交给调用点：部分失败与全部成功必须能区分开', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ results: [INVITE_OK_ROW, INVITE_FAIL_ROW] }))
+
+    const { results } = await groupsApi.inviteMembers('g1', ['user_b', 'user_c'])
+
+    // 断言逐条的值，不是「返回了个东西」：旧实现 return result.data 也返回
+    // 同一个对象，区别在调用点整个丢弃它——所以真正的证据在下面的组件测试，
+    // 这里钉住 api 层至少把逐条结果如实带出来。
+    expect(results).toHaveLength(2)
+    expect(results[0]).toEqual(INVITE_OK_ROW)
+    expect(results[1].success).toBe(false)
+    // 文案逐字等于后端原文（doc:2299-2300 要求照抄，不要自己预测结果）。
+    expect(results[1].message).toBe('该群未开放好友推荐加群')
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/g1/invite`)
+  })
+
+  it('全部失败仍然是 HTTP 200 + 信封 success:true，不能被当成整批异常抛掉', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ results: [INVITE_FAIL_ROW] }))
+
+    const { results } = await groupsApi.inviteMembers('g1', ['user_c'])
+
+    expect(results.every(row => !row.success)).toBe(true)
+  })
+
+  it('results[].success 缺失时抛错——undefined 会被任何真值判断读成一个确定结论', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ results: [{ user_id: 'user_b', message: '邀请已发送，待对方同意' }] }),
+    )
+
+    await expect(groupsApi.inviteMembers('g1', ['user_b'])).rejects.toThrow(/success/)
+  })
+
+  it('data 缺 results 时抛错，而不是返回一个没有 results 的对象', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ success: true, message: '邀请已发送' }))
+
+    await expect(groupsApi.inviteMembers('g1', ['user_b'])).rejects.toThrow(/results/)
+  })
+})
+
+describe('groupsApi.applyToJoin（source 必填 + status 两态）', () => {
+  it('请求体逐字是 {source, message}——source 不是可省参数（doc:1049-1062）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ status: 'pending', message: '申请已提交，等待管理员审核' }),
+    )
+
+    await groupsApi.applyToJoin('g1', 'search', 'hi')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${GROUPS_BASE}/g1/apply`)
+    // toEqual 而不是 toMatchObject：漏发 source 是 400，多发一个键也要红。
+    expect(JSON.parse(init.body as string)).toEqual({ source: 'search', message: 'hi' })
+  })
+
+  it('没有附言时不发 message 键（避免 {"message":undefined} 被序列化成 {}）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ status: 'joined', message: '已成功加入群聊' }))
+
+    await groupsApi.applyToJoin('g1', 'qr')
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ source: 'qr' })
+  })
+
+  it('joined 与 pending 是两个不同的返回值（唯一判据，doc:1131）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ status: 'joined', message: '已成功加入群聊' }))
+    const joined = await groupsApi.applyToJoin('g1', 'search')
+
+    fetchMock.mockResolvedValueOnce(
+      envelope({ status: 'pending', message: '申请已提交，等待管理员审核' }),
+    )
+    const pending = await groupsApi.applyToJoin('g1', 'search')
+
+    expect(joined).toEqual({ status: 'joined', message: '已成功加入群聊' })
+    expect(pending).toEqual({ status: 'pending', message: '申请已提交，等待管理员审核' })
+    expect(joined.status).not.toBe(pending.status)
+  })
+
+  it('缺 status 时抛错，不能被当成 pending 蒙混过去', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ message: '申请已提交，等待管理员审核' }))
+
+    await expect(groupsApi.applyToJoin('g1', 'search')).rejects.toThrow(/status/)
+  })
+
+  it('status 落在 joined/pending 之外时抛错（闭集校验，不挑默认值）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ status: 'approved', message: 'x' }))
+
+    await expect(groupsApi.applyToJoin('g1', 'search')).rejects.toThrow(/status/)
+  })
+
+  it('缺 source 的 400 抛的是带 status 的 ApiError（不是裸 Error）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 400, error: '缺少必填字段 source' }, 400),
+    )
+
+    const error = await groupsApi.applyToJoin('g1', 'search').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 400 })
+    expect((error as Error).message).toBe('缺少必填字段 source')
+  })
+
+  it('403（这条加群方式被群主关了）带 status=403，文案是后端通用的「权限不足」', async () => {
+    // doc:1093-1099：后端没有为这一档单独定义文案，客户端只能按状态码 + source
+    // 判定，所以这里断言的是 status 而不是消息体里的关键词。
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, error: '权限不足' }, 403))
+
+    const error = await groupsApi.applyToJoin('g1', 'referral').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+  })
+})
+
+describe('groupsApi.acceptInvitation（同意 ≠ 入群）', () => {
+  it('待审批与已入群是两个不同的返回值（doc:1213-1231 的两份样例）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ success: true, message: '已同意邀请，等待管理员审核' }),
+    )
+    const pending = await groupsApi.acceptInvitation('r1')
+
+    fetchMock.mockResolvedValueOnce(envelope({ success: true, message: '已成功加入群聊' }))
+    const joined = await groupsApi.acceptInvitation('r1')
+
+    expect(pending).toEqual({ success: true, message: '已同意邀请，等待管理员审核' })
+    expect(joined).toEqual({ success: true, message: '已成功加入群聊' })
+    // 两种结局的内层 success 恒为 true——它不是判据，message 才不同。
+    expect(pending.success).toBe(joined.success)
+    expect(pending.message).not.toBe(joined.message)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/invitations/r1/accept`)
+  })
+
+  it('body 里没有 data 时抛错，而不是 resolve 成 undefined', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200 }))
+
+    await expect(groupsApi.acceptInvitation('r1')).rejects.toThrow()
+  })
+
+  it('403（allow_join_via_referral 关掉后的存量 member_invite）带 status=403', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, error: '权限不足' }, 403))
+
+    const error = await groupsApi.acceptInvitation('r1').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+  })
+})
+
+/**
+ * 待审申请行。字段名 `message`（不是 `reason`）、`request_type` / `user_accepted`
+ * 来自 doc:1258-1260 与 doc:1280-1288。
+ */
+const JOIN_REQUEST_ROW = {
+  request_id: 'q1',
+  user_id: 'u9',
+  user_nickname: '张三',
+  user_avatar_url: '',
+  message: '求进群',
+  request_type: 'search_apply',
+  user_accepted: false,
+  created_at: '2026-01-01T00:00:00Z',
+}
+
+describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
+  it('data.requests 形状：断言行数与字段值', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ requests: [JOIN_REQUEST_ROW] }))
+
+    const result = await groupsApi.getJoinRequests('g1')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].request_id).toBe('q1')
+    // 附言在后端叫 message；UI 此前读的 reason 是个从不存在的响应字段。
+    expect(result[0].message).toBe('求进群')
+    expect(result[0].request_type).toBe('search_apply')
+    expect(result[0].user_accepted).toBe(false)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${GROUPS_BASE}/g1/requests`)
+  })
+
+  it('data 是裸数组时同样解析（本端点没有响应样例，两种形状都收）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope([JOIN_REQUEST_ROW]))
+
+    const result = await groupsApi.getJoinRequests('g1')
+
+    expect(result).toHaveLength(1)
+    expect(result[0].request_id).toBe('q1')
+  })
+
+  it('data 是既不带 requests 也不是数组的对象 ⇒ 抛错，不是变成空列表', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({}))
+
+    await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/requests 应为数组/)
+  })
+
+  it('data.requests 为 null ⇒ 抛错（`|| []` 会把它变成"暂无申请"）', async () => {
+    fetchMock.mockResolvedValueOnce(envelope({ requests: null }))
+
+    await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/requests 应为数组/)
+  })
+
+  it('HTTP 200 + success:false ⇒ 抛后端原文，不是空列表', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 500, message: '数据库连接失败' }))
+
+    await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow('数据库连接失败')
+  })
+
+  it('403（admin_can_approve=false 的管理员）抛 status=403，不是"暂无申请"', async () => {
+    // doc:1255-1256 / doc:1871：这条 403 此前被 catch 成空列表，管理员看到
+    // 「暂无加入申请」，而群里躺着 5 条待审。
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, error: '权限不足' }, 403))
+
+    const error = await groupsApi.getJoinRequests('g1').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ name: 'ApiError', status: 403 })
+    expect(error).not.toEqual([])
+  })
+
+  it('申请人相对头像补成绝对地址，null 保持 null（不能变成空串）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_avatar_url: 'avatars/u9.png?t=1' }] }),
+    )
+    const [withAvatar] = await groupsApi.getJoinRequests('g1')
+    expect(withAvatar.user_avatar_url).toBe('https://api.huanvae.cn/avatars/u9.png?t=1')
+
+    fetchMock.mockResolvedValueOnce(
+      envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_avatar_url: null }] }),
+    )
+    const [withoutAvatar] = await groupsApi.getJoinRequests('g1')
+    expect(withoutAvatar.user_avatar_url).toBeNull()
+    // 空串同样归一成 null：<AvatarImage src=""> 会打一次指向当前页的请求。
+    const [emptyAvatar] = [withAvatar]
+    expect(emptyAvatar.user_avatar_url).not.toBe('')
+  })
+
+  it('user_nickname 为 null（users JOIN 缺失）是合法的，不抛错', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ requests: [{ ...JOIN_REQUEST_ROW, user_nickname: null }] }),
+    )
+
+    const [row] = await groupsApi.getJoinRequests('g1')
+
+    expect(row.user_nickname).toBeNull()
+  })
+
+  it('request_type 落在四类闭集之外时抛错（doc:1280-1288）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      envelope({ requests: [{ ...JOIN_REQUEST_ROW, request_type: 'invite_code' }] }),
+    )
+
+    await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/request_type/)
+  })
+
+  it('缺 user_accepted 时抛错——邀请行少了它就无法分辨对方同意没有', async () => {
+    const { user_accepted: _dropped, ...missing } = JOIN_REQUEST_ROW
+    fetchMock.mockResolvedValueOnce(envelope({ requests: [missing] }))
+
+    await expect(groupsApi.getJoinRequests('g1')).rejects.toThrow(/user_accepted/)
+  })
+})

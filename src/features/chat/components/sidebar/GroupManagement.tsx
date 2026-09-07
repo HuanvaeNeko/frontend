@@ -29,6 +29,7 @@ import {
   type Group,
   type GroupMember,
   type GroupNotice,
+  type InviteResult,
   type JoinPolicy,
   type JoinRequest,
   type SearchScope,
@@ -314,17 +315,55 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   }
 
   // 成员操作
+
+  /** 逐条结果拼成一行行「谁：后端怎么说」，文案照抄后端（doc:2299-2300）。 */
+  const describeInviteResults = (rows: InviteResult[]): string =>
+    rows.map(row => `${row.user_id}：${row.message}`).join('；')
+
+  /**
+   * 邀请成员。**本模块唯一一处「HTTP 200 里表达失败」**：整批请求成功的同时，
+   * 每个被邀请人的成败在 `results[].success` 里（doc:733-752、doc:782-796）。
+   *
+   * 旧代码把返回值整个丢弃、无条件弹「邀请已发送」——群关掉
+   * `allow_join_via_referral` 之后普通成员邀请的每一个人都会失败
+   * （`该群未开放好友推荐加群`，且后端不建记录、不通知），而屏幕上和全部
+   * 成功一模一样。这里三分支：全成功 / 部分成功 / 全失败，且**只有全成功
+   * 才关弹窗清输入框**，否则用户会连自己刚邀请了谁都找不回来。
+   */
   const handleInviteMembers = async () => {
     if (!inviteUserIds.trim()) return
+    const userIds = inviteUserIds.split(',').map(id => id.trim()).filter(Boolean)
+    if (userIds.length === 0) return
     setInviting(true)
     try {
-      const userIds = inviteUserIds.split(',').map(id => id.trim()).filter(Boolean)
-      await groupsApi.inviteMembers(groupId, userIds)
-      toast({ title: '成功', description: '邀请已发送' })
-      setShowInviteDialog(false)
-      setInviteUserIds('')
-    } catch {
-      toast({ title: '错误', description: '邀请失败', variant: 'destructive' })
+      const { results } = await groupsApi.inviteMembers(groupId, userIds)
+      const failed = results.filter(row => !row.success)
+      if (failed.length === 0) {
+        // 成功文案也照抄后端：审核开着时它是「邀请已发送，待对方同意并经管理员
+        // 审核」，关着时是「对方已自动加入群聊」——自己写一句固定文案就等于
+        // 又回到"按我是不是管理员预测结果"。
+        toast({ title: '成功', description: describeInviteResults(results) })
+        setShowInviteDialog(false)
+        setInviteUserIds('')
+      } else if (failed.length === results.length) {
+        toast({
+          title: '邀请失败',
+          description: describeInviteResults(failed),
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: `${results.length - failed.length} 人已邀请，${failed.length} 人失败`,
+          description: describeInviteResults(failed),
+          variant: 'destructive',
+        })
+      }
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '邀请失败',
+        variant: 'destructive',
+      })
     } finally {
       setInviting(false)
     }
@@ -1083,26 +1122,43 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <p className="text-center text-muted-foreground py-8">暂无加入申请</p>
             ) : (
               <div className="space-y-2">
-                {joinRequests.map(request => (
+                {joinRequests.map(request => {
+                  // 昵称可为 null（users JOIN 缺失）——展示层退到 user_id，
+                  // 不在解包层兜底成空串。旧代码的 `user_nickname[0]` 在
+                  // 这种行上直接 TypeError。
+                  const displayName = request.user_nickname ?? request.user_id
+                  return (
                   <Card key={request.request_id}>
                     <CardContent className="pt-4">
                       <div className="flex items-start gap-3">
                         <Avatar className="h-10 w-10">
-                          <AvatarImage src={request.user_avatar_url} />
-                          <AvatarFallback className={getAvatarColor(request.user_nickname) + ' text-primary-foreground'}>
-                            {request.user_nickname[0]?.toUpperCase()}
+                          <AvatarImage src={request.user_avatar_url ?? undefined} />
+                          <AvatarFallback className={getAvatarColor(displayName) + ' text-primary-foreground'}>
+                            {displayName[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{request.user_nickname}</div>
+                          <div className="font-medium">{displayName}</div>
                           <div className="text-xs text-muted-foreground">{request.user_id}</div>
-                          {request.reason && (
+                          {/* 申请附言的字段名是 message，不是 reason——后端从来
+                              没有过一个叫 reason 的响应字段（doc:1051 apply 请求体、
+                              doc:1367 SentJoinRequestInfo 都是 message；reason 只是
+                              `POST …/reject` 的请求体字段）。旧代码读 reason ⇒ 恒
+                              undefined ⇒ 整块附言不渲染，审批人是在盲批。 */}
+                          {request.message && (
                             <div className="mt-1 rounded bg-muted p-2 text-sm text-muted-foreground">
-                              {request.reason}
+                              {request.message}
                             </div>
                           )}
+                          {/* 2026-08-17 起这个列表里混着邀请类的行（doc:1258-1260、
+                              doc:2301-2302）：全部渲染成「申请入群」会让审批人以为
+                              对方主动要进来，而实际可能是我们的人邀请的、对方还没
+                              点同意（user_accepted=false）。四类都能批，所以两类行
+                              的按钮都照常渲染，只有说明文案不同。 */}
                           <div className="text-xs text-muted-foreground mt-1">
-                            申请时间: {new Date(request.created_at).toLocaleString()}
+                            {request.request_type === 'search_apply'
+                              ? `主动申请入群 · 申请时间: ${new Date(request.created_at).toLocaleString()}`
+                              : `${request.user_accepted ? '由群成员邀请，对方已同意，待你审批' : '由群成员邀请，等待对方确认'} · 邀请时间: ${new Date(request.created_at).toLocaleString()}`}
                           </div>
                         </div>
                         <div className="flex gap-1">
@@ -1129,7 +1185,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

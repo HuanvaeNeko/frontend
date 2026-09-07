@@ -136,13 +136,20 @@ const NOTICE: GroupNotice = {
   updated_at: '2026-01-01T00:00:00Z',
 }
 
+/**
+ * 一条主动申请。附言字段名是 `message`——后端从来没有过一个叫 `reason` 的
+ * 响应字段（doc:1051 apply 请求体、doc:1367 SentJoinRequestInfo 都是 message；
+ * `reason` 只是 `POST …/reject` 的**请求体**字段）。批 4 之前这个 fixture 用
+ * 的是 `reason`，那是照着坏代码造的 mock：它让"UI 读错字段"这件事测不出来。
+ */
 const REQUEST: JoinRequest = {
   request_id: 'r1',
   user_id: 'u2',
   user_nickname: '小李',
-  user_avatar_url: undefined,
-  message: null,
-  reason: '想加入',
+  user_avatar_url: null,
+  message: '想加入',
+  request_type: 'search_apply',
+  user_accepted: false,
   created_at: '2026-01-01T00:00:00Z',
 }
 
@@ -725,5 +732,192 @@ describe('GroupManagement 成员行：管理员不能动管理员（doc:840-842 
 
     const otherAdminRow = (await screen.findByText('老王')).closest('div.flex.items-center.gap-3')
     expect((otherAdminRow as HTMLElement).querySelectorAll('button').length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 批 4：`POST /{group_id}/invite` 把逐个被邀请人的成败放在 HTTP 200 的
+ * `data.results[]` 里（doc:733-752 行为矩阵与 2026-08-21 前置行、doc:782-796
+ * 响应样例）。旧调用点 `await groupsApi.inviteMembers(...)` 不接返回值、无条件
+ * 弹「邀请已发送」——邀请 3 个人 3 个全被群设置挡掉，和 3 个全发出去，屏幕上
+ * 完全一样。这里每条都断言**两种结局渲染得不一样**，不是断言"没抛错"。
+ */
+describe('GroupManagement 邀请成员：逐条结果落地到 UI', () => {
+  const OK_ROW = { user_id: 'user_b', success: true, message: '邀请已发送，待对方同意' }
+  const FAIL_ROW = { user_id: 'user_c', success: false, message: '该群未开放好友推荐加群' }
+
+  beforeEach(() => {
+    groupsApiMock.getMembers.mockResolvedValue({ members: [OWNER_MEMBER], total: 1 })
+    groupsApiMock.getNotices.mockResolvedValue([])
+    groupsApiMock.getJoinRequests.mockResolvedValue([])
+  })
+
+  const openInviteDialogAndSubmit = async (userIds: string) => {
+    ;(await screen.findByText('成员管理')).click()
+    fireEvent.click(await screen.findByText('邀请成员'))
+    fireEvent.change(await screen.findByPlaceholderText('user1, user2, user3'), {
+      target: { value: userIds },
+    })
+    fireEvent.click(screen.getByText('邀请'))
+  }
+
+  it('全部失败：destructive toast + 后端逐字文案，且绝不出现「邀请已发送」那句固定文案', async () => {
+    groupsApiMock.inviteMembers.mockResolvedValueOnce({ results: [FAIL_ROW] })
+
+    render(<GroupManagement groupId="g1" />)
+    await openInviteDialogAndSubmit('user_c')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '邀请失败',
+          description: 'user_c：该群未开放好友推荐加群',
+          variant: 'destructive',
+        }),
+      ),
+    )
+    // 旧实现那句无条件的成功提示：一次都不能出现。
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: '邀请已发送' }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
+    // 全失败时不能关弹窗、不能清空输入框——否则用户连刚邀请了谁都找不回来。
+    expect(screen.getByPlaceholderText('user1, user2, user3')).toHaveValue('user_c')
+  })
+
+  it('部分失败：标题给出成功/失败人数，描述是失败那几行的后端文案', async () => {
+    groupsApiMock.inviteMembers.mockResolvedValueOnce({ results: [OK_ROW, FAIL_ROW] })
+
+    render(<GroupManagement groupId="g1" />)
+    await openInviteDialogAndSubmit('user_b, user_c')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '1 人已邀请，1 人失败',
+          description: 'user_c：该群未开放好友推荐加群',
+          variant: 'destructive',
+        }),
+      ),
+    )
+  })
+
+  it('全部成功：成功 toast 用的是后端文案，并且这时才关弹窗清输入框', async () => {
+    groupsApiMock.inviteMembers.mockResolvedValueOnce({ results: [OK_ROW] })
+
+    render(<GroupManagement groupId="g1" />)
+    await openInviteDialogAndSubmit('user_b')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: '成功', description: 'user_b：邀请已发送，待对方同意' }),
+      ),
+    )
+    // 三种结局的 toast 必须互不相同：这一条与上面两条的 title/variant 都不同。
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'destructive' }),
+    )
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText('user1, user2, user3')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('整批失败（非 200）仍然透出后端原文，而不是一句固定的「邀请失败」', async () => {
+    groupsApiMock.inviteMembers.mockRejectedValueOnce(new Error('群聊不存在或已解散'))
+
+    render(<GroupManagement groupId="g1" />)
+    await openInviteDialogAndSubmit('user_b')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '群聊不存在或已解散', variant: 'destructive' }),
+      ),
+    )
+  })
+})
+
+/**
+ * 批 4：待审列表自 2026-08-17 起混着邀请类的行（doc:1258-1260、doc:2301-2302），
+ * 而 UI 把每一行都渲染成「某某申请入群」。同时申请附言的字段名是 `message`，
+ * 旧代码读的 `reason` 是一个从不存在的响应字段 ⇒ 附言整块不渲染，审批人在盲批。
+ */
+describe('GroupManagement 待审申请行：附言字段与四类 request_type', () => {
+  const INVITE_ROW: JoinRequest = {
+    request_id: 'r2',
+    user_id: 'u5',
+    user_nickname: '王五',
+    user_avatar_url: null,
+    message: null,
+    request_type: 'owner_invite',
+    user_accepted: true,
+    created_at: '2026-01-02T00:00:00Z',
+  }
+
+  const openRequestsTabAndRefresh = async () => {
+    ;(await screen.findByText(/^加入申请/)).click()
+    ;(await screen.findByText('刷新')).click()
+  }
+
+  beforeEach(() => {
+    groupsApiMock.getMembers.mockResolvedValue({ members: [OWNER_MEMBER], total: 1 })
+    groupsApiMock.getNotices.mockResolvedValue([])
+  })
+
+  it('渲染申请人写的附言（后端字段 message），不是恒 undefined 的 reason', async () => {
+    groupsApiMock.getJoinRequests.mockResolvedValue([REQUEST])
+
+    render(<GroupManagement groupId="g1" />)
+    await openRequestsTabAndRefresh()
+
+    await waitFor(() => expect(screen.getByText('想加入')).toBeInTheDocument())
+  })
+
+  it('主动申请与邀请落的行说明文案不同，且两行都能点同意', async () => {
+    groupsApiMock.getJoinRequests.mockResolvedValue([REQUEST, INVITE_ROW])
+
+    render(<GroupManagement groupId="g1" />)
+    await openRequestsTabAndRefresh()
+
+    const applyRow = (await screen.findByText('小李')).closest('.pt-4') as HTMLElement
+    const inviteRow = (await screen.findByText('王五')).closest('.pt-4') as HTMLElement
+    expect(applyRow).not.toBeNull()
+    expect(inviteRow).not.toBeNull()
+
+    // 关键断言：两行的说明文案**不相同**。旧实现把两行都写成「申请时间: …」，
+    // 只断言"渲染出两行"的话它照样通过。
+    expect(applyRow.textContent).toContain('主动申请入群')
+    expect(inviteRow.textContent).toContain('由群成员邀请')
+    expect(inviteRow.textContent).not.toContain('主动申请入群')
+
+    // 四类 request_type 现在都能批（doc:1276-1288），不能给邀请行禁用按钮。
+    expect(applyRow.querySelectorAll('button').length).toBeGreaterThan(0)
+    expect(inviteRow.querySelectorAll('button').length).toBeGreaterThan(0)
+  })
+
+  it('user_accepted 决定邀请行的措辞：已同意 / 还等对方确认', async () => {
+    groupsApiMock.getJoinRequests.mockResolvedValue([
+      INVITE_ROW,
+      { ...INVITE_ROW, request_id: 'r3', user_id: 'u6', user_nickname: '赵六', user_accepted: false },
+    ])
+
+    render(<GroupManagement groupId="g1" />)
+    await openRequestsTabAndRefresh()
+
+    const accepted = (await screen.findByText('王五')).closest('.pt-4') as HTMLElement
+    const waiting = (await screen.findByText('赵六')).closest('.pt-4') as HTMLElement
+
+    expect(accepted.textContent).toContain('对方已同意，待你审批')
+    expect(waiting.textContent).toContain('等待对方确认')
+    expect(waiting.textContent).not.toContain('对方已同意')
+  })
+
+  it('昵称为 null 的行退到 user_id 渲染，而不是整个列表崩掉', async () => {
+    groupsApiMock.getJoinRequests.mockResolvedValue([{ ...REQUEST, user_nickname: null }])
+
+    render(<GroupManagement groupId="g1" />)
+    await openRequestsTabAndRefresh()
+
+    await waitFor(() => expect(screen.getAllByText('u2').length).toBeGreaterThan(0))
+    expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
   })
 })

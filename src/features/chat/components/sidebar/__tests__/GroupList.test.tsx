@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { GroupInvitation } from '@/features/chat/api/groups'
+import { ApiError } from '@/lib/apiEnvelope'
 import GroupList from '../GroupList'
 
 /**
@@ -49,9 +50,16 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-const { groupStoreState, toastMock, getInvitationsMock } = vi.hoisted(() => ({
+const {
+  groupStoreState,
+  toastMock,
+  getInvitationsMock,
+  searchGroupsMock,
+  applyToJoinMock,
+  acceptInvitationMock,
+} = vi.hoisted(() => ({
   groupStoreState: {
-    myGroups: [] as unknown[],
+    myGroups: [] as { group_id: string }[],
     isLoading: false,
     selectionError: null as string | null,
     clearSelectionError: vi.fn(),
@@ -61,6 +69,9 @@ const { groupStoreState, toastMock, getInvitationsMock } = vi.hoisted(() => ({
   },
   toastMock: vi.fn(),
   getInvitationsMock: vi.fn(),
+  searchGroupsMock: vi.fn(),
+  applyToJoinMock: vi.fn(),
+  acceptInvitationMock: vi.fn(),
 }))
 
 vi.mock('@/features/chat/store/groupStore', () => ({
@@ -74,9 +85,9 @@ vi.mock('@/features/chat/store/chatStore', () => ({
 vi.mock('@/features/chat/api/groups', () => ({
   groupsApi: {
     getInvitations: getInvitationsMock,
-    searchGroups: vi.fn(),
-    applyToJoin: vi.fn(),
-    acceptInvitation: vi.fn(),
+    searchGroups: searchGroupsMock,
+    applyToJoin: applyToJoinMock,
+    acceptInvitation: acceptInvitationMock,
     declineInvitation: vi.fn(),
   },
 }))
@@ -111,6 +122,12 @@ const INVITATION: GroupInvitation = {
 
 beforeEach(() => {
   getInvitationsMock.mockReset()
+  searchGroupsMock.mockReset()
+  applyToJoinMock.mockReset()
+  acceptInvitationMock.mockReset()
+  groupStoreState.loadMyGroups.mockReset()
+  groupStoreState.loadMyGroups.mockResolvedValue(undefined)
+  groupStoreState.myGroups = []
   toastMock.mockReset()
   groupStoreState.selectionError = null
   groupStoreState.clearSelectionError.mockReset()
@@ -260,5 +277,235 @@ describe('GroupList 建群对话框：join_mode 五档 → join_approval_require
 
     await waitFor(() => expect(groupStoreState.createGroup).toHaveBeenCalledTimes(1))
     expect(groupStoreState.createGroup).toHaveBeenCalledWith('我的群聊', undefined, false)
+  })
+})
+
+/**
+ * 批 4：`POST /{group_id}/apply` 的 `source` 是必填的（doc:1049-1062，服务端
+ * 【有意不给默认值】，缺失一律 400），返回的 `data.status` 是「本次到底进群
+ * 了没有」的唯一判据（doc:1128-1132）。旧调用点一个字都不发 `source`，也不读
+ * 返回值，转而用已被 migration 043 删掉的 `join_mode` 猜结果 ⇒ 恒显示
+ * 「申请已提交」，免审核群里加群成功也不刷新群列表。
+ */
+describe('GroupList 申请入群：source 必填 + status 两态', () => {
+  const SEARCH_RESULT = {
+    group_id: 'g1',
+    group_name: 'Test Group',
+    group_avatar_url: null,
+    member_count: 3,
+  }
+
+  const searchThenApply = async (reason?: string) => {
+    fireEvent.change(await screen.findByPlaceholderText('chat.groupList.enterGroupIdPlaceholder'), {
+      target: { value: 'g1' },
+    })
+    fireEvent.click(screen.getByText('chat.groupList.search'))
+    const reasonInput = await screen.findByPlaceholderText('chat.groupList.applyReasonPlaceholder')
+    if (reason !== undefined) {
+      fireEvent.change(reasonInput, { target: { value: reason } })
+    }
+    fireEvent.click(screen.getByText('chat.groupList.applyJoin'))
+  }
+
+  beforeEach(() => {
+    searchGroupsMock.mockResolvedValue([SEARCH_RESULT])
+  })
+
+  it('请求带上 source（本入口是搜索）与附言，三个实参逐个断言', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'pending', message: '申请已提交，等待管理员审核' })
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply('想加入')
+
+    await waitFor(() => expect(applyToJoinMock).toHaveBeenCalledTimes(1))
+    expect(applyToJoinMock).toHaveBeenCalledWith('g1', 'search', '想加入')
+  })
+
+  it('status=joined ⇒ 文案是「已加入群聊」并刷新群列表（免审核群里人已经进去了）', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'joined', message: '已成功加入群聊' })
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply('想加入')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'chat.groupList.joinSuccess' }),
+      ),
+    )
+    // 旧实现恒弹「申请已提交」：这一条必须一次都没出现，否则两种结局又塌成一种。
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.applySubmitted' }),
+    )
+    expect(groupStoreState.loadMyGroups).toHaveBeenCalledTimes(1)
+  })
+
+  it('status=pending ⇒ 文案是「申请已提交」，且不刷新群列表（人还没进去）', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'pending', message: '申请已提交，等待管理员审核' })
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply('想加入')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'chat.groupList.applySubmitted' }),
+      ),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.joinSuccess' }),
+    )
+    expect(groupStoreState.loadMyGroups).not.toHaveBeenCalled()
+  })
+
+  it('没填附言时第三个实参是 undefined（不发 message 键）', async () => {
+    applyToJoinMock.mockResolvedValueOnce({ status: 'pending', message: 'x' })
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply()
+
+    await waitFor(() => expect(applyToJoinMock).toHaveBeenCalledTimes(1))
+    expect(applyToJoinMock).toHaveBeenCalledWith('g1', 'search', undefined)
+  })
+
+  it('403 按「状态码 + 本次的 source」给出可解释的文案，不 match 消息体字符串', async () => {
+    // doc:1093-1099：后端这条 403 的 error/message 恒为通用「权限不足」。
+    applyToJoinMock.mockRejectedValueOnce(
+      new ApiError('权限不足', { status: 403, endpoint: 'POST /api/groups/{group_id}/apply' }),
+    )
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply('想加入')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'chat.groupList.joinClosedSearch',
+          variant: 'destructive',
+        }),
+      ),
+    )
+    // 通用的「权限不足」对用户什么也没解释，不能就这么原样丢出去。
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ description: '权限不足' }))
+  })
+
+  it('非 403 的失败仍然透出后端原文（例如「已是该群成员」）', async () => {
+    applyToJoinMock.mockRejectedValueOnce(
+      new ApiError('已是该群成员', { status: 400, endpoint: 'POST /api/groups/{group_id}/apply' }),
+    )
+
+    render(<GroupList subTab="join" searchQuery="" />)
+    await searchThenApply('想加入')
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '已是该群成员', variant: 'destructive' }),
+      ),
+    )
+  })
+})
+
+/**
+ * 批 4：accept 成功 ≠ 入群（doc:1194-1203）。两种结局的 HTTP、信封 `success`、
+ * 内层 `data.success` 全都相同，判据只能是 accept 之后重新拉的
+ * `GET /api/groups/my` 里有没有这个 group_id。旧实现无条件弹「已加入群聊」
+ * 并把这条邀请从列表里删掉——用户被告知进群了、邀请消失了、群列表里却没有
+ * 这个群，且再没有任何入口能看到「我已同意、正在等审批」。
+ */
+describe('GroupList 接受邀请：已入群 / 待审批 / 无法确认三态', () => {
+  const acceptFirstInvite = async () => {
+    await screen.findByText('Test Group')
+    // 邀请行上两个按钮：第一个是同意（Check），第二个是拒绝。
+    const row = screen.getByText('Test Group').closest('.p-4') as HTMLElement
+    fireEvent.click(row.querySelectorAll('button')[0])
+  }
+
+  beforeEach(() => {
+    getInvitationsMock.mockResolvedValue([INVITATION])
+    acceptInvitationMock.mockResolvedValue({ success: true, message: '已成功加入群聊' })
+  })
+
+  it('复核后群在列表里 ⇒ 「已加入群聊」，该邀请行移除', async () => {
+    groupStoreState.loadMyGroups.mockImplementation(async () => {
+      groupStoreState.myGroups = [{ group_id: 'g1' }]
+    })
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'chat.groupList.joinedViaInvite' }),
+      ),
+    )
+    await waitFor(() => expect(screen.queryByText('Test Group')).not.toBeInTheDocument())
+  })
+
+  it('复核后群不在列表里 ⇒ 「等待管理员审核」，邀请行留在界面上', async () => {
+    // 这一条就是本批要修的那个 bug：后端返回的内层 success 同样是 true、
+    // HTTP 同样是 200，只有「我到底在不在群里」不同。
+    acceptInvitationMock.mockResolvedValue({
+      success: true,
+      message: '已同意邀请，等待管理员审核',
+    })
+    groupStoreState.loadMyGroups.mockImplementation(async () => {
+      groupStoreState.myGroups = []
+    })
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'chat.groupList.inviteAcceptedPendingApproval',
+        }),
+      ),
+    )
+    // 关键：与上一条的文案**不同**，且这一行不能消失——它是用户唯一能看到
+    // 「我已同意、正在等审批」的地方。
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.joinedViaInvite' }),
+    )
+    expect(screen.getByText('Test Group')).toBeInTheDocument()
+    expect(screen.getByText('chat.groupList.inviteAcceptedPendingApproval')).toBeInTheDocument()
+  })
+
+  it('复核本身失败 ⇒ 第三种文案（既不说已加入，也不说接受失败）', async () => {
+    groupStoreState.loadMyGroups.mockRejectedValue(new Error('加载群聊列表失败'))
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'chat.groupList.inviteAcceptedUnconfirmed' }),
+      ),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.joinedViaInvite' }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'chat.groupList.acceptInviteFailed' }),
+    )
+    expect(screen.getByText('Test Group')).toBeInTheDocument()
+  })
+
+  it('accept 自己失败（403：群主关掉好友推荐后存量 member_invite 不可 accept）走失败分支', async () => {
+    acceptInvitationMock.mockRejectedValueOnce(
+      new ApiError('权限不足', {
+        status: 403,
+        endpoint: 'POST /api/groups/invitations/{request_id}/accept',
+      }),
+    )
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+    await acceptFirstInvite()
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '权限不足', variant: 'destructive' }),
+      ),
+    )
+    expect(groupStoreState.loadMyGroups).not.toHaveBeenCalled()
+    expect(screen.getByText('Test Group')).toBeInTheDocument()
   })
 })

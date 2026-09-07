@@ -20,7 +20,8 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useGroupStore } from '@/features/chat/store/groupStore'
-import { groupsApi, type GroupInvitation } from '@/features/chat/api/groups'
+import { groupsApi, type GroupInvitation, type JoinSource } from '@/features/chat/api/groups'
+import { ApiError } from '@/lib/apiEnvelope'
 import { ConversationItem } from './ConversationItem'
 import { useI18n } from '@/i18n/I18nProvider'
 
@@ -117,8 +118,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   const [searchingGroup, setSearchingGroup] = useState(false)
   // `join_mode` 已从这里删掉：后端两个响应结构里都没有这个字段了（doc:460-461），
   // 读到的恒为 undefined，旧代码的三处 `|| 'approval_required'` 把这件事
-  // 完整地藏了起来。"申请提交后是直接进群还是落待审"要等批 4 —— 那时
-  // `applyToJoin` 会返回 `{status}`，由后端直答，而不是前端拿一个不存在的字段猜。
+  // 完整地藏了起来。批 4 起「申请提交后是直接进群还是落待审」由
+  // `applyToJoin` 返回的 `data.status` 直答（doc:1128-1132），前端不再猜。
   const [searchResult, setSearchResult] = useState<{
     group_id: string
     group_name: string
@@ -135,6 +136,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   // 在屏幕上长得一模一样，这正是 apiEnvelope.ts 开篇讲的那类 bug。
   const [invitesError, setInvitesError] = useState<string | null>(null)
   const [processingInvite, setProcessingInvite] = useState<string | null>(null)
+  // 已同意、但复核后发现人还没进群（群开着入群审核 ⇒ 落在待审队列里，
+  // doc:1194-1203）的邀请。这些行留在列表里并改标成「等待管理员审核」——
+  // 删掉它们就等于把用户唯一的状态入口一起删掉。
+  const [pendingApprovalIds, setPendingApprovalIds] = useState<string[]>([])
 
   // 确保 myGroups 是数组
   const groupsArray = Array.isArray(myGroups) ? myGroups : []
@@ -252,29 +257,60 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     }
   }
 
-  // 申请加入群聊
+  /**
+   * `POST /{group_id}/apply` 的 403 只有通用文案「权限不足」（doc:1093-1099
+   * 明写后端**没有**为"这条加群方式被关了"单独定义文案），所以判据只能是
+   * 「状态码 403 + 是哪个端点 + 本次传的 `source`」——不要 match 消息体字符串。
+   */
+  const describeApplyError = (error: unknown, source: JoinSource): string => {
+    if (error instanceof ApiError && error.status === 403) {
+      if (source === 'qr') return t('chat.groupList.joinClosedQr')
+      if (source === 'search') return t('chat.groupList.joinClosedSearch')
+      return t('chat.groupList.joinClosedReferral')
+    }
+    return error instanceof Error ? error.message : t('chat.groupList.applyFailed')
+  }
+
+  /**
+   * 申请加入群聊。
+   *
+   * `source` 是必填的，且**服务端有意不给默认值**（doc:1049-1062）：三个
+   * `allow_join_via_*` 开关的全部意义就是按来源分流。本入口是「输入群 ID
+   * 搜到群之后申请」，所以传 `'search'`；扫码落地页传 `'qr'`、群卡片/链接
+   * 落地传 `'referral'`（那两个入口本仓还没有）。
+   *
+   * 结果按 `data.status` 分支（doc:1128-1132，唯一判据，不要解析文案）：
+   * `joined` 说明这个群 `join_approval_required=false`，用户**已经在群里了**，
+   * 必须刷新群列表，否则新群不出现，用户以为还在等审批。
+   */
   const handleApplyJoin = async () => {
     if (!searchResult) return
 
+    const source: JoinSource = 'search'
     setApplying(true)
     try {
-      await groupsApi.applyToJoin(searchResult.group_id, applyReason)
-      // 恒定"已提交申请"：`join_mode` 删除后前端无从判断这次是直接进群还是
-      // 落待审，而旧代码的 `(join_mode || 'approval_required') === 'open'`
-      // 早就恒为 false——这一支从来没走到过，所以这里不是行为变更，
-      // 是把那条死分支删掉。批 4 会让 `applyToJoin` 返回 `{status}`，
-      // 到那时由后端直答，再据此决定文案和要不要刷新群列表。
+      const result = await groupsApi.applyToJoin(
+        searchResult.group_id,
+        source,
+        applyReason.trim() || undefined,
+      )
       toast({
         title: t('chat.groupList.success'),
-        description: t('chat.groupList.applySubmitted'),
+        description:
+          result.status === 'joined'
+            ? t('chat.groupList.joinSuccess')
+            : t('chat.groupList.applySubmitted'),
       })
+      if (result.status === 'joined') {
+        await loadMyGroups()
+      }
       setSearchResult(null)
       setSearchGroupId('')
       setApplyReason('')
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
-        description: error instanceof Error ? error.message : t('chat.groupList.applyFailed'),
+        description: describeApplyError(error, source),
         variant: 'destructive',
       })
     } finally {
@@ -282,14 +318,56 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
     }
   }
 
-  // 接受群邀请
-  const handleAcceptInvite = async (invitationId: string) => {
-    setProcessingInvite(invitationId)
+  /**
+   * 接受群邀请。
+   *
+   * 🔴 accept 成功**不等于**入群：开着入群审核的群里，同意邀请只是把
+   * `user_accepted` 置真，人还在待审队列里（doc:1194-1203）。两种结局
+   * HTTP、信封 `success`、内层 `data.success` 全都相同，唯一区别在
+   * `data.message`——而文档明写不要解析文案，要重新拉 `GET /api/groups/my`
+   * 确认。旧代码无条件弹「已加入群聊」并把这条邀请从列表里删掉，用户被告知
+   * 进群了、邀请消失了、群列表里却没有这个群，且再没有任何入口能看到
+   * 「我已同意、正在等审批」。
+   *
+   * 复核失败（`loadMyGroups` 自己抛）单独一档：那时我们**不知道**结局，
+   * 不能挑一个说给用户听——挑「已加入」是骗人，挑「接受邀请失败」也是骗人
+   * （accept 已经成功了）。
+   */
+  const handleAcceptInvite = async (invitation: GroupInvitation) => {
+    setProcessingInvite(invitation.request_id)
     try {
-      await groupsApi.acceptInvitation(invitationId)
-      toast({ title: t('chat.groupList.success'), description: t('chat.groupList.joinedViaInvite') })
-      setInvitations(prev => prev.filter(i => i.request_id !== invitationId))
-      loadMyGroups()
+      await groupsApi.acceptInvitation(invitation.request_id)
+      let joined: boolean
+      try {
+        await loadMyGroups()
+        joined = useGroupStore
+          .getState()
+          .myGroups.some(group => group.group_id === invitation.group_id)
+      } catch (verifyError) {
+        // 错误对象不丢：用户侧只能得到"无法确认"，但排查者要看得到原因。
+        console.error('接受邀请后复核群列表失败:', verifyError)
+        toast({
+          title: t('chat.groupList.success'),
+          description: t('chat.groupList.inviteAcceptedUnconfirmed'),
+        })
+        return
+      }
+
+      if (joined) {
+        toast({ title: t('chat.groupList.success'), description: t('chat.groupList.joinedViaInvite') })
+        setInvitations(prev => prev.filter(i => i.request_id !== invitation.request_id))
+        return
+      }
+
+      // 没进群 ⇒ 落在审批队列里。这一行**不能删**：它是用户唯一能看到
+      // 「我已同意、正在等审批」的地方。
+      toast({
+        title: t('chat.groupList.success'),
+        description: t('chat.groupList.inviteAcceptedPendingApproval'),
+      })
+      setPendingApprovalIds(prev =>
+        prev.includes(invitation.request_id) ? prev : [...prev, invitation.request_id],
+      )
     } catch (error) {
       toast({
         title: t('chat.groupList.failed'),
@@ -664,11 +742,18 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       {format(new Date(invitation.created_at), 'yyyy/MM/dd')}
                     </div>
                   </div>
+                  {pendingApprovalIds.includes(invitation.request_id) ? (
+                    // 已同意但还没进群：这一行保留，按钮换成状态说明——再点一次
+                    // 同意没有意义（后端那条记录已经是 user_accepted=true）。
+                    <div className="text-xs text-muted-foreground shrink-0 max-w-[8rem] text-right">
+                      {t('chat.groupList.inviteAcceptedPendingApproval')}
+                    </div>
+                  ) : (
                   <div className="flex gap-2">
                     <Button
                       size="icon-sm"
                       className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                      onClick={() => handleAcceptInvite(invitation.request_id)}
+                      onClick={() => handleAcceptInvite(invitation)}
                       disabled={processingInvite === invitation.request_id}
                     >
                       {processingInvite === invitation.request_id ? (
@@ -687,6 +772,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>

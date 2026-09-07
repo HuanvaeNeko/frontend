@@ -348,7 +348,17 @@ const zhCN = {
       searchFailed: '搜索群聊失败',
       applySubmitted: '申请已提交，等待审核',
       applyFailed: '申请失败',
+      // 三条加群来源各自被 allow_join_via_* 门控，403 的响应体只有通用文案
+      // 「权限不足」（doc:1093-1099），所以只能按「状态码 + 本次传的 source」
+      // 给出这三句，不能 match 消息体字符串。
+      joinClosedQr: '群主已关闭扫码加群',
+      joinClosedSearch: '群主已关闭搜索加群',
+      joinClosedReferral: '群主已关闭好友推荐加群',
       joinedViaInvite: '已加入群聊',
+      // 开着入群审核的群：同意邀请之后人还在待审队列里（doc:1194-1203），
+      // 这一句和上面那句必须不同，否则两种结局在屏幕上无法区分。
+      inviteAcceptedPendingApproval: '已同意邀请，等待管理员审核',
+      inviteAcceptedUnconfirmed: '已同意邀请，但暂时无法确认是否已入群，请稍后刷新群聊列表',
       acceptInviteFailed: '接受邀请失败',
       inviteRejected: '已拒绝群邀请',
       declineInviteFailed: '拒绝邀请失败',
@@ -833,7 +843,13 @@ const enUS = {
       searchFailed: 'Failed to search group',
       applySubmitted: 'Application submitted, waiting for review',
       applyFailed: 'Failed to apply',
+      joinClosedQr: 'The owner has disabled joining by QR code',
+      joinClosedSearch: 'The owner has disabled joining by search',
+      joinClosedReferral: 'The owner has disabled joining by referral',
       joinedViaInvite: 'Joined group',
+      inviteAcceptedPendingApproval: 'Invitation accepted, waiting for admin approval',
+      inviteAcceptedUnconfirmed:
+        'Invitation accepted, but we could not confirm whether you joined. Please refresh the group list later',
       acceptInviteFailed: 'Failed to accept invite',
       inviteRejected: 'Group invite rejected',
       declineInviteFailed: 'Failed to decline invite',
