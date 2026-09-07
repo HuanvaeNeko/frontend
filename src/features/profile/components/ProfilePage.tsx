@@ -33,7 +33,7 @@ import { ROUTES } from '@/lib/routes'
 export default function Profile() {
   const router = useRouter()
   const { toast } = useToast()
-  const { profile, isLoading, loadProfile, updateProfile } = useProfileStore()
+  const { profile, isLoading, loadProfile, updateProfile, setAvatarUrl } = useProfileStore()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -42,10 +42,14 @@ export default function Profile() {
   const [showPasswords, setShowPasswords] = useState({ old: false, new: false, confirm: false })
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   /**
-   * 分片直传的真实进度（0-100），`null` = 还没有任何一片传完。
+   * 直传的真实进度（0-100），`null` = 还没有任何字节发出去。
    *
-   * 链路的前两段（算 SHA-256、`upload/request`）没有进度可报，第一片 PUT 完成
-   * 才有第一个数——所以 `null` 期间照旧显示不确定态的转圈，不假装是 0%。
+   * 这个数来自 `xhr.upload.onprogress`（**已发出的字节数 / 总字节数**），不是
+   * "第几片传完了"——头像档永远只有 1 片（30 MB 的分片 vs 10 MB 的上限），
+   * 按分片报的话唯一可能的值就是 100%，还得等字节全部传完才出现。
+   *
+   * 链路的前两段（算 SHA-256、`upload/request`）确实没有进度可报，
+   * 所以 `null` 期间照旧显示不确定态的转圈，不假装是 0%。
    */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [changingPassword, setChangingPassword] = useState(false)
@@ -84,8 +88,15 @@ export default function Profile() {
    * - **409 不自动重试**（doc:445）：会话被同一目标的新请求接管、或已过期，重发同一条
    *   永远不会成功，只能整条重来。这里只把话说清楚让用户重选文件。
    * - **不回写**：后端已在 confirm 写回 `users."user-avatar-url"`，doc:411 明写
-   *   无需再调 `PUT /api/profile`。这里的 `loadProfile()` 是一次 **GET**，为的是把
+   *   无需再调 `PUT /api/profile`。后面那次 `loadProfile()` 是一次 **GET**，为的是把
    *   `updated_at` 等整份资料拉齐，不是回写。
+   * - **成功的判定点是 confirm 返回，不是那次 GET**：confirm 200 的那一刻后端已经
+   *   把 `file_url` 写进 `users."user-avatar-url"`（doc:411），上传**已经完成**。
+   *   所以这里拿到返回值就地 `setAvatarUrl` + 弹成功，随后的 `loadProfile()` 用
+   *   `.catch` 单独降级。⚠️ 把这两步塞回同一个 `try` 就会复活这个 bug：那次 GET
+   *   500 时用户看到「上传失败」+ 一句"重试"（doc:450 管这叫「错误建议——文件就在
+   *   那儿，重传只会白传一次」），401 时更进一步——`profileStore.settleError` 会
+   *   `silentRedirectToLogin()`，一次成功的上传以无解释登出收场。
    * - **成功的信号是这条 toast，不是头像变了**：`?t=` 缓存戳是**秒**级（doc:413-414），
    *   同一秒内连换两次会拿到逐字相同的 URL，浏览器不会重新加载那张图。这是后端沿用
    *   旧链路的既有行为，不在本批范围内；客户端能做的是**不把"图变了"当成成功判据**——
@@ -102,9 +113,13 @@ export default function Profile() {
     setUploadingAvatar(true)
     setUploadProgress(null)
     try {
-      await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
-      await loadProfile()
+      const { file_url } = await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
+      // 到这里上传已经成功且后端已落库——先兑现结果，再去拉齐其余字段。
+      setAvatarUrl(file_url)
       toast({ title: '成功', description: '头像上传成功' })
+      await loadProfile().catch((error) => {
+        console.error('头像已上传成功，刷新完整资料失败:', error)
+      })
     } catch (error) {
       toast({ title: '上传失败', description: error instanceof Error ? error.message : '请稍后重试', variant: 'destructive' })
     } finally {
@@ -168,10 +183,14 @@ export default function Profile() {
 
                       ⚠️ 因此 `|| ''` → `?? undefined` **不是修复**，行为逐字相同（两者都落进
                       那条 `!src` 短路）；改它只是让"没有头像"用 React 认的那个值表达。
-                      仓里另有几处注释说「空串会被 `<AvatarImage src="">` 当成一次真实的
-                      图片请求」（`friends.ts` / `groups.ts` / `discovery.ts` 的 `absoluteAvatar`
-                      一带）——对 1.2.6 那句是错的，但它们不在本批范围内，没有跟着改。
-                      真会发请求的是**裸 `<img>`**，那一处见 `Navigation.tsx` 的 `avatarSrc`。
+                      真会因空串发请求的是**裸 `<img>`**，全仓只有 `Navigation.tsx` 的
+                      `avatarSrc` 那一处。（`friends.ts` / `groups.ts` / `discovery.ts` 的
+                      `absoluteAvatar` 一带曾有七处注释把那句话说反，已在本批一并订正——
+                      它们做的空串归一仍然值得留着，错的只是给出的理由。）
+
+                      这个 `src` 由 `ProfilePage.test.tsx` 在 **DOM 层**钉住（把它换成一个
+                      相对路径就红），办法是把 `AvatarImage` 换成裸 `<img>`：Radix 要等图片
+                      真的 `load` 完才挂 `<img>`，happy-dom 不发请求 ⇒ 不替就永远只有 fallback。
                     */}
                     <AvatarImage src={profile?.user_avatar_url ?? undefined} alt={displayName} />
                     <AvatarFallback className="text-2xl font-semibold">{displayName[0]?.toUpperCase() || 'U'}</AvatarFallback>

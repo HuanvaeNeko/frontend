@@ -17,7 +17,9 @@ import { DesktopSidebar } from '../Navigation'
  *   `An empty string ("") was passed to the src attribute`，浏览器还会把当前页面
  *   当成图片再下载一遍。而且这里没有 `<AvatarFallback>` 兜底，坏 src 留下的是碎图标。
  *
- * 所以本文件钉的是：**空值一律不渲染 `<img>`**，有值时逐字渲染。
+ * 所以本文件钉的是两件事：**空值一律不渲染 `<img>`**；有值时渲染出去的是
+ * **绝对**地址——包括从 `auth-storage` 里 rehydrate 出来的那份存量相对路径
+ * （给 `login` 补基址的提交还没进 main，`auth-storage` 无 version / 无 migrate）。
  */
 
 const renderSidebar = () =>
@@ -109,7 +111,7 @@ describe('DesktopSidebar 的头像', () => {
     expect(avatarImg()).toBeNull()
   })
 
-  it('profile 没有头像时回落到 authStore 那份（它在登录时已补过基址）', () => {
+  it('profile 没有头像时回落到 authStore 那份（已经是绝对地址时原样用，补基址幂等）', () => {
     // `||` 而不是 `??`：空串必须继续往后找，而不是被当成一个有效地址用掉。
     useAuthStore.setState({
       user: {
@@ -123,5 +125,50 @@ describe('DesktopSidebar 的头像', () => {
     renderSidebar()
 
     expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+  })
+
+  it('落盘 auth-storage 里是**相对**路径时，渲染出去的仍然是绝对地址', async () => {
+    // 这不是假想的形状，是**当前线上每一个用户**的形状：给 `login` 加补基址的那个
+    // 提交还在本分支上、没进 main；`auth-storage` 没有 `version` 也没有 `migrate`，
+    // `refreshAccessToken` 也从不重写 `user`。所以存量落盘值就是后端原样给的相对路径。
+    //
+    // 它非空 ⇒ `||` 会选中它 ⇒ 本组件那个首字母兜底根本不会触发，用户拿到的正是
+    // 兜底本该防住的碎图标（裸 `<img>` 会拿相对路径去请求前端自己的源）。
+    //
+    // 从 localStorage 走一遍 rehydrate 而不是直接 setState：要钉的就是"落盘的东西
+    // 进来时没人洗过"这件事。把 `avatarSrc` 上的 `toAbsoluteApiUrl` 拿掉 → 本条红。
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: {
+          accessToken: 'AT',
+          refreshToken: null,
+          tokenExpiry: Date.now() + 3600_000,
+          isAuthenticated: true,
+          user: { user_id: 'u1', nickname: '测试用户', avatar_url: 'avatars/u1.png?t=1' },
+        },
+        version: 0,
+      }),
+    )
+    await useAuthStore.persist.rehydrate()
+    // 正对照：落盘的那个相对值确实原样进了 store（否则下面那条断言测的是别的东西）。
+    expect(useAuthStore.getState().user?.avatar_url).toBe('avatars/u1.png?t=1')
+
+    useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: null } })
+
+    renderSidebar()
+
+    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+  })
+
+  it('profile 落盘的相对路径同样在读的时候补基址（不指望 persist migrate 跑过）', () => {
+    // migrate 只在版本号对不上时跑一次，而且会把值冻结在跑的那一刻的基址上——
+    // 本项目会故意改基址（本地无 SNI 反代）。读时归一每次渲染重新求值。
+    useAuthStore.setState({ user: { user_id: 'u1', nickname: '测试用户' } })
+    useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: 'avatars/u1.png?t=2' } })
+
+    renderSidebar()
+
+    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=2`)
   })
 })

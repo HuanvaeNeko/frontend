@@ -30,6 +30,30 @@ vi.mock('@/hooks/use-toast', () => ({
   toast: toastMock,
 }))
 
+/**
+ * 只替掉 `AvatarImage` 这一个展示件（`GroupManagement.test.tsx` 里同样的办法，
+ * 同样的理由）：Radix 的 `AvatarImage` 要等图片真的 `load` 完、
+ * `loadingStatus === 'loaded'` 才把 `<img>` 挂上去，而 happy-dom 根本不发请求——
+ * 保留原件的话渲染出来的**恒是 fallback**，「到底哪个 URL 进了 DOM」永远断言不出来。
+ *
+ * 不替的代价是具体的：把 `src` 换成 `"avatars/BROKEN-RELATIVE.png"`，
+ * 本文件与 `ProfileModal.test.tsx` 全绿——这一整批渲染点此前没有任何 DOM 级约束，
+ * 只有一条读 store 的断言在替它们说话。Root / Fallback 仍是真件。
+ */
+vi.mock('@/components/ui/avatar', async () => {
+  const actual = await vi.importActual<typeof import('@/components/ui/avatar')>('@/components/ui/avatar')
+  const { createElement } = await import('react')
+  return {
+    ...actual,
+    AvatarImage: (props: { src?: string }) =>
+      createElement('img', { 'data-testid': 'avatar-image', ...props }),
+  }
+})
+
+/** 渲染到 DOM 上的那个 `src`（`null` = 组件没给 src，Radix 会走 fallback）。 */
+const renderedAvatarSrc = () =>
+  document.querySelector('[data-testid="avatar-image"]')?.getAttribute('src') ?? null
+
 const PROFILE_BASE = `${getApiBaseUrl()}/api/profile`
 
 const json = (body: unknown, status = 200) =>
@@ -161,7 +185,11 @@ describe('ProfilePage 上传头像', () => {
     preview_support: 'inline_preview',
     multipart_upload_id: 'upload-id-avatar',
     expires_in: 3600,
-    // 两片：第一片传完是 50%，第二片传完是 100%。
+    // ⚠️ **合成形状，后端产不出来**：分片固定 30 MB（`文件存储管理.md:185`）而头像
+    // 上限 10 MB（`个人资料管理.md:393`）⇒ 真实的头像上传**永远只有 1 片**
+    // （doc:668 自己也这么写）。这里手搓 2 片是为了在没有真 XHR 的环境里驱动
+    // `onProgress` 走一遍中间值（4 字节切 2 片，第一片传完 = 50%）。
+    // 生产环境里那个百分比来自 `xhr.upload.onprogress` 的字节进度，不是分片计数。
     chunk_size: 2,
     total_chunks: 2,
     file_key: 'u1.png',
@@ -318,10 +346,14 @@ describe('ProfilePage 上传头像', () => {
     expect(log.filter((line) => line.startsWith('PUT '))).toEqual([])
   })
 
-  it('上传成功后渲染的是**绝对**头像地址（confirm 给的是相对路径）', async () => {
+  it('上传成功后渲染到 DOM 上的是**绝对**头像地址（confirm 给的是相对路径）', async () => {
     // 上传后 loadProfile() 重新拉一次资料；后端此时返回的 `user_avatar_url`
     // 是相对路径（doc:74、:98），补基址在 `profileApi.getProfile` 出口。
     // 少了那一步，`<AvatarImage>` 会以当前页面路径为基准发请求并 404。
+    //
+    // 本条断言落在 **DOM 的 `src` 属性**上，不是 store 上：用例名说的是"渲染"，
+    // 只读 `useProfileStore.getState()` 的话，把 `<AvatarImage src>` 换成任何常数
+    // （实测 `src="avatars/BROKEN-RELATIVE.png"`）都不会红。
     let profileGets = 0
     fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
       const url = String(input)
@@ -355,8 +387,104 @@ describe('ProfilePage 上传头像', () => {
       expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
     )
 
+    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(absolute)
+    // 本条的正身：这个值真的到了 `<img src>` 上。
+    await waitFor(() => expect(renderedAvatarSrc()).toBe(absolute))
+  })
+
+  /**
+   * confirm 已经 200 之后，紧接着那次 `GET /api/profile` 失败。
+   *
+   * 后端在 confirm 里就把 `file_url` 写进了 `users."user-avatar-url"`
+   * （`个人资料管理.md:411`）——上传**已经完成**。这两条钉住的就是这一点：
+   * 那次 GET 只负责把 `updated_at` 之类拉齐，它失败不能反过来把一次成功的上传
+   * 说成失败，更不能触发一句"请稍后重试"（doc:450 管这类建议叫「错误建议——
+   * 文件就在那儿，重传只会白传一次」）。
+   *
+   * 把 `setAvatarUrl` + 成功 toast 挪回 `await loadProfile()` **之后**（即还原成
+   * 两步共用一个 try 的旧写法）→ 两条全红。
+   */
+  const uploadThenProfileGetFails = (status: number, body: unknown) => {
+    // 计数器归这个工厂自己所有，每次调用重置——不用第二个 beforeEach。
+    let profileGets = 0
+    const handler = async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        // 第一次（挂载时的 loadProfile）成功，第二次（上传后的刷新）失败。
+        profileGets += 1
+        return profileGets === 1
+          ? json({ success: true, code: 200, data: PROFILE_DTO })
+          : json(body, status)
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) {
+        return envelope({ ...SESSION, total_chunks: 1, chunk_size: 4 })
+      }
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        return envelope({
+          part_url: 'https://api.huanvae.cn/avatars/u1.png?partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    }
+    return { handler, profileGetCount: () => profileGets }
+  }
+
+  it('confirm 成功后那次资料刷新 500：仍然弹成功，头像照样落到 DOM 上', async () => {
+    const backend = uploadThenProfileGetFails(500, { error: '服务器开小差了' })
+    fetchMock.mockImplementation(backend.handler)
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+    // 正对照：链路真的跑到了 confirm，那次刷新也真的发出去并失败了
+    // （否则下面那条"没有失败提示"是句空话）。
+    const log = fetchMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(log).toContain(`${STORAGE_BASE}/upload/confirm`)
+    expect(backend.profileGetCount()).toBe(2)
+
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
+
+    // confirm 返回的 file_url 就是结果，不依赖那次失败的 GET。
+    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe(absolute)
+    await waitFor(() => expect(renderedAvatarSrc()).toBe(absolute))
+  })
+
+  it('confirm 成功后那次资料刷新 401：仍然弹成功，且没有一句「上传失败」', async () => {
+    const backend = uploadThenProfileGetFails(401, { error: '未认证或 Token 无效' })
+    fetchMock.mockImplementation(backend.handler)
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+    const log = fetchMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(log).toContain(`${STORAGE_BASE}/upload/confirm`)
+    expect(backend.profileGetCount()).toBe(2)
+
+    // 旧写法在这里弹的是「上传失败」——一次已经落库的上传，用户收到的是失败提示，
+    // 紧接着还被 `profileStore.settleError` 静默送去登录页。
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
+
     expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
       `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`,
     )
+    // ⚠️ 跳登录页**依然会发生**，而且是对的：`GET /api/profile` 的 401 就是会话真的
+    // 失效了，那是 profileStore 对所有 action 的统一口径。本批修的不是这个跳转，
+    // 是"跳转之前先告诉用户他刚做的事失败了"这句谎话。
+    expect(window.location.replace).toHaveBeenCalledWith('/app/login')
   })
 })

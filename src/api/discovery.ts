@@ -93,8 +93,10 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
  * 头像相对路径 → 绝对地址，只在 api 模块出口做一次。与 `groups.ts`、`friends.ts`
  * 里同名的 `absoluteAvatar` 逐字同型，同样按那两处的理由独立定义一份。
  *
- * `null` 与空串统一归一为 `null`（无头像），不兜底成空串：空串会被
- * `<AvatarImage src="">` 当成一次真实的图片请求。
+ * `null` 与空串统一归一为 `null`（无头像）：让"没有头像"只有一种表示。
+ * ⚠️ **不是**因为空串会让 `<AvatarImage>` 发请求——Radix 1.2.6 对 `!src` 直接
+ * 短路（`if (!src) { setLoadingStatus("error"); return }`），一个请求都不发。
+ * 会被空串坑到的是**裸 `<img>`**，全仓只有 `Navigation.tsx` 那一处。
  *
  * ---
  * 📌 **本仓约定：跨文件引用锚在符号名上，不写行号。** 这两处原本写的是

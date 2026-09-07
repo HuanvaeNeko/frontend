@@ -137,8 +137,9 @@ export interface JoinPolicy {
  *
  * `group_avatar_url` 是 `string | null`：字段表（doc:202）写的就是 `string | null`，
  * 而两份响应样例（doc:177、doc:121）给的是 `""`。api 出口统一把 `''`
- * 与绝对化交给 `absoluteAvatar`，空串会被 `<AvatarImage src="">` 当成一次
- * 真实的图片请求。
+ * 与绝对化交给 `absoluteAvatar`——归一成 `null` 是为了让"没有头像"只有**一种**
+ * 表示，不是因为空串会发请求（Radix 1.2.6 对空串直接短路，见 `absoluteAvatar`
+ * 上方的注释）。
  */
 export interface GroupBase {
   group_id: string
@@ -418,8 +419,12 @@ export interface AcceptInvitationResult {
  * （跨文件引用只写文件名 + 符号名，不写行号；理由见 `discovery.ts` 的
  * `absoluteAvatar` 上方那条约定。）
  *
- * `null` 与空串统一归一为 `null`（未知/无头像），不兜底成空串：空串会被
- * `<AvatarImage src="">` 当成一次真实的图片请求。
+ * `null` 与空串统一归一为 `null`（未知/无头像）。归一的理由是"没有头像"只该有
+ * 一种表示，让调用点不必各自再判一次空串——**不是**「空串会被
+ * `<AvatarImage src="">` 当成一次真实的图片请求」：本仓
+ * `@radix-ui/react-avatar` 1.2.6 的 `useImageLoadingStatus` 第一句就是
+ * `if (!src) { setLoadingStatus("error"); return }`，空串不 `new Image()`、
+ * 不发请求。真会被空串坑到的是**裸 `<img>`**（全仓仅 `Navigation.tsx` 一处）。
  */
 const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
 

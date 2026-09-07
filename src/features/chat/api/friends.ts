@@ -130,8 +130,14 @@ export interface SentRequest {
  * 绝对 MinIO 地址，照它写会得出"不用拼接"的错误结论——`authStore.ts` 的
  * `avatar_url` 注释记录了这个坑被踩过两次的经过。
  *
- * `null` 保持 `null`（未知），不兜底成空串：空串会被 `<AvatarImage src="">`
- * 当成一次真实的图片请求。
+ * `null` 保持 `null`（未知），不兜底成空串。理由**不是**「空串会被
+ * `<AvatarImage src="">` 当成一次真实的图片请求」——本仓 `@radix-ui/react-avatar`
+ * 1.2.6 实测第一句就是 `if (!src) { setLoadingStatus("error"); return }`，
+ * 空串**不发任何请求**（`node_modules/@radix-ui/react-avatar/dist/index.mjs`）。
+ * 真正会因空串发出一次指向当前页的请求的是**裸 `<img>`**，全仓只有
+ * `Navigation.tsx` 的侧栏头像那一处。
+ * 归一本身仍然要做：`''` 和 `null` 是同一件事（没有头像），让两种值都走到
+ * `<AvatarFallback>` 那条分支，调用点就不必各自再判一次空串。
  */
 const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
 

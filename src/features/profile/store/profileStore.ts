@@ -40,6 +40,7 @@ interface ProfileState {
   loadProfile: () => Promise<void>
   updateProfile: (updates: UpdateProfileRequest) => Promise<void>
   uploadAvatar: (file: File) => Promise<void>
+  setAvatarUrl: (url: string) => void
   clearProfile: () => void
   clearError: () => void
 }
@@ -96,6 +97,14 @@ const settleError = (error: unknown, defaultMessage: string, set: SetProfileStat
  * 用户 localStorage 里的那些旧值不会自己变好：`profile` 是持久化字段，刷新后
  * 立刻被 rehydrate 出来渲染，而 `Navigation` 在每个 `/app` 页面上都挂着，
  * 会先于任何 `loadProfile()` 用那个相对路径发一次注定 404 的图片请求。
+ *
+ * ⚠️ 这一层现在是**两道防线里窄的那道**，不再是承重件：`Navigation` 已改成在
+ * **读的时候**过一次 `toAbsoluteApiUrl`（幂等，每次渲染重新求值）。迁移只跑一次，
+ * 把值冻结成迁移那一刻 `getApiBaseUrl()` 的结果——而本项目会**故意改基址**
+ * （本地无 SNI 反代），冻下来的那份此后不会再被重新审视
+ * （`toAbsoluteApiUrl` 的 `rewriteCanonicalApiOrigin` 只认正式域名的 origin）。
+ * 留着它是为了让落盘数据本身也是干净的，以及给 `Navigation` 之外将来直接读
+ * `profile.user_avatar_url` 的渲染点兜底。
  */
 const PROFILE_PERSIST_VERSION = 1
 
@@ -188,6 +197,29 @@ export const useProfileStore = create<ProfileState>()(
           settleError(error, '上传头像失败', set)
           throw error
         }
+      },
+
+      /**
+       * 把 confirm 返回的 `file_url` 写进 store —— 上传成功的**唯一**落点。
+       *
+       * 存在的理由：两个 UI 都直接调 `profileApi.uploadAvatar`（不走上面那个
+       * action，理由见它的注释），拿到 `file_url` 之后必须有个地方放。此前它们
+       * 把返回值**丢掉**，指望紧接着那次 `loadProfile()` 把新头像捞回来——那次
+       * GET 一旦失败（500 / 401 都出现过），一次**已经完成**的上传就在屏幕上
+       * 变成了「上传失败」，而后端此刻已经把这个地址写进
+       * `users."user-avatar-url"` 了（`个人资料管理.md:411`）。
+       *
+       * `file_url` 在 `storageApi` 出口已经是绝对地址（`confirmUploadResponse`
+       * 里过的 `toAbsoluteApiUrl`），这里不再拼一次。
+       *
+       * `profile` 还是 `null` 时**什么都不做**：没有可打补丁的对象，凭一个 URL
+       * 造半个 `UserProfile` 只会让"资料已加载"变成一句谎话；那种时序下
+       * 紧接着的 `loadProfile()` 本来就会把整份资料（含新头像）带回来。
+       */
+      setAvatarUrl: (url: string) => {
+        const currentProfile = get().profile
+        if (!currentProfile) return
+        set({ profile: { ...currentProfile, user_avatar_url: url } })
       },
 
       clearProfile: () => {

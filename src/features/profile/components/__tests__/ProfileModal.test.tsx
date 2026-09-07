@@ -23,6 +23,21 @@ vi.mock('@/hooks/use-toast', () => ({
   toast: toastMock,
 }))
 
+/** 替掉 `AvatarImage` 的理由与 `ProfilePage.test.tsx` 逐字相同（happy-dom 不发请求，
+ *  Radix 原件永远停在 fallback，`src` 断言不出来）。Root / Fallback 仍是真件。 */
+vi.mock('@/components/ui/avatar', async () => {
+  const actual = await vi.importActual<typeof import('@/components/ui/avatar')>('@/components/ui/avatar')
+  const { createElement } = await import('react')
+  return {
+    ...actual,
+    AvatarImage: (props: { src?: string }) =>
+      createElement('img', { 'data-testid': 'avatar-image', ...props }),
+  }
+})
+
+const renderedAvatarSrc = () =>
+  document.querySelector('[data-testid="avatar-image"]')?.getAttribute('src') ?? null
+
 const PROFILE_BASE = `${getApiBaseUrl()}/api/profile`
 const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
 
@@ -114,11 +129,20 @@ describe('ProfileModal 上传头像', () => {
     let releaseSecondPart: () => void = () => {}
     const secondPart = new Promise<void>((resolve) => { releaseSecondPart = () => resolve() })
     let partUrlCalls = 0
+    let profileGets = 0
 
     fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
       const url = String(input)
       if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
-        return json({ success: true, code: 200, data: PROFILE_DTO })
+        // 上传后的那次刷新带回新头像，且是后端原样给的**相对**路径（doc:74、:98）。
+        profileGets += 1
+        return json({
+          success: true,
+          code: 200,
+          data: profileGets === 1
+            ? PROFILE_DTO
+            : { ...PROFILE_DTO, user_avatar_url: 'avatars/u1.png?t=1706000000' },
+        })
       }
       if (url === `${STORAGE_BASE}/upload/request`) return envelope(SESSION)
       if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
@@ -158,6 +182,60 @@ describe('ProfileModal 上传头像', () => {
     expect(log).toContain(`POST ${STORAGE_BASE}/upload/confirm`)
     expect(log.some((line) => line.includes('/api/profile/avatar'))).toBe(false)
     expect(log.filter((line) => line.startsWith('PUT '))).toEqual([])
+
+    // confirm 给的是相对路径（doc:408-409），补基址在 api 出口——
+    // 断言落在 **DOM 的 `src`** 上：换成任何常数（实测
+    // `src="avatars/BROKEN-RELATIVE.png"`）都要红。
+    await waitFor(() =>
+      expect(renderedAvatarSrc()).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1706000000`),
+    )
+  })
+
+  it('confirm 成功后那次资料刷新 500：仍然弹成功，头像照样落到 DOM 上', async () => {
+    // 与 `ProfilePage` 同一条规则的第二个站点。成功的判定点是 confirm 返回
+    // （后端此刻已写回 `users."user-avatar-url"`，doc:411），不是随后那次 GET。
+    // 把 `setAvatarUrl` + 成功 toast 挪回 `await loadProfile()` 之后 → 本条红。
+    let profileGets = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        profileGets += 1
+        return profileGets === 1
+          ? json({ success: true, code: 200, data: PROFILE_DTO })
+          : json({ error: '服务器开小差了' }, 500)
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) {
+        return envelope({ ...SESSION, total_chunks: 1, chunk_size: 4 })
+      }
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        return envelope({
+          part_url: 'https://api.huanvae.cn/avatars/u1.png?partNumber=1&X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    render(<ProfileModal isOpen onClose={() => {}} />)
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(fileInput(), avatarFile())
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+    )
+    // 正对照：确实跑到了 confirm，那次 GET 也确实失败过（否则下面是句空话）。
+    expect(fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))).toContain(
+      `${STORAGE_BASE}/upload/confirm`,
+    )
+    expect(profileGets).toBe(2)
+
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
+    await waitFor(() =>
+      expect(renderedAvatarSrc()).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1706000000`),
+    )
   })
 
   it('后端失败透出原文，绝不弹「成功」', async () => {

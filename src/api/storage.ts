@@ -611,7 +611,12 @@ export const AVATAR_ALLOWED_CONTENT_TYPES = [
   'image/webp',
 ] as const
 
-/** 文档 :391 的扩展名白名单，逐字。它决定 object key 的后缀，与 MIME 是两道闸。 */
+/**
+ * `个人资料管理.md:391` 的扩展名白名单，逐字。它决定 object key 的后缀，与 MIME 是两道闸。
+ *
+ * ⚠️ 文件名必须写出来：本文件里不加限定的「文档」指的是 `文件存储管理.md`，
+ * 而 :391 在那份文档里落在别的内容上。头像那三条规则的出处全在 profile 那份。
+ */
 export const AVATAR_ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'] as const
 
 /**
@@ -635,13 +640,20 @@ function fileExtension(filename: string): string {
 
 function validateAvatarFile(file: File): void {
   if (file.size > AVATAR_MAX_SIZE) {
-    throw new Error(`文件太大，最大 10MB，当前: ${(file.size / 1024 / 1024).toFixed(2)} MB`)
+    // 字节数原样带出去，不做单位换算：`(10485761/1024/1024).toFixed(2)` 是 `"10.00"`，
+    // 于是 10.000–10.005 MiB 的文件会收到「最大 10MB，当前: 10.00 MB」——一句自相
+    // 矛盾的话。后端那一档（`个人资料管理.md:444`）的文案带的就是**实际字节数**，
+    // 这里照抄那个口径；MB 值留着方便读，但真正判定的那个数必须可见。
+    throw new Error(
+      `文件太大，最大 10MB，当前: ${file.size} 字节（约 ${(file.size / 1024 / 1024).toFixed(2)} MB）`,
+    )
   }
   if (!(AVATAR_ALLOWED_CONTENT_TYPES as readonly string[]).includes(file.type)) {
     throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
   }
   // 扩展名单独判：MIME 与扩展名在后端是两条独立规则，而且**扩展名**才是拼进
-  // object key 的那一个（文档 :391、:420、:453）。`photo.bmp` 被改名成
+  // object key 的那一个（`个人资料管理.md` 的 :391、:420、:453 —— 不是本文件里
+  // 不加限定的那份 `文件存储管理.md`）。`photo.bmp` 被改名成
   // `image/png` 的 MIME 照样过不了后端那一关。
   if (!(AVATAR_ALLOWED_EXTENSIONS as readonly string[]).includes(fileExtension(file.name))) {
     throw new Error('文件扩展名不支持，请使用 .jpg / .jpeg / .png / .gif / .webp')
@@ -840,12 +852,31 @@ export const storageApi = {
   },
 
   /**
-   * 上传单个分片
+   * 上传单个分片。
+   *
+   * @param onBytes 本片**已发出的字节数**（0 → chunk.size），由 `xhr.upload.onprogress`
+   *   驱动。没有它的时候，整条链路只在一片**完全传完**之后才报一次进度——而头像档
+   *   永远只有 1 片（30 MB 的分片 vs 10 MB 的上限，见 {@link uploadWithMultipart}），
+   *   于是"进度"实际只有一个取值：100%，还是在字节全部传完、正在 confirm 的时候才出现。
+   *   字节级回调是让那个数字在传输过程中真的有意义的唯一办法：`xhr.upload` 是
+   *   XHR 相对 `fetch` 仅剩的优势，不用就等于没有上传进度。
+   *
+   *   ⚠️ 抛出的是**裸 `Error`**（没有 HTTP 状态码）：直传打的是对象存储的预签名 URL，
+   *   不经 `fetchWithAuth`，也没有信封可解。`isAuthError` 因此对它一律判假，
+   *   理由见 `apiClient.ts` 那段注释。
    */
-  uploadChunk: async (url: string, chunk: Blob): Promise<void> => {
+  uploadChunk: async (url: string, chunk: Blob, onBytes?: (loaded: number) => void): Promise<void> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      
+
+      if (onBytes) {
+        // `xhr.upload` 在部分环境（含 happy-dom 的精简实现）上可能不存在，
+        // 缺它只是没有细粒度进度，不该让整次上传失败。
+        xhr.upload?.addEventListener('progress', (event: ProgressEvent) => {
+          onBytes(Math.min(event.loaded, chunk.size))
+        })
+      }
+
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve()
@@ -853,16 +884,25 @@ export const storageApi = {
           reject(new Error(`分片上传失败: HTTP ${xhr.status}`))
         }
       }
-      
+
       xhr.onerror = () => reject(new Error('网络错误'))
-      
+
       xhr.open('PUT', url)
       xhr.send(chunk)
     })
   },
 
   /**
-   * 分片上传文件（带进度回调）
+   * 分片上传文件（带进度回调）。
+   *
+   * 进度**在字节层面**报，不是在分片层面：`onProgress` 在每次 `xhr.upload.progress`
+   * 上都会触发一次，`loaded` = 已完成分片的字节数 + 当前这一片已发出的字节数。
+   *
+   * 这一点对头像档是决定性的：分片大小固定 30 MB（`文件存储管理.md:185`），
+   * 头像上限 10 MB（`个人资料管理.md:393`）⇒ **永远只有 1 片**
+   * （`个人资料管理.md:668` 自己也这么写：「头像很小，通常只有 1 片」）。
+   * 只在分片完成时报进度的话，唯一可能出现的数就是 100%，而且要等字节全部传完
+   * 才出现——用户看到的是"一直转圈，然后一瞬间 100%"。
    */
   uploadWithMultipart: async (
     file: File,
@@ -905,20 +945,30 @@ export const storageApi = {
       const end = Math.min(start + chunkSize, file.size)
       const chunk = file.slice(start, end)
       
-      // 3. 上传分片
-      await storageApi.uploadChunk(part_url, chunk)
-      
-      // 4. 更新进度
+      // 3. 上传分片。字节级进度直接由 XHR 的 upload.progress 驱动：
+      //    已完成分片的字节数 + 本片已发出的字节数。
+      const completedBytes = totalUploaded
+      const report = onProgress
+        ? (loaded: number) => {
+            onProgress({
+              percent: Math.min((loaded / file.size) * 100, 100),
+              loaded,
+              total: file.size,
+              currentChunk: i + 1,
+              totalChunks,
+            })
+          }
+        : undefined
+
+      await storageApi.uploadChunk(
+        part_url,
+        chunk,
+        report && ((loadedInChunk: number) => report(completedBytes + loadedInChunk)),
+      )
+
+      // 4. 本片确定传完了：无论 upload.progress 有没有报到底，都补一个准确的落点。
       totalUploaded += chunk.size
-      if (onProgress) {
-        onProgress({
-          percent: (totalUploaded / file.size) * 100,
-          loaded: totalUploaded,
-          total: file.size,
-          currentChunk: i + 1,
-          totalChunks,
-        })
-      }
+      report?.(totalUploaded)
     }
   },
 

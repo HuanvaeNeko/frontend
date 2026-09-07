@@ -758,6 +758,27 @@ describe('storageApi.uploadAvatar（三档共用层）', () => {
     releaseAvatar(ok({ success: false, code: 400, message: '文件大小超过限制' }, 400))
     await expect(avatar).rejects.toThrow('文件大小超过限制')
   })
+
+  it('刚过线的文件不会收到「最大 10MB，当前: 10.00 MB」这种自相矛盾的话', async () => {
+    // 10 MiB + 1 字节：`(10485761/1024/1024).toFixed(2)` 就是 `"10.00"`，
+    // 只报 MB 值时这句话在字面上说的是"没超"。后端那一档的文案带的是**实际字节数**
+    // （`个人资料管理.md:444`），客户端这一道便利检查照抄那个口径。
+    const oversized = new File(['x'], 'me.png', { type: 'image/png' })
+    Object.defineProperty(oversized, 'size', { value: 10 * 1024 * 1024 + 1 })
+
+    const error = await storageApi
+      .uploadAvatar(oversized, { avatar_target: 'user_avatar' })
+      .catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(Error)
+    // 正对照：这一句确实是那道大小闸抛的，而不是别的什么错误碰巧带了字节数。
+    expect((error as Error).message).toContain('文件太大')
+    expect((error as Error).message).toContain('10485761')
+    // 本条的正身：把字节数删回纯 MB 文案 → 立刻红。
+    expect((error as Error).message).not.toBe('文件太大，最大 10MB，当前: 10.00 MB')
+    // 一个字节都没往外发（客户端这道闸的全部价值就是省掉这次往返）。
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
 
 /**

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { type LucideIcon, Bot, Settings, User, LogOut, Video, Users, FileText, MessageSquare, Globe, Monitor } from 'lucide-react'
 import { AppLink as Link } from '@/components/common/AppLink'
 import { usePathname } from '@/lib/navigation'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChatStore } from '@/features/chat/store/chatStore'
@@ -95,9 +96,20 @@ export function DesktopSidebar() {
   const { profile } = useProfileStore()
 
   /**
-   * 侧栏头像的地址。两个来源都**已经是绝对地址**：`authStore` 登录时就过了
-   * `toAbsoluteApiUrl`，`profile.user_avatar_url` 由 `profileApi.getProfile` 出口补基址
-   * （落盘的旧相对值由 `profileStore` 的 persist migrate 一次性搬平）。
+   * 侧栏头像的地址。**在这里读的时候补基址**，不假设上游已经补好——那个假设是错的：
+   *
+   * - `profile.user_avatar_url`：`profileApi.getProfile` 出口确实补过，落盘的旧值也由
+   *   `profileStore` 的 persist migrate 搬平了。这一支是安全的。
+   * - `user.avatar_url`（`authStore`）：登录时的补基址是本分支上的改动，**还没进 main**。
+   *   `auth-storage` 持久化 `user`、没有 `version` 也没有 `migrate`，`refreshAccessToken`
+   *   也从不重写 `user`——所以**每一个已经部署出去的用户**，落盘的都还是相对路径。
+   *   它非空、`||` 会选中它，于是下面那个首字母兜底根本不会触发，用户拿到的正是
+   *   兜底本该防住的那个碎图标。
+   *
+   * `toAbsoluteApiUrl` 幂等（已带协议的原样返回），所以对已经绝对的值是 no-op；
+   * 空串 / `null` / `undefined` 一律得到 `undefined`，`?? null` 归一成"没有头像"。
+   * 读时归一还有一个 persist migrate 给不了的性质：它**每次渲染重新求值**，而迁移
+   * 只跑一次、把值冻结在迁移那一刻的基址上——本项目会故意改基址（本地无 SNI 反代）。
    *
    * 这里不是 `<Avatar>` 而是一个**裸 `<img>`**，所以它比另外两个渲染点更脆：
    * - `src=""` 会让 React 打出
@@ -116,7 +128,7 @@ export function DesktopSidebar() {
    * （`Navigation.test.tsx` 用一条渲染裸 `<img src="">` 的**正对照**先证明这句警告
    * 在本环境真的会出现，再断言本组件不产生它——否则"没有警告"是句空话。）
    */
-  const avatarSrc = profile?.user_avatar_url || user?.avatar_url || null
+  const avatarSrc = toAbsoluteApiUrl(profile?.user_avatar_url || user?.avatar_url) ?? null
   const avatarInitial = (profile?.user_nickname || user?.nickname || 'U')[0]?.toUpperCase() ?? 'U'
 
   // Save last visited path

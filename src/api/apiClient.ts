@@ -175,10 +175,16 @@ export const isBusiness401Request = (method: string | undefined, url: string): b
  * 3. 哨兵文案整串相等 —— 只兜前端自己抛的两条裸 `Error`，见
  *    `FRONTEND_AUTH_SENTINELS`。**不做子串匹配，不看后端文案。**
  *
- * 代价说清楚：还没带上状态码的裸 `Error`（例如 profile 的 `uploadAvatar`）
+ * 代价说清楚：还没带上状态码的裸 `Error`（例如 `storage.ts` 的 `uploadChunk`——
+ * 分片直传走的是 XHR 而不是 `fetchWithAuth`，失败时抛的是
+ * `new Error('分片上传失败: HTTP 403')` / `new Error('网络错误')`，没有 `status`）
  * 若真是会话失效，这里会漏判 → 错误照常上抛、用户看到一条可见的失败提示，
  * 而不是被静默送去登录页。这是刻意选的方向：可见的错误提示是可恢复的，
  * 无解释的登出不是。
+ *
+ * （这里原先举的例子是 profile 的 `uploadAvatar`。那个例子已经过期：它现在整条走
+ * `storageApi.uploadAvatar` → `readEnvelope`，后端失败一律是带真实状态码的
+ * `ApiError`，落在上面第 2 档而不是这一档。段落的方向没变，换的只是例子。）
  */
 const isAuthError = (error: Error | string): boolean => {
   // AuthenticationError 直接返回 true

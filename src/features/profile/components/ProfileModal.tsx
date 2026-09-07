@@ -185,7 +185,7 @@ function FormTextarea({
 // 基本信息面板
 function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   const { toast } = useToast()
-  const { profile, isLoading, loadProfile, updateProfile } = useProfileStore()
+  const { profile, isLoading, loadProfile, updateProfile, setAvatarUrl } = useProfileStore()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -195,10 +195,9 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   })
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   /**
-   * 分片直传的真实进度（0-100），`null` = 还没有任何一片传完。
-   *
-   * 链路的前两段（算 SHA-256、`upload/request`）没有进度可报，第一片 PUT 完成
-   * 才有第一个数——所以 `null` 期间照旧显示不确定态的转圈，不假装是 0%。
+   * 直传的真实进度（0-100），`null` = 还没有任何字节发出去。
+   * 口径与 `ProfilePage` 同一处逐条相同：`xhr.upload.onprogress` 的**字节**进度，
+   * 不是"第几片传完了"（头像档永远只有 1 片）。
    */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
@@ -253,7 +252,9 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
    * 理由写在那一处，不在这里复述一遍——两份注释会各自漂移。
    * 简版：失败透出后端原文（`group-` 前缀账号是**永久** 400，doc:454；超限文案带真实
    * 字节数，doc:444）、409 不自动重试（doc:445）、成功不回写（doc:411），
-   * 成功的信号是 toast 而不是"图变了"（`?t=` 是秒级缓存戳，doc:413-414）。
+   * 成功的信号是 toast 而不是"图变了"（`?t=` 是秒级缓存戳，doc:413-414），
+   * 以及——**成功的判定点是 confirm 返回，不是随后那次 `loadProfile()`**：那次 GET
+   * 失败不能把一次已完成的上传重新说成失败（500 → 假的「上传失败」，401 → 静默登出）。
    */
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -262,9 +263,12 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     setUploadingAvatar(true)
     setUploadProgress(null)
     try {
-      await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
-      await loadProfile()
+      const { file_url } = await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
+      setAvatarUrl(file_url)
       toast({ title: '成功', description: '头像上传成功' })
+      await loadProfile().catch((error) => {
+        console.error('头像已上传成功，刷新完整资料失败:', error)
+      })
     } catch (error) {
       toast({
         title: '上传失败',

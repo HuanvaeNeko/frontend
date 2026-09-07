@@ -906,7 +906,8 @@ describe('groupsApi.getJoinRequests（删掉 result.data || []）', () => {
     const [withoutAvatar] = await groupsApi.getJoinRequests('g1')
     expect(withoutAvatar.user_avatar_url).toBeNull()
 
-    // 空串同样归一成 null：<AvatarImage src=""> 会打一次指向当前页的请求。
+    // 空串同样归一成 null——为的是"没有头像"只有一种表示，**不是**因为
+    // <AvatarImage src=""> 会发请求（Radix 1.2.6 对 !src 直接短路，不发）。
     // `JOIN_REQUEST_ROW` 本身就带 `user_avatar_url: ''`（第 788 行），这里
     // 才是真正驱动那个默认值走一遍的用例——上面两条各自显式传了非空/null，
     // 谁都没有替空串这条分支断言过。
@@ -1290,7 +1291,8 @@ describe('groupsApi.searchGroups：改走 GET /api/discovery/search', () => {
     const [noAvatar] = await groupsApi.searchGroups('kw')
     expect(noAvatar.avatar_url).toBeNull()
 
-    // 空串不能原样出去：<AvatarImage src=""> 会发一次真实图片请求。
+    // 空串不能原样出去：调用点判"有没有头像"只该看一个值。
+    // （不是因为 <AvatarImage src=""> 会发请求——Radix 1.2.6 对 !src 直接短路。）
     // ⚠️ 这一条**真正**红掉的前提是 `absoluteAvatar` 被拆掉，不是 `emptyableAvatarPath`
     // 里那句 `value === '' ? null : value`——后者是贴身冗余，去掉本条照样绿
     // （`toAbsoluteApiUrl('')` 已经是 `undefined`，见 `apiConfig.ts` 的 `toAbsoluteApiUrl`）。
@@ -1442,7 +1444,8 @@ describe('groupsApi.getPublicGroupInfo（非成员视角的窄结构）', () => 
       `${getApiBaseUrl()}/avatars/g1.png?t=1`,
     )
 
-    // 样例给的就是 ""（doc:629），不能原样出去喂给 <AvatarImage src="">
+    // 样例给的就是 ""（doc:629），不能原样出去——调用点判"有没有头像"只该看
+    // 一个值。（Radix 1.2.6 对空串是直接短路不发请求的，那不是这里的理由。）
     fetchMock.mockResolvedValueOnce(envelope(PUBLIC_GROUP_DTO))
     expect((await groupsApi.getPublicGroupInfo('g1')).group_avatar_url).toBeNull()
 
