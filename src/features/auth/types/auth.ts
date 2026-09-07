@@ -76,6 +76,12 @@ export interface AuthStore extends AuthState {
   logout: () => Promise<void>
   refreshAccessToken: () => Promise<void>
   setTokens: (tokens: { accessToken: string; refreshToken: string; expiresIn: number }) => void
+  /**
+   * 只清 token 三件套，**不**结束会话（不清盘、不跑内存重置、`user` 留下）。
+   * 用在传输层失败上——"这一次请求没成"不等于"这个账号在这台设备上的会话结束了"。
+   * 与 {@link AuthStore.clearAuth} 的分界见 `lib/sessionScope.ts` 顶部。
+   */
+  clearCredentials: () => void
   clearAuth: () => void
   checkTokenExpiry: () => boolean
 }

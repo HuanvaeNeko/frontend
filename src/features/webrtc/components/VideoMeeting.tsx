@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '@/features/webrtc/api/webrtc'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { toAbsoluteApiUrl, toApiRelativePath } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 import { MOBILE_INTERACTIONS } from '@/lib/mobileInteractions'
 
@@ -412,7 +413,13 @@ export default function VideoMeeting() {
         const joinResult = await webrtcApi.joinRoom(roomId, {
           password,
           display_name: displayName,
-          avatar_url: user?.avatar_url || undefined,
+          // 请求体这个字段要的是**相对路径**，不是 store 里那个绝对地址：
+          // `backend-docs/webrtc/WebRTC房间.md:154` 逐字写着
+          // `"avatar_url": "avatars/guest.png?t=1706000000"  // 可选，头像相对路径`。
+          // 后端把它原样转给房间里每一个人（:181 / :265 / :302），所以发绝对地址
+          // 坏的是**别人**屏幕上的图——而本项目会故意把基址指到本地反代，
+          // 那时发出去的会是 `http://127.0.0.1:8787/...`，别人根本连不上。
+          avatar_url: toApiRelativePath(user?.avatar_url),
         })
         wsToken = joinResult.ws_token
         iceServersRef.current = joinResult.ice_servers
@@ -1112,11 +1119,23 @@ export default function VideoMeeting() {
                       </div>
                       {isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                     </li>
-                    {remoteStreams.map(rs => (
+                    {remoteStreams.map(rs => {
+                      // 信令送来的是**相对路径**——`joined` 名单与 `peer_joined` 的样例
+                      // （`backend-docs/webrtc/WebRTC房间.md:265` / `:302`）都是
+                      // `"avatar_url": "avatars/user123.png?t=1706000000"`。此前这个值直接
+                      // 塞进 `src`，也就是拿相对路径去解析**当前页面**的 origin（前端域名，
+                      // 不是 API 域名），于是每一个带头像的参与者都渲染成碎图标。
+                      // `toAbsoluteApiUrl` 幂等，对方若发来绝对地址是 no-op。
+                      //
+                      // ⚠️ 这一处**没有测试钉住**：`remoteStreams` 只在 `RTCPeerConnection`
+                      // 的 `ontrack` 里才会有条目，happy-dom 里造不出来。发送侧那一半
+                      // （`toApiRelativePath`）有 `__tests__/VideoMeeting.test.tsx` 钉着。
+                      const peerAvatar = toAbsoluteApiUrl(rs.participant.user_info.avatar_url)
+                      return (
                       <li key={rs.peerId} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-accent/50 transition-colors">
                         <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                          {rs.participant.user_info.avatar_url ? (
-                            <img src={rs.participant.user_info.avatar_url} alt="" className="w-full h-full object-cover" />
+                          {peerAvatar ? (
+                            <img src={peerAvatar} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-sm font-semibold text-muted-foreground">{(rs.participant.name?.[0] || '?').toUpperCase()}</span>
                           )}
@@ -1127,7 +1146,8 @@ export default function VideoMeeting() {
                         </div>
                         {rs.isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                       </li>
-                    ))}
+                      )
+                    })}
                   </ul>
                 </div>
               </motion.aside>

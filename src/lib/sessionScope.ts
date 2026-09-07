@@ -1,6 +1,25 @@
 /**
  * 会话结束时清掉「属于这个账号」的一切，只留下「属于这台设备」的东西。
  *
+ * ## 什么算「会话结束」，什么不算
+ *
+ * 这条定义此前没写在任何地方，于是 `refreshAccessToken` 的 catch 把**网络抖一下**
+ * 也算成了会话结束——代价是 {@link DEVICE_SCOPED_KEYS} 之外的一切被销毁，包括
+ * `api-config-storage` 里那个用户自己敲进去的第三方 `aiApiKey`：只有他知道、
+ * 应用无从恢复。两侧的错误代价**不对称**：清少了会泄露给下一个人，清多了会毁掉
+ * 一份不可恢复的数据。所以两件事必须分开：
+ *
+ * - **会话结束**（`authStore.clearAuth` → {@link endSession}）：用户意图明确的三条
+ *   ——登出按钮、`DevicesPage` 撤销当前设备、`SettingsPage` 切换/重置服务器——
+ *   加上后端**真的**判定凭证无效的那一类（各 `fetchWithAuth` 副本的 401 分支、
+ *   `POST /api/auth/refresh` 回 401）。这一档跑内存重置 + 清盘。
+ * - **只是拿不到票据**（`authStore.clearCredentials`）：传输层失败——断网、超时、
+ *   502、响应体不是约定的形状。它证明不了"这个账号在这台设备上的会话结束了"，
+ *   只证明"这一次请求没成"。这一档只把 token 三件套清空，其余一个字节都不动。
+ *
+ * 只清凭证之所以**不会**变成泄露口子，是因为下一场会话必须经过
+ * {@link beginSession}，而它做的第一件事就是清盘（见那里的注释）。
+ *
  * ## 为什么是**反向名单**（默认清掉），而不是一串 `clearX()`
  *
  * 本次 bug 的形状是：`profileStore.clearProfile` 早就写好了，**零调用点**——
@@ -17,6 +36,24 @@
  *
  * `app-settings` 那一条把这个默认清掉的规则推进到**字段级**：只有列出来的字段
  * 留下，往那个 store 里新增的字段默认跟着账号走。
+ *
+ * ## 清盘是一个**时点**，而写入不是——所以还需要世代号
+ *
+ * 清盘只证明"这一刻盘上没有账号级数据"。登出那一刻若有一个请求还在飞
+ * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`），它的响应会在
+ * 清盘**之后**落地，`set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条
+ * 尤其糟，落回去的是一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage`
+ * 里等下一个人。三道防线，从自动到需要作者配合：
+ *
+ * 1. {@link beginSession} 的清盘 —— **完全自动，覆盖任何持久化切片**。下一场会话
+ *    无论如何都要经过它，所以死窗口里漏进盘的东西活不过下一次登录，作者什么都不用做。
+ * 2. {@link sessionScopedLocalStorage} 的写入闸门 —— 会话结束后、下一场会话开始前，
+ *    对账号级键的落盘写入直接丢弃。把它当 persist 的 `storage` 用就自动生效
+ *    （本仓四个持久化 store 都已接上），这是把第 1 条的窗口从"到下一次登录为止"
+ *    收到"立刻"。
+ * 3. {@link currentSessionGeneration} / {@link isSameSession} —— **内存**那一半只能
+ *    显式做：异步 action 在发起时记下世代号，落地前对照，不一致就丢弃。闸门拦不住
+ *    内存（`useAuthStore.getState().accessToken` 照样被写脏，而 API 层读的是内存）。
  *
  * ## 内存副本
  *
@@ -92,17 +129,31 @@ const DEVICE_SCOPED_KEYS: ReadonlyMap<string, DeviceScopedRule> = new Map<string
   ['huanvae.install-targets.latest', { keep: 'whole' }],
 
   /**
-   * 「记住我」勾选后落下的登录名（`LoginForm`）。它是本表里唯一一条**用户显式
-   * 勾选**要求跨会话保留的数据，而它唯一的读取点就在下一次登录的表单里——
-   * 也就是说清掉它，这个功能就永远不可能生效，`LoginForm` 里那段读取分支会变成
-   * 死代码。所以这里保留，代价是承认：共用设备上，下一个人会在用户名框里看见
-   * 上一个人勾选保留的账号名。要改变这个取舍，正确的做法是**删掉这个功能**
-   * （连同勾选框），而不是让它写进去却在登出时清掉。
+   * 「记住我」勾选后落下的登录名（`LoginForm`）。
+   *
+   * ⚠️ **这一条是本表里唯一一条明知会泄露、仍然留下的**：共用设备上，上一个人的
+   * 账号 ID 会在下一个人打开登录页时**已经填在用户名框里、勾选框已经打勾**，
+   * 他还没来得及做任何事就看到了。只读扫描把它判成 `privacy_leak` 是对的，
+   * 这里不假装它没有代价。
+   *
+   * 仍然留下的理由只有一条，而且是结构性的：它唯一的读取点就在**下一次登录的
+   * 表单里**（`LoginForm` 顶部那段 `localStorage.getItem(REMEMBER_USER_KEY)`），
+   * 登出时清掉它，等于这个功能永远不可能生效——写进去的值从来活不到被读的那一刻，
+   * 那段读取分支成为死代码。也就是说这里没有"既保留功能又不泄露"的第三种写法：
+   * 要么承认这个泄露，要么**删掉这个功能连同勾选框**。
+   *
+   * 判断落在"用户显式勾选过"这一点上：泄露的是他自己按下的按钮的直接后果，
+   * 范围也仅限一个账号 ID（不是凭证，登不进任何东西）。要改这个取舍，改的是
+   * `LoginForm`（删功能），不是这张表——把键留在写入端却在登出时清掉，
+   * 得到的是"功能坏了"而不是"泄露没了"。
    */
   ['huanvae-remember-user_id', { keep: 'whole' }],
 
   /**
-   * 这台设备的音量与静音（`hooks/useSound.ts` 在模块初始化时读）。
+   * 这台设备的音量与静音。读取点是 `hooks/useSound.ts` 的 `SoundManager`
+   * **构造函数**，而那个单例由 `getSoundManager()` 在第一次播放/读设置时**懒建**
+   * ——不是模块初始化时读，所以登出后不重新加载页面的话，已经建好的单例不会
+   * 重新读盘，这两个键的值只影响**下一个**被建出来的单例。
    * 与 `app-settings` 的 `soundEnabled` / `soundVolume` 是同一件事的第二份拷贝，
    * 两边的设备级判断必须一致，否则登出后音量会跟着哪一份先被读到而抖动。
    */
@@ -242,15 +293,120 @@ export function purgeAccountScopedStorage(): void {
   }
 }
 
+/**
+ * 会话世代号：每结束一场会话 +1。
+ *
+ * 只增不减、不落盘：它要回答的问题是"我发起这次请求时的那场会话，还是现在这一场吗"，
+ * 跨页面加载没有意义（整页加载本身就把内存状态全丢了）。
+ */
+let sessionGeneration = 0
+
+/**
+ * 死窗口标记：{@link endSession} 之后、{@link beginSession} 之前为 `true`。
+ *
+ * 初值 `false` 是有意的：整页加载时本模块重新初始化，此时并没有"刚结束的会话"——
+ * 用户可能正带着 rehydrate 出来的有效 token 回来。把初值写成 `true` 会让
+ * 每次刷新页面后的第一次落盘写入被闸门吃掉。
+ */
+let inDeadWindow = false
+
+/**
+ * 当前会话的世代号。异步 action 在**发起时**取一次，落地前用 {@link isSameSession} 对照。
+ *
+ * 用法（`authStore.refreshAccessToken` / `profileStore.loadProfile` 都是这个形状）：
+ *
+ *     const session = currentSessionGeneration()
+ *     const data = await fetch(...)
+ *     if (!isSameSession(session)) return   // 会话结束了，这份数据属于上一个人
+ *     set({ ... })
+ */
+export function currentSessionGeneration(): number {
+  return sessionGeneration
+}
+
+/** `generation` 是否仍是当前这一场会话（即中途没有 {@link endSession} 过）。 */
+export function isSameSession(generation: number): boolean {
+  return generation === sessionGeneration
+}
+
+/**
+ * 账号级键在**死窗口**里的落盘写入是否放行。
+ *
+ * 设备级键任何时候都放行——它们本来就该跨会话活着，而且登出后的登录页上用户
+ * 照样会切主题、调音量。
+ */
+function isWriteAllowed(key: string): boolean {
+  return !inDeadWindow || DEVICE_SCOPED_KEYS.has(key)
+}
+
+/**
+ * `zustand/persist` 的 `storage`：带会话闸门的 `localStorage`。
+ *
+ * 与裸 `localStorage` 的唯一差别在 `setItem`：会话已经结束、下一场还没开始时，
+ * 账号级键的写入被**丢弃**（并把该键从盘上抹掉，防止写入前它还在）。这拦的是
+ * 「登出那一刻还在飞的请求回来了，persist 把上一个人的数据重新落盘」——刷新那条
+ * 落回去的是一对当前有效的 token。
+ *
+ * `app-settings` 这类字段级设备键放行后立刻按 {@link DEVICE_SCOPED_SETTING_FIELDS}
+ * 重新裁一遍：登录页上改主题必须能存下来，但同一次写入里夹带的账号级字段不能。
+ *
+ * ⚠️ 闸门只管**落盘**。内存里的 `getState()` 照样会被写脏，而 API 层读的是内存——
+ * 内存那一半必须由 action 自己用 {@link currentSessionGeneration} 挡，见本文件顶部。
+ */
+export const sessionScopedLocalStorage = {
+  getItem: (name: string): string | null => {
+    if (typeof window === 'undefined') return null
+    try {
+      return window.localStorage.getItem(name)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    if (typeof window === 'undefined') return
+    try {
+      if (!isWriteAllowed(name)) {
+        console.warn(`[sessionScope] 会话已结束，丢弃对 ${name} 的落盘写入`)
+        window.localStorage.removeItem(name)
+        return
+      }
+      window.localStorage.setItem(name, value)
+      const rule = DEVICE_SCOPED_KEYS.get(name)
+      if (inDeadWindow && rule !== undefined && rule.keep === 'zustandFields') {
+        keepOnlyFields(window.localStorage, name, rule.fields)
+      }
+    } catch {
+      // ignore：Safari 隐私模式等场景下 storage 访问本身会抛
+    }
+  },
+  removeItem: (name: string): void => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.removeItem(name)
+    } catch {
+      // ignore
+    }
+  },
+}
+
 /** 防重入：某个重置回调若又触发了一次登出，不该把回调链再跑一遍。 */
 let ending = false
 
 /**
- * 结束会话：先跑内存重置，再清盘。
+ * 结束会话：先跑内存重置，再清盘，最后关闸门 + 递增世代号。
  *
- * 唯一调用点是 `authStore.clearAuth`——全仓所有登出路径（登出按钮、401 静默跳转的
- * 十份副本、刷新失败、撤销当前设备、切换服务器）都汇到那一个函数，所以挂在那里
- * 等于挂在每一条路径上，不需要谁去逐条接线。
+ * 唯一调用点是 `authStore.clearAuth`。**注意这句话只覆盖"入口"这一半**：全仓所有
+ * 登出路径（登出按钮、401 静默跳转的十份副本、刷新的 401、撤销当前设备、切换服务器）
+ * 确实都汇到那一个函数，所以不需要谁去逐条接线；但落盘副本在这一刻**还没有定局**
+ * ——飞在半空的请求会在清盘之后落地。补上那一半的是闸门与世代号，见本文件顶部
+ * 「清盘是一个时点，而写入不是」。
+ *
+ * 顺序不能改：
+ * 1. 重置回调先跑，它们对 persist store 的写入照常落盘（此时闸门还开着）；
+ * 2. 清盘把这些写入连同其余账号级键一起删掉；
+ * 3. 最后才关闸门——放在第 1 步之前的话，重置回调自己的落盘写入会被闸门吃掉，
+ *    行为虽然也对（第 2 步照样会删），但把"闸门"和"清盘"两件事的因果搅在一起，
+ *    出问题时分不清是谁干的。
  *
  * 单个回调抛错不阻断后面的回调，更不阻断清盘：落盘副本是承重的那一半。
  */
@@ -266,7 +422,35 @@ export function endSession(): void {
       }
     }
     purgeAccountScopedStorage()
+    inDeadWindow = true
+    sessionGeneration += 1
   } finally {
     ending = false
   }
+}
+
+/**
+ * 开始一场新会话：先清盘，再开闸门。
+ *
+ * 唯一调用点是 `authStore.login` 的成功分支，且在 `set()` **之前**——反过来的话
+ * 这次清盘会把刚落盘的新 token 一起删掉。
+ *
+ * **不**挂在 `setTokens` 上：那个函数今天零调用点，而它的名字是「设置 token」，
+ * 将来最可能的调用形态是"会话中途换一对新 token"，在那里清盘会把同一个人的
+ * profile / AI 配置一起毁掉。`login` 是全仓唯一能证明"这是一场新会话"的地方
+ * （它手里有 `credentials.user_id`）。
+ *
+ * ## 为什么这里也要清一次盘
+ *
+ * 这是三道防线里**唯一完全自动**的一道：将来某个持久化切片没有走
+ * {@link sessionScopedLocalStorage}（比如作者直接 `localStorage.setItem`），它在死窗口
+ * 里漏下的东西闸门管不着，但下一场会话无论如何都要经过这一行。也就是说"上一个人的
+ * 数据活到下一个人的会话里"这件事，作者什么都不做也不会发生。
+ *
+ * 它同时是 `clearCredentials`（只清凭证、不清盘）敢于存在的前提：那一档留在盘上的
+ * 东西，最迟在下一个人登录的这一刻被清掉。
+ */
+export function beginSession(): void {
+  purgeAccountScopedStorage()
+  inDeadWindow = false
 }

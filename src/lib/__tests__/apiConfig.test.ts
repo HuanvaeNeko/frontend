@@ -1,5 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { toAbsoluteApiUrl, getApiBaseUrl, setApiBaseUrl, clearApiBaseUrl } from '../apiConfig'
+import {
+  toAbsoluteApiUrl,
+  toApiRelativePath,
+  getApiBaseUrl,
+  setApiBaseUrl,
+  clearApiBaseUrl,
+} from '../apiConfig'
 
 describe('toAbsoluteApiUrl', () => {
   afterEach(() => clearApiBaseUrl())
@@ -95,5 +101,61 @@ describe('toAbsoluteApiUrl：后端正式域名的绝对地址改写到当前基
   it('相对路径的补基址行为不变', () => {
     setApiBaseUrl(PROXY)
     expect(toAbsoluteApiUrl('avatars/u.png?t=1')).toBe(`${PROXY}/avatars/u.png?t=1`)
+  })
+})
+
+/**
+ * `toApiRelativePath` 的存在理由是 webrtc：join / create 房间的请求体字段
+ * `avatar_url` 文档写的是**相对路径**（`backend-docs/webrtc/WebRTC房间.md:154`
+ * 逐字 `"avatar_url": "avatars/guest.png?t=1706000000"  // 可选，头像相对路径`，
+ * 创建房间 :72 同样），而 store 里存的是补过基址的绝对地址。
+ */
+describe('toApiRelativePath —— 发回后端时把绝对地址还原成相对路径', () => {
+  const PROXY = 'http://127.0.0.1:8787'
+
+  afterEach(() => clearApiBaseUrl())
+
+  it('丢掉 origin，保留 path + query（后端样例就是这个形状）', () => {
+    expect(toApiRelativePath('https://api.huanvae.cn/avatars/guest.png?t=1706000000')).toBe(
+      'avatars/guest.png?t=1706000000',
+    )
+  })
+
+  it('origin 与当前基址**不同**时也照样还原 —— 本项目会故意改基址', () => {
+    // 这条钉的是"丢掉 origin"而不是"减去当前基址"：落盘的绝对地址可能是上一次
+    // 用另一个基址拼出来的。改成前缀匹配当前基址的实现，这条红。
+    setApiBaseUrl('https://api.huanvae.cn')
+    expect(toApiRelativePath(`${PROXY}/avatars/alice.png?t=1`)).toBe('avatars/alice.png?t=1')
+    // 正对照：同一次运行里，当前基址下的地址也还原成同一个形状
+    expect(toApiRelativePath('https://api.huanvae.cn/avatars/alice.png?t=1')).toBe(
+      'avatars/alice.png?t=1',
+    )
+  })
+
+  it('已经是相对路径的值原样返回（幂等），前导斜杠去掉', () => {
+    expect(toApiRelativePath('avatars/alice.png?t=1')).toBe('avatars/alice.png?t=1')
+    expect(toApiRelativePath('/avatars/alice.png?t=1')).toBe('avatars/alice.png?t=1')
+  })
+
+  it('与 toAbsoluteApiUrl 往返一致：补基址再还原 = 原值', () => {
+    setApiBaseUrl(PROXY)
+    const relative = 'avatars/alice.png?t=1706000000'
+    expect(toApiRelativePath(toAbsoluteApiUrl(relative))).toBe(relative)
+  })
+
+  it('hash 一并保留', () => {
+    expect(toApiRelativePath('https://api.huanvae.cn/a/b?q=1#frag')).toBe('a/b?q=1#frag')
+  })
+
+  it('data: / blob: 返回 undefined —— 那不是后端存储路径，不该发给信令服务器', () => {
+    expect(toApiRelativePath('data:image/png;base64,AAAA')).toBeUndefined()
+    expect(toApiRelativePath('blob:https://x/y')).toBeUndefined()
+  })
+
+  it('null / undefined / 空串 / 只有 origin 的地址都返回 undefined', () => {
+    expect(toApiRelativePath(null)).toBeUndefined()
+    expect(toApiRelativePath(undefined)).toBeUndefined()
+    expect(toApiRelativePath('   ')).toBeUndefined()
+    expect(toApiRelativePath('https://api.huanvae.cn/')).toBeUndefined()
   })
 })

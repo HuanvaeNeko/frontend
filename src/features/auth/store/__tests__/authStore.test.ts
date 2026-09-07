@@ -324,6 +324,134 @@ describe('authStore.refreshAccessToken —— 并发刷新竞态', () => {
   })
 })
 
+/**
+ * 登出那一刻还在飞的刷新请求。
+ *
+ * `refreshInFlight` 是模块级单飞锁，`clearAuth` 既不取消它也不作废它，
+ * 于是 `performRefresh` 的成功分支会在**清盘之后**执行 `set({accessToken,...})`，
+ * persist 立刻把一对**刚轮换出来、当前有效**的 token 重新写进 `auth-storage`，
+ * 明文躺在那里等下一个用这台电脑的人——直到有人登录把它覆盖掉。
+ */
+describe('refreshAccessToken —— 会话结束之后才落地的刷新结果', () => {
+  it('登出后落地的新 token 既不进内存也不落盘', async () => {
+    // 真的登录一次，而不是 setState：登录会走 beginSession()，此后落盘是真的会发生的，
+    // 下面那条 toBeNull 才不是"反正也没写进去过"。
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+    // 正对照：这一刻 auth-storage 里确实有 A 的 token。
+    expect(localStorage.getItem('auth-storage')).toContain('AT')
+
+    // 刷新飞在半空
+    let release!: (response: Response) => void
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    const inFlight = useAuthStore.getState().refreshAccessToken()
+
+    useAuthStore.getState().clearAuth()
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+
+    // 后端**成功**轮换出一对新 token，响应现在才到
+    release(
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-NEW', refresh_token: 'RT-NEW', expires_in: 3600 },
+      }),
+    )
+    await expect(inFlight).rejects.toThrow(/session end/)
+
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().refreshToken).toBeNull()
+  })
+
+  it('正对照：会话没结束时，同样的时序会正常写进内存与盘', async () => {
+    // 没有这一条，上面那条可以被"刷新永远不写 store"这种实现骗过去。
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    let release!: (response: Response) => void
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    const inFlight = useAuthStore.getState().refreshAccessToken()
+
+    release(
+      ok({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-NEW', refresh_token: 'RT-NEW', expires_in: 3600 },
+      }),
+    )
+    await inFlight
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-NEW')
+    expect(localStorage.getItem('auth-storage')).toContain('AT-NEW')
+  })
+})
+
+/**
+ * 「刷新失败」此前一律走 `clearAuth()`，而 `clearAuth` 现在会跑反向名单清盘：
+ * 一次网络抖动就会销毁 `api-config-storage` 里用户自备的第三方 `aiApiKey`。
+ * 这里只钉 authStore 这一侧的分档（票据清了、`user` 留下 / 全清）；
+ * "密钥真的还在"那一半在 `sessionHandoff.test.tsx` 里，因为要连上其它 store。
+ */
+describe('refreshAccessToken —— 传输层失败 vs 真的 401', () => {
+  it('传输层失败（断网）：清票据，但会话没结束，user 留在原处', async () => {
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+    expect(useAuthStore.getState().user?.user_id).toBe('alice')
+
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().refreshToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    // 差分就在这一行：会话没结束，所以 `user` 还在，落盘的 auth-storage 也还在。
+    expect(useAuthStore.getState().user?.user_id).toBe('alice')
+    expect(localStorage.getItem('auth-storage')).toContain('alice')
+  })
+
+  it('刷新端点回 401：会话结束，user 与整个 auth-storage 一起消失', async () => {
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
+    )
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+
+    expect(useAuthStore.getState().user).toBeNull()
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+  })
+
+  it('5xx 与响应形状坏都按传输层失败处理，不当成会话结束', async () => {
+    // 502 走的是 readEnvelope 的非 401 分支；形状坏走的是 parse 抛错。
+    // 两条都曾经落进同一个无差别 clearAuth。
+    for (const bad of [
+      ok({ success: false, code: 502, error: 'bad gateway' }, 502),
+      ok({ success: true, code: 200, data: { access_token: 'AT2' } }),
+    ]) {
+      fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+      await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+      fetchMock.mockResolvedValueOnce(bad)
+      await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+
+      expect(useAuthStore.getState().accessToken).toBeNull()
+      expect(useAuthStore.getState().user?.user_id).toBe('alice')
+    }
+  })
+})
+
 describe('auth-storage 的 persist 迁移', () => {
   const absolute = (path: string) => `${getApiBaseUrl()}/${path}`
 

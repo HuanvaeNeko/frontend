@@ -3,8 +3,14 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AuthStore, LoginRequest, RegisterRequest } from '../types/auth'
 import { authApi } from '../api/auth'
 import { getAuthApiUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { assertEnvelopeOk, type Parser, readEnvelope } from '@/lib/apiEnvelope'
-import { endSession } from '@/lib/sessionScope'
+import { ApiError, assertEnvelopeOk, type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import {
+  beginSession,
+  currentSessionGeneration,
+  endSession,
+  isSameSession,
+  sessionScopedLocalStorage,
+} from '@/lib/sessionScope'
 
 /**
  * `POST /api/auth/login` 与 `POST /api/auth/refresh` 的 data 部分。
@@ -126,34 +132,6 @@ let lastRotatedAt = 0
  */
 const RECENT_ROTATION_WINDOW_MS = 10_000
 
-// 仅在客户端使用 localStorage，避免 Next.js SSR 报错并保证刷新后正确恢复登录状态
-const safeStorage = {
-  getItem: (name: string): string | null => {
-    if (typeof window === 'undefined') return null
-    try {
-      return localStorage.getItem(name)
-    } catch {
-      return null
-    }
-  },
-  setItem: (name: string, value: string): void => {
-    if (typeof window === 'undefined') return
-    try {
-      localStorage.setItem(name, value)
-    } catch {
-      // ignore
-    }
-  },
-  removeItem: (name: string): void => {
-    if (typeof window === 'undefined') return
-    try {
-      localStorage.removeItem(name)
-    } catch {
-      // ignore
-    }
-  },
-}
-
 /**
  * 落盘格式版本。`1` = `user.avatar_url` 是**绝对地址**。
  *
@@ -171,13 +149,23 @@ const AUTH_PERSIST_VERSION = 1
 /**
  * 把落盘的旧值搬到当前格式：只做一件事——`user.avatar_url` 补基址。
  *
- * ## 为什么读时归一还不够
+ * ## 为什么值得迁移（以及一条曾经写在这里的**错误**理由）
  *
- * `Navigation` 已经在渲染时过一次 `toAbsoluteApiUrl`（提交 `3571e6c`），
- * 那条防线只覆盖它自己那个 `<img>`。落盘值还有第二个消费点，而且不是渲染而是
- * **发给后端**：`VideoMeeting` 加入房间时带 `avatar_url: user?.avatar_url || undefined`，
- * 后端把它转给房间里所有人当头像地址。相对路径从那里出去，坏的是**别人**屏幕上的
- * 头像，而且是在服务端留了痕的——补一处渲染点救不回来。所以这一层要在源头把值改对。
+ * 本仓的约定是「头像路径在 api 出口一次性补成绝对地址」：`friends.ts` 的三个
+ * `absoluteAvatar`、`groups.ts` / `discovery.ts` / `profile.ts` 的出口都这么做，
+ * 于是所有 store 里的 `*_avatar_url` 都是绝对地址，渲染点直接用。`user.avatar_url`
+ * 走的是同一条约定，迁移让**已经落盘的旧值**也回到这个不变量上，
+ * 免得"store 里的头像字段都是绝对的"这句话有一个例外。
+ *
+ * ⚠️ 此处**曾经**写着另一条理由：「`VideoMeeting` 把 `user?.avatar_url` 直接发给
+ * 后端当会议头像，所以必须在源头改成绝对地址」。那条理由是反的——
+ * `POST /api/webrtc/rooms/{room_id}/join` 的请求体字段
+ * (`backend-docs/webrtc/WebRTC房间.md:154`) 逐字写着
+ * `"avatar_url": "avatars/guest.png?t=1706000000"  // 可选，头像相对路径`，
+ * 创建房间同样（:72）。发绝对地址才是违约，而且基址被指向本地反代时发出去的会是
+ * `http://127.0.0.1:8787/...`，后端原样转给房间里每一个人（:181 / :265 / :302）。
+ * 那个发送点现在自己把值转回相对路径（见 `VideoMeeting` 的 `toApiRelativePath`），
+ * 两边各按各的契约来，谁都不依赖对方的形状。
  *
  * ## 只搬 `avatar_url`
  *
@@ -260,6 +248,12 @@ export const useAuthStore = create<AuthStore>()(
           // 于是 token 为 undefined 时控制台照样写「登录成功，Token 已获取」。
           console.log('🔐 登录成功，Token 已获取')
 
+          // 新会话从这一行开始，必须在 set() **之前**：beginSession 做的第一件事是
+          // 清盘，放在 set() 之后会把刚落盘的新 token 一起删掉。它清的是上一场会话
+          // 在"死窗口"里漏下的东西——`clearCredentials`（只清凭证）留下的那一份，
+          // 以及将来某个没走 sessionScopedLocalStorage 的切片漏下的那一份。
+          beginSession()
+
           set({
             accessToken: data.access_token,
             refreshToken: data.refresh_token,
@@ -275,26 +269,26 @@ export const useAuthStore = create<AuthStore>()(
               // 那里本来就写着 `user?.nickname || '访客'` 之类，行为不变。
               nickname: data.nickname,
               email: data.email,
-              // avatar_url 过 toAbsoluteApiUrl 补基址——这是必需的，不是防御性的。
+              // avatar_url 在这里补基址，与 friends / groups / discovery / profile
+              // 四个 api 出口的 `absoluteAvatar` 是同一条约定：**store 里的头像字段
+              // 一律是绝对地址**，渲染点直接用。
               //
-              // 后端已经把头像字段从「绝对 MinIO 地址」改成了「相对路径」，
-              // 两份文档正好各记录了一个时期，前后对照可以看得很清楚：
-              // - 旧（/Users/i/Code/huanvae/backend/profile/个人资料管理.md:74，已过期）
-              //   `"user_avatar_url": "http://localhost:9000/avatars/testuser001.jpg"`
-              //   字段说明只写「头像 URL」。
-              // - 新（backend-docs/profile/个人资料管理.md:74，权威）
-              //   `"user_avatar_url": "avatars/testuser001.jpg?t=1706000000"`
-              //   :98 明写「头像**相对路径**（需拼接 `STORAGE_BASE_URL`）」。
-              // 而 STORAGE_BASE_URL 的定义在 backend-docs/storage/文件存储管理.md:54-55：
-              //   `// 存储基础地址（与 API 基础地址相同）`
-              //   `const STORAGE_BASE_URL = 'https://api.huanvae.cn'`
-              // :58-63 给出的拼接helper 就是 `${STORAGE_BASE_URL}/${relativePath}`，
-              // 与 toAbsoluteApiUrl 的行为一致。
+              // 后端给的是相对路径：`backend-docs/profile/个人资料管理.md:98`
+              // 「`user_avatar_url` | string\|null | 头像相对路径（需拼接
+              // `STORAGE_BASE_URL`）」，样例 :74 是
+              // `"user_avatar_url": "avatars/testuser001.jpg?t=1706000000"`。
+              // `STORAGE_BASE_URL` 的定义在 `backend-docs/storage/文件存储管理.md:54-55`
+              // （`// 存储基础地址（与 API 基础地址相同）`），:58-63 给的拼接 helper
+              // 就是 `${STORAGE_BASE_URL}/${relativePath}`，与 toAbsoluteApiUrl 一致。
               //
-              // ⚠️ 这条注释此前被写反过两次，两次都是因为查了
-              // /Users/i/Code/huanvae/backend/ 那份**已过期**的旧文档而非
-              // backend-docs 仓库。storage 那一批同样会遇到 presigned_url /
-              // file_url 的相对路径问题——认准 backend-docs，别再查旧目录。
+              // ⚠️ 这条注释被写反过两次，两次都是因为查了仓库外那份**已过期**的
+              // 旧文档快照（那时的样例还是指向 MinIO 的绝对地址）。认准
+              // backend-docs 仓库，别再查那个目录。
+              //
+              // 反过来，把这个绝对地址**发回后端**的地方要自己转回相对路径：
+              // webrtc 的 join / create 请求体明写「头像相对路径」
+              // （`WebRTC房间.md:154` / `:72`），`VideoMeeting` 用 `toApiRelativePath`
+              // 处理，不要求这里存相对值。
               avatar_url: toAbsoluteApiUrl(data.avatar_url),
               signature: data.signature,
             },
@@ -395,6 +389,11 @@ export const useAuthStore = create<AuthStore>()(
             throw new Error('No refresh token available')
           }
 
+          // 发起时记下世代号，落地前对照。见 `lib/sessionScope.ts` 顶部
+          // 「清盘是一个时点，而写入不是」。
+          const session = currentSessionGeneration()
+
+          let data: AuthTokenPayload
           try {
             const response = await fetch(`${authBaseUrl}/refresh`, {
               method: 'POST',
@@ -412,28 +411,49 @@ export const useAuthStore = create<AuthStore>()(
             // Authorization 头，refreshToken 也被覆写成 undefined 并 persist 落盘，
             // 401 重试分支（api/auth.ts:42 `&& authStore.refreshToken`）再也进不去。
             // 它有 13 个调用点（chat / profile / webrtc / storage / wsStore …）。
-            const data = await readEnvelope<AuthTokenPayload>(response, {
+            data = await readEnvelope<AuthTokenPayload>(response, {
               endpoint: 'POST /api/auth/refresh',
               fallbackMessage: 'Token 刷新失败',
               parse: authTokenPayload,
               legacyBare: AUTH_TOKEN_LEGACY_BARE,
             })
-
-            set({
-              accessToken: data.access_token,
-              // 不写 `?? refreshToken` 兜底：后端若不回 refresh_token，
-              // 留着旧的会掩盖「刷新语义变了」这件事，而 README:217 的示例明确
-              // 用返回的 refresh_token 覆盖存储，说明它是会回的。缺失时抛错 →
-              // 下面的 catch 走 clearAuth + 跳登录，是可见且正确的降级。
-              refreshToken: data.refresh_token,
-              tokenExpiry: Date.now() + data.expires_in * 1000,
-            })
-            lastRotatedAt = Date.now()
           } catch (error) {
             console.error('Token refresh error:', error)
-            get().clearAuth()
+
+            // 「刷新失败」不等于「会话结束」。这个 try 同时罩着 fetch 与 readEnvelope，
+            // 所以掉进来的可能只是断网 / 超时 / 502 / 响应体形状坏。此前这里无差别
+            // `clearAuth()`，而 clearAuth 现在会跑反向名单清盘 + `resetToDefault()`：
+            // 一次网络抖动就会销毁 `api-config-storage` 里那个用户自己敲进去的第三方
+            // `aiApiKey`——只有他知道、应用无从恢复。两侧代价不对称（清少了泄露、
+            // 清多了毁数据），所以只有后端**真的**说凭证不认（401）才算会话结束。
+            // 分类的定义写在 `lib/sessionScope.ts` 顶部。
+            if (error instanceof ApiError && error.status === 401) {
+              get().clearAuth()
+            } else {
+              // 传输层失败：只丢票据，其余一个字节不动。这不会变成泄露口子——
+              // 下一场会话必经 `beginSession()`，它开场就清盘。
+              get().clearCredentials()
+            }
             throw error
           }
+
+          if (!isSameSession(session)) {
+            // 这对 token 属于一场**已经结束**的会话。原样写下去的话，`set()` 会把一对
+            // 刚轮换出来、当前有效的 token 重新写进内存并 persist 落盘，等着下一个人。
+            // 不走上面的失败分支：凭证不是"坏了"，而是"不再属于任何人"。
+            throw new Error('Token refresh landed after session end')
+          }
+
+          set({
+            accessToken: data.access_token,
+            // 不写 `?? refreshToken` 兜底：后端若不回 refresh_token，
+            // 留着旧的会掩盖「刷新语义变了」这件事，而 README:217 的示例明确
+            // 用返回的 refresh_token 覆盖存储，说明它是会回的。缺失时抛错 →
+            // 上面的 catch 按状态码分档降级，是可见且正确的。
+            refreshToken: data.refresh_token,
+            tokenExpiry: Date.now() + data.expires_in * 1000,
+          })
+          lastRotatedAt = Date.now()
         }
 
         // 单飞：并发调用共享同一个 in-flight 请求。九份 `fetchWithAuth` 副本
@@ -463,6 +483,16 @@ export const useAuthStore = create<AuthStore>()(
         return refreshInFlight
       },
 
+      /**
+       * ⚠️ 这里**不**调 `beginSession()`，而 `login` 调了。
+       *
+       * `beginSession()` 开场就清盘，只有"确实换了一场会话"时才对。本函数今天
+       * **零调用点**（`grep -rn 'setTokens' src` 只有它自己的定义与类型声明），
+       * 但它的名字是「设置 token」——将来最可能的调用形态是"会话中途换一对新
+       * token"，那时清盘会把同一个人的 profile / AI 配置一起毁掉。所以清盘留在
+       * `login` 那一处：那里有 `credentials.user_id`，是全仓唯一能证明
+       * "这是一场新会话"的地方。
+       */
       setTokens: ({ accessToken, refreshToken, expiresIn }) => {
         set({
           accessToken,
@@ -473,13 +503,41 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       /**
-       * 结束会话。全仓**唯一**的清理原语：登出按钮、各 API 模块 `fetchWithAuth`
-       * 副本的 401 静默跳转、刷新失败、撤销当前设备、切换服务器——每一条路径最后
-       * 都走到这里（`grep -rn 'clearAuth()' src`）。
+       * 只丢票据，**不**结束会话。
        *
-       * 所以 `endSession()` 挂在这一行，等于挂在全部路径上。它清的是**这个账号的
-       * 其余落盘副本**（profile / AI 密钥 / 上次访问路径 / 以及将来任何新增的切片），
-       * 名单是反向的：不在设备级白名单里的键一律删，见 `lib/sessionScope.ts`。
+       * 用在"证明不了会话结束、只证明这一次请求没成"的地方：`refreshAccessToken`
+       * 的传输层失败（断网 / 超时 / 502 / 响应体形状坏）。此前那里无差别走
+       * `clearAuth()`，于是一次网络抖动就把 `api-config-storage` 里用户自备的第三方
+       * `aiApiKey` 销毁了——那是只有他知道、应用无从恢复的数据。
+       *
+       * `user` 保留：会话没有结束，页面被打回登录页之后重新登录，侧栏、AI 配置、
+       * 本地草稿都还在原处。这**不是**把泄露留到了下一个人身上——下一个人的会话
+       * 必经 `login` 里那一行 `beginSession()`，它开场就清盘（见 `lib/sessionScope.ts`）。
+       *
+       * 「会话结束 / 只是拿不到票据」这条分界的完整定义写在 `lib/sessionScope.ts` 顶部。
+       */
+      clearCredentials: () => {
+        lastRotatedAt = 0
+        set({
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+          tokenExpiry: null,
+        })
+      },
+
+      /**
+       * 结束会话。全仓**唯一**的清理原语：登出按钮、各 API 模块 `fetchWithAuth`
+       * 副本的 401 静默跳转、刷新拿到 401、撤销当前设备、切换服务器——每一条路径
+       * 最后都走到这里（`grep -rn 'clearAuth()' src`）。
+       *
+       * ⚠️ 「挂在这一行 = 挂在全部路径上」这句话只对**入口**成立。落盘副本在这一刻
+       * 还没有定局：登出时还在飞的请求会在清盘之后落地，`set()` 一写 persist 就把
+       * 上一个人的数据重新写回盘上。补上那一半的是 `sessionScope` 的写入闸门与世代号
+       * （`sessionScopedLocalStorage` / `currentSessionGeneration`），不是这一行。
+       *
+       * 它清的是**这个账号的其余落盘副本**（profile / AI 密钥 / 上次访问路径 /
+       * 以及将来任何新增的切片），名单是反向的：不在设备级白名单里的键一律删。
        * 在此之前这里只清 auth 自己那五个字段，于是下一个登录的人会在侧栏上看到
        * 上一个人的昵称和头像、用上一个人的 AI 密钥发请求。
        *
@@ -511,7 +569,11 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => safeStorage),
+      // 带会话闸门的 localStorage（`lib/sessionScope.ts`）：SSR / Safari 隐私模式的
+      // try-catch 与原来那份 `safeStorage` 逐字相同，多的是「会话结束后、下一场开始前，
+      // 对 auth-storage 的写入一律丢弃」——登出那一刻还在飞的刷新请求回来时，
+      // persist 会把一对**刚轮换出来、当前有效**的 token 重新落盘，闸门拦的就是它。
+      storage: createJSONStorage(() => sessionScopedLocalStorage),
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,

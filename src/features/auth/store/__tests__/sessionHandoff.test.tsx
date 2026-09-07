@@ -229,3 +229,125 @@ describe('A 登出、B 登录', () => {
     expect(useWSStore.getState().connected).toBe(false)
   })
 })
+
+/**
+ * 「会话结束」和「这一次请求没成」是两件事，而它们的错误代价**不对称**：
+ * 清少了会泄露给下一个人，清多了会毁掉一份不可恢复的数据——
+ * `api-config-storage` 里的 `aiApiKey` 是用户自己敲进去的第三方密钥，
+ * 只有他知道，应用无从恢复。此前 `performRefresh` 的 catch 同时罩着 fetch 与
+ * readEnvelope，一律 `clearAuth()`，于是**网络抖一下**就把它销毁了。
+ *
+ * 下面两条是同一段时序的差分：唯一的差别是刷新请求的失败形态。
+ */
+describe('会话结束 vs 只是拿不到票据', () => {
+  const loginAliceWithKey = async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(loginEnvelope({ nickname: 'alice' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+    vi.spyOn(profileApi, 'getProfile').mockResolvedValue(profileOf('alice', 'Alice', null))
+    await useProfileStore.getState().loadProfile()
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-alice', useCustomApi: true })
+    // 正对照：密钥确实落了盘。没有这一段，下面的"还在"可能只是从没写进去过。
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-alice')
+  }
+
+  it('刷新时网络断了：票据清掉，用户自备的 aiApiKey 一个字节都不动', async () => {
+    await loginAliceWithKey()
+
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-alice')
+    expect(useApiConfigStore.getState().useCustomApi).toBe(true)
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-alice')
+    // 同一个人的资料也没被毁：他重新登录后侧栏、草稿、AI 配置都在原处
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('Alice')
+  })
+
+  it('刷新端点回 401：这才是会话结束，密钥跟着账号一起消失', async () => {
+    await loginAliceWithKey()
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, code: 401, error: 'Token 无效或已过期' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+
+    expect(useApiConfigStore.getState().aiApiKey).toBe('')
+    expect(localStorage.getItem('api-config-storage')).toBeNull()
+    expect(useProfileStore.getState().profile).toBeNull()
+  })
+})
+
+/**
+ * 登出并不取消飞在半空的请求。`endSession()` 是一个**时点**，它跑完之后落地的
+ * `set()` 会把上一个人的数据重新写进内存并 persist 回盘。
+ *
+ * `loadProfile` 这一条尤其能看见后果：`Navigation` 挂在每个 `/app` 页面上，
+ * 直接拿 `profileStore.profile` 渲染头像和昵称首字母。
+ */
+describe('登出那一刻还在飞的请求', () => {
+  it('loadProfile 在 endSession 之后才返回：既不写内存也不写盘', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(loginEnvelope({ nickname: 'alice' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    let release!: (profile: UserProfile) => void
+    vi.spyOn(profileApi, 'getProfile').mockReturnValue(
+      new Promise<UserProfile>((resolve) => {
+        release = resolve
+      }),
+    )
+    const inFlight = useProfileStore.getState().loadProfile()
+
+    await useAuthStore.getState().logout()
+    // 正对照：登出这一刻确实清干净了
+    expect(useProfileStore.getState().profile).toBeNull()
+    expect(localStorage.getItem('profile-storage')).toBeNull()
+
+    release(profileOf('alice', 'Alice', 'avatars/alice.png'))
+    await inFlight
+
+    expect(useProfileStore.getState().profile).toBeNull()
+    expect(localStorage.getItem('profile-storage')).toBeNull()
+    // B 的屏幕上不会出现 A 的昵称首字母
+    renderSidebar()
+    expect(screen.queryByText('A')).toBeNull()
+  })
+
+  it('正对照：会话没结束时，同样的时序会正常写进 store 与盘', async () => {
+    // 没有这一条，上面那条可以被"loadProfile 永远不写 store"骗过去。
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(loginEnvelope({ nickname: 'alice' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    let release!: (profile: UserProfile) => void
+    vi.spyOn(profileApi, 'getProfile').mockReturnValue(
+      new Promise<UserProfile>((resolve) => {
+        release = resolve
+      }),
+    )
+    const inFlight = useProfileStore.getState().loadProfile()
+
+    release(profileOf('alice', 'Alice', 'avatars/alice.png'))
+    await inFlight
+
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('Alice')
+    expect(localStorage.getItem('profile-storage')).toContain('Alice')
+  })
+})

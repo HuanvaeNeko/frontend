@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { LanguagePreference } from '@/i18n/messages'
-import { DEVICE_SCOPED_SETTING_FIELDS, registerSessionReset } from '@/lib/sessionScope'
+import {
+  DEVICE_SCOPED_SETTING_FIELDS,
+  registerSessionReset,
+  sessionScopedLocalStorage,
+} from '@/lib/sessionScope'
 
 interface SettingsState {
   // AI 配置
@@ -62,7 +66,9 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'app-settings',
-      storage: createJSONStorage(() => localStorage),
+      // 会话结束后的死窗口里，这个键的写入会被闸门按 `DEVICE_SCOPED_SETTING_FIELDS`
+      // 重新裁一遍：登录页上改主题/音量照样存得下，同一次写入里夹带的账号级字段不行。
+      storage: createJSONStorage(() => sessionScopedLocalStorage),
     }
   )
 )

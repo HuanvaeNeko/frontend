@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  beginSession,
+  currentSessionGeneration,
   DEVICE_SCOPED_SETTING_FIELDS,
   endSession,
+  isSameSession,
   purgeAccountScopedStorage,
   registerPristineStoreReset,
   registerSessionReset,
+  sessionScopedLocalStorage,
 } from '../sessionScope'
 
 /**
@@ -14,8 +18,10 @@ import {
  * 断言的话，把实现改成一串写死的 `removeItem('profile-storage')` 也会绿，
  * 而那正是本次修的 bug 的形状。
  *
- * 每条"被清掉"的断言都配了同一次清盘里"活下来"的正对照，因为
- * `localStorage.clear()` 也能让所有"被清掉"的断言变绿。
+ * 每一条"被清掉"的断言都配了**同一次清盘里**活下来的正对照（多数是
+ * `huanvae.api-base-url`），因为 `localStorage.clear()` 也能让所有"被清掉"的
+ * 断言变绿。这不是形式主义：本文件此前有两条用例（多键下标前移、单键顺序）
+ * 就只断言了"没了"，把实现换成 `localStorage.clear()` 照样全绿。
  */
 
 const seedZustand = (key: string, state: Record<string, unknown>, version = 0) => {
@@ -28,9 +34,18 @@ const readZustandState = (key: string): Record<string, unknown> | null => {
   return (JSON.parse(raw) as { state: Record<string, unknown> }).state
 }
 
+/** 每条用例里"活下来"的那一个键，专门用来把 `localStorage.clear()` 排除掉。 */
+const DEVICE_KEY = 'huanvae.api-base-url'
+const DEVICE_VALUE = 'https://api.example.test'
+const seedDeviceControl = () => localStorage.setItem(DEVICE_KEY, DEVICE_VALUE)
+const expectDeviceControlSurvived = () => expect(localStorage.getItem(DEVICE_KEY)).toBe(DEVICE_VALUE)
+
 beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
+  // 上一条用例可能以 endSession() 收尾（闸门关着），会污染下一条里对
+  // sessionScopedLocalStorage 的写入。beginSession() 把模块恢复到"会话进行中"。
+  beginSession()
 })
 
 afterEach(() => {
@@ -47,7 +62,7 @@ describe('purgeAccountScopedStorage —— 默认清掉', () => {
     seedZustand('api-config-storage', { aiApiKey: 'sk-A', useCustomApi: true })
     localStorage.setItem('last_visited_path', '/app/devices')
     // 正对照：设备级键。没有它们，把实现写成 localStorage.clear() 一样全绿。
-    localStorage.setItem('huanvae.api-base-url', 'https://api.example.test')
+    seedDeviceControl()
     localStorage.setItem('huanvae.install-targets.latest', '{"expiresAt":1,"data":{}}')
     localStorage.setItem('huanvae-remember-user_id', 'alice')
     localStorage.setItem('sound_enabled', 'false')
@@ -61,10 +76,11 @@ describe('purgeAccountScopedStorage —— 默认清掉', () => {
     expect(localStorage.getItem('api-config-storage')).toBeNull()
     expect(localStorage.getItem('last_visited_path')).toBeNull()
 
-    expect(localStorage.getItem('huanvae.api-base-url')).toBe('https://api.example.test')
+    expectDeviceControlSurvived()
     expect(localStorage.getItem('huanvae.install-targets.latest')).toBe('{"expiresAt":1,"data":{}}')
-    // 「记住我」是本表里唯一一条用户显式勾选要求跨会话保留的数据，见 sessionScope.ts
-    // 里那条说明。它变了 = 有人改了这个取舍，应该在 review 里被看见。
+    // 「记住我」是本表里唯一一条**明知会泄露仍然留下**的：共用设备上下一个人会在
+    // 用户名框里看见上一个人的账号 ID。它变了 = 有人改了这个取舍，
+    // 应该在 review 里被看见（要改的话正确做法是删掉 LoginForm 的这个功能）。
     expect(localStorage.getItem('huanvae-remember-user_id')).toBe('alice')
     expect(localStorage.getItem('sound_enabled')).toBe('false')
     expect(localStorage.getItem('sound_volume')).toBe('0.2')
@@ -74,20 +90,28 @@ describe('purgeAccountScopedStorage —— 默认清掉', () => {
     // 边遍历边 removeItem 会让后续下标整体前移；实现先取键快照。
     // 6 个连续的账号级键足以让天真实现（for i<length + key(i) + removeItem）漏掉后半截。
     for (let i = 0; i < 6; i += 1) localStorage.setItem(`account-key-${i}`, String(i))
+    // 正对照：同一次清盘里活下来的设备级键。只断言 length===0 的话，
+    // 把实现换成 localStorage.clear() 这条照样绿。
+    seedDeviceControl()
 
     purgeAccountScopedStorage()
 
-    expect(localStorage.length).toBe(0)
+    for (let i = 0; i < 6; i += 1) {
+      expect(localStorage.getItem(`account-key-${i}`)).toBeNull()
+    }
+    expectDeviceControlSurvived()
+    // 盘上只剩那一个正对照：证明"六个都删了"，而不是"删了前三个"。
+    expect(localStorage.length).toBe(1)
   })
 
   it('sessionStorage 用同一张表清', () => {
     sessionStorage.setItem('anything', 'A 的东西')
-    sessionStorage.setItem('huanvae.api-base-url', 'https://api.example.test')
+    sessionStorage.setItem(DEVICE_KEY, DEVICE_VALUE)
 
     purgeAccountScopedStorage()
 
     expect(sessionStorage.getItem('anything')).toBeNull()
-    expect(sessionStorage.getItem('huanvae.api-base-url')).toBe('https://api.example.test')
+    expect(sessionStorage.getItem(DEVICE_KEY)).toBe(DEVICE_VALUE)
   })
 })
 
@@ -125,21 +149,23 @@ describe('purgeAccountScopedStorage —— app-settings 的字段级裁剪', () 
 
   it('形状不认识时整键删除（证明不了就不留）', () => {
     localStorage.setItem('app-settings', '不是 JSON')
-    localStorage.setItem('huanvae.api-base-url', 'https://api.example.test')
+    seedDeviceControl()
 
     purgeAccountScopedStorage()
 
     expect(localStorage.getItem('app-settings')).toBeNull()
     // 正对照：同一次调用里设备级键仍在，说明上面那条不是"整个 storage 被清了"。
-    expect(localStorage.getItem('huanvae.api-base-url')).toBe('https://api.example.test')
+    expectDeviceControlSurvived()
   })
 
   it('没有 state 字段的信封同样整键删除', () => {
     localStorage.setItem('app-settings', JSON.stringify({ theme: 'dark' }))
+    seedDeviceControl()
 
     purgeAccountScopedStorage()
 
     expect(localStorage.getItem('app-settings')).toBeNull()
+    expectDeviceControlSurvived()
   })
 
   it('设备级字段名单与 settingsStore 的默认值同源（拼错一个字段名这条就红）', async () => {
@@ -161,17 +187,22 @@ describe('endSession —— 内存重置与清盘的顺序', () => {
     // 顺序反过来（先清盘后回调）的话，这个键会活下来。
     const unregister = registerSessionReset(() => {
       localStorage.setItem('written-by-reset', '重置时落的盘')
+      // 正对照：同一个回调里写一个**设备级**键。清盘之后它必须还在，
+      // 否则"回调写的东西没了"可能只是因为清盘把所有东西都删了。
+      localStorage.setItem(DEVICE_KEY, DEVICE_VALUE)
     })
 
     endSession()
     unregister()
 
     expect(localStorage.getItem('written-by-reset')).toBeNull()
+    expectDeviceControlSurvived()
   })
 
   it('某个回调抛错不影响其它回调，也不影响清盘', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     localStorage.setItem('account-key', 'A 的东西')
+    seedDeviceControl()
     const survivor = vi.fn()
     const unregisterBad = registerSessionReset(() => {
       throw new Error('boom')
@@ -184,6 +215,7 @@ describe('endSession —— 内存重置与清盘的顺序', () => {
 
     expect(survivor).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem('account-key')).toBeNull()
+    expectDeviceControlSurvived()
   })
 
   it('注销之后回调不再被调用（正对照：注销前调过一次）', () => {
@@ -216,21 +248,27 @@ describe('endSession —— 内存重置与清盘的顺序', () => {
 })
 
 describe('registerPristineStoreReset', () => {
-  it('把 store 恢复成登记那一刻的完整状态（含后来新增的字段）', () => {
-    const state: Record<string, unknown> = { items: [], cursor: null }
+  it('恢复的是**登记那一刻**的快照，不是重置时重新取的 getState()', () => {
+    // 关键在于 getState 返回的对象在登记之后被**换掉**（而不是就地改）：
+    // 实现若把 store.getState() 推迟到重置时才调，拿到的就是 dirty 那一个，
+    // 这条红。原来那版用的是同一个对象就地改字段，两种实现都会绿。
+    const pristine = { items: [] as string[], cursor: null as string | null }
+    const dirty = { items: ['A 的会话'], cursor: 'A 的游标' }
+    let current: typeof pristine = pristine
     const store = {
-      getState: () => state,
+      getState: () => current,
       setState: vi.fn(),
     }
 
     const unregister = registerPristineStoreReset(store)
-    // 登记之后 store 被写脏
-    state.items = ['A 的会话']
+    current = dirty
     endSession()
     unregister()
 
-    // 快照是登记那一刻的对象引用，替换语义（replace=true）
-    expect(store.setState).toHaveBeenCalledWith(state, true)
+    expect(store.setState).toHaveBeenCalledWith(pristine, true)
+    expect(store.setState).not.toHaveBeenCalledWith(dirty, true)
+    // 替换语义：第二个参数是 true，否则 merge 会把 dirty 的字段留下
+    expect(store.setState.mock.calls[0]?.[1]).toBe(true)
   })
 
   it('拒绝 persist 化的 store —— 它的初始快照已经是上一个用户的数据', () => {
@@ -246,5 +284,102 @@ describe('registerPristineStoreReset', () => {
     const plain = { getState: () => ({}), setState: vi.fn() }
 
     expect(() => registerPristineStoreReset(plain)()).not.toThrow()
+  })
+})
+
+/**
+ * 清盘只证明"这一刻盘上没有账号级数据"。登出那一刻还在飞的请求会在清盘**之后**
+ * 落地，`set()` 一写 persist 就把上一个人的数据重新落盘。世代号与写入闸门补的是
+ * 这一半，两者的分工见 `sessionScope.ts` 顶部「清盘是一个时点，而写入不是」。
+ */
+describe('会话世代号', () => {
+  it('endSession 之后，登出前取到的世代号不再是当前会话', () => {
+    const before = currentSessionGeneration()
+    // 正对照：同一场会话里取两次，判定为同一场。
+    expect(isSameSession(before)).toBe(true)
+
+    endSession()
+
+    expect(isSameSession(before)).toBe(false)
+    // 正对照：登出后重新取的那个仍然是"当前"，说明变红的是**旧**票据而不是全部
+    expect(isSameSession(currentSessionGeneration())).toBe(true)
+  })
+
+  it('每结束一场会话都换一个新号，不是在两个值之间来回翻', () => {
+    const first = currentSessionGeneration()
+    endSession()
+    const second = currentSessionGeneration()
+    beginSession()
+    endSession()
+    const third = currentSessionGeneration()
+
+    expect(new Set([first, second, third]).size).toBe(3)
+  })
+})
+
+describe('sessionScopedLocalStorage —— 死窗口里的写入闸门', () => {
+  beforeEach(() => {
+    // 闸门每丢弃一次写入都会 console.warn（欠账要能被看见），这里只是让输出干净
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  it('会话结束后，账号级键的落盘写入被丢弃；同一刻设备级键照写', () => {
+    endSession()
+
+    sessionScopedLocalStorage.setItem('profile-storage', '{"state":{"profile":{"x":1}}}')
+    sessionScopedLocalStorage.setItem('some-future-store', 'A 的东西')
+    // 正对照：同一个死窗口里，设备级键必须写得进去——登出后停在登录页的用户
+    // 照样会切服务器、调音量。没有这一条，把 setItem 实现成"永远 no-op"也全绿。
+    sessionScopedLocalStorage.setItem(DEVICE_KEY, DEVICE_VALUE)
+
+    expect(localStorage.getItem('profile-storage')).toBeNull()
+    expect(localStorage.getItem('some-future-store')).toBeNull()
+    expectDeviceControlSurvived()
+  })
+
+  it('丢弃时顺手把该键从盘上抹掉（写入前它可能还在）', () => {
+    localStorage.setItem('profile-storage', '上一场会话漏下的')
+    endSession()
+    // 清盘已经删过一次；这里模拟"清盘之后又有人写进来"再被闸门拦下
+    localStorage.setItem('profile-storage', '绕过闸门直接写的')
+
+    sessionScopedLocalStorage.setItem('profile-storage', '{"state":{}}')
+
+    expect(localStorage.getItem('profile-storage')).toBeNull()
+  })
+
+  it('死窗口里的 app-settings 写入按字段裁剪：设备级留下，账号级夹带被剪掉', () => {
+    endSession()
+
+    sessionScopedLocalStorage.setItem(
+      'app-settings',
+      JSON.stringify({ state: { theme: 'dark', showOnlineStatus: false }, version: 0 }),
+    )
+
+    expect(readZustandState('app-settings')).toEqual({ theme: 'dark' })
+  })
+
+  it('会话进行中一切照旧：账号级键写得进去', () => {
+    // 这是闸门的"关"状态之外的另一半——没有这条，把闸门实现成"一律丢弃"也会绿。
+    sessionScopedLocalStorage.setItem('profile-storage', '{"state":{"profile":{"x":1}}}')
+
+    expect(localStorage.getItem('profile-storage')).toBe('{"state":{"profile":{"x":1}}}')
+  })
+
+  it('beginSession 重新开闸，并且开闸之前先清一遍盘', () => {
+    endSession()
+    // 模拟"没走闸门的切片在死窗口里漏下的东西"：直接写裸 localStorage。
+    // 这是三道防线里最后一道要接住的那一类——作者什么都没做也得被清掉。
+    localStorage.setItem('leaked-during-dead-window', 'A 的东西')
+    seedDeviceControl()
+
+    beginSession()
+
+    expect(localStorage.getItem('leaked-during-dead-window')).toBeNull()
+    expectDeviceControlSurvived()
+
+    // 闸门开了：新会话的写入正常落盘
+    sessionScopedLocalStorage.setItem('profile-storage', '{"state":{"profile":{"x":2}}}')
+    expect(localStorage.getItem('profile-storage')).toBe('{"state":{"profile":{"x":2}}}')
   })
 })

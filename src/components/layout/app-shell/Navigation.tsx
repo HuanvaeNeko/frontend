@@ -100,9 +100,11 @@ export function DesktopSidebar() {
    *
    * - `profile.user_avatar_url`：`profileApi.getProfile` 出口确实补过，落盘的旧值也由
    *   `profileStore` 的 persist migrate 搬平了。这一支是安全的。
-   * - `user.avatar_url`（`authStore`）：登录时的补基址是本分支上的改动，**还没进 main**。
-   *   `auth-storage` 持久化 `user`、没有 `version` 也没有 `migrate`，`refreshAccessToken`
-   *   也从不重写 `user`——所以**每一个已经部署出去的用户**，落盘的都还是相对路径。
+   * - `user.avatar_url`（`authStore`）：登录时的补基址是本分支上的改动，**还没进 main**；
+   *   `auth-storage` 的 `version` / `migrate` 也是本分支才加的（`migrateAuthPersist`，
+   *   提交 `400992d`），在此之前它两者皆无、`refreshAccessToken` 又从不重写 `user`。
+   *   也就是说：**已经部署出去的用户**落盘的仍是相对路径，要等他的浏览器加载到本分支
+   *   的代码、rehydrate 跑一次 migrate 之后才会变绝对。这一支在那之前是相对路径，
    *   它非空、`||` 会选中它，于是下面那个首字母兜底根本不会触发，用户拿到的正是
    *   兜底本该防住的那个碎图标。
    *

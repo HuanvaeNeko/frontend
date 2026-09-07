@@ -151,6 +151,59 @@ export function toAbsoluteApiUrl(path: string | null | undefined): string | unde
 }
 
 /**
+ * {@link toAbsoluteApiUrl} 的逆运算：把一个头像地址还原成后端要的**相对路径**。
+ *
+ * ## 为什么需要一个逆运算
+ *
+ * 本仓的约定是"在 api 出口把头像补成绝对地址"，于是 store 里的
+ * `*_avatar_url` 一律是绝对的。但有一个方向相反的消费点：webrtc 把**自己的头像
+ * 地址发回给后端**，而那两个请求体字段的文档写的是相对路径——
+ * `backend-docs/webrtc/WebRTC房间.md:154`（`POST /api/webrtc/rooms/{room_id}/join`
+ * 请求体）逐字是
+ * `"avatar_url": "avatars/guest.png?t=1706000000"  // 可选，头像相对路径`，
+ * 创建房间的 :72 同样是「可选，创建者头像相对路径」。后端把这个值原样转发给房间里
+ * 的每一个人（join 响应 `user_info` :181、`joined` 名单 :265、`peer_joined` :302
+ * 三处样例都是相对路径），所以发错形状坏的是**别人**屏幕上的图。
+ *
+ * ## 为什么丢掉整个 origin，而不是"减去当前基址"
+ *
+ * 本项目会**故意**改基址（`api.huanvae.cn` 被备案拦截时走本地无 SNI 反代），
+ * 落盘的绝对地址可能是用另一个基址拼出来的。拿当前基址去做前缀匹配，
+ * 基址一变就匹配不上、于是把 `http://127.0.0.1:8787/avatars/x.png` 原样发给后端，
+ * 转给房间里所有人。这里不比较 origin，直接丢掉它，剩下 `pathname + search + hash`。
+ *
+ * 已经是相对路径的值**原样返回**（只去掉前导 `/`），不进 `URL` 解析器：
+ * 后端给的字节不该被百分号编码改写。因此本函数对 `toAbsoluteApiUrl` 的输出与
+ * 输入都成立，也就与"落盘值是绝对还是相对"无关——`auth-storage` 的旧值是相对的，
+ * 迁移后是绝对的，两边发出去的结果逐字相同。
+ *
+ * `data:` / `blob:` 之类不是后端存储路径，返回 `undefined`（= 不带这个字段），
+ * 而不是把一个几 MB 的 data URI 发给信令服务器。
+ */
+export function toApiRelativePath(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined
+  const trimmed = value.trim()
+  if (trimmed === '') return undefined
+
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  if (!hasScheme && !trimmed.startsWith('//')) {
+    const withoutLeadingSlash = trimmed.replace(/^\/+/, '')
+    return withoutLeadingSlash === '' ? undefined : withoutLeadingSlash
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed, `${getApiBaseUrl()}/`)
+  } catch {
+    return undefined
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+
+  const relative = `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}${parsed.hash}`
+  return relative === '' ? undefined : relative
+}
+
+/**
  * 后端的正式域名。与发现面 `GET https://ca.huanvae.cn/endpoints` 返回的 `domains` 对齐。
  */
 const CANONICAL_API_HOSTS = ['api.huanvae.cn', 'api.huanvae.com'] as const

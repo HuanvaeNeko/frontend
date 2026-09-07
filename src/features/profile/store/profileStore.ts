@@ -5,7 +5,12 @@ import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
-import { registerSessionReset } from '@/lib/sessionScope'
+import {
+  currentSessionGeneration,
+  isSameSession,
+  registerSessionReset,
+  sessionScopedLocalStorage,
+} from '@/lib/sessionScope'
 
 /**
  * profile store 的状态与 action 契约。
@@ -90,6 +95,23 @@ const settleError = (error: unknown, defaultMessage: string, set: SetProfileStat
 }
 
 /**
+ * 会话绑定：发起时记下世代号，落地前对照。
+ *
+ * 三个 action 都是「异步取数 → 回来 `set({profile})`」的形状，而登出并不会取消
+ * 飞在半空的请求。`endSession()` 是一个**时点**：它跑完之后落地的那次 `set()` 会把
+ * 上一个人的 profile 重新写进内存（`Navigation` 挂在每个 `/app` 页面上，直接拿它
+ * 渲染头像和昵称）并 persist 回 `profile-storage`。落盘那一半 `sessionScopedLocalStorage`
+ * 的闸门也拦得住，但内存那一半只能在这里挡——而屏幕上的头像读的正是内存。
+ *
+ * 判假时**什么都不写**（包括 `isLoading`）：会话已经结束，`clearProfile()` 刚把
+ * 这个 store 整体归零，再写一次只会把它从"干净"改回"脏"。
+ */
+const sessionBound = (): (() => boolean) => {
+  const generation = currentSessionGeneration()
+  return () => isSameSession(generation)
+}
+
+/**
  * 落盘格式版本。`1` = `profile.user_avatar_url` 是**绝对地址**。
  *
  * 版本号从"没有版本号"（zustand 视作 `0`）跳到 `1`，是因为本批之前落盘的
@@ -140,24 +162,30 @@ export const useProfileStore = create<ProfileState>()(
       error: null,
 
       loadProfile: async () => {
+        const stillMine = sessionBound()
         set({ isLoading: true, error: null })
         try {
           const profile = await profileApi.getProfile()
+          if (!stillMine()) return
           set({ profile, isLoading: false })
         } catch (error) {
+          if (!stillMine()) throw error
           settleError(error, '加载个人资料失败', set)
           throw error
         }
       },
 
       updateProfile: async (updates: UpdateProfileRequest) => {
+        const stillMine = sessionBound()
         set({ isLoading: true, error: null })
         try {
           await profileApi.updateProfile(updates)
           // 重新加载完整的 profile
           const profile = await profileApi.getProfile()
+          if (!stillMine()) return
           set({ profile, isLoading: false })
         } catch (error) {
+          if (!stillMine()) throw error
           settleError(error, '更新个人资料失败', set)
           throw error
         }
@@ -181,9 +209,11 @@ export const useProfileStore = create<ProfileState>()(
        * 产生本 store 持有的状态（`profile.user_avatar_url`），所以留着而不是删掉。
        */
       uploadAvatar: async (file: File) => {
+        const stillMine = sessionBound()
         set({ isLoading: true, error: null })
         try {
           const { file_url } = await profileApi.uploadAvatar(file)
+          if (!stillMine()) return
           // 更新当前 profile 中的头像
           const currentProfile = get().profile
           if (currentProfile) {
@@ -195,6 +225,7 @@ export const useProfileStore = create<ProfileState>()(
             set({ isLoading: false })
           }
         } catch (error) {
+          if (!stillMine()) throw error
           settleError(error, '上传头像失败', set)
           throw error
         }
@@ -250,7 +281,7 @@ export const useProfileStore = create<ProfileState>()(
     }),
     {
       name: 'profile-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => sessionScopedLocalStorage),
       partialize: (state) => ({
         profile: state.profile,
       }),

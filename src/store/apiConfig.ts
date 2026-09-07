@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ApiConfig } from '@/types'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { registerSessionReset } from '@/lib/sessionScope'
+import { registerSessionReset, sessionScopedLocalStorage } from '@/lib/sessionScope'
 
 interface ApiConfigState extends ApiConfig {
   setApiConfig: (config: Partial<ApiConfig>) => void
@@ -46,7 +46,7 @@ export const useApiConfigStore = create<ApiConfigState>()(
     }),
     {
       name: 'api-config-storage',
-      storage: createJSONStorage(() => localStorage)
+      storage: createJSONStorage(() => sessionScopedLocalStorage)
     }
   )
 )
