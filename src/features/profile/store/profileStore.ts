@@ -12,11 +12,14 @@ import { ROUTES } from '@/lib/routes'
  *
  * 曾经有一个，**零非测试调用点**：两个 UI（`ProfilePage.tsx:99`、
  * `ProfileModal.tsx:404`）都直接 `await profileApi.changePassword(...)`，
- * 自己管 `changingPassword` 局部态、自己弹 toast，从不读本 store 的
- * `isLoading` / `error`。删掉它而不是把 UI 接过来，理由：
+ * 自己管 `changingPassword` 局部态、自己弹 toast，改密码这条路径上
+ * 从不读本 store 的 `isLoading` / `error`。删掉它而不是把 UI 接过来，理由：
  *
  * 1. 改密码**不产生本 store 持有的任何状态**——`profile` 一个字段都不变。
- *    接进来只会让两个 UI 共享全局 `isLoading`，与头像上传/资料加载互相串扰。
+ *    接进来只会让两个 UI 共享全局 `isLoading`，与头像上传/资料加载互相串扰——
+ *    而它们**本来就绑着**这个 `isLoading`（`ProfilePage.tsx:35`、
+ *    `ProfileModal.tsx:187` 都从本 store 解构它，用来禁用保存按钮 / 转圈），
+ *    所以串扰不是假设：改密码期间保存按钮会跟着转圈变灰。
  * 2. 接进来等于给改密码新增一条 `settleError` → `silentRedirectToLogin()` 的
  *    静默登出路径，而它唯一的护栏是端点白名单。真正的护栏应该、而且已经
  *    落在更靠下的一层：`profile.ts` 那份 `fetchWithAuth` 的 401 分支

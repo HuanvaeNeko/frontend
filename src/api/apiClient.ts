@@ -94,12 +94,18 @@ const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
  *    不必重新发现这条规则」，**不是当下拦住静默登出的那道防线**。
  *
  * 表里的字符串必须与 `ApiError.endpoint`、以及「方法 + URL 的 pathname」
- * 两侧都逐字一致，两侧各有一条用例钉住（都在
+ * 两侧都逐字一致，两侧各有用例钉住（都在
  * `src/features/profile/api/__tests__/profile.test.ts`）：
  * - 端点串一致：「旧密码错误的 401 抛 ApiError，端点字段可被白名单识别」——
  *   实测把 `profile.ts` 的抛出点改成 `.../passwords` 会红；
- * - 表与真实请求一致：「旧密码错误不刷新、不重发、不轮换 token」——
- *   实测删掉本表这一项会变成 3 次 fetch + token 轮换 → 红。
+ * - 表与真实请求一致：「旧密码错误的 401：不刷新、不重发、不轮换 token」——
+ *   实测删掉本表这一项会变成 3 次 fetch + token 轮换 → 红；
+ * - 不登出：「旧密码错误的 401：即使刷新会失败，也不清 token、不跳登录页」——
+ *   刷新失败才是登出真正会发生的那一支，配一条正对照钉住 `profile.ts:73` 的跳转。
+ *
+ * ⚠️ **加一行不等于全局生效**：这张表只在调用了 {@link isBusiness401Request} 的
+ * 那份 401 分支里被查，今天只有 `profile.ts` 一处调。给别的模块的端点加一行，
+ * 在那个模块里是空操作——详见 {@link isBusiness401Request} 的注释。
  */
 const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/password'])
 
@@ -108,8 +114,25 @@ const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/p
  *
  * 给各份 `fetchWithAuth` 副本在 401 分支上用：那时手里只有 `url` 与
  * `options.method`，还没有 `ApiError`，没法走 `isAuthError`。
- * **表只此一张**，副本里不要再抄一份字符串；正在进行的「多份 `fetchWithAuth`
- * 合一」也只要照样调这一个函数即可。
+ *
+ * ## ⚠️ 往 `BUSINESS_401_ENDPOINTS` 加一行**不会**自动全仓库生效
+ *
+ * 这张表只在**调用了本函数**的那份 401 分支里被查。全仓库十份 `fetchWithAuth`
+ * 定义（`apiClient` 导出的这份 + 九份模块副本：auth / profile / friends /
+ * messages / groupMessages / groups / webrtc / storage / discovery），
+ * 今天**只有一处**调它：
+ *
+ * - `src/features/profile/api/profile.ts:59` —— 唯一的生产调用点。
+ *
+ * 其余九份的 401 分支仍是裸的 `if (response.status === 401 && refreshToken)`，
+ * 对本表一无所知。所以给别的模块的端点加一行，在那个模块里**是空操作**：
+ * 那条请求照旧刷新 token、原样重发一遍、刷新失败就静默登出。
+ *
+ * 让它生效必须在那份副本的 401 分支上显式接进来（`&& !isBusiness401Request(
+ * options.method, url)`），一份一份地接。「多份 `fetchWithAuth` 合一」的工作
+ * 正在进行中，合并之后接手的那份也照样得调这一个函数——合并本身不会替谁接。
+ *
+ * **表只此一张**：副本里不要再抄一份字符串，要接就接这个函数。
  *
  * `url` 绝对地址或相对路径都行，只比较 pathname（query / hash 不参与）；
  * 解析不出来就判假——判假 = 维持原来的刷新重试行为，不会凭空多出一条静默路径。

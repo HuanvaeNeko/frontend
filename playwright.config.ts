@@ -17,9 +17,10 @@ import { defineConfig, devices } from '@playwright/test'
 // 的 port/url 自动推导全局 baseURL（见官方文档），顶层 use.baseURL 保留给
 // chromium/mobile 用，production project 自己覆盖一份。
 // 3100 太"大众"了：实测被本机另一个无关项目（~/Code/th 的 react-router-serve）
-// 占用过。配合下面 webServer 的 reuseExistingServer，Playwright 会直接复用那个
-// 陌生服务器，于是 29 条生产回归用例全部打到别人的应用上——响应头断言自然全挂，
-// 而失败信息看上去像是我们的代码坏了。换一个不容易撞的端口。
+// 占用过。下面两条 webServer 现在都是 `reuseExistingServer: false`，所以撞端口
+// 不会再静默复用陌生服务器，而是 Playwright 直接报错退出——但那也意味着一个
+// 常年占着 3100 的无关进程会让整套生产回归**跑不起来**，且报错指向端口而不是
+// 我们的代码。换一个不容易撞的端口，是为了这个「响亮但也很烦」的失败别常发生。
 const PRODUCTION_PORT = 39471
 const PRODUCTION_BASE_URL = `http://localhost:${PRODUCTION_PORT}`
 const MIGRATION_REGRESSION_SPEC = /migration-regression\.spec\.ts$/

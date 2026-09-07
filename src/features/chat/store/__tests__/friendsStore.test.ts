@@ -44,8 +44,9 @@ const permissionDenied = (endpoint: string) =>
  * `friendsApi.getFriendsList()`（`src/data/conversations.ts:11-13`），所以打桩打在
  * `friendsApi` 上对两层都成立。
  *
- * `sendFriendRequest` / `approveFriendRequest` / `removeFriend` 成功后还会去
- * 重新加载列表，这里让**第一次**调用就失败，命中的正是本 action 自己的 catch。
+ * 四个写操作——`sendFriendRequest` / `approveFriendRequest` / `rejectFriendRequest` /
+ * `removeFriend`——成功后还会去重新加载列表（`friendsStore.ts:126`、`:143-144`、
+ * `:158`、`:172`），这里让**第一次**调用就失败，命中的正是本 action 自己的 catch。
  */
 const ACTIONS = [
   {
