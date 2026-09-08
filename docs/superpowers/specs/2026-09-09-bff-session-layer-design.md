@@ -42,6 +42,7 @@
                                    │                                                     (备 47.104.231.235:443)
                                    ├─ 页面 / assets / sw.js（现状不变）
                                    ├─ POST /api/auth/login|logout    建/销会话（RR8 资源路由）
+                                   ├─ POST /api/auth/register        不查会话的转发（未登录用户发起）
                                    ├─ GET  /api/session              「我登录了吗」（RR8 资源路由）
                                    ├─ /api/*                         cookie→bearer，流式转发（RR8 资源路由 catch-all）
                                    ├─ /avatars|user-file|friends-file|apps/*  透传，不查会话、不注入 bearer
@@ -192,6 +193,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 | 路由 | 模块 | 职责 |
 |---|---|---|
 | `POST /api/auth/login` | `api.auth.login.ts`（action） | 转上游登录，`device_info` = 请求的 `User-Agent`；严格解析（access + refresh + expires_in 必有，用户字段可选）；建会话；`Set-Cookie`；回 `{success:true, code:200, data:{user}}`，**不含 token**。上游 401 → 原样透传后端文案，不设 cookie |
+| `POST /api/auth/register` | `api.auth.register.ts`（action） | **不查会话**的纯转发。注册是未登录用户发起的，落进 `api/*` 的 catch-all 会被要求 cookie、一律 401，注册功能会彻底坏掉。注册**不建会话**：后端注册接口不返回 token（`auth` 文档 :20-27），成功后仍要走一次登录 |
 | `POST /api/auth/logout` | `api.auth.logout.ts`（action） | 尽力打上游 logout（失败忽略）→ 删会话 → 关该会话名下所有活着的 WS → `Set-Cookie: hv_session=; Max-Age=0` |
 | `GET /api/session` | `api.session.ts`（loader） | 有效会话（含 `ensureFresh`）→ `{success:true, code:200, data:{user}}`；否则 401 并清 cookie。**启动时「我登录了吗」的唯一真值** |
 | `/api/*` | `api.$.ts`（loader + action） | 鉴权代理（§4.4） |
@@ -232,14 +234,15 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 | 文件 | 改动 |
 |---|---|
-| `authStore.ts` | state 删 `accessToken / refreshToken / tokenExpiry`；`login/logout` 打 BFF；新增 `restoreSession()`（`GET /api/session`）；**删除** `refreshAccessToken`、`checkTokenExpiry`、`refreshInFlight`、`lastRotatedAt`、`clearCredentials`、`setTokens`；persist 只留 `user`（首帧秒开），`version` +1，迁移**主动删除**落盘的 token 字段 |
+| `authStore.ts` | state 删 `accessToken / refreshToken / tokenExpiry`；`login/logout/register` 打同源 BFF；新增 `restoreSession()`（`GET /api/session`）；**删除** `refreshAccessToken`、`checkTokenExpiry`、`refreshInFlight`、`lastRotatedAt`、`clearCredentials`、`setTokens`；persist 只留 `user`（首帧秒开），`version` +1，迁移**主动删除**落盘的 token 字段 |
 | `authedFetch.ts` | 退化为 `fetch(url, { credentials: 'same-origin', … })`：删 `Authorization`、预检刷新、401 刷新重试、`pinSession`；401 → 不在 business-401 表内则 `clearAuth` + 跳登录 |
 | `wsStore.ts` | `new WebSocket('/ws')`（同源；协议由 `location.protocol` 推）；删「失败 3 次就刷 token」逻辑 |
 | `ProtectedRoute.tsx` | 门槛从 persist 水合改为 `restoreSession()` 的结果；localStorage 里的 `user` 只用于首帧渲染，不作授权依据 |
 | `sessionScope.ts` | **保留**登出清盘与 store 世代号（内存里的跨账号仍是真问题）；删 token 相关 reset 与 `auth-storage` 闸门特例 |
 | `apiConfig.ts` | `getApiBaseUrl()` → `''`；`rewriteCanonicalApiOrigin` 落到同源；相关测试已习惯跟 `getApiBaseUrl()` 走 |
 | `SettingsPage`「切换服务器」 | 移除；`huanvae.api-base-url` 设备键退役（迁移时删除） |
-| `DevicesPage` 撤销当前设备 | 改为调 `POST /api/auth/logout` |
+| `DevicesPage` 撤销当前设备 | 改为调 `authStore.logout()`（只清本地 state 的话 cookie 还在，刷新就又登回去） |
+| `src/features/auth/api/auth.ts` | 删掉 `authApi.logout`——`getAuthApiUrl()` 变同源后它会构成第二条登出路径，且做不到删会话 / 清 cookie / 关 WS。`getDevices` / `revokeDevice` 保留，经 `/api/*` 代理正常工作 |
 | `.env*` / `Dockerfile` / compose | 删 `VITE_API_URL` / `VITE_WS_URL`；新增 §3.3 四个服务端变量 |
 
 ## 5. 数据流
@@ -312,6 +315,15 @@ BFF **不发明错误文案**。它自己只产生三种响应：
 | 边缘 IP 漂移 | 与 Mac nginx 同样硬编码；`ca.huanvae.cn/endpoints` 可查，漂移证实后再接发现协议 |
 | `lb_retries` 对带 body 的非幂等请求是否重试 | 第一版**不写** `lb_retry_match`，沿用 Caddy 默认（只在上游不可达、请求尚未发出时换台重试，这与 nginx 对非幂等方法的默认行为一致）。§8 验收若观察到 POST 被重放或该重试的没重试，再用 `lb_retry_match` 收紧 |
 | P4 系列的三条已知违反路径 | `wsStore` 与 `ChatWindow` 那两条与 token 无关，本设计不解决，保留在待办；`setAvatarUrl`/`setBackgroundUrl` 同 |
+
+## 10.1 spec 自审补记（2026-09-09，写实施计划时发现）
+
+- **§4.3 的路由表原本漏了 `POST /api/auth/register`。** 它是未登录用户发起的请求，
+  按原表会落进 `/api/*` 的 catch-all 并被要求会话 cookie —— 注册功能会彻底坏掉。
+  已补为独立的、不查会话的转发路由。这条是实施计划的任务分解逼出来的：给 Task 6
+  列文件清单时才发现 `RegisterForm` 的调用链没有落点。
+- **`authApi.logout` 会变成第二条登出路径。** `getAuthApiUrl()` 改成同源之后它也会打到
+  BFF 的 logout 路由，但它绕过 `authStore.logout` 的本地清理。已在 §4.8 标为删除。
 
 ## 11. 决策记录
 
