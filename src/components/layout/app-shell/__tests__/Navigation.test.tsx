@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { makeProfile } from '@/features/profile/api/__tests__/profileFixture'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { DesktopSidebar } from '../Navigation'
@@ -37,16 +38,8 @@ const renderSidebar = () =>
 
 const avatarImg = () => document.querySelector('img[alt="Avatar"]')
 
-const PROFILE = {
-  user_id: 'u1',
-  user_nickname: '测试用户',
-  user_email: null,
-  user_signature: null,
-  user_avatar_url: null as string | null,
-  admin: 'false',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-}
+// 16 个字段的完整夹具，一处定义（`makeProfile` 的 JSDoc 写了为什么不再各抄一份）。
+const PROFILE = makeProfile({ user_email: null })
 
 /** React 19 dev 构建里那句警告的**原文**（`react-dom/cjs/react-dom-client.development.js`）。 */
 const EMPTY_SRC_WARNING = 'An empty string ("") was passed to the %s attribute'

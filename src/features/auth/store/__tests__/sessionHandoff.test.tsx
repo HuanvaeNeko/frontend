@@ -9,6 +9,7 @@ import { groupsApi, type GroupMember } from '@/features/chat/api/groups'
 import { messagesApi, type SyncMessagesResponse } from '@/features/chat/api/messages'
 import { useGroupStore } from '@/features/chat/store/groupStore'
 import { profileApi, type UserProfile } from '@/features/profile/api/profile'
+import { makeProfile } from '@/features/profile/api/__tests__/profileFixture'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
@@ -48,16 +49,14 @@ const loginEnvelope = (user: { nickname: string; avatar?: string }) => ({
   },
 })
 
-const profileOf = (userId: string, nickname: string, avatar: string | null): UserProfile => ({
-  user_id: userId,
-  user_nickname: nickname,
-  user_email: `${nickname}@example.com`,
-  user_signature: `${nickname} 的签名`,
-  user_avatar_url: avatar,
-  admin: 'false',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-})
+const profileOf = (userId: string, nickname: string, avatar: string | null): UserProfile =>
+  makeProfile({
+    user_id: userId,
+    user_nickname: nickname,
+    user_email: `${nickname}@example.com`,
+    user_signature: `${nickname} 的签名`,
+    user_avatar_url: avatar,
+  })
 
 const renderSidebar = () =>
   render(

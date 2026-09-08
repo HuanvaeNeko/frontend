@@ -12,6 +12,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
+import PrivacySettings from '@/features/settings/components/PrivacySettings'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { useApiConfigStore } from '@/store/apiConfig'
 import { useToast } from '@/hooks/use-toast'
@@ -189,6 +190,14 @@ export default function Settings() {
               <SettingRow label="设备管理" description="查看并管理已登录的设备">
                 <Button variant="outline" size="sm" onClick={() => router.push(ROUTES.app.devices)}>管理设备</Button>
               </SettingRow>
+              {/*
+                ⚠️ 下面这一组与本卡片其余几项**不是一回事**：`PrivacySettings` 的四项写的是
+                后端账号设置（`PUT /api/profile`，doc:144-147），而 `showOnlineStatus` /
+                `messageEncryption` 只写本机的 `settings-storage`，没有任何后端对应物。
+                放在同一张卡片里是因为对用户而言它们都是"隐私"，但改的东西不同——
+                加新项时先想清楚它属于哪一半。
+              */}
+              <PrivacySettings />
               <SettingRow label={t('settings.showOnline')} description={t('settings.showOnlineDesc')}>
                 <Switch checked={settings.showOnlineStatus} onCheckedChange={(v) => settings.setSetting('showOnlineStatus', v)} />
               </SettingRow>

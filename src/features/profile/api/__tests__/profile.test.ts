@@ -3,9 +3,10 @@ import { isAuthError } from '@/api/apiClient'
 import { isUploadSessionExpired, storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { ApiError } from '@/lib/apiEnvelope'
+import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
-import { profileApi } from '../profile'
+import { pickProfileEdits, profileApi, type UpdateProfileRequest } from '../profile'
+import { makeProfile, makeProfileWire } from './profileFixture'
 
 /**
  * profile 模块的线级用例（本模块此前一条测试都没有）。
@@ -31,18 +32,12 @@ const PROFILE_BASE = `${getApiBaseUrl()}/api/profile`
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-const PROFILE_DTO = {
-  user_id: 'u1',
-  user_nickname: '测试用户',
-  user_email: 'a@example.com',
-  user_signature: null,
-  user_avatar_url: null,
-  admin: 'false',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-}
+/** 后端线上形状（16 个字段，doc:92-109）。 */
+const PROFILE_DTO = makeProfileWire()
 
 let fetchMock: ReturnType<typeof vi.fn>
+/** `legacyBare` 与宽松档字段都是**靠 warn 留痕**的，所以它必须被观察到而不是被吞掉。 */
+let warnMock: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   localStorage.clear()
@@ -69,6 +64,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
+  warnMock = vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -80,9 +76,8 @@ describe('profileApi.updateProfile', () => {
   it('成功时把请求打到 PUT /api/profile', async () => {
     fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
 
-    const result = await profileApi.updateProfile({ email: 'new@example.com' })
+    await expect(profileApi.updateProfile({ email: 'new@example.com' })).resolves.toBeUndefined()
 
-    expect(result.message).toBe('Profile updated successfully')
     expect(fetchMock.mock.calls[0][0]).toBe(PROFILE_BASE)
     expect(fetchMock.mock.calls[0][1].method).toBe('PUT')
   })
@@ -140,16 +135,67 @@ describe('profileApi.changePassword', () => {
 
   it('400 新密码不合规同样是可见错误', async () => {
     // 文档 :339 的验证错误响应，逐字。
+    //
+    // ⚠️ 新密码这里给的是**本地检查放得过**的 6 位：长度闸现在在客户端也有一道
+    // （见下面那个 describe），所以这条 400 只可能在"前后端规则不一致"时出现——
+    // 而这正是它仍然要被钉住的原因：判据在后端，客户端那道只是省一次往返，
+    // 后端说不行时错误必须照样以可见形态上抛，不能因为"本地过了"就当成功。
     fetchMock.mockResolvedValueOnce(
       json({ error: 'Validation error: new_password: Password must be 6-100 characters' }, 400),
     )
 
     const error = await profileApi
-      .changePassword({ old_password: 'oldpass123', new_password: 'abc' })
+      .changePassword({ old_password: 'oldpass123', new_password: 'abcdef' })
       .catch((e: unknown) => e)
 
     expect((error as ApiError).status).toBe(400)
     expect(isAuthError(error as Error)).toBe(false)
+  })
+})
+
+/**
+ * 密码长度：doc:304-306「`old_password`: 至少 6 字符 / `new_password`: 6-100 字符」。
+ *
+ * 本批之前**上限一处都没有**：两个组件各判了一次 `newPassword.length < 6`，
+ * 粘一个 100 位以上的密码要等一次往返回来才知道不行。下限也从组件搬到了这里——
+ * 同一条规则写在两个组件里，改一处就是漂移。
+ */
+describe('profileApi.changePassword 的本地长度闸', () => {
+  it('新密码超过 100 位：一个请求都不发', async () => {
+    await expect(
+      profileApi.changePassword({ old_password: 'oldpass123', new_password: 'a'.repeat(101) }),
+    ).rejects.toThrow('新密码长度最多 100 位')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('新密码不足 6 位：一个请求都不发', async () => {
+    await expect(
+      profileApi.changePassword({ old_password: 'oldpass123', new_password: 'abc' }),
+    ).rejects.toThrow('新密码长度至少 6 位')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('旧密码不足 6 位：一个请求都不发（doc:305，此前两个组件都没判）', async () => {
+    await expect(
+      profileApi.changePassword({ old_password: 'abc', new_password: 'newpass456' }),
+    ).rejects.toThrow('当前密码长度至少 6 位')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('正对照：边界值（新密码正好 100 位）照常发出去', async () => {
+    // 上面三条的 `not.toHaveBeenCalled()` 需要这一条，否则"没发请求"在
+    // fetchMock 根本没接上、或长度闸把所有输入都拦下时同样成立。
+    fetchMock.mockResolvedValueOnce(json({ message: 'Password updated successfully' }))
+
+    await expect(
+      profileApi.changePassword({ old_password: 'oldpass123', new_password: 'a'.repeat(100) }),
+    ).resolves.toBeUndefined()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${PROFILE_BASE}/password`)
   })
 })
 
@@ -253,9 +299,8 @@ describe('profileApi 的 401 刷新重试分支（refreshToken 非空）', () =>
         : json({ message: 'Profile updated successfully' })
     })
 
-    const result = await profileApi.updateProfile({ email: 'new@example.com' })
+    await expect(profileApi.updateProfile({ email: 'new@example.com' })).resolves.toBeUndefined()
 
-    expect(result.message).toBe('Profile updated successfully')
     expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([
       PROFILE_BASE,
       REFRESH_URL,
@@ -332,7 +377,7 @@ describe('profileApi.getProfile', () => {
 
     const profile = await profileApi.getProfile()
 
-    expect(profile).toEqual(PROFILE_DTO)
+    expect(profile).toEqual(makeProfile())
   })
 
   it('401 抛 ApiError(401) 并被判成认证错误', async () => {
@@ -601,5 +646,391 @@ describe('profileApi.uploadAvatar（四步预签名链路）', () => {
     ).resolves.toBeTruthy()
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+})
+
+/**
+ * 信封解包层。
+ *
+ * 被替掉的是 `const data = await response.json(); return data.data || data`——
+ * 三种候选形状（裸 DTO / 只有 `data` 键 / 完整 `{success, code, data}`）它**全都**
+ * 歪打正着，所以它从来不会报错，也就从来不会告诉任何人形状到底是哪一种。
+ *
+ * 后端在本机不可达（`api.huanvae.cn` 被 ICP 拦截、无 SNI 那条要客户端证书），
+ * 而文档在这个端点上自相矛盾（:68-87 只有 `data` 键，:240-254 是完整信封），
+ * 所以迁移带了 `legacyBare` 豁免。本组用例钉的正是这个豁免**不是** `?? body`：
+ * 它命中时会 warn（欠账可 grep），而 `data: null` 之类的真形状错误照抛不误。
+ */
+describe('profileApi.getProfile 的信封解包', () => {
+  it('裸响应（没有 success/code/data 包裹）走 legacyBare：能解析，但每次都留下 warn', async () => {
+    // 一条用例里做两次请求，用**同一个** spy 覆盖正反两侧：
+    // 只写"裸响应会 warn"，spy 接错地方也可能碰巧绿；只写"信封不 warn"，
+    // 在 warn 从来没被调用过时是恒真的空话。
+    fetchMock.mockResolvedValueOnce(json(PROFILE_DTO))
+
+    const bare = await profileApi.getProfile()
+
+    expect(bare.user_id).toBe('u1')
+    // 文案里必须能看出"这是欠账"：reason 与清理期限都来自 PROFILE_LEGACY_BARE。
+    const warned: string[] = warnMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(warned.some((line) => line.includes('GET /api/profile 仍是裸响应'))).toBe(true)
+    expect(warned.some((line) => line.includes('清理期限 2026-12-31'))).toBe(true)
+
+    // 反向：完整信封走正常路径，一条 warn 都不该有。
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    const enveloped = await profileApi.getProfile()
+
+    expect(enveloped.user_id).toBe('u1')
+    expect(warnMock).not.toHaveBeenCalled()
+  })
+
+  it('文档 :68-87 那种「只有 data 键」的形状也认，且不算欠账', async () => {
+    // §1 的响应样例逐字就是这个形状：没有 success、没有 code，只有 data。
+    // `unwrapData` 的判定是 `'data' in envelope`，所以它走的是正常路径而不是
+    // legacyBare——这条与上一条合起来覆盖了三种候选形状里的后两种。
+    fetchMock.mockResolvedValueOnce(json({ data: PROFILE_DTO }))
+
+    const profile = await profileApi.getProfile()
+
+    expect(profile.user_id).toBe('u1')
+    expect(warnMock).not.toHaveBeenCalled()
+  })
+
+  it('data 为 null 时抛形状错误——legacyBare 不是 `?? body`', async () => {
+    // 这一条是 `legacyBare` 与 `x.data ?? x` 的**分界线**：后者会把
+    // `{success:true,data:null}` 变成"读整个信封"，于是 user_id 是 undefined，
+    // 一路静默到渲染层。这里必须炸。
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: null }))
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiShapeError)
+    expect((error as ApiError).endpoint).toBe('GET /api/profile')
+  })
+
+  it('HTTP 200 但 success:false 也是失败（旧写法只看 response.ok）', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: false, code: 400, error: '资料不可用' }, 200))
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).message).toBe('资料不可用')
+  })
+})
+
+/**
+ * 16 个字段的严格 / 宽松两档。
+ *
+ * 界线是「本批有没有接上消费者」：四个隐私字段本批接进了设置页的隐私区 ⇒ 严格；
+ * `background_url` / `gender` / `birthday` / `region` 本批无人读 ⇒ 宽松（warn 但不抛）。
+ * 理由写在 `profile.ts` 的 `unconsumedNullableStr` 上：一个被严格解析却没有消费者的
+ * 字段，在后端改名那天会让**所有人**打不开资料页，而收益是零。
+ */
+describe('profileApi.getProfile 的字段校验', () => {
+  const omit = (key: string) => {
+    const wire = makeProfileWire()
+    delete wire[key]
+    return wire
+  }
+
+  it('四个隐私字段：少一个就抛形状错误，且错误里点得出是哪个字段', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit('allow_search') }))
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiShapeError)
+    // "可见"还不够，要"可归因"：错误必须指名字段，否则排查时只知道"资料页坏了"。
+    expect((error as Error).message).toContain('allow_search')
+    expect((error as ApiError).endpoint).toBe('GET /api/profile')
+  })
+
+  it('allow_search 为 null 时同样抛——null 会被 Switch 渲染成"关"', async () => {
+    // `require` 档会放行 null（它判的是 `=== undefined`），于是一个**开着**的
+    // 搜索开关在面板上显示成关着的。这就是本端点用 `parse` 不用 `require` 的理由。
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: makeProfileWire({ allow_search: null }) }),
+    )
+
+    await expect(profileApi.getProfile()).rejects.toBeInstanceOf(ApiShapeError)
+  })
+
+  it('search_visible_by_id 缺失同样抛，且点名', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: omit('search_visible_by_id') }),
+    )
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect((error as Error).message).toContain('search_visible_by_id')
+  })
+
+  it('policy 取值不在 manual/auto_accept/auto_reject 里就抛（doc:156）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        success: true,
+        code: 200,
+        data: makeProfileWire({ friend_request_policy: 'auto_maybe' }),
+      }),
+    )
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiShapeError)
+    expect((error as Error).message).toContain('friend_request_policy')
+    expect((error as Error).message).toContain('auto_maybe')
+  })
+
+  it('group_invite_policy 缺失同样抛，且点名', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: omit('group_invite_policy') }),
+    )
+
+    const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+    expect((error as Error).message).toContain('group_invite_policy')
+  })
+
+  it('本批无人消费的四个字段：缺席只 warn，不让所有人打不开资料页', async () => {
+    // 同一个 spy 覆盖正反两侧（理由同 legacyBare 那条）。
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit('gender') }))
+
+    const profile = await profileApi.getProfile()
+
+    // 请求整体成功——这才是"宽松"的全部含义。
+    expect(profile.user_id).toBe('u1')
+    expect(profile.gender).toBeNull()
+    const warned: string[] = warnMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(warned.some((line) => line.includes('gender') && line.includes('缺失'))).toBe(true)
+
+    // 反向：字段在时原样透传，且不 warn。
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: makeProfileWire({ gender: 'female' }) }),
+    )
+
+    const complete = await profileApi.getProfile()
+
+    expect(complete.gender).toBe('female')
+    expect(warnMock).not.toHaveBeenCalled()
+  })
+
+  it('background_url 的相对路径出来是绝对地址（doc:99，与头像同一句「需拼接」）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        success: true,
+        code: 200,
+        data: makeProfileWire({ background_url: 'avatars/background/u1.jpg?t=1706000000' }),
+      }),
+    )
+
+    const profile = await profileApi.getProfile()
+
+    expect(profile.background_url).toBe(
+      `${getApiBaseUrl()}/avatars/background/u1.jpg?t=1706000000`,
+    )
+  })
+
+  it('user_signature 为空串时归一成 null，而不是让整个资料页炸掉', async () => {
+    // `nullableStr` 会把 `''` 判成"缺失"并抛。而写侧对空串是放行的
+    // （文档自己的参考实现 :609/:615 就是把空输入框原样发出去），所以
+    // "签名被清空了"是一个完全正常的账号状态，不能变成解析失败。
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: makeProfileWire({ user_signature: '', user_email: '' }) }),
+    )
+
+    const profile = await profileApi.getProfile()
+
+    expect(profile.user_signature).toBeNull()
+    expect(profile.user_email).toBeNull()
+  })
+
+  it('admin 是字符串 "false"（不是布尔），16 个字段一个不少地带出来', async () => {
+    // 正对照：上面几条都在验"少字段会怎样"，这条验"齐了会怎样"。
+    // 最后那句 `Object.keys(profile).sort()` 覆盖全部 16 个键——把解析器改成
+    // 少返回两个（实测删掉 created_at / updated_at），它立刻红。
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    const profile = await profileApi.getProfile()
+
+    expect(profile.admin).toBe('false')
+    expect(typeof profile.admin).toBe('string')
+    expect(Object.keys(profile).sort()).toEqual(Object.keys(makeProfile()).sort())
+  })
+})
+
+/**
+ * `PUT /api/profile` 的七个被丢掉的可写字段。
+ *
+ * 旧实现是一条 if 链，只放行 `nickname` / `email` / `signature`；文档 :139-150 的
+ * 字段表有十个。剩下七个**静默丢弃**——用户在面板上改了隐私设置、点了保存、
+ * 看到"成功"，而请求体里根本没有那个字段。
+ */
+describe('profileApi.updateProfile 的请求体', () => {
+  const sentBody = () => JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+
+  it('七个新字段逐个上线（把 if 链白名单还原 → 本条红）', async () => {
+    fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+
+    await profileApi.updateProfile({
+      allow_search: false,
+      search_visible_by_id: false,
+      friend_request_policy: 'auto_reject',
+      group_invite_policy: 'auto_accept',
+      gender: 'female',
+      birthday: '1995-08-20',
+      region: '上海',
+    })
+
+    expect(sentBody()).toEqual({
+      allow_search: false,
+      search_visible_by_id: false,
+      friend_request_policy: 'auto_reject',
+      group_invite_policy: 'auto_accept',
+      gender: 'female',
+      birthday: '1995-08-20',
+      region: '上海',
+    })
+  })
+
+  it('只传一个字段就只发一个字段——部分更新，缺席 = 保持原值（doc:162-189）', async () => {
+    fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+
+    await profileApi.updateProfile({ signature: '新签名' })
+
+    // `toEqual` 而不是 `toMatchObject`：多发一个没碰过的字段就是一次覆盖写，
+    // 而这正是本批要修的缺陷（旧代码无条件带上 email / signature）。
+    expect(sentBody()).toEqual({ signature: '新签名' })
+  })
+
+  it('allow_search: false 不会被当成"没传"丢掉', async () => {
+    // 判定必须是 `!== undefined`，写成真值判断的话，两个隐私开关**永远关不掉**：
+    // false 会被跳过，请求体空了再被下面那条空体闸拦住，用户看到的是"没有需要保存的修改"。
+    fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+
+    await profileApi.updateProfile({ allow_search: false })
+
+    expect(sentBody()).toEqual({ allow_search: false })
+  })
+
+  it('空请求体一个请求都不发（doc:160「至少提供一个字段」）', async () => {
+    await expect(profileApi.updateProfile({})).rejects.toThrow('没有需要保存的修改')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('昵称被清空时就地拦下（doc:141「1-50 字符」），不发请求', async () => {
+    // 本批把两个组件里那个一直 disabled 的昵称输入框放开了，于是"清空昵称"
+    // 第一次成为可达输入。后端对它是 400，本地这一道只是省一次往返。
+    await expect(profileApi.updateProfile({ nickname: '' })).rejects.toThrow('昵称长度需为 1-50')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('正对照：合法的昵称照常发出去', async () => {
+    // 上面两条的 `not.toHaveBeenCalled()` 需要它，否则"没发请求"在 fetchMock
+    // 没接上、或本地闸把一切都拦下时同样成立。
+    fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+
+    await profileApi.updateProfile({ nickname: '新昵称' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(sentBody()).toEqual({ nickname: '新昵称' })
+  })
+})
+
+/**
+ * `pickProfileEdits`：表单值 → 只含**被改过**的字段的部分更新体。
+ *
+ * 两个 UI 此前都无条件发 `{email, signature}`，于是一次"只改签名"的保存会把
+ * 邮箱一起重写，而 `profile.user_email || ''` 让没有邮箱的账号发出 `email: ""`。
+ * 缺陷不是"发了空串"，是**发了用户没碰过的字段**。
+ */
+describe('pickProfileEdits', () => {
+  const current = makeProfile({ user_email: 'a@example.com', user_signature: '旧签名' })
+  const formOf = (overrides: Partial<{ nickname: string; email: string; signature: string }> = {}) => ({
+    nickname: current.user_nickname,
+    email: current.user_email ?? '',
+    signature: current.user_signature ?? '',
+    ...overrides,
+  })
+
+  it('一个都没改：空对象（于是 updateProfile 会就地拦下，不发请求）', () => {
+    expect(pickProfileEdits(current, formOf())).toEqual({})
+  })
+
+  it('只改签名：邮箱不出现在请求体里（旧写法会把它一起重写）', () => {
+    expect(pickProfileEdits(current, formOf({ signature: '新签名' }))).toEqual({
+      signature: '新签名',
+    })
+  })
+
+  it('用户主动清空邮箱：空串照发——"清空"与"没碰过"必须分得开', () => {
+    // 文档没有任何一处说空串会被拒，它自己的参考实现（:592、:609、:615）做的
+    // 正是"读输入框原值直接发"。所以这里不去猜后端收不收，只保证意图能表达。
+    expect(pickProfileEdits(current, formOf({ email: '' }))).toEqual({ email: '' })
+  })
+
+  it('没有邮箱的账号不动邮箱框：不会发出 email: ""', () => {
+    // 旧写法的具体形态：`formData.email = profile.user_email || ''`，
+    // 再无条件 `body.email = formData.email` ⇒ 每次保存都发 `email: ""`。
+    const noEmail = makeProfile({ user_email: null, user_signature: null })
+
+    expect(pickProfileEdits(noEmail, { nickname: noEmail.user_nickname, email: '', signature: '' })).toEqual({})
+  })
+
+  it('资料还没加载出来时返回空对象，不拿一份空表单去覆盖真实资料', () => {
+    expect(pickProfileEdits(null, formOf({ signature: '新签名' }))).toEqual({})
+  })
+
+  it('昵称改了就带上昵称（本批之前输入框是 disabled 的，改不了）', () => {
+    expect(pickProfileEdits(current, formOf({ nickname: '新昵称' }))).toEqual({
+      nickname: '新昵称',
+    })
+  })
+})
+
+/**
+ * `PUT /api/profile` 的本地字段校验（doc:152-160 的「验证规则」逐条）。
+ *
+ * 性质与 `uploadAvatar` 的大小/格式检查相同：**判据在后端**，这里只省一次注定
+ * 失败的往返，顺便把提示写成中文（后端给的是 `Validation error: ...` 的英文串）。
+ * 每条都断言 `fetch` 一次都没发——只断言"抛了"的话，一个先发请求再抛的实现也能绿。
+ */
+describe('profileApi.updateProfile 的本地字段校验', () => {
+  const cases: readonly [string, UpdateProfileRequest, string][] = [
+    ['昵称超过 50 字（doc:141）', { nickname: 'a'.repeat(51) }, '昵称长度需为 1-50'],
+    ['签名超过 200 字（doc:143）', { signature: 'a'.repeat(201) }, '个性签名最长 200'],
+    ['地区超过 100 字（doc:150）', { region: 'a'.repeat(101) }, '地区最长 100'],
+    // 类型上写不出这些值，但类型不是执行者——运行时校验才是。
+    ['性别不在三档里（doc:148）', { gender: 'unknown' as never }, '性别取值须为'],
+    ['好友申请策略取值非法（doc:146）', { friend_request_policy: 'later' as never }, 'friend_request_policy 取值须为'],
+    ['群邀请策略取值非法（doc:147）', { group_invite_policy: 'later' as never }, 'group_invite_policy 取值须为'],
+    ['生日不是 ISO 日期（doc:149）', { birthday: '1995/08/20' }, '生日须为 ISO 日期格式'],
+  ]
+
+  it.each(cases)('%s：就地拦下，不发请求', async (_name, updates, expected) => {
+    await expect(profileApi.updateProfile(updates)).rejects.toThrow(expected)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('正对照：每一档的合法边界值都放行', async () => {
+    // 上面七条的 `not.toHaveBeenCalled()` 需要它，否则"没发请求"在校验把一切都
+    // 拦下时同样成立。边界值取的是各自的上限/合法枚举，不是"随便一个正常值"。
+    fetchMock.mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+
+    await profileApi.updateProfile({
+      nickname: 'a'.repeat(50),
+      signature: 'b'.repeat(200),
+      region: 'c'.repeat(100),
+      gender: 'other',
+      friend_request_policy: 'auto_reject',
+      group_invite_policy: 'auto_accept',
+      birthday: '1995-08-20',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

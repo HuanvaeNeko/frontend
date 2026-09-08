@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { profileApi } from '@/features/profile/api/profile'
+import { pickProfileEdits, profileApi } from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { ROUTES } from '@/lib/routes'
 
@@ -37,7 +37,7 @@ export default function Profile() {
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = useState({ email: '', signature: '' })
+  const [formData, setFormData] = useState({ nickname: '', email: '', signature: '' })
   const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
   const [showPasswords, setShowPasswords] = useState({ old: false, new: false, confirm: false })
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -61,16 +61,35 @@ export default function Profile() {
   useEffect(() => {
     if (profile) {
       setFormData({
+        nickname: profile.user_nickname,
         email: profile.user_email || '',
         signature: profile.user_signature || '',
       })
     }
   }, [profile])
 
+  /**
+   * 只提交**改过**的字段。
+   *
+   * 此前这里是 `updateProfile(formData)`，而 `formData` 恒有 `email` 与
+   * `signature` 两个键——于是一次"只改签名"的保存会把邮箱一并重写，
+   * 没有邮箱的账号还会发出 `email: ""`（`profile.user_email || ''` 的直接后果）。
+   * `PUT /api/profile` 是**部分更新**，缺席 = 保持原值（`个人资料管理.md:162-200`
+   * 的四个示例分别只带一个 / 三个字段），所以"没碰过的字段不发"才是这个端点的
+   * 正确用法。差分逻辑在 {@link pickProfileEdits}，与 `ProfileModal` 共用一份。
+   *
+   * 一个字段都没改时就地返回：`updateProfile` 对空体会抛（doc:160「至少提供一个
+   * 字段」），但让用户看到一句"没有需要保存的修改"比一条红色的失败提示准确。
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const edits = pickProfileEdits(profile, formData)
+    if (Object.keys(edits).length === 0) {
+      toast({ title: '没有需要保存的修改' })
+      return
+    }
     try {
-      await updateProfile(formData)
+      await updateProfile(edits)
       toast({ title: '成功', description: '个人资料已更新' })
     } catch (error) {
       toast({ title: '更新失败', description: error instanceof Error ? error.message : '请稍后重试', variant: 'destructive' })
@@ -132,12 +151,13 @@ export default function Profile() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // 两次输入是否一致是**纯 UI 概念**（后端只收一个 new_password），所以留在这里。
+    // 长度规则相反：它是端点契约的一部分（doc:305-306，`old_password` ≥ 6、
+    // `new_password` 6-100），已经收进 `profileApi.changePassword` 一处执行——
+    // 此前两个组件各判了一次 `< 6`，**上限一处都没有**，粘一个 100 位以上的密码
+    // 要等一次往返才知道不行。
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast({ title: '错误', description: '两次输入的新密码不一致', variant: 'destructive' })
-      return
-    }
-    if (passwordData.newPassword.length < 6) {
-      toast({ title: '错误', description: '新密码长度至少 6 位', variant: 'destructive' })
       return
     }
 
@@ -224,8 +244,21 @@ export default function Profile() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>昵称</Label>
-                  <Input value={displayName} disabled />
+                  <Label htmlFor="profile_nickname">昵称</Label>
+                  {/*
+                    昵称是**可写**的（doc:141「新昵称（可选，1-50 字符）」，:153 复述），
+                    但这个输入框此前硬写着 `disabled` 且绑的是只读的 `displayName`——
+                    两个 UI 都是这样，于是全站没有任何一个用户能改自己的显示名。
+                    `maxLength` 只挡上限；清空（下限 1）由 `profileApi.updateProfile`
+                    的本地闸拦，两个组件不各写一份。
+                  */}
+                  <Input
+                    id="profile_nickname"
+                    value={formData.nickname}
+                    onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
+                    maxLength={50}
+                    placeholder="给自己起个名字"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>邮箱</Label>
@@ -241,7 +274,7 @@ export default function Profile() {
                 </div>
                 <div className="flex gap-2">
                   <Button type="submit" disabled={isLoading}>{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '保存更改'}</Button>
-                  <Button type="button" variant="outline" onClick={() => setFormData({ email: profile?.user_email || '', signature: profile?.user_signature || '' })} className="gap-1.5">
+                  <Button type="button" variant="outline" onClick={() => setFormData({ nickname: profile?.user_nickname || '', email: profile?.user_email || '', signature: profile?.user_signature || '' })} className="gap-1.5">
                     <RefreshCw className="h-4 w-4" />重置
                   </Button>
                 </div>

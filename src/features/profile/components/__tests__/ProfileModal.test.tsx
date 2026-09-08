@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfileModal from '../ProfileModal'
 
@@ -46,16 +47,7 @@ const json = (body: unknown, status = 200) =>
 
 const envelope = (data: unknown) => json({ success: true, code: 200, data })
 
-const PROFILE_DTO = {
-  user_id: 'u1',
-  user_nickname: '测试用户',
-  user_email: 'old@example.com',
-  user_signature: '签名',
-  user_avatar_url: null,
-  admin: 'false',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-}
+const PROFILE_DTO = makeProfileWire({ user_email: 'old@example.com', user_signature: '签名' })
 
 const SESSION = {
   mode: 'multipart',
@@ -276,5 +268,83 @@ describe('ProfileModal 上传头像', () => {
       }),
     )
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
+  })
+})
+
+/**
+ * 保存资料：`ProfileModal` 是第二个调用点，与 `ProfilePage` 逐条同构。
+ *
+ * 单独钉它的理由和头像那组一样——本仓吃过"同一条规则只钉住 7 个站点里的 2 个"
+ * 的亏，而这两个组件各写了一份 `handleSubmit`、各绑了一份昵称输入框。
+ * 只测其中一个，等于给另一个发一张永不到期的通行证。
+ */
+describe('ProfileModal 保存个人资料', () => {
+  /** PUT 成功 + 随后那次完整资料 GET，都用同一个 handler 供。 */
+  const mockSaveOk = () => {
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        return json({ success: true, code: 200, data: PROFILE_DTO })
+      }
+      if (url === PROFILE_BASE && init?.method === 'PUT') {
+        return json({ message: 'Profile updated successfully' })
+      }
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+  }
+
+  const putBodies = (): unknown[] =>
+    fetchMock.mock.calls
+      .filter((call: unknown[]) => (call[1] as RequestInit | undefined)?.method === 'PUT')
+      .map((call: unknown[]) => JSON.parse(String((call[1] as RequestInit).body)))
+
+  it('只改签名：请求体里没有 email（旧写法无条件带上它）', async () => {
+    mockSaveOk()
+
+    render(<ProfileModal isOpen onClose={() => {}} />)
+    const signature = await screen.findByDisplayValue('签名')
+    await userEvent.clear(signature)
+    await userEvent.type(signature, '新签名')
+
+    await userEvent.click(screen.getByRole('button', { name: /保存更改/ }))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+    )
+    // 把 `handleSubmit` 改回 `updateProfile(formData)` → 请求体多出 email / nickname，本行红。
+    expect(putBodies()).toEqual([{ signature: '新签名' }])
+  })
+
+  it('昵称输入框不再是 disabled，改了能存进去（doc:141「1-50 字符」）', async () => {
+    mockSaveOk()
+
+    render(<ProfileModal isOpen onClose={() => {}} />)
+    const nickname = await screen.findByDisplayValue('测试用户')
+    // 正对照：`disabled` 还在时，这一行直接红（userEvent 也不会往 disabled 里打字）。
+    expect((nickname as HTMLInputElement).disabled).toBe(false)
+    await userEvent.clear(nickname)
+    await userEvent.type(nickname, '新昵称')
+
+    await userEvent.click(screen.getByRole('button', { name: /保存更改/ }))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+    )
+    expect(putBodies()).toEqual([{ nickname: '新昵称' }])
+  })
+
+  it('一个字段都没改时保存按钮是灰的，一个 PUT 都发不出去', async () => {
+    mockSaveOk()
+
+    render(<ProfileModal isOpen onClose={() => {}} />)
+    await screen.findByDisplayValue('old@example.com')
+
+    const save = screen.getByRole('button', { name: /保存更改/ })
+    expect((save as HTMLButtonElement).disabled).toBe(true)
+    await userEvent.click(save)
+
+    // 正对照：挂载时那次 GET 确实发生过（否则"没有 PUT"是句空话）。
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0)
+    expect(putBodies()).toEqual([])
   })
 })

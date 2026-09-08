@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { profileApi } from '@/features/profile/api/profile'
+import { PASSWORD_LIMITS, pickProfileEdits, profileApi } from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { playTap, playToggle, playButton, playPop } from '@/hooks/useSound'
 
@@ -190,6 +190,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState({
+    nickname: '',
     email: '',
     signature: '',
   })
@@ -200,7 +201,6 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
    * 不是"第几片传完了"（头像档永远只有 1 片）。
    */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
-  const [hasChanges, setHasChanges] = useState(false)
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
 
@@ -211,27 +211,44 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   useEffect(() => {
     if (profile) {
       setFormData({
+        nickname: profile.user_nickname,
         email: profile.user_email || '',
         signature: profile.user_signature || '',
       })
     }
   }, [profile])
 
-  useEffect(() => {
-    if (profile) {
-      const emailChanged = formData.email !== (profile.user_email || '')
-      const signatureChanged = formData.signature !== (profile.user_signature || '')
-      setHasChanges(emailChanged || signatureChanged)
-    }
-  }, [formData, profile])
+  /**
+   * "有没有改过"与"该提交哪些字段"是同一个判断，所以两边共用 `pickProfileEdits`：
+   * 各写一份的话，会出现按钮亮着但请求体是空的（或反过来）的错位。
+   *
+   * 渲染时**就地算**，而不是放进 state 由 effect 去同步。原来那份（比较 email /
+   * signature 的 `useEffect` + `setHasChanges`）有一拍窗口：`profile` 刚到、
+   * 而回填 `formData` 的那个 effect 还没跑完时，effect 会拿"空表单 vs 有值的资料"
+   * 算出 `hasChanges = true`，于是"保存更改"会闪一下变成可点。派生值本来就不该
+   * 存进 state——这样也不再需要保存成功后手动 `setHasChanges(false)`。
+   */
+  const edits = pickProfileEdits(profile, formData)
+  const hasChanges = Object.keys(edits).length > 0
 
+  /**
+   * 只提交**改过**的字段——理由与 `ProfilePage.handleSubmit` 逐条相同
+   * （部分更新语义 doc:162-200；旧写法无条件带上 `email` / `signature`，
+   * 一次"只改签名"的保存会把邮箱一起重写）。差分逻辑共用 {@link pickProfileEdits}。
+   *
+   * 这一侧的保存按钮本来就绑着 `hasChanges`，所以空差分在正常操作下到不了这里；
+   * 那句 return 挡的是"按钮状态与实际差分不一致"的时序，不是主路径。
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     playButton()
+    if (!hasChanges) {
+      toast({ title: '没有需要保存的修改' })
+      return
+    }
     try {
-      await updateProfile(formData)
+      await updateProfile(edits)
       toast({ title: '成功', description: '个人资料已更新' })
-      setHasChanges(false)
       onSaved()
     } catch (error) {
       toast({
@@ -285,6 +302,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   const handleReset = () => {
     playTap()
     setFormData({
+      nickname: profile?.user_nickname || '',
       email: profile?.user_email || '',
       signature: profile?.user_signature || '',
     })
@@ -333,12 +351,18 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
 
       {/* 表单 */}
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/*
+          昵称可写（doc:141「1-50 字符」）。此前这里 `disabled` 且绑着只读的
+          `displayName`，与 `ProfilePage` 同一个形态——全站没有任何一个用户能改
+          自己的显示名。下限（清空）由 `profileApi.updateProfile` 的本地闸统一拦。
+        */}
         <FormInput
           icon={UserIcon}
           label="昵称"
-          value={displayName}
-          onChange={() => {}}
-          disabled
+          value={formData.nickname}
+          onChange={(v) => setFormData({ ...formData, nickname: v })}
+          placeholder="给自己起个名字"
+          maxLength={50}
         />
 
         <FormInput
@@ -415,13 +439,10 @@ function PasswordSettings() {
     e.preventDefault()
     playButton()
 
+    // 一致性检查是纯 UI 概念，留在这里；长度规则是端点契约（doc:305-306），
+    // 已收进 `profileApi.changePassword` 一处执行——理由见 `ProfilePage` 同一处。
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast({ title: '错误', description: '两次输入的新密码不一致', variant: 'destructive' })
-      return
-    }
-
-    if (passwordData.newPassword.length < 6) {
-      toast({ title: '错误', description: '新密码长度至少 6 位', variant: 'destructive' })
       return
     }
 
@@ -457,7 +478,9 @@ function PasswordSettings() {
           <div className="text-sm text-foreground">
             <p className="font-medium mb-1">密码安全提示</p>
             <ul className="space-y-0.5 text-xs text-muted-foreground">
-              <li>• 新密码长度至少 6 位</li>
+              {/* 数字来自 `PASSWORD_LIMITS`（doc:305-306），不写字面量——
+                  界面上的提示与真正执行的规则各写一份，迟早对不上。 */}
+              <li>• 新密码长度 {PASSWORD_LIMITS.newMin}-{PASSWORD_LIMITS.newMax} 位</li>
               <li>• 建议使用字母、数字和符号的组合</li>
             </ul>
           </div>
@@ -488,7 +511,7 @@ function PasswordSettings() {
         type={showPasswords.new ? 'text' : 'password'}
         value={passwordData.newPassword}
         onChange={(v) => setPasswordData({ ...passwordData, newPassword: v })}
-        placeholder="至少 6 位"
+        placeholder={`${PASSWORD_LIMITS.newMin}-${PASSWORD_LIMITS.newMax} 位`}
         rightElement={
           <button
             type="button"

@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfilePage from '../ProfilePage'
 
@@ -59,16 +60,7 @@ const PROFILE_BASE = `${getApiBaseUrl()}/api/profile`
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-const PROFILE_DTO = {
-  user_id: 'u1',
-  user_nickname: '测试用户',
-  user_email: 'old@example.com',
-  user_signature: '签名',
-  user_avatar_url: null,
-  admin: 'false',
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-}
+const PROFILE_DTO = makeProfileWire({ user_email: 'old@example.com', user_signature: '签名' })
 
 let fetchMock: ReturnType<typeof vi.fn>
 
@@ -104,7 +96,22 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/**
+ * ⚠️ 本组用例现在都要**先改一个字段**再点保存。
+ *
+ * 这不是测试的仪式感，是被测行为变了：保存提交的是 `pickProfileEdits` 算出来的
+ * **差分**，一个字段都没碰时请求根本不会发出去（见本 describe 最后两条）。
+ * 旧写法里"什么都不改直接点保存"照样会发一个 `{email, signature}` 的请求——
+ * 那正是本批要修的缺陷（把没碰过的字段一起重写）。
+ */
 describe('ProfilePage 保存个人资料', () => {
+  /** 把邮箱改成一个新值——最短的"制造一处差分"。 */
+  const editEmail = async (value: string) => {
+    const input = await screen.findByDisplayValue('old@example.com')
+    await userEvent.clear(input)
+    await userEvent.type(input, value)
+  }
+
   it('后端 400 校验失败时只弹失败提示，绝不弹「成功」', async () => {
     fetchMock
       // 挂载时的 loadProfile
@@ -113,7 +120,12 @@ describe('ProfilePage 保存个人资料', () => {
       .mockResolvedValueOnce(json({ error: 'Validation error: email: Invalid email format' }, 400))
 
     renderPage()
-    await screen.findByDisplayValue('old@example.com')
+    // ⚠️ 这里填的是一个**格式合法**的邮箱，而后端仍然返回 400。
+    // 原因是实测出来的：输入框是 `type="email"`，happy-dom 实现了约束校验，
+    // 填 `not-an-email` 时表单**根本不会提交**（无 toast、无 PUT）。
+    // 所以「邮箱格式错」这一档在本表单里基本到不了后端；这条用例钉的是
+    // 更一般也更要紧的那件事——**后端说 400 时屏幕上是失败、不是成功**。
+    await editEmail('new@example.com')
 
     await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
 
@@ -134,7 +146,7 @@ describe('ProfilePage 保存个人资料', () => {
       .mockResolvedValueOnce(json({ error: '未认证或 Token 无效' }, 401))
 
     renderPage()
-    await screen.findByDisplayValue('old@example.com')
+    await editEmail('new@example.com')
 
     await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
 
@@ -155,7 +167,7 @@ describe('ProfilePage 保存个人资料', () => {
       .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
 
     renderPage()
-    await screen.findByDisplayValue('old@example.com')
+    await editEmail('new@example.com')
 
     await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
 
@@ -164,6 +176,63 @@ describe('ProfilePage 保存个人资料', () => {
     )
     expect(fetchMock.mock.calls[1][0]).toBe(PROFILE_BASE)
     expect(fetchMock.mock.calls[1][1].method).toBe('PUT')
+  })
+
+  it('只改签名：请求体里**没有** email（旧写法会把它一起重写）', async () => {
+    // 本批的核心缺陷用例，断言落在 **wire 上**：`pickProfileEdits` 自己的单测在
+    // `profile.test.ts`，这一条验的是组件真的接上了它——把 `handleSubmit` 改回
+    // `updateProfile(formData)` → 请求体里会多出 email 和 nickname，本条红。
+    fetchMock
+      .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+      .mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+      .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    renderPage()
+    const signature = await screen.findByDisplayValue('签名')
+    await userEvent.clear(signature)
+    await userEvent.type(signature, '新签名')
+
+    await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({ signature: '新签名' })
+  })
+
+  it('昵称可以改了（此前输入框硬 disabled，全站没人能改显示名）', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+      .mockResolvedValueOnce(json({ message: 'Profile updated successfully' }))
+      .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    renderPage()
+    const nickname = await screen.findByLabelText('昵称')
+    // 正对照：这个断言在 `disabled` 还在时直接红（userEvent 拒绝对 disabled 输入打字）。
+    expect((nickname as HTMLInputElement).disabled).toBe(false)
+    await userEvent.clear(nickname)
+    await userEvent.type(nickname, '新昵称')
+
+    await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({ nickname: '新昵称' })
+  })
+
+  it('一个字段都没改就点保存：不发请求，也不谎称"成功"', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith({ title: '没有需要保存的修改' }))
+    // 正对照：挂载时那次 GET 确实发生了（否则"只有 1 次请求"可能是 fetch 没接上）。
+    expect(fetchMock.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual([PROFILE_BASE])
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
   })
 })
 

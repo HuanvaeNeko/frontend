@@ -3,7 +3,9 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
+import { beginSession, endSession } from '@/lib/sessionScope'
 import { profileApi } from '../../api/profile'
+import { makeProfile } from '../../api/__tests__/profileFixture'
 import { migrateProfilePersist, useProfileStore } from '../profileStore'
 
 /**
@@ -82,17 +84,12 @@ describe('profileStore.updateProfile', () => {
   })
 
   it('更新成功后才回填 profile', async () => {
-    vi.spyOn(profileApi, 'updateProfile').mockResolvedValue({ message: 'Profile updated successfully' })
-    vi.spyOn(profileApi, 'getProfile').mockResolvedValue({
-      user_id: 'u1',
-      user_nickname: '测试用户',
-      user_email: 'new@example.com',
-      user_signature: null,
-      user_avatar_url: null,
-      admin: 'false',
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-02T00:00:00Z',
-    })
+    // `updateProfile` 现在返回 void：后端那句 `"Profile updated successfully"`
+    // 是英文、两个调用点弹的都是中文 toast，理由写在 `profile.ts` 该方法的 JSDoc。
+    vi.spyOn(profileApi, 'updateProfile').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockResolvedValue(
+      makeProfile({ user_email: 'new@example.com' }),
+    )
 
     await useProfileStore.getState().updateProfile({ email: 'new@example.com' })
 
@@ -174,16 +171,8 @@ describe('profileStore.uploadAvatar', () => {
  * 那个不再存在的名字——上传"成功"，`user_avatar_url` 被写成 `undefined`。
  */
 describe('profileStore.uploadAvatar 成功路径', () => {
-  const PROFILE = {
-    user_id: 'u1',
-    user_nickname: '测试用户',
-    user_email: 'a@example.com',
-    user_signature: null,
-    user_avatar_url: 'https://api.huanvae.cn/avatars/u1.png?t=1706000000',
-    admin: 'false',
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-02T00:00:00Z',
-  }
+  const AVATAR_URL = 'https://api.huanvae.cn/avatars/u1.png?t=1706000000'
+  const PROFILE = makeProfile({ user_avatar_url: AVATAR_URL })
 
   it('把 confirm 的 file_url 写进 user_avatar_url（不是已删除的 avatar_url）', async () => {
     useProfileStore.setState({ profile: PROFILE })
@@ -209,7 +198,7 @@ describe('profileStore.uploadAvatar 成功路径', () => {
     // 这里断言 promise 正常 resolve、不写 error、不登出（调用方据此弹成功提示）。
     useProfileStore.setState({ profile: PROFILE })
     vi.spyOn(profileApi, 'uploadAvatar').mockResolvedValue({
-      file_url: PROFILE.user_avatar_url,
+      file_url: AVATAR_URL,
       file_key: 'u1.png',
     })
 
@@ -290,5 +279,73 @@ describe('profileStore 的 persist 迁移（v0 → v1）', () => {
     expect(migrateProfilePersist({ profile: { user_avatar_url: 42 } })).toEqual({
       profile: { user_avatar_url: 42 },
     })
+  })
+})
+
+/**
+ * 会话边界的**失败半边**。
+ *
+ * 三个 action 的 catch 里都有 `if (!stillMine()) throw error`，挡的是
+ * `settleError` 那条路：它对认证失败会 `silentRedirectToLogin()`（`clearAuth()` +
+ * `location.replace('/login')`）。属于**上一场**会话的一次 401 若绕过这道闸落进来，
+ * 就是"A 的请求把刚登录的 B 清盘并踢回登录页"。
+ *
+ * 这一组是本批补的：实测把 `loadProfile` 的 `if (!stillMine()) throw error` 删掉，
+ * 全仓 730 条用例**一条都不红**——写入半边（`if (!stillMine()) return`）有
+ * `sessionHandoff.test.tsx` 的「loadProfile 在 endSession 之后才返回」盯着，
+ * 失败半边此前没有任何人盯。两半必须各有各的用例。
+ */
+describe('profileStore 的会话边界：失败半边', () => {
+  const sessionExpiredError = () => sessionExpired('GET /api/profile')
+
+  it('上一场会话的 401 落地时：不清掉当前会话的凭证、不跳登录页', async () => {
+    // A 的会话里发出请求，请求还在飞的时候换人。
+    beginSession()
+    let reject!: (error: unknown) => void
+    vi.spyOn(profileApi, 'getProfile').mockReturnValue(
+      new Promise((_resolve, r) => {
+        reject = r
+      }),
+    )
+    const inFlight = useProfileStore.getState().loadProfile()
+
+    endSession()
+    // B 登录：新的一场会话，凭证是新的。
+    beginSession()
+    useAuthStore.setState({
+      accessToken: 'AT-b',
+      refreshToken: 'RT-b',
+      isAuthenticated: true,
+      tokenExpiry: Date.now() + 3600_000,
+    })
+
+    reject(sessionExpiredError())
+    // 属于死会话的错误照样 reject（调用方仍然会看到失败），只是不再有副作用。
+    await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
+
+    // 删掉 `if (!stillMine()) throw error` → settleError 会认出 401 并
+    // `silentRedirectToLogin()`，把 B 清盘 + 跳登录页；实测本条停在下面第一行
+    // （`expected null to be 'AT-b'`），后两行是同一件事的另外两个侧面。
+    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(replaceSpy).not.toHaveBeenCalled()
+  })
+
+  it('正对照：同一场会话里的 401 **确实**会清盘并跳登录页', async () => {
+    // 没有这一条，上面那三行在"401 从来不会触发登出"时同样成立——
+    // 而那正是这道闸唯一有意义的前提。
+    beginSession()
+    useAuthStore.setState({
+      accessToken: 'AT-b',
+      refreshToken: 'RT-b',
+      isAuthenticated: true,
+      tokenExpiry: Date.now() + 3600_000,
+    })
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(sessionExpiredError())
+
+    await expect(useProfileStore.getState().loadProfile()).rejects.toThrow('未认证或 Token 无效')
+
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })
