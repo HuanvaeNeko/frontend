@@ -488,14 +488,13 @@ export const useAuthStore = create<AuthStore>()(
           lastRotatedAt = Date.now()
         }
 
-        // 单飞：并发调用共享同一个 in-flight 请求。**十份** `fetchWithAuth` 定义
-        // （`grep -rn 'const fetchWithAuth' src | grep -v __tests__` 数出来是 10：
-        // apiClient / auth / profile / friends / messages / groupMessages / groups /
-        // webrtc / storage / discovery）和 wsStore 都直接调到这里，
-        // 锁只有放在这个漏斗里才对所有人生效——`apiClient` 曾经在这之上还压着
-        // 第二把模块级的锁，而那一把不是会话内的，见 `apiClient.tryRefreshToken`
-        // 的注释（本批已删）。
-        // 2026-09-07 线上实锤：页面加载时 5 个请求来自 4 份副本，各自发现 token 临期，
+        // 单飞：并发调用共享同一个 in-flight 请求。全仓**唯一**那份
+        // `fetchWithAuth`（`src/api/authedFetch.ts`，本批由十份副本合并而来）
+        // 和 wsStore 都直接调到这里，锁只有放在这个漏斗里才对所有人生效——
+        // `apiClient` 曾经在这之上还压着第二把模块级的锁，而那一把不是会话内的
+        // （已删；合并进来的那一份也**没有**再加，见 `authedFetch.ts` 的
+        // 「三条不变量」第 3 条）。
+        // 2026-09-07 线上实锤（当时还是十份副本）：页面加载时 5 个请求来自 4 份副本，各自发现 token 临期，
         // 5 个 refresh 带着同一个 refresh token 同时出去；后端每次都轮换一对新 token，
         // 5 个响应以任意顺序落进 store，最后写入的那对已被后来的轮换作废 → 全部 401
         // → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
@@ -599,9 +598,9 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       /**
-       * 结束会话。全仓**唯一**的清理原语：登出按钮、各 API 模块 `fetchWithAuth`
-       * 副本的 401 静默跳转、刷新拿到 401、撤销当前设备、切换服务器——每一条路径
-       * 最后都走到这里（`grep -rn 'clearAuth()' src`）。
+       * 结束会话。全仓**唯一**的清理原语：登出按钮、`api/authedFetch.ts` 那份
+       * `fetchWithAuth` 的 401 跳转、刷新拿到 401、撤销当前设备、切换服务器——
+       * 每一条路径最后都走到这里（`grep -rn 'clearAuth()' src`）。
        *
        * ⚠️ 「挂在这一行 = 挂在全部路径上」这句话只对**入口**成立。落盘副本在这一刻
        * 还没有定局：登出时还在飞的请求会在清盘之后落地，`set()` 一写 persist 就把
@@ -609,13 +608,13 @@ export const useAuthStore = create<AuthStore>()(
        * （`sessionScopedLocalStorage` / `pinSession`），不是这一行。
        *
        * ⚠️ 反过来也成立、而且更危险：**这一行本身可能是上一场会话的请求触发的**。
-       * 各份 `fetchWithAuth` 在请求发起时快照了 `useAuthStore.getState()`，但手里的
+       * `fetchWithAuth` 在请求发起时快照了 `useAuthStore.getState()`，但手里的
        * action 闭包是活的，于是 A 登出前发出的请求在 B 的会话里收到 401 时，调到的
-       * 是 B 的 `clearAuth()`——清盘把刚登录的 B 清干净。挡这条的是各 401 分支上的
-       * `pinSession()`，不是这里：这里没有任何办法知道调用方属于哪一场会话。
-       * 十份现已全部接入（最后一份 `features/profile/api/profile.ts`）——名单与
-       * 「这一行比世代号对照多挡住了什么」见 `apiClient.ts` 里 `fetchWithAuth` 的
-       * `pinSession` 采用说明。
+       * 是 B 的 `clearAuth()`——清盘把刚登录的 B 清干净。挡这条的是那份
+       * `fetchWithAuth` 里的会话闸，不是这里：这里没有任何办法知道调用方属于哪一场
+       * 会话。十份副本已合并成一份（`api/authedFetch.ts`），闸也从「401 分支一处」
+       * 补到了三处（预刷新之后、重发之前、以及登出那个 catch）——见该文件
+       * `fetchWithAuth` 的注释。
        *
        * 它清的是**这个账号的其余落盘副本**（profile / AI 密钥 / 上次访问路径 /
        * 以及将来任何新增的切片），名单是反向的：不在设备级白名单里的键一律删。

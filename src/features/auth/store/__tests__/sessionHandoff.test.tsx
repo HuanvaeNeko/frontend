@@ -13,7 +13,8 @@ import { makeProfile } from '@/features/profile/api/__tests__/profileFixture'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { fetchWithAuth } from '@/api/apiClient'
+// 合并之后这份 `fetchWithAuth` 住在 `authedFetch.ts`（十份副本合并成的那一份）。
+import { fetchWithAuth } from '@/api/authedFetch'
 import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { useApiConfigStore } from '@/store/apiConfig'
 import { useWSStore } from '@/store/wsStore'
@@ -395,7 +396,7 @@ describe('登出那一刻还在飞的请求', () => {
  *
  * 三条都是同一个形状：A 在自己的会话里发出一个请求，请求还在飞的时候会话换人，
  * 响应落在 B 的会话里。三条分别走三条不同的路：刷新成功、内存副本、以及
- * 一份 `fetchWithAuth` 副本的 401 分支。
+ * `fetchWithAuth` 的 401 分支。
  */
 describe('会话边界：属于上一场会话的写入落在 B 的会话里', () => {
   it('clearCredentials 之后 B 登录：A 那次刷新轮换出来的新 token 进不了 auth-storage', async () => {

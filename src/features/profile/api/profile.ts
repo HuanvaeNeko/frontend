@@ -1,104 +1,10 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { isBusiness401Request } from '@/api/apiClient'
 import { storageApi, type AvatarUploadProgress, type AvatarUploadResult } from '@/api/storage'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
 import { asRecord, bool, describe as describeValue, str } from '@/lib/apiParse'
-import { ROUTES } from '@/lib/routes'
-import { pinSession } from '@/lib/sessionScope'
+import { fetchWithAuth } from '@/api/authedFetch'
 
 const PROFILE_BASE_URL = `${getApiBaseUrl()}/api/profile`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-// 带自动重试的 fetch 封装
-const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
-  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
-  // 落地时必须先确认会话还是同一场。接法、以及这一行比 `performRefresh` 的世代号
-  // 对照多挡住了什么，见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
-  const isLiveSession = pinSession()
-
-  // 检查 Token 是否即将过期，如果是则刷新
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-  
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  // 如果 Token 过期，尝试刷新后重试一次。
-  //
-  // ⚠️ **业务 401 的端点不进这个分支**：`PUT /api/profile/password` 的「旧密码错误」
-  // 也是 401（backend-docs/profile/个人资料管理.md:329-333，:345 复述），它不是会话
-  // 失效。当成会话失效处理的后果，正是这一层要消灭的形态：轮换掉一对 token +
-  // 把同一个错误密码原样重发一遍（可能撞上后端的失败计数）+ 刷新失败时
-  // `clearAuth()` + 跳登录页，而用户只是打错了一次当前密码。
-  //
-  // 判定表在 `apiClient.ts` 的 `BUSINESS_401_ENDPOINTS`，这里**只调不抄**
-  // （`isBusiness401Request`）——全仓库现在有十处 `fetchWithAuth` 定义（九份模块
-  // 副本 + apiClient 导出的那份），合并之后接手的那份照样调这一个函数即可。
-  //
-  // 代价写明：这类端点上**真的**会话失效不再自动刷新重试，用户会看到一条可见的
-  // 失败提示、重试一次即可（进门处的临期预刷新仍然有效，覆盖了绝大多数过期）。
-  // 可见的错误可恢复，无解释的登出不可恢复。
-  //
-  // ⚠️ `isLiveSession()` 同样不是可选项，理由与别的九份副本逐条相同：
-  // `authStore.refreshToken` 是**发起时**的快照，上一场会话的 401 照样能满足它，
-  // 而 `refreshAccessToken()` / `clearAuth()` 打的是当前那个人的 store——清盘会把
-  // 刚登录的那位连同他的 aiApiKey 一起清掉。判假时什么都不做，把 401 原样交回
-  // 调用方。本文件这一条曾是十份里唯一没接的（当时的理由是"归另一场并行的合并
-  // 工作"，而那份工作从九个提交之前的树上分叉、把十份全重写了一遍且一道闸都没带，
-  // 无论如何都要重做）。用例在 `api/__tests__/sessionScopedFetchWithAuth.test.ts`
-  // 的 `COPIES` 表里，本模块那一行叫 `features/profile/api/profile.ts`。
-  if (
-    response.status === 401 &&
-    authStore.refreshToken &&
-    isLiveSession() &&
-    !isBusiness401Request(options.method, url)
-  ) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 // ============================================
 // 类型定义

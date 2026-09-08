@@ -207,7 +207,8 @@ describe('authStore.refreshAccessToken —— 与 login 逐字同构的第二处
  * 同时出去；后端每次刷新都轮换一对新 token，5 个响应以任意顺序落进 store，最后写入的那对
  * 已被后来的轮换作废 → 全部 401 → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
  *
- * 九份副本 + wsStore 都直接调 `refreshAccessToken`，所以锁必须在这个漏斗里。
+ * 合并后那一份 `fetchWithAuth`（`api/authedFetch.ts`）+ wsStore 都直接调
+ * `refreshAccessToken`，所以锁必须在这个漏斗里。
  */
 describe('authStore.refreshAccessToken —— 并发刷新竞态', () => {
   const rotated = (n: number) =>

@@ -1,5 +1,4 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import {
   asRecord,
@@ -10,8 +9,7 @@ import {
   optionalStr,
   str,
 } from '@/lib/apiParse'
-import { ROUTES } from '@/lib/routes'
-import { pinSession } from '@/lib/sessionScope'
+import { fetchWithAuth } from './authedFetch'
 
 /**
  * ⚠️ 这个常量**只能用来拼接端点路径**，不能用来把后端返回的相对路径补成绝对地址。
@@ -23,71 +21,6 @@ import { pinSession } from '@/lib/sessionScope'
  * 紧挨着 `getApiBaseUrl()`，正是为了让这个坑在结构上不存在）。
  */
 const STORAGE_BASE_URL = `${getApiBaseUrl()}/api/storage`
-
-// 获取认证头
-const getAuthHeaders = (): HeadersInit => {
-  const accessToken = useAuthStore.getState().accessToken
-  return {
-    'Content-Type': 'application/json',
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-  }
-}
-
-// 带自动重试的 fetch 封装
-const fetchWithAuth = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const authStore = useAuthStore.getState()
-  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
-  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
-  // 落地时必须先确认会话还是同一场。接法、以及这一行比 `performRefresh` 的世代号
-  // 对照多挡住了什么，见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
-  const isLiveSession = pinSession()
-  
-  if (authStore.checkTokenExpiry() && authStore.refreshToken) {
-    try {
-      await authStore.refreshAccessToken()
-    } catch (error) {
-      console.error('Failed to refresh token:', error)
-    }
-  }
-
-  const headers = getAuthHeaders()
-  
-  let response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  })
-
-  // ⚠️ `isLiveSession()` 不是可选项：`authStore.refreshToken` 是**发起时**的快照，
-  // 上一场会话的 401 照样能满足它，而 `refreshAccessToken()` / `clearAuth()` 打的是
-  // 当前那个人的 store——清盘会把刚登录的那位连同他的 aiApiKey 一起清掉。
-  // 判假时什么都不做，把 401 原样交回调用方。
-  if (response.status === 401 && authStore.refreshToken && isLiveSession()) {
-    try {
-      await authStore.refreshAccessToken()
-      const newHeaders = getAuthHeaders()
-      response = await fetch(url, {
-        ...options,
-        headers: {
-          ...newHeaders,
-          ...options.headers,
-        },
-      })
-    } catch (error) {
-      console.error('Token refresh failed, redirecting to login')
-      authStore.clearAuth()
-      window.location.href = ROUTES.auth.login
-      throw error
-    }
-  }
-
-  return response
-}
 
 // ============================================
 // 类型定义

@@ -4,12 +4,10 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { useApiConfigStore } from '@/store/apiConfig'
-import {
-  AuthenticationError,
-  fetchWithAuth,
-  isAuthError,
-  isBusiness401Request,
-} from '../apiClient'
+import { AuthenticationError, isAuthError } from '../apiClient'
+// 合并之后 `fetchWithAuth` 与业务 401 白名单都住在 `authedFetch.ts`
+// （`apiClient.ts` 只剩分类器与四个动词方法）。用例本身没变，换的只是 import。
+import { fetchWithAuth, isBusiness401Request } from '../authedFetch'
 
 /**
  * `isAuthError` 的消费点：`friendsStore.handleApiError`（七个 action 共用）与

@@ -11,7 +11,7 @@
  *
  * - **会话结束**（`authStore.clearAuth` → {@link endSession}）：用户意图明确的三条
  *   ——登出按钮、`DevicesPage` 撤销当前设备、`SettingsPage` 切换/重置服务器——
- *   加上后端**真的**判定凭证无效的那一类（各 `fetchWithAuth` 副本的 401 分支、
+ *   加上后端**真的**判定凭证无效的那一类（`api/authedFetch.ts` 的 401 分支、
  *   `POST /api/auth/refresh` 回 401）。这一档跑内存重置 + 清盘。
  * - **只是拿不到票据**（`authStore.clearCredentials`）：传输层失败——断网、超时、
  *   502、响应体不是约定的形状。它证明不了"这个账号在这台设备上的会话结束了"，
@@ -48,8 +48,8 @@
  *
  * 清盘只证明"这一刻盘上没有账号级数据"。会话换人那一刻若有一个请求还在飞
  * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`、
- * `friendsStore` / `groupStore` / `chatStore` 的任何一个异步 action、十份
- * `fetchWithAuth` 副本里任何一个还没回来的响应），它会在清盘**之后**落地：
+ * `friendsStore` / `groupStore` / `chatStore` 的任何一个异步 action、
+ * `fetchWithAuth` 里任何一个还没回来的响应），它会在清盘**之后**落地：
  * `set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条尤其糟，落回去的是
  * 一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage` 里等下一个人。
  *
@@ -93,9 +93,9 @@
  *      `groupStore.currentGroupMembers` / `currentGroupNotices` 今天零渲染点，
  *      `chatStore.syncMessages` 因为 `conversations` 恒为 `[]` 连请求都发不出去
  *      ——这两处是**潜在的**，守卫为接线补上的那天准备。
- *    - **写入之外的副作用**：各份 `fetchWithAuth` 的 401 分支
- *      （`refreshAccessToken()` + `clearAuth()` + 跳登录页）。十份现已全部接入，
- *      名单与各自的用例见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释；
+ *    - **写入之外的副作用**：`api/authedFetch.ts` 的 401 分支
+ *      （`refreshAccessToken()` + `clearAuth()` + 跳登录页）。十份副本已合并成
+ *      这一份，闸也补到了三处；用例见该文件 `fetchWithAuth` 的注释；
  *      `friendsStore.handleApiError` 走的是同一条（它会 `silentRedirectToLogin()`），
  *      所以那七个 catch 在调它**之前**先对照世代号。
  *
@@ -116,8 +116,6 @@
  *      组件局部状态——A 的消息正文会落进 B 的 `chatStore.messages`。
  *      这一处比本文件覆盖的三个 store 更靠外：守卫要么下沉进 store 的那几个
  *      同步 action（它们今天没有异步边界可钉），要么在组件里各钉一次。
- *    - `features/profile/api/profile.ts` 的 `fetchWithAuth` 401 分支——第十份，
- *      归并行的「多份 fetchWithAuth 合一」。
  *
  *    两处**看起来**危险但今天不是的，一并记下来免得重复排查：
  *    `ProfilePage` / `ProfileModal` 在 `await profileApi.uploadAvatar(...)` 之后
@@ -139,8 +137,9 @@
  * 名单漏登记的后果曾被"反正会整页加载"打了折扣，那个理由已经不成立：
  * `wsStore.scheduleReconnect` 的失败分支现在完全不跳转，`ProtectedRoute` 用的是
  * `router.replace`（`lib/navigation.ts`，react-router 客户端跳转），两条路都不
- * 丢内存。仍然整页加载的是 `silentRedirectToLogin` 与各 `fetchWithAuth` 副本
- * 401 分支里的 `window.location.replace/href`、以及 `SettingsPage` 切换/重置服务器。
+ * 丢内存。仍然整页加载的是两个 store 各自的 `silentRedirectToLogin`
+ * 与 `api/authedFetch.ts` 401 分支里的 `window.location.href`、
+ * 以及 `SettingsPage` 切换/重置服务器。
  */
 
 /**
@@ -553,7 +552,7 @@ function crossSessionBoundary(nextIsDead: boolean): void {
  * 结束会话：跨过会话边界，过完之后闸门关着。
  *
  * 唯一调用点是 `authStore.clearAuth`。**注意这句话只覆盖"入口"这一半**：全仓所有
- * 登出路径（登出按钮、401 静默跳转的十份副本、刷新的 401、撤销当前设备、切换服务器）
+ * 登出路径（登出按钮、`authedFetch` 的 401 跳转、刷新的 401、撤销当前设备、切换服务器）
  * 确实都汇到那一个函数，所以不需要谁去逐条接线；但落盘副本在这一刻**还没有定局**
  * ——飞在半空的请求会在清盘之后落地。补上那一半的是闸门与世代号，见本文件顶部
  * 「不变量：一次写入必须属于当前活着的那一场会话」。
