@@ -36,8 +36,32 @@
 - **运行时**：Bun 1.3.14（包管理 + 服务端运行时）
 - **Lint**：Biome 2.5.12（取代 ESLint 全栈）
 - **渲染**：SSR 但偏 CSR —— 服务端渲染 HTML 外壳，业务数据全部客户端拉取
-- **部署**：Docker Compose（app + postgres + redis），取代 Cloudflare Pages 静态托管
-- **数据层**：Drizzle ORM 作为 BFF，管理 Postgres + Redis
+- **部署**：Docker Compose（app + cloudflared），取代 Cloudflare Pages 静态托管
+- **数据层**：见下方 2026-09-09 修订 —— 原定的 Postgres + Redis + Drizzle 已收缩为一个 SQLite 会话存储
+
+> ### 🔴 2026-09-09 修订：阶段 2 的技术栈从 pg + redis + Drizzle 收缩为 SQLite
+>
+> 原方案基于「BFF = 会话 + 前端自有数据」两半。**「前端自有数据」那一半始终没有长出具体内容**：
+> 消息、群、好友、资料、文件的真实来源都是 `api.huanvae.cn`；界面偏好与音量是设备级的，
+> localStorage 才是它们的正确位置（阶段 1 的 `sessionScope.ts` 已把它们明确划进设备白名单）。
+> 为不存在的数据先架一个要迁移、要备份、会丢数据的有状态组件，是净负债 —— 故 **PG 与 Drizzle 不做**。
+>
+> **会话那一半仍然值得做**，理由在阶段 1 的实践里得到了证实：登出清盘、会话世代号、
+> 带闸门的 storage 适配器、刷新单飞锁 —— 这一整套复杂度**全部是「会话状态归客户端所有」的衍生税**，
+> 且到阶段 1 结束仍有已知未覆盖的路径。换成 httpOnly cookie + 服务端持有 token，这一类问题从构造上消失。
+> 后端只认 `Authorization: Bearer`（全部文档中无任何 cookie 支持），所以把 token 挪出浏览器
+> **只能**靠一个自己的服务端持有它，没有第二条路。
+>
+> **存储选 SQLite 而非 Redis**：会话存储只需要按 key 读写、TTL、以及刷新时的原子锁
+> （最后一条不能省 —— 后端刷新时两个 token 一起轮换，无状态方案会复活 `7ee0598` 修掉的级联作废）。
+> 单机单进程下 SQLite 全部满足，且少一个服务。更关键的是 **Redis 默认配置重启即全员登出**，
+> 必须认真配持久化才不会每次 deploy 把所有人踢下线 —— 而那正是阶段 1 花了五批在消灭的那类体验。
+>
+> **仍待决**：WebSocket 的身份。当前是 `?token=` 塞在 URL 查询串里（会进代理日志、访问日志、浏览器历史）。
+> 走 BFF 之后要么由它终止 WS 再自己连上游，要么发短时效 ticket —— 两条都是真实设计工作，
+> 建议先做一条链路的探针再决定，不要先写 spec（本项目的后端文档与实现已经不一致过多次）。
+>
+> 下方 §11 与 §7 里出现的 pg / redis / Drizzle 字样按本修订作废，保留为历史记录。
 - **设计**：shadcn/ui 主题向 `huanwei520/Huanvae-Chat-App` 的设计语言对齐
 
 ### 1.3 为什么"偏 SPA CSR 的 SSR"
@@ -57,7 +81,7 @@
 | 阶段 | 内容 | 可发布 | 验证手段 |
 |---|---|---|---|
 | **1. 构建迁移** | Next → RR8 + Vite + Bun；Docker Compose 只起 app | 是 | 现有 Playwright 用例 + 手工回归 |
-| **2. BFF 数据层** | 加 pg + redis；Drizzle schema/migrations；token 迁移到 httpOnly cookie + Redis session | 是 | 新增 loader 层测试 + 认证流回归 |
+| **2. BFF 会话层** | token 迁移到 httpOnly cookie + SQLite 会话存储；WS 身份改 ticket 或经 BFF 代理（见 2026-09-09 修订，pg/redis/Drizzle 已取消） | 是 | 认证流回归 + 会话边界回归 |
 | **3. 设计对齐** | token 重映射 + 玻璃质感层 + ThemeProvider 动态主题 | 是 | 视觉回归（Playwright 截图对比） |
 
 **为什么串行而不是并行**：阶段 3 要动 `src/styles/globals.css` 和 `src/components/ui/` 下 59 个组件；阶段 1 会移动路由文件。并行做会产生大面积合并冲突，收益不抵成本。
@@ -611,10 +635,10 @@ Vite 8 的直接依赖是 `rolldown@~1.2.4` + `lightningcss`，即**打包器从
 
 ### 阶段 2：BFF 数据层
 
-**边界**：业务数据的真实来源仍是 `api.huanvae.cn`。新增的 PG/Redis 只拥有：
+**边界**：业务数据的真实来源仍是 `api.huanvae.cn`。BFF 只拥有**会话**一件事（2026-09-09 修订）：
 
-- **Redis**：会话 / token（httpOnly cookie，取代当前 localStorage 存 token 的做法）、SSR 缓存、限流
-- **Postgres**（Drizzle）：用户偏好、主题配置、已读位置、草稿、消息本地归档与搜索索引
+- **SQLite**：会话 / token（httpOnly cookie，取代当前 localStorage 存 token 的做法）。键值 + TTL + 刷新时的原子锁，三样就够。
+- ~~**Postgres**（Drizzle）：用户偏好、主题配置、已读位置、草稿、消息本地归档与搜索索引~~ —— **取消**。偏好与音量是设备级的（归 localStorage，已在 `sessionScope.ts` 的设备白名单里）；已读位置后端自己管（`updateLastSeq`）；其余尚无具体需求。有真实需求时再单独立项，不预先架数据库。
 
 **不做**：认证、好友、消息、群聊、存储、WebRTC 的领域模型 —— 那些归上游后端。
 
