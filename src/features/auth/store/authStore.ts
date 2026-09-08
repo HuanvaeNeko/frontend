@@ -57,35 +57,62 @@ function optionalString(...candidates: unknown[]): string | undefined {
  * 校验失败抛错、绝不写默认值：`expires_in` 兜底成 3600 会让"后端少给字段"
  * 变成一个看不见的状态，正是这批 bug 的成因。
  */
+/**
+ * `POST /api/auth/refresh` 的响应：与 login 只差一处——`refresh_token` **可以缺席**。
+ *
+ * 2026-09-09 线上实测（huanvae.cn 浏览器控制台，`[api-shape]` 报告器打出的原始 data）：
+ * `{access_token, token_type: 'Bearer', expires_in: 900}`，**没有 `refresh_token`**。
+ * 此前解析器按 README:217 的示例（"用返回的 refresh_token 覆盖存储"）把它当必填，
+ * 于是线上每一次刷新都抛 ApiShapeError → `clearCredentials()` → 15 分钟内被登出。
+ * 后端不轮换 refresh token 时就不回这个字段；缺席的语义是"沿用旧的"，不是"坏了"。
+ *
+ * 只放宽 refresh：login 若不回 refresh_token，后面**没有**旧值可沿用，仍然必须抛。
+ */
+type RefreshTokenPayload = Omit<AuthTokenPayload, 'refresh_token'> & { refresh_token?: string }
+
+function parseTokenPayload(input: unknown): RefreshTokenPayload {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new Error(`应为对象，实际是 ${input === null ? 'null' : typeof input}`)
+  }
+  const payload = input as Record<string, unknown>
+
+  const accessToken = payload.access_token
+  if (typeof accessToken !== 'string' || accessToken === '') {
+    throw new Error('access_token 缺失或不是非空字符串')
+  }
+  // 缺席（undefined）放行；给了但不是非空字符串仍然是形状错误
+  const refreshToken = payload.refresh_token
+  if (refreshToken !== undefined && (typeof refreshToken !== 'string' || refreshToken === '')) {
+    throw new Error('refresh_token 给了但不是非空字符串')
+  }
+  const expiresIn = payload.expires_in
+  if (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn)) {
+    throw new Error('expires_in 缺失或不是有限数字（tokenExpiry 会变成 NaN）')
+  }
+
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: expiresIn,
+    nickname: optionalString(payload.user_nickname, payload.nickname),
+    email: optionalString(payload.user_email, payload.email),
+    avatar_url: optionalString(payload.user_avatar_url, payload.avatar_url),
+    signature: optionalString(payload.user_signature, payload.signature),
+  }
+}
+
+const refreshTokenPayload: Parser<RefreshTokenPayload> = {
+  parse: parseTokenPayload,
+}
+
 const authTokenPayload: Parser<AuthTokenPayload> = {
   parse(input: unknown): AuthTokenPayload {
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-      throw new Error(`应为对象，实际是 ${input === null ? 'null' : typeof input}`)
-    }
-    const payload = input as Record<string, unknown>
-
-    const accessToken = payload.access_token
-    if (typeof accessToken !== 'string' || accessToken === '') {
-      throw new Error('access_token 缺失或不是非空字符串')
-    }
-    const refreshToken = payload.refresh_token
-    if (typeof refreshToken !== 'string' || refreshToken === '') {
+    const parsed = parseTokenPayload(input)
+    // 运行时检查收窄类型，不用 `as`：login 没有旧 refresh_token 可沿用
+    if (parsed.refresh_token === undefined) {
       throw new Error('refresh_token 缺失或不是非空字符串')
     }
-    const expiresIn = payload.expires_in
-    if (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn)) {
-      throw new Error('expires_in 缺失或不是有限数字（tokenExpiry 会变成 NaN）')
-    }
-
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_in: expiresIn,
-      nickname: optionalString(payload.user_nickname, payload.nickname),
-      email: optionalString(payload.user_email, payload.email),
-      avatar_url: optionalString(payload.user_avatar_url, payload.avatar_url),
-      signature: optionalString(payload.user_signature, payload.signature),
-    }
+    return { ...parsed, refresh_token: parsed.refresh_token }
   },
 }
 
@@ -414,7 +441,7 @@ export const useAuthStore = create<AuthStore>()(
           // 「清盘是一个时点，而写入不是」。
           const session = currentSessionGeneration()
 
-          let data: AuthTokenPayload
+          let data: RefreshTokenPayload
           try {
             const response = await fetch(`${authBaseUrl}/refresh`, {
               method: 'POST',
@@ -432,10 +459,10 @@ export const useAuthStore = create<AuthStore>()(
             // Authorization 头，refreshToken 也被覆写成 undefined 并 persist 落盘，
             // 401 重试分支（api/auth.ts:42 `&& authStore.refreshToken`）再也进不去。
             // 它有 13 个调用点（chat / profile / webrtc / storage / wsStore …）。
-            data = await readEnvelope<AuthTokenPayload>(response, {
+            data = await readEnvelope<RefreshTokenPayload>(response, {
               endpoint: 'POST /api/auth/refresh',
               fallbackMessage: 'Token 刷新失败',
-              parse: authTokenPayload,
+              parse: refreshTokenPayload,
               legacyBare: AUTH_TOKEN_LEGACY_BARE,
             })
           } catch (error) {
@@ -478,11 +505,13 @@ export const useAuthStore = create<AuthStore>()(
 
           set({
             accessToken: data.access_token,
-            // 不写 `?? refreshToken` 兜底：后端若不回 refresh_token，
-            // 留着旧的会掩盖「刷新语义变了」这件事，而 README:217 的示例明确
-            // 用返回的 refresh_token 覆盖存储，说明它是会回的。缺失时抛错 →
-            // 上面的 catch 按状态码分档降级，是可见且正确的。
-            refreshToken: data.refresh_token,
+            // 缺席 → 沿用旧的。这里曾经拒绝写 `?? refreshToken`，理由是 README:217
+            // 的示例"用返回的 refresh_token 覆盖存储"说明它一定会回；2026-09-09
+            // 线上实测推翻了这条：/refresh 只回 {access_token, token_type, expires_in}，
+            // 把缺席当形状错误让每次刷新都以登出收场。这不是"静默兜底"——形状仍由
+            // refreshTokenPayload 校验（给了却不是非空字符串照抛），只是"不回"
+            // 被承认为一种合法的响应，语义是"这次没轮换"。见 RefreshTokenPayload。
+            refreshToken: data.refresh_token ?? refreshToken,
             tokenExpiry: Date.now() + data.expires_in * 1000,
           })
           lastRotatedAt = Date.now()
