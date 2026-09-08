@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
+import type { Friend } from '@/features/chat/api/friends'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/I18nProvider'
@@ -50,6 +51,23 @@ const dialogVariants: Variants = {
     transition: { duration: 0.2 },
   },
 }
+
+/**
+ * 好友的展示名：备注 > 昵称 > 用户 ID。
+ *
+ * 三者的类型都是 `string | null`（后端 `FriendDto` 无 `skip_serializing_if`，
+ * 空值序列化为 `null`，见 backend-docs/friends/好友添加删除.md:112、:116），
+ * 所以**不能**对它们直接 `.toLowerCase()` / `[0]`——这正是旧代码
+ * `friend.nickname.toLowerCase()` 的崩法：字段改名后恒为 undefined，
+ * 好友列表一非空就白屏（filter 每次渲染都执行，不需要用户输入搜索词）。
+ * `friend_id` 是非空字段，兜到它为止就安全了。
+ */
+const friendDisplayName = (friend: Friend): string =>
+  friend.friend_remark ?? friend.friend_nickname ?? friend.friend_id
+
+/** 头像回退首字母：`nickname` 可能为 null，先兜到非空 ID 再取下标。 */
+const initialOf = (name: string | null, fallback: string): string | undefined =>
+  (name ?? fallback)[0]?.toUpperCase()
 
 // 空状态动画
 const emptyStateVariants: Variants = {
@@ -94,10 +112,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   const pendingArray = Array.isArray(pendingRequests) ? pendingRequests : []
   const sentArray = Array.isArray(sentRequests) ? sentRequests : []
 
-  // 筛选好友
+  // 筛选好友（展示名可能来自可空的备注/昵称，统一走 friendDisplayName）
   const filteredFriends = friendsArray.filter((friend) =>
-    friend.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.user_id.toLowerCase().includes(searchQuery.toLowerCase())
+    friendDisplayName(friend).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    friend.friend_id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   // 发送好友请求
@@ -195,12 +213,13 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   }
 
   // 选择好友开始聊天
-  const handleSelectFriend = (friend: typeof friends[0]) => {
+  const handleSelectFriend = (friend: Friend) => {
     setSelectedConversation({
-      id: friend.user_id,
+      id: friend.friend_id,
       type: 'friend',
-      name: friend.nickname,
-      avatar: friend.avatar_url,
+      name: friendDisplayName(friend),
+      // Conversation.avatar 是 `string | undefined`，不收 null
+      avatar: friend.friend_avatar_url ?? undefined,
       unreadCount: 0,
       online: false,
     })
@@ -248,22 +267,23 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredFriends.map((friend) => {
-                const unread = useChatStore.getState().getFriendUnread(friend.user_id)
+                const unread = useChatStore.getState().getFriendUnread(friend.friend_id)
                 const summary = useChatStore.getState().unreadSummary
-                const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.user_id)
-                const lastMsg = friendUnread?.last_message_preview || friend.signature || "Say hi!"
+                const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.friend_id)
+                // 后端 FriendDto 不返回 signature，这一档回退随字段一起消失
+                const lastMsg = friendUnread?.last_message_preview || "Say hi!"
 
                 return (
-                  <div key={friend.user_id} className="relative group">
+                  <div key={friend.friend_id} className="relative group">
                     <ConversationItem
-                      id={friend.user_id}
+                      id={friend.friend_id}
                       type="friend"
-                      name={friend.nickname}
-                      avatar={friend.avatar_url}
+                      name={friendDisplayName(friend)}
+                      avatar={friend.friend_avatar_url ?? undefined}
                       lastMessage={lastMsg}
                       unreadCount={unread}
-                      isOnline={isOnline(friend.user_id)}
-                      isActive={selectedConversation?.id === friend.user_id}
+                      isOnline={isOnline(friend.friend_id)}
+                      isActive={selectedConversation?.id === friend.friend_id}
                       onClick={() => handleSelectFriend(friend)}
                       // time={formatTime(friend.last_active)} // If we had this
                     />
@@ -279,10 +299,10 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                         <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive gap-2 cursor-pointer"
-                            onClick={() => handleDeleteFriend(friend.user_id, friend.nickname)}
-                            disabled={deletingFriend === friend.user_id}
+                            onClick={() => handleDeleteFriend(friend.friend_id, friendDisplayName(friend))}
+                            disabled={deletingFriend === friend.friend_id}
                           >
-                            {deletingFriend === friend.user_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            {deletingFriend === friend.friend_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             {t('chat.friendList.deleteFriend')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -412,7 +432,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           <AnimatePresence mode="popLayout">
             {pendingArray.map((request, index) => (
               <motion.div
-                key={request.applicant_user_id}
+                key={request.request_id}
                 className="p-4 mb-2 rounded-xl border bg-card"
                 variants={listItemVariants}
                 initial="hidden"
@@ -423,17 +443,19 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <div className="flex items-start gap-3">
                   <Avatar className="h-10 w-10 shrink-0">
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {request.nickname[0]?.toUpperCase()}
+                      {initialOf(request.requester_nickname, request.request_user_id)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-foreground">{request.nickname}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {request.applicant_user_id}
+                    <div className="font-medium text-foreground">
+                      {request.requester_nickname ?? request.request_user_id}
                     </div>
-                    {request.reason && (
+                    <div className="text-xs text-muted-foreground">
+                      {request.request_user_id}
+                    </div>
+                    {request.request_message && (
                       <div className="text-sm text-muted-foreground mt-1 p-2 rounded-lg bg-muted/60">
-                        &quot;{request.reason}&quot;
+                        &quot;{request.request_message}&quot;
                       </div>
                     )}
                     <div className="text-xs text-muted-foreground mt-2">
@@ -443,7 +465,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       <Button
                         size="sm"
                         className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                        onClick={() => handleApprove(request.applicant_user_id)}
+                        onClick={() => handleApprove(request.request_user_id)}
                       >
                         <Check className="h-3 w-3" />
                         {t('chat.friendList.approve')}
@@ -451,7 +473,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleReject(request.applicant_user_id)}
+                        onClick={() => handleReject(request.request_user_id)}
                         className="hover:text-destructive"
                       >
                         <X className="h-3 w-3" />
@@ -492,7 +514,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           <AnimatePresence mode="popLayout">
             {sentArray.map((request, index) => (
               <motion.div
-                key={request.target_user_id}
+                key={request.request_id}
                 className="p-4 mb-2 rounded-xl border bg-card"
                 variants={listItemVariants}
                 initial="hidden"
@@ -503,26 +525,27 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <div className="flex items-start gap-3">
                   <Avatar className="h-10 w-10 shrink-0">
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {request.target_user_id[0]?.toUpperCase()}
+                      {initialOf(request.sent_to_nickname, request.sent_to_user_id)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-foreground">{request.target_user_id}</div>
-                    {request.reason && (
+                    <div className="font-medium text-foreground">
+                      {request.sent_to_nickname ?? request.sent_to_user_id}
+                    </div>
+                    {request.sent_message && (
                       <div className="text-sm text-muted-foreground mt-1">
-                        {request.reason}
+                        {request.sent_message}
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${request.status === 'approved' ? 'bg-primary/15 text-primary' : request.status === 'rejected' ? 'bg-destructive/15 text-destructive' : 'bg-muted text-muted-foreground'}`}>
-                        {request.status === 'approved'
-                          ? t('chat.friendList.statusApproved')
-                          : request.status === 'rejected'
-                          ? t('chat.friendList.statusRejected')
-                          : t('chat.friendList.statusPending')}
+                      {/* 本接口只返回 pending 的申请（backend-docs/friends/好友添加删除.md:78），
+                          响应里根本没有 status 字段——原来的「已同意 / 已拒绝」两个分支
+                          既读不到数据也永远不会命中，是纯死代码，故固定为待处理。 */}
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-muted text-muted-foreground">
+                        {t('chat.friendList.statusPending')}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {format(new Date(request.request_time), 'yyyy/MM/dd HH:mm')}
+                        {format(new Date(request.sent_time), 'yyyy/MM/dd HH:mm')}
                       </span>
                     </div>
                   </div>

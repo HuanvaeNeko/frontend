@@ -101,10 +101,6 @@ NEXT_PUBLIC_WS_URL=wss://api.huanvae.cn
 | DELETE | `/api/groups/{id}/admins/{uid}` |
 | POST | `/api/groups/{id}/mute` |
 | DELETE | `/api/groups/{id}/mute/{uid}` |
-| POST | `/api/groups/{id}/invite_codes` |
-| GET | `/api/groups/{id}/invite_codes` |
-| DELETE | `/api/groups/{id}/invite_codes/{cid}` |
-| POST | `/api/groups/join_by_code` |
 | POST | `/api/groups/{id}/apply` |
 | GET | `/api/groups/{id}/requests` |
 | POST | `/api/groups/{id}/requests/{rid}/approve` |
@@ -201,7 +197,9 @@ NEXT_PUBLIC_WS_URL=wss://api.huanvae.cn
 
 ## 5. 与旧文档差异（重点）
 
-- 群路由参数统一使用下划线命名：`join_mode`、`join_by_code`、`invite_codes`。
+- 群路由参数统一使用下划线命名：`join_mode`。
+- 🔴 邀请码机制（`invite_codes` / `join_by_code`）已随后端整体删除，前端 API 层不再提供
+  （backend-docs/groups/群聊管理.md:2171-2172、注意事项第 5 条）。
 - 私聊消息新增 `POST /api/messages/sync`。
 - 存储上传流程已明确为预签名直传 + `upload/confirm`。
 - WebSocket 系统通知类型补齐：`group_info_updated`、`group_avatar_updated`。

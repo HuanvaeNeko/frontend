@@ -13,8 +13,6 @@ import {
   Eye,
   CheckCircle2,
   FolderOpen,
-  MessageCircle,
-  Users,
   Search,
   MoreVertical,
   Trash2
@@ -47,30 +45,37 @@ export default function FileManager({ subTab }: FileManagerProps) {
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [selectedStorage, setSelectedStorage] = useState<'personal' | 'friend' | 'group'>('personal')
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  /**
+   * 文件管理页**只做个人文件上传**，不再提供"发送给好友 / 发送到群聊"两档。
+   *
+   * 原来那两档是坏的，而且是两种不同的坏法：
+   * - 好友档：`storage_location='friend_messages'` 却从不传 `related_id`
+   *   （下面 `uploadFile` 的第 4 个实参逐字是 `undefined`），后端直接 400
+   *   「好友ID不能为空」（`backend-docs/storage/文件存储管理.md:2510-2515`），
+   *   用户只看到一句通用的"上传失败"。
+   * - 群档：更隐蔽。文档里没有"群ID不能为空 → 400"这一条，所以上传可能成功，
+   *   但落库的 `related_id` 为空，而群文件鉴权要求存在一行
+   *   `related-id = 请求的群` 的记录（:3021-3033）——于是这个文件在任何群里
+   *   都永远读不出来，静默产生一份不可访问的孤儿文件，比 400 更难查。
+   *
+   * 修法选**收掉入口**而不是补选择器：好友/群文件本来就有一条正确的路径——
+   * `ChatWindow.tsx` 的会话上传（:271 传的是 `selectedConversation.id`，
+   * :268 按会话类型选 storage_location，:252-256 也正确返回 friend_ 与 group_ 前缀）。
+   * 在文件管理页再造一套好友/群选择器只是把同一件事做第二遍，成本与收益不匹配。
+   *
+   * 因此 `getFileType` 保持返回 `user_*`：在只剩个人上传之后它就是对的。
+   */
   const storageOptions = [
     {
       key: 'personal',
       label: t('chat.fileManager.storagePersonal'),
       description: t('chat.fileManager.storagePersonalDesc'),
       icon: FolderOpen,
-    },
-    {
-      key: 'friend',
-      label: t('chat.fileManager.storageFriend'),
-      description: t('chat.fileManager.storageFriendDesc'),
-      icon: MessageCircle,
-    },
-    {
-      key: 'group',
-      label: t('chat.fileManager.storageGroup'),
-      description: t('chat.fileManager.storageGroupDesc'),
-      icon: Users,
     },
   ] as const
 
@@ -119,14 +124,10 @@ export default function FileManager({ subTab }: FileManagerProps) {
     return 'user_document'
   }
 
-  // 获取存储位置
-  const getStorageLocation = (): StorageLocation => {
-    switch (selectedStorage) {
-      case 'friend': return 'friend_messages'
-      case 'group': return 'group_files'
-      default: return 'user_files'
-    }
-  }
+  // 获取存储位置：恒为个人空间。
+  // `user_files` 是**唯一**不需要 related_id 的档位，也正因如此它是这个页面
+  // 唯一能正确支持的档位（理由见上面 storageOptions 的注释）。
+  const getStorageLocation = (): StorageLocation => 'user_files'
 
   // 处理文件选择
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -433,35 +434,29 @@ export default function FileManager({ subTab }: FileManagerProps) {
           <div className="space-y-3">
             <h4 className="text-sm font-medium px-1 text-muted-foreground">{t('chat.fileManager.storageLocation')}</h4>
             <div className="grid gap-3">
+              {/*
+                只剩一档之后它不再是"选择器"，而是一张说明当前去向的静态卡片：
+                渲染成 button 会给出一个点了没有任何反应的控件（同时也是一处
+                无障碍噪音——一个永远选中、无法取消选中的单选项）。
+              */}
               {storageOptions.map((option) => {
-                const isActive = selectedStorage === option.key
                 const Icon = option.icon
                 return (
-                  <button
+                  <div
                     key={option.key}
-                    type="button"
-                    onClick={() => setSelectedStorage(option.key)}
-                    className={cn(
-                      "flex items-center gap-4 p-4 rounded-xl border text-left transition-all",
-                      isActive
-                        ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
-                        : "border-border bg-card hover:border-primary/30 hover:bg-accent/50"
-                    )}
+                    className="flex items-center gap-4 p-4 rounded-xl border text-left border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
                   >
-                    <div className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors",
-                      isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    )}>
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary text-primary-foreground">
                       <Icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
                        <div className="flex items-center justify-between mb-1">
-                          <span className={cn("font-medium", isActive && "text-primary")}>{option.label}</span>
-                          {isActive && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                          <span className="font-medium text-primary">{option.label}</span>
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
                        </div>
                        <p className="text-xs text-muted-foreground line-clamp-1">{option.description}</p>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>

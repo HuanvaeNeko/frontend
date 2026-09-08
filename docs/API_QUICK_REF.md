@@ -73,10 +73,6 @@ const WS_BASE = 'wss://api.huanvae.cn'
 | DELETE | `/api/groups/{id}/admins/{uid}` | 取消管理员 |
 | POST | `/api/groups/{id}/mute` | 禁言 |
 | DELETE | `/api/groups/{id}/mute/{uid}` | 解除禁言 |
-| POST | `/api/groups/{id}/invite_codes` | 生成邀请码 |
-| GET | `/api/groups/{id}/invite_codes` | 邀请码列表 |
-| DELETE | `/api/groups/{id}/invite_codes/{cid}` | 撤销邀请码 |
-| POST | `/api/groups/join_by_code` | 邀请码入群 |
 | POST | `/api/groups/{id}/apply` | 申请入群 |
 | GET | `/api/groups/{id}/requests` | 入群申请列表 |
 | POST | `/api/groups/{id}/requests/{rid}/approve` | 同意申请 |
@@ -158,8 +154,9 @@ const WS_BASE = 'wss://api.huanvae.cn'
 
 ## 关键更新说明
 
+- 群系统使用下划线路径：`join_mode`。
+- 🔴 邀请码机制（`invite_codes` / `join_by_code`）已随后端整体删除，前端 API 层不再提供。
 - 私聊消息新增 `POST /api/messages/sync` 批量增量同步。
-- 群系统使用下划线路径：`join_mode`、`join_by_code`、`invite_codes`。
 - 文件上传采用预签名直传 + `upload/confirm`。
 - WebSocket 系统通知已扩展到群管理事件（含禁言、管理员、群信息更新等）。
 - 低代码平台端点已纳入前端 API 层。

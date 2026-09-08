@@ -34,14 +34,33 @@ export default function Devices() {
     setLoading(true)
     try {
       const response = await authApi.getDevices()
-      const normalized: Device[] = (response.devices || []).map((d) => ({
-        device_id: d.device_id,
-        device_info: d.device_info ?? '',
-        ip_address: d.ip_address ?? '',
-        last_active_at: d.last_active_at ?? '',
-        created_at: d.created_at ?? '',
-        is_current: d.is_current ?? false,
-      }))
+      // 没有 `|| []`：getDevices 现在要么抛错、要么返回真数组（解包层已 require
+      // devices/total）。留着兜底唯一的作用是在下一次响应形状漂移时再把空值咽下去，
+      // 变回"设备页永远显示暂无设备、撤销按钮永远不渲染"的静默故障。
+      // 出错就走下面 catch 的「加载失败」toast，故障可见。
+      //
+      // is_current 不能用 `?? false` 兜底：`require: ['devices','total']` 不保护
+      // 数组元素内部的字段，一旦某条设备记录漏了 is_current，`?? false` 会让它
+      // 悄悄读成"不是当前设备"——「当前设备」徽章消失，用户可能因此在不知情的
+      // 情况下把自己正在用的会话当成别人的设备撤销掉。这和 presence 那批 bug
+      // 是同一类："把失败伪装成数据"，只是这里伪装出来的"数据"直接影响安全操作。
+      // 这里选择让整页加载失败（下面的 catch 已经有「加载失败」toast），
+      // 而不是画一个和"不是当前设备"混在一起、容易被忽略的"未知"状态——
+      // 视觉上能和"不是当前设备"分清楚的"未知"状态，成本并不比让整页报错更低，
+      // 而报错至少保证用户不会在这条信息缺失的情况下继续做撤销操作。
+      const normalized: Device[] = response.devices.map((d) => {
+        if (typeof d.is_current !== 'boolean') {
+          throw new Error(`设备 ${d.device_id || '(无 ID)'} 缺少 is_current 字段，响应形状不符合预期`)
+        }
+        return {
+          device_id: d.device_id,
+          device_info: d.device_info ?? '',
+          ip_address: d.ip_address ?? '',
+          last_active_at: d.last_active_at ?? '',
+          created_at: d.created_at ?? '',
+          is_current: d.is_current,
+        }
+      })
       setDevices(normalized)
     } catch (error) {
       toast({ title: '加载失败', description: error instanceof Error ? error.message : '无法获取设备列表', variant: 'destructive' })

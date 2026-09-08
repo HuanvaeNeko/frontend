@@ -9,8 +9,6 @@ import {
   UserMinus,
   VolumeX,
   Volume2,
-  Link,
-  Copy,
   Check,
   Trash2,
   Edit3,
@@ -21,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -30,10 +29,14 @@ import {
   type Group,
   type GroupMember,
   type GroupNotice,
-  type InviteCode,
-  type JoinMode,
-  type JoinRequest
+  type InviteResult,
+  type JoinPolicy,
+  type JoinRequest,
+  type SearchScope,
+  type ShareScope
 } from '../../api/groups'
+import { ApiError } from '@/lib/apiEnvelope'
+import { isUploadSessionExpired } from '@/api/storage'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/features/auth/store/authStore'
 
@@ -54,28 +57,29 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   // 成员
   const [members, setMembers] = useState<GroupMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState(false)
+  // 三态之三：失败。与"成员列表为空"分开表示——否则一次网络故障会长期显示
+  // 空空如也的成员列表，和真的没有成员没有任何区别（apiEnvelope.ts 规则 1）。
+  const [membersError, setMembersError] = useState<string | null>(null)
 
   // 公告
   const [notices, setNotices] = useState<GroupNotice[]>([])
   const [loadingNotices, setLoadingNotices] = useState(false)
-
-  // 邀请码
-  const [inviteCodes, setInviteCodes] = useState<InviteCode[]>([])
-  const [loadingCodes, setLoadingCodes] = useState(false)
+  const [noticesError, setNoticesError] = useState<string | null>(null)
 
   // 加入请求
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loadingRequests, setLoadingRequests] = useState(false)
+  const [requestsError, setRequestsError] = useState<string | null>(null)
   const [processingRequest, setProcessingRequest] = useState<string | null>(null)
 
   // UI 状态
-  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'notices' | 'codes' | 'requests'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'notices' | 'requests'>('info')
   const [editingName, setEditingName] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [editingDescription, setEditingDescription] = useState(false)
   const [newDescription, setNewDescription] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+  const [savingPolicy, setSavingPolicy] = useState(false)
 
   // 弹窗状态
   const [showInviteDialog, setShowInviteDialog] = useState(false)
@@ -88,11 +92,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const [noticePinned, setNoticePinned] = useState(false)
   const [creatingNotice, setCreatingNotice] = useState(false)
 
-  const [showCodeDialog, setShowCodeDialog] = useState(false)
-  const [codeMaxUses, setCodeMaxUses] = useState(10)
-  const [codeExpireHours, setCodeExpireHours] = useState(24)
-  const [generatingCode, setGeneratingCode] = useState(false)
-
   // 成员操作
   const [selectedMember, setSelectedMember] = useState<GroupMember | null>(null)
   const [showMuteDialog, setShowMuteDialog] = useState(false)
@@ -104,18 +103,48 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const isOwner = myMember?.role === 'owner'
   const isAdmin = myMember?.role === 'owner' || myMember?.role === 'admin'
 
+  /**
+   * 谁能列/批/拒入群申请：群主恒可；管理员**只在** `admin_can_approve=true`
+   * 时可以，否则三条审批端点一律 `403`（doc:1255、:1274、:1306，权限总表 :2256）。
+   * 旧代码用的是 `isAdmin`，等于给 `admin_can_approve=false` 的群里的管理员
+   * 渲染一个每次点都 403 的页签。
+   *
+   * `group === null` 只在群详情还没到或加载失败时出现，那时管理员一侧取不到
+   * 判据——不猜，按最小可见处理（只有群主看得到）。这里刻意不写
+   * `group?.admin_can_approve ?? true` 之类的兜底：猜错的方向就是那个 403 页签。
+   */
+  const canApproveJoinRequests = isOwner || (isAdmin && group !== null && group.admin_can_approve)
+
   // 加载数据
+  //
+  // ⚠️ 已知 bug，本批不碰：`isAdmin` 在这里是挂载那一刻的闭包值，那时
+  // `members` 还是空数组 ⇒ 恒为 `false` ⇒ 这个自动加载从不发生，只有
+  // 页签里的「刷新」按钮能触发（第 4 节有完整分析）。留给下一个人修的陷阱：
+  // 页签的可见性已经改用 `canApproveJoinRequests`（群主，或
+  // `admin_can_approve=true` 的管理员），如果照搬同一个量把这里的
+  // `isAdmin` 也换掉，会变成对着一个「有审批权限」的量做闭包修复——
+  // 一个 `admin_can_approve=false` 的管理员本来就不该看到这个页签，也就不该
+  // 触发这次加载；`isAdmin` 换成 `canApproveJoinRequests` 才是对的方向，
+  // 不是随手把 `isAdmin` 从依赖数组里加进去就完事。
   useEffect(() => {
     loadGroupInfo()
     loadMembers()
     loadNotices()
     if (isAdmin) {
-      loadInviteCodes()
       loadJoinRequests()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
 
+  /**
+   * 加载群详情。`getGroupDetail` 现在会抛 `ApiError`，文案是后端原文
+   * （403「你不是本群成员」、404「群聊不存在」）或 `groupDetailResponse` 逐字段
+   * 校验失败时的精确文案（如「join_approval_required 缺失或不是布尔值」）——
+   * 旧代码是不带绑定的 `catch {}`，两种信息都被吞掉，用户和排查者看到的永远
+   * 是同一句「加载群信息失败」。与 150 行之外 `handleUpdateJoinPolicy` 修的是
+   * 同一种症状，这里抄同一个修法：能读到 `err.message` 就用它，读不到才退到
+   * 通用兜底。
+   */
   const loadGroupInfo = async () => {
     setLoading(true)
     try {
@@ -123,8 +152,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setGroup(data)
       setNewGroupName(data.group_name)
       setNewDescription(data.group_description || '')
-    } catch {
-      toast({ title: '错误', description: '加载群信息失败', variant: 'destructive' })
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '加载群信息失败',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }
@@ -132,11 +165,15 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const loadMembers = async () => {
     setLoadingMembers(true)
+    setMembersError(null)
     try {
       const { members } = await groupsApi.getMembers(groupId)
       setMembers(members)
     } catch (err) {
+      // 三态：失败要能和"这个群真的没有成员"区分开，不能只 console.error
+      // 然后让成员列表继续显示上一次（或初始的空）状态。
       console.error('加载成员失败:', err)
+      setMembersError(err instanceof Error ? err.message : '加载成员失败')
     } finally {
       setLoadingMembers(false)
     }
@@ -144,38 +181,42 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   const loadNotices = async () => {
     setLoadingNotices(true)
+    setNoticesError(null)
     try {
       const data = await groupsApi.getNotices(groupId)
       setNotices(data)
     } catch (err) {
       console.error('加载公告失败:', err)
+      setNoticesError(err instanceof Error ? err.message : '加载公告失败')
     } finally {
       setLoadingNotices(false)
     }
   }
 
-  const loadInviteCodes = async () => {
-    setLoadingCodes(true)
-    try {
-      const data = await groupsApi.getInviteCodes(groupId)
-      setInviteCodes(data)
-    } catch (err) {
-      console.error('加载邀请码失败:', err)
-    } finally {
-      setLoadingCodes(false)
-    }
-  }
-
   const loadJoinRequests = async () => {
     setLoadingRequests(true)
+    setRequestsError(null)
     try {
       const data = await groupsApi.getJoinRequests(groupId)
       setJoinRequests(data)
     } catch (err) {
       console.error('加载加入请求失败:', err)
+      setRequestsError(err instanceof Error ? err.message : '加载加入请求失败')
     } finally {
       setLoadingRequests(false)
     }
+  }
+
+  /**
+   * 403 在 approve/reject 上只有一种成因：`admin_can_approve=false` 时管理员
+   * 无权审批（doc:1274、:1306）。该 403 的响应体文案是通用「权限不足」——
+   * 不含任何专属关键词，只能按状态码分诊，不能 match 消息体字符串。
+   */
+  const describeApprovalError = (err: unknown, fallback: string): string => {
+    if (err instanceof ApiError && err.status === 403) {
+      return '无权操作：本群未开放管理员审批，仅群主可处理入群申请'
+    }
+    return err instanceof Error ? err.message : fallback
   }
 
   const handleApproveRequest = async (requestId: string) => {
@@ -185,8 +226,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       toast({ title: '成功', description: '已通过加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
       loadMembers()
-    } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+    } catch (err) {
+      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -198,8 +239,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.rejectJoinRequest(groupId, requestId)
       toast({ title: '已拒绝', description: '已拒绝加入申请' })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
-    } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+    } catch (err) {
+      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -229,6 +270,27 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
+  /**
+   * 群头像走 storage 的四步预签名链路（`POST /api/groups/{id}/avatar` 已于
+   * 2026-08-28 删除，doc:250-252）。组件这一侧只有三点要知道：
+   *
+   * - 结果字段叫 **`file_url`**，不是旧响应的 `avatar_url`（doc:288-306）；
+   *   它已在 api 出口补成绝对地址，这里不再拼基址。
+   * - 失败一律透出**后端原文**：第 1 步的 403「不是群主/管理员」（doc:285-287）
+   *   和 confirm 的「文件大小超过限制…（实际 N 字节）」都是有用的话，
+   *   套一句自造的「上传失败」等于把它们扔掉。403 也**不是**登录态问题，
+   *   不触发登出。
+   * - 409 = 上传会话被同一个群的另一个管理员接管 / 已过期（doc:369）：
+   *   重发同一条永远不会成功，必须整条重来。这里只把话说清楚让用户重选文件，
+   *   **不自动重试**——自动重走链路会去接管别人的会话，两边互相打架。
+   *
+   * 因此 `finally` 里必须清掉 input 的 value（仓里同一套写法见 ChatWindow :244、
+   * FileManager :182、ProfileModal :260、ProfilePage :81）：浏览器只在 value **变化**
+   * 时才发 `change`，不清就等于"失败之后不许重选同一个文件"——而上面那句提示要用户
+   * 做的恰恰就是重选文件，一次网络抖动就能把这个入口锁死到用户换一张图为止。
+   * 用 ref 而不是 `e.target`：与仓里其余四处一致，也不依赖异步 `finally` 里
+   * 事件对象还活着。
+   */
   const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -236,37 +298,98 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     setUploadingAvatar(true)
     try {
       const result = await groupsApi.uploadGroupAvatar(groupId, file)
-      setGroup(prev => prev ? { ...prev, group_avatar_url: result.avatar_url } : null)
+      setGroup(prev => prev ? { ...prev, group_avatar_url: result.file_url } : null)
       toast({ title: '成功', description: '群头像已更新' })
     } catch (err) {
-      toast({ title: '错误', description: err instanceof Error ? err.message : '上传失败', variant: 'destructive' })
+      const description = isUploadSessionExpired(err)
+        ? `${err.message}（可能是本群另一位管理员同时在换头像）`
+        : err instanceof Error ? err.message : '上传失败'
+      toast({ title: '错误', description, variant: 'destructive' })
     } finally {
       setUploadingAvatar(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const handleUpdateJoinMode = async (mode: JoinMode) => {
+  /**
+   * 改一项入群策略。只发被改的那一个字段——`PUT /{id}/join-policy` 的八个
+   * 字段全部可选，「未出现的字段保持原值」（doc:479-480）。整份回填会把
+   * 用户没动的开关也写回去，中间隔一次别人的修改就静默覆盖。
+   *
+   * 回填用**响应**里的完整八值（doc:538），不是本地乐观拼接：服务端可能
+   * 因为联动规则回吐和请求不同的值，乐观拼接会让面板显示一个后端没有的状态。
+   *
+   * 失败时透出后端原文。这个端点**仅群主**可用（doc:477），所以 403 是常规
+   * 失败而不是登录态问题——固定文案「更新失败」正是本批要修的症状：
+   * 端点被删（404）之后，群主每次改设置都只看到这四个字。
+   */
+  const handleUpdateJoinPolicy = async (patch: Partial<JoinPolicy>) => {
+    setSavingPolicy(true)
     try {
-      await groupsApi.updateJoinMode(groupId, mode)
-      setGroup(prev => prev ? { ...prev, join_mode: mode } : null)
-      toast({ title: '成功', description: '入群模式已更新' })
-    } catch {
-      toast({ title: '错误', description: '更新失败', variant: 'destructive' })
+      const policy = await groupsApi.updateJoinPolicy(groupId, patch)
+      setGroup(prev => prev ? { ...prev, ...policy } : null)
+      toast({ title: '成功', description: '入群策略已更新' })
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '更新入群策略失败',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingPolicy(false)
     }
   }
 
   // 成员操作
+
+  /** 逐条结果拼成一行行「谁：后端怎么说」，文案照抄后端（doc:2299-2300）。 */
+  const describeInviteResults = (rows: InviteResult[]): string =>
+    rows.map(row => `${row.user_id}：${row.message}`).join('；')
+
+  /**
+   * 邀请成员。**本模块唯一一处「HTTP 200 里表达失败」**：整批请求成功的同时，
+   * 每个被邀请人的成败在 `results[].success` 里（doc:733-752、doc:782-796）。
+   *
+   * 旧代码把返回值整个丢弃、无条件弹「邀请已发送」——群关掉
+   * `allow_join_via_referral` 之后普通成员邀请的每一个人都会失败
+   * （`该群未开放好友推荐加群`，且后端不建记录、不通知），而屏幕上和全部
+   * 成功一模一样。这里三分支：全成功 / 部分成功 / 全失败，且**只有全成功
+   * 才关弹窗清输入框**，否则用户会连自己刚邀请了谁都找不回来。
+   */
   const handleInviteMembers = async () => {
     if (!inviteUserIds.trim()) return
+    const userIds = inviteUserIds.split(',').map(id => id.trim()).filter(Boolean)
+    if (userIds.length === 0) return
     setInviting(true)
     try {
-      const userIds = inviteUserIds.split(',').map(id => id.trim()).filter(Boolean)
-      await groupsApi.inviteMembers(groupId, userIds)
-      toast({ title: '成功', description: '邀请已发送' })
-      setShowInviteDialog(false)
-      setInviteUserIds('')
-    } catch {
-      toast({ title: '错误', description: '邀请失败', variant: 'destructive' })
+      const { results } = await groupsApi.inviteMembers(groupId, userIds)
+      const failed = results.filter(row => !row.success)
+      if (failed.length === 0) {
+        // 成功文案也照抄后端：审核开着时它是「邀请已发送，待对方同意并经管理员
+        // 审核」，关着时是「对方已自动加入群聊」——自己写一句固定文案就等于
+        // 又回到"按我是不是管理员预测结果"。
+        toast({ title: '成功', description: describeInviteResults(results) })
+        setShowInviteDialog(false)
+        setInviteUserIds('')
+      } else if (failed.length === results.length) {
+        toast({
+          title: '邀请失败',
+          description: describeInviteResults(failed),
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: `${results.length - failed.length} 人已邀请，${failed.length} 人失败`,
+          description: describeInviteResults(failed),
+          variant: 'destructive',
+        })
+      }
+    } catch (err) {
+      toast({
+        title: '错误',
+        description: err instanceof Error ? err.message : '邀请失败',
+        variant: 'destructive',
+      })
     } finally {
       setInviting(false)
     }
@@ -388,40 +511,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
-  // 邀请码操作
-  const handleGenerateCode = async () => {
-    setGeneratingCode(true)
-    try {
-      const code = await groupsApi.createInviteCode(groupId, {
-        max_uses: codeMaxUses,
-        expires_in_hours: codeExpireHours
-      })
-      setInviteCodes(prev => [code, ...prev])
-      toast({ title: '成功', description: `邀请码: ${code.code}` })
-      setShowCodeDialog(false)
-    } catch {
-      toast({ title: '错误', description: '生成失败', variant: 'destructive' })
-    } finally {
-      setGeneratingCode(false)
-    }
-  }
-
-  const handleRevokeCode = async (codeId: string) => {
-    try {
-      await groupsApi.revokeInviteCode(groupId, codeId)
-      setInviteCodes(prev => prev.filter(c => c.id !== codeId))
-      toast({ title: '成功', description: '邀请码已撤销' })
-    } catch {
-      toast({ title: '错误', description: '撤销失败', variant: 'destructive' })
-    }
-  }
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code)
-    setCopiedCode(code)
-    setTimeout(() => setCopiedCode(null), 2000)
-  }
-
   const getAvatarColor = (name: string) => {
     const colors = [
       'bg-primary', 'bg-primary/90', 'bg-primary/80', 'bg-primary/70',
@@ -435,17 +524,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     if (role === 'owner') return <Crown className="h-4 w-4 text-primary" />
     if (role === 'admin') return <Shield className="h-4 w-4 text-primary" />
     return null
-  }
-
-  const getJoinModeName = (mode?: JoinMode) => {
-    const modes: Record<JoinMode, string> = {
-      open: '开放入群',
-      approval_required: '需要审核',
-      invite_only: '仅邀请',
-      admin_invite_only: '仅管理员邀请',
-      closed: '禁止入群'
-    }
-    return modes[mode || 'approval_required']
   }
 
   if (loading) {
@@ -464,8 +542,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           { key: 'info', label: '基本信息', icon: Settings, show: true },
           { key: 'members', label: '成员管理', icon: Users, show: true },
           { key: 'notices', label: '群公告', icon: Bell, show: true },
-          { key: 'codes', label: '邀请码', icon: Link, show: true },
-          { key: 'requests', label: '加入申请', icon: UserPlus, show: isAdmin, badge: joinRequests.length }
+          { key: 'requests', label: '加入申请', icon: UserPlus, show: canApproveJoinRequests, badge: joinRequests.length }
         ].filter(tab => tab.show).map(tab => (
           <button
             key={tab.key}
@@ -496,7 +573,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             <div className="flex items-center gap-4">
               <div className="relative">
                 <Avatar className="h-20 w-20">
-                  <AvatarImage src={group?.group_avatar_url} />
+                  <AvatarImage src={group?.group_avatar_url ?? undefined} />
                   <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                     {group?.group_name?.[0]?.toUpperCase()}
                   </AvatarFallback>
@@ -585,24 +662,139 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               </CardContent>
             </Card>
 
-            {/* 入群模式 */}
-            {isOwner && (
+            {/* 入群策略：八个字段各自独立，`PUT /{id}/join-policy` 仅群主可用（doc:477）。
+                旧代码这里是一个五档 `join_mode` 下拉框，那套模型连同它写的数据库列
+                一起被 migration 043 删掉了（doc:442-468）。 */}
+            {isOwner && group && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">入群模式</CardTitle>
+                  <CardTitle className="text-sm">入群策略</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <select
-                    value={group?.join_mode || 'approval_required'}
-                    onChange={e => handleUpdateJoinMode(e.target.value as JoinMode)}
-                    className="w-full p-2 border rounded-lg"
-                  >
-                    <option value="open">开放入群（任何人可直接加入）</option>
-                    <option value="approval_required">需要审核（默认）</option>
-                    <option value="invite_only">仅邀请（只能通过邀请加入）</option>
-                    <option value="admin_invite_only">仅管理员邀请</option>
-                    <option value="closed">禁止入群</option>
-                  </select>
+                <CardContent className="space-y-5">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-join-approval" className="text-sm">
+                        需要入群审核
+                        <span className="block text-xs text-muted-foreground">
+                          开启后申请落待审；关闭则符合条件的人直接入群
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-join-approval"
+                        checked={group.join_approval_required}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ join_approval_required: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-admin-approve" className="text-sm">
+                        允许管理员参与审核
+                        <span className="block text-xs text-muted-foreground">
+                          关闭后只有群主能列出、通过或拒绝入群申请
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-admin-approve"
+                        checked={group.admin_can_approve}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ admin_can_approve: checked })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 三档范围：管「看得到 / 拿得到」。与下面三个开关正交（doc:498-507）。 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <p className="text-xs text-muted-foreground">谁能把这个群传播出去</p>
+
+                    <div className="space-y-1">
+                      <label htmlFor="policy-card-share-scope" className="text-sm">谁能分享群卡片</label>
+                      <select
+                        id="policy-card-share-scope"
+                        value={group.card_share_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ card_share_scope: e.target.value as ShareScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="all_members">全体成员</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label htmlFor="policy-qr-show-scope" className="text-sm">谁能展示群二维码</label>
+                      <select
+                        id="policy-qr-show-scope"
+                        value={group.qr_show_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ qr_show_scope: e.target.value as ShareScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="all_members">全体成员</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+
+                    {/* 🔴 最松档叫 everyone（任何登录用户），不是上面两档的 all_members
+                        （本群全体成员）——语义方向相反，传错会被后端 400（doc:210、:552-554）。 */}
+                    <div className="space-y-1">
+                      <label htmlFor="policy-search-scope" className="text-sm">谁能搜到这个群</label>
+                      <select
+                        id="policy-search-scope"
+                        value={group.search_scope}
+                        disabled={savingPolicy}
+                        onChange={e => handleUpdateJoinPolicy({ search_scope: e.target.value as SearchScope })}
+                        className="w-full p-2 border rounded-lg"
+                      >
+                        <option value="everyone">任何登录用户</option>
+                        <option value="admins">群主与管理员</option>
+                        <option value="owner_only">仅群主</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* 三个开关：管「能不能进」。关掉搜索加群不会让群从搜索结果里消失，
+                      那是上面的 search_scope 管的事（doc:498-507）。 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <p className="text-xs text-muted-foreground">哪几条加群通道是开的</p>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-qr" className="text-sm">允许扫码加群</label>
+                      <Switch
+                        id="policy-allow-qr"
+                        checked={group.allow_join_via_qr}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_qr: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-search" className="text-sm">允许搜索群 ID 加群</label>
+                      <Switch
+                        id="policy-allow-search"
+                        checked={group.allow_join_via_search}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_search: checked })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <label htmlFor="policy-allow-referral" className="text-sm">
+                        允许好友推荐加群
+                        <span className="block text-xs text-muted-foreground">
+                          同时管住普通成员发起的邀请；群主与管理员的邀请不受它约束
+                        </span>
+                      </label>
+                      <Switch
+                        id="policy-allow-referral"
+                        checked={group.allow_join_via_referral}
+                        disabled={savingPolicy}
+                        onCheckedChange={checked => handleUpdateJoinPolicy({ allow_join_via_referral: checked })}
+                      />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -622,8 +814,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                   <span>{group?.created_at ? new Date(group.created_at).toLocaleDateString() : '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">入群模式</span>
-                  <span>{getJoinModeName(group?.join_mode)}</span>
+                  <span className="text-muted-foreground">入群审核</span>
+                  <span>{group ? (group.join_approval_required ? '需要审核' : '无需审核') : '-'}</span>
                 </div>
               </CardContent>
             </Card>
@@ -654,9 +846,20 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         <AlertDialogCancel>取消</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
-                            await groupsApi.leaveGroup(groupId)
-                            toast({ title: '成功', description: '已退出群聊' })
-                            onClose?.()
+                            // 本文件之前唯一没有 try/catch 的调用点：抛错会变成
+                            // 未处理的 promise rejection，toast 和 onClose 都不
+                            // 执行，用户只会看到弹窗自己关掉、什么反馈都没有。
+                            try {
+                              await groupsApi.leaveGroup(groupId)
+                              toast({ title: '成功', description: '已退出群聊' })
+                              onClose?.()
+                            } catch (err) {
+                              toast({
+                                title: '错误',
+                                description: err instanceof Error ? err.message : '退出群聊失败',
+                                variant: 'destructive',
+                              })
+                            }
                           }}
                         >
                           确认退出
@@ -686,9 +889,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         <AlertDialogCancel>取消</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
-                            await groupsApi.disbandGroup(groupId)
-                            toast({ title: '成功', description: '群聊已解散' })
-                            onClose?.()
+                            // 同上一个弹窗：补 try/catch，失败要有可见反馈。
+                            try {
+                              await groupsApi.disbandGroup(groupId)
+                              toast({ title: '成功', description: '群聊已解散' })
+                              onClose?.()
+                            } catch (err) {
+                              toast({
+                                title: '错误',
+                                description: err instanceof Error ? err.message : '解散群聊失败',
+                                variant: 'destructive',
+                              })
+                            }
                           }}
                         >
                           确认解散
@@ -705,6 +917,22 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         {/* 成员管理 */}
         {activeTab === 'members' && (
           <div className="space-y-4">
+            {/*
+             * ⚠️ 已知漂移，本批不碰：doc:719 记录 2026-08-17 起「邀请成员」
+             * 已经**去掉**了角色门槛（普通成员也能邀请，受 doc:743-752 的
+             * allow_join_via_referral 前置行约束，不是 isAdmin），这里的
+             * `isAdmin` 门是没跟上的一处。批 4 复核过权限总表
+             * （doc:2247-2268）确认这是**单独一处**漂移，不是一整族——本文件
+             * 其它角色门（转让群主、设管理员、移除成员等）逐条对过表格都是
+             * 对的。
+             *
+             * 复核者的意见：修复大概率不是直接去掉这道门变成无条件展示——
+             * 一个在 `allow_join_via_referral=false` 的群里的普通成员点了会
+             * 拿到一屏全失败的 toast（doc:743-752 的前置行：非群主/管理员在
+             * 这个开关关着时，逐个被邀请人必然失败）。更贴近文档语义的方向是
+             * `isAdmin || group?.allow_join_via_referral`——按钮的可见性
+             * 跟着"点了是否至少有机会成功"走，而不是跟着角色走。留给下一批。
+             */}
             {isAdmin && (
               <Button className="w-full gap-2" onClick={() => setShowInviteDialog(true)}>
                 <UserPlus className="h-4 w-4" />
@@ -716,23 +944,38 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
+            ) : membersError ? (
+              // 失败态必须和"这个群真的没有成员"长得不一样——同一句"暂无成员"
+              // 曾经在信封化之前把网络故障和真实空列表渲染成同一个画面。
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载成员失败：{membersError}</p>
+                <Button variant="outline" size="sm" onClick={loadMembers}>重试</Button>
+              </div>
+            ) : members.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">暂无成员</p>
             ) : (
               <div className="space-y-2">
-                {members.map(member => (
+                {members.map(member => {
+                  // user_nickname 可为 null（users JOIN 缺失，同文档同族推断——
+                  // 参见 groups.ts 里 GroupMember 接口上方的注释）。展示名统一走
+                  // 这条链，取到的第一个非空值兜到 user_id，保证非空传给
+                  // getAvatarColor / [0] 索引，这是展示层的兜底，不是 api 解包层的。
+                  const displayName = member.group_nickname || member.user_nickname || member.user_id
+                  return (
                   <div
                     key={member.user_id}
                     className="flex items-center gap-3 rounded-lg p-3 transition-colors hover:bg-accent"
                   >
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={member.user_avatar_url} />
-                      <AvatarFallback className={getAvatarColor(member.user_nickname) + ' text-primary-foreground'}>
-                        {member.user_nickname[0]?.toUpperCase()}
+                      <AvatarImage src={member.user_avatar_url ?? undefined} />
+                      <AvatarFallback className={getAvatarColor(displayName) + ' text-primary-foreground'}>
+                        {displayName[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium truncate">
-                          {member.group_nickname || member.user_nickname}
+                          {displayName}
                         </span>
                         {getRoleIcon(member.role)}
                         {member.muted_until && new Date(member.muted_until) > new Date() && (
@@ -744,8 +987,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </span>
                     </div>
 
-                    {/* 成员操作 */}
-                    {isAdmin && member.user_id !== user?.user_id && member.role !== 'owner' && (
+                    {/* 成员操作。
+                        旧条件 `isAdmin && !self && role !== 'owner'` 漏了一档：
+                        管理员**不能动另一个管理员**——移除成员「管理员：只能移除普通成员」
+                        （doc:840-842）、禁言「管理员：只能禁言普通成员」（doc:976-978），
+                        权限总表 :2262-2263 也是这么写的。漏这一档的后果是给管理员渲染
+                        一排点下去必然 403 的按钮。群主不受此限（可动任何成员）。 */}
+                    {isAdmin
+                      && member.user_id !== user?.user_id
+                      && member.role !== 'owner'
+                      && (isOwner || member.role !== 'admin') && (
                       <div className="flex gap-1">
                         {member.muted_until && new Date(member.muted_until) > new Date() ? (
                           <Button
@@ -813,7 +1064,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -832,6 +1084,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {loadingNotices ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : noticesError ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载公告失败：{noticesError}</p>
+                <Button variant="outline" size="sm" onClick={loadNotices}>重试</Button>
               </div>
             ) : notices.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">暂无公告</p>
@@ -873,72 +1130,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           </div>
         )}
 
-        {/* 邀请码 */}
-        {activeTab === 'codes' && (
-          <div className="space-y-4">
-            <Button className="w-full gap-2" onClick={() => setShowCodeDialog(true)}>
-              <Plus className="h-4 w-4" />
-              生成邀请码
-            </Button>
-
-            {loadingCodes ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : inviteCodes.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无邀请码</p>
-            ) : (
-              <div className="space-y-2">
-                {inviteCodes.map(code => (
-                  <Card key={code.id}>
-                    <CardContent className="pt-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-lg font-bold">{code.code}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              code.code_type === 'direct' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                            }`}>
-                              {code.code_type === 'direct' ? '直接入群' : '需审核'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            有效期至: {new Date(code.expires_at).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => copyCode(code.code)}
-                          >
-                            {copiedCode === code.code ? (
-                              <Check className="h-4 w-4 text-primary" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
-                          {isAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRevokeCode(code.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* 加入请求审批 */}
-        {activeTab === 'requests' && isAdmin && (
+        {activeTab === 'requests' && canApproveJoinRequests && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
@@ -962,30 +1155,52 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
+            ) : requestsError ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <p className="text-sm text-destructive">加载加入申请失败：{requestsError}</p>
+                <Button variant="outline" size="sm" onClick={loadJoinRequests}>重试</Button>
+              </div>
             ) : joinRequests.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">暂无加入申请</p>
             ) : (
               <div className="space-y-2">
-                {joinRequests.map(request => (
+                {joinRequests.map(request => {
+                  // 昵称可为 null（users JOIN 缺失）——展示层退到 user_id，
+                  // 不在解包层兜底成空串。旧代码的 `user_nickname[0]` 在
+                  // 这种行上直接 TypeError。
+                  const displayName = request.user_nickname ?? request.user_id
+                  return (
                   <Card key={request.request_id}>
                     <CardContent className="pt-4">
                       <div className="flex items-start gap-3">
                         <Avatar className="h-10 w-10">
-                          <AvatarImage src={request.user_avatar_url} />
-                          <AvatarFallback className={getAvatarColor(request.user_nickname) + ' text-primary-foreground'}>
-                            {request.user_nickname[0]?.toUpperCase()}
+                          <AvatarImage src={request.user_avatar_url ?? undefined} />
+                          <AvatarFallback className={getAvatarColor(displayName) + ' text-primary-foreground'}>
+                            {displayName[0]?.toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{request.user_nickname}</div>
+                          <div className="font-medium">{displayName}</div>
                           <div className="text-xs text-muted-foreground">{request.user_id}</div>
-                          {request.reason && (
+                          {/* 申请附言的字段名是 message，不是 reason——后端从来
+                              没有过一个叫 reason 的响应字段（doc:1051 apply 请求体、
+                              doc:1367 SentJoinRequestInfo 都是 message；reason 只是
+                              `POST …/reject` 的请求体字段）。旧代码读 reason ⇒ 恒
+                              undefined ⇒ 整块附言不渲染，审批人是在盲批。 */}
+                          {request.message && (
                             <div className="mt-1 rounded bg-muted p-2 text-sm text-muted-foreground">
-                              {request.reason}
+                              {request.message}
                             </div>
                           )}
+                          {/* 2026-08-17 起这个列表里混着邀请类的行（doc:1258-1260、
+                              doc:2301-2302）：全部渲染成「申请入群」会让审批人以为
+                              对方主动要进来，而实际可能是我们的人邀请的、对方还没
+                              点同意（user_accepted=false）。四类都能批，所以两类行
+                              的按钮都照常渲染，只有说明文案不同。 */}
                           <div className="text-xs text-muted-foreground mt-1">
-                            申请时间: {new Date(request.created_at).toLocaleString()}
+                            {request.request_type === 'search_apply'
+                              ? `主动申请入群 · 申请时间: ${new Date(request.created_at).toLocaleString()}`
+                              : `${request.user_accepted ? '由群成员邀请，对方已同意，待你审批' : '由群成员邀请，等待对方确认'} · 邀请时间: ${new Date(request.created_at).toLocaleString()}`}
                           </div>
                         </div>
                         <div className="flex gap-1">
@@ -1012,7 +1227,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1084,45 +1300,6 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>取消</Button>
               <Button onClick={handleCreateNotice} disabled={creatingNotice}>
                 {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : '发布'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 生成邀请码弹窗 */}
-      <Dialog open={showCodeDialog} onOpenChange={setShowCodeDialog}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>生成邀请码</DialogTitle>
-            <DialogDescription className="sr-only">设置邀请码的使用次数和有效期</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-muted-foreground">最大使用次数</label>
-              <Input
-                type="number"
-                value={codeMaxUses}
-                onChange={e => setCodeMaxUses(parseInt(e.target.value) || 1)}
-                min={1}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-muted-foreground">有效期（小时）</label>
-              <Input
-                type="number"
-                value={codeExpireHours}
-                onChange={e => setCodeExpireHours(parseInt(e.target.value) || 1)}
-                min={1}
-                max={168}
-                className="mt-1"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowCodeDialog(false)}>取消</Button>
-              <Button onClick={handleGenerateCode} disabled={generatingCode}>
-                {generatingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
               </Button>
             </div>
           </div>

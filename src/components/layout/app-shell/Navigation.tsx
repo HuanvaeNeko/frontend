@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { type LucideIcon, Bot, Settings, User, LogOut, Video, Users, FileText, MessageSquare, Globe, Monitor } from 'lucide-react'
 import { AppLink as Link } from '@/components/common/AppLink'
 import { usePathname } from '@/lib/navigation'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChatStore } from '@/features/chat/store/chatStore'
@@ -93,7 +94,45 @@ export function DesktopSidebar() {
   const pathname = usePathname()
   const { user, logout } = useAuthStore()
   const { profile } = useProfileStore()
-  
+
+  /**
+   * 侧栏头像的地址。**在这里读的时候补基址**，不假设上游已经补好——那个假设是错的：
+   *
+   * - `profile.user_avatar_url`：`profileApi.getProfile` 出口确实补过，落盘的旧值也由
+   *   `profileStore` 的 persist migrate 搬平了。这一支是安全的。
+   * - `user.avatar_url`（`authStore`）：登录时的补基址是本分支上的改动，**还没进 main**；
+   *   `auth-storage` 的 `version` / `migrate` 也是本分支才加的（`migrateAuthPersist`，
+   *   提交 `400992d`），在此之前它两者皆无、`refreshAccessToken` 又从不重写 `user`。
+   *   也就是说：**已经部署出去的用户**落盘的仍是相对路径，要等他的浏览器加载到本分支
+   *   的代码、rehydrate 跑一次 migrate 之后才会变绝对。这一支在那之前是相对路径，
+   *   它非空、`||` 会选中它，于是下面那个首字母兜底根本不会触发，用户拿到的正是
+   *   兜底本该防住的那个碎图标。
+   *
+   * `toAbsoluteApiUrl` 幂等（已带协议的原样返回），所以对已经绝对的值是 no-op；
+   * 空串 / `null` / `undefined` 一律得到 `undefined`，`?? null` 归一成"没有头像"。
+   * 读时归一还有一个 persist migrate 给不了的性质：它**每次渲染重新求值**，而迁移
+   * 只跑一次、把值冻结在迁移那一刻的基址上——本项目会故意改基址（本地无 SNI 反代）。
+   *
+   * 这里不是 `<Avatar>` 而是一个**裸 `<img>`**，所以它比另外两个渲染点更脆：
+   * - `src=""` 会让 React 打出
+   *   `An empty string ("") was passed to the src attribute. This may cause the browser
+   *   to download the whole page again over the network.`（React 19 dev 构建原文，
+   *   `react-dom/cjs/react-dom-client.development.js`），处方也是 React 自己给的：
+   *   **不渲染这个元素**，或者传 null。Radix 的 `<AvatarImage>` 不会有这个问题
+   *   （1.2.6 实测 `if (!src) { setLoadingStatus('error'); return }`，压根不发请求），
+   *   裸 `<img>` 没有那层短路。
+   * - 没有 `<AvatarFallback>` 兜底，src 不可用时留下的是一个碎图标。
+   *
+   * 所以：先归一（`''`/`null`/`undefined` 一律当成"没有头像"），有值才渲染 `<img>`，
+   * 没有就渲染和 `<AvatarFallback>` 同形的首字母块。`||` 而不是 `??` 是有意的——
+   * 空串必须继续往后找 `user?.avatar_url`，而不是被当成一个有效地址。
+   *
+   * （`Navigation.test.tsx` 用一条渲染裸 `<img src="">` 的**正对照**先证明这句警告
+   * 在本环境真的会出现，再断言本组件不产生它——否则"没有警告"是句空话。）
+   */
+  const avatarSrc = toAbsoluteApiUrl(profile?.user_avatar_url || user?.avatar_url) ?? null
+  const avatarInitial = (profile?.user_nickname || user?.nickname || 'U')[0]?.toUpperCase() ?? 'U'
+
   // Save last visited path
   useEffect(() => {
     if (pathname && pathname.startsWith('/app') && pathname !== ROUTES.auth.login && pathname !== ROUTES.auth.register) {
@@ -111,11 +150,17 @@ export function DesktopSidebar() {
              whileTap={{ scale: 0.95 }}
              className="w-12 h-12 rounded-2xl overflow-hidden ring-2 ring-border hover:ring-primary transition-all shadow-sm cursor-pointer"
            >
-              <img 
-                src={profile?.user_avatar_url || user?.avatar_url} 
-                alt="Avatar" 
-                className="w-full h-full object-cover bg-muted"
-              />
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt="Avatar"
+                  className="w-full h-full object-cover bg-muted"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-muted text-sm font-semibold text-muted-foreground">
+                  {avatarInitial}
+                </div>
+              )}
            </motion.div>
          </Link>
       </div>

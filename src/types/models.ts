@@ -17,34 +17,48 @@ export interface UserProfile {
 }
 
 /**
- * Friend Information
+ * Friend Information（`GET /api/friends` 的 `FriendDto`）
+ *
+ * 字段以 `backend-docs/friends/好友添加删除.md:107-118` 为准；可空字段后端序列化为
+ * `null`（无 `skip_serializing_if`），故写 `| null` 而非可选属性。
+ * 权威定义在 `src/features/chat/api/friends.ts`——这里是历史遗留的第二份拷贝
+ * （全仓无引用），同步更新只是不想再留一份会误导人的旧字段名。
  */
 export interface Friend {
-  user_id: string
-  nickname: string
-  avatar_url?: string
-  email?: string
-  signature?: string
+  friend_id: string
+  friend_nickname: string | null
+  friend_avatar_url: string | null
+  add_time: string
+  approve_reason: string | null
+  friend_remark: string | null
+  is_blacklisted: boolean
+  is_special_care: boolean
 }
 
 /**
- * Pending Friend Request
+ * Pending Friend Request（`GET /api/friends/requests/pending` 的 `PendingRequestDto`）
  */
 export interface PendingRequest {
-  applicant_user_id: string
-  nickname: string
-  reason?: string
+  request_id: string
+  request_user_id: string
+  request_message: string | null
   request_time: string
+  requester_nickname: string | null
+  requester_avatar_url: string | null
 }
 
 /**
- * Sent Friend Request
+ * Sent Friend Request（`GET /api/friends/requests/sent` 的 `SentRequestDto`）
+ *
+ * 没有 `status`：该端点只返回仍处于 pending 的申请。
  */
 export interface SentRequest {
-  target_user_id: string
-  reason?: string
-  request_time: string
-  status: string
+  request_id: string
+  sent_to_user_id: string
+  sent_message: string | null
+  sent_time: string
+  sent_to_nickname: string | null
+  sent_to_avatar_url: string | null
 }
 
 /**
@@ -74,17 +88,28 @@ export interface Message {
 }
 
 /**
- * Group Join Mode Enum
- */
-export type JoinMode = 'open' | 'approval_required' | 'invite_only' | 'admin_invite_only' | 'closed'
-
-/**
  * Group Member Role Enum
  */
 export type MemberRole = 'owner' | 'admin' | 'member'
 
 /**
  * Group Information
+ *
+ * ⚠️ 这是 `src/features/chat/api/groups.ts` 里同名类型的一份**重复定义**，
+ * 本文件目前没有任何 import（同类问题另见本文件的 GroupMessage 与
+ * `apiParse.ts` 顶部注释里记的那次分叉）。收敛成一份是独立待办。
+ *
+ * 这里跟着删掉 `join_mode` / `JoinMode`：五档入群模式连同 `groups."join-mode"`
+ * 列被 migration 043 整套删除（backend-docs/groups/群聊管理.md:442-468），
+ * 留一个已不存在的类型在共享类型文件里，只会让下一个人以为它还能用。
+ * 入群策略八字段**不补到这里**——权威定义在 `api/groups.ts` 的 `JoinPolicy`，
+ * 再抄一份就是第二次分叉。
+ *
+ * 🔴 `group_avatar_url` 在这里仍是 `string`，与 `api/groups.ts` 的
+ * `GroupBase.group_avatar_url: string | null`（字段表 doc:202）不一致——同样是
+ * 本文件零 import 的既有宽松，本批没有顺手收紧：收紧它要连带回答
+ * `group_description` 要不要跟着改，那是 `api/groups.ts` 的契约问题，这份
+ * 重复定义不该抢答，以 `api/groups.ts` 为准。
  */
 export interface Group {
   group_id: string
@@ -93,7 +118,6 @@ export interface Group {
   group_description?: string
   creator_id?: string
   created_at?: string
-  join_mode?: JoinMode
   status?: string
   member_count?: number
 }

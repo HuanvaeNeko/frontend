@@ -17,6 +17,7 @@ import {
   Check,
   Info
 } from 'lucide-react'
+import { AVATAR_FILE_ACCEPT } from '@/api/storage'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -26,7 +27,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { profileApi } from '@/features/profile/api/profile'
+import {
+  PASSWORD_LIMITS,
+  pickProfileEdits,
+  profileApi,
+  profileFormValues,
+  type ProfileFormValues,
+  type UserProfile,
+} from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { playTap, playToggle, playButton, playPop } from '@/hooks/useSound'
 
@@ -184,16 +192,30 @@ function FormTextarea({
 // 基本信息面板
 function ProfileSettings({ onSaved }: { onSaved: () => void }) {
   const { toast } = useToast()
-  const { profile, isLoading, loadProfile, updateProfile } = useProfileStore()
+  const { profile, isLoading, loadProfile, updateProfile, setAvatarUrl } = useProfileStore()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = useState({
-    email: '',
-    signature: '',
-  })
+  /**
+   * **用户已经敲进去的那份改动**，连同它是对着哪一份 `profile` 敲的。
+   * `null` = 还没动过，此时表单值直接从 `profile` 种出来。
+   *
+   * 存的是"改动"而不是"表单当前值"，是因为后者必须与 `profile` 同步，而任何
+   * "state + useEffect 回填"的写法都有一拍两者不一致的窗口——那一拍里
+   * `pickProfileEdits` 拿空表单对着有值的资料算差分，「保存更改」会闪成可点，
+   * 输入框却还是空的。带上 `source` 之后，两者**在同一次渲染里**必然成对。
+   */
+  const [draft, setDraft] = useState<{
+    source: UserProfile | null
+    values: ProfileFormValues
+  } | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
+  /**
+   * 直传的真实进度（0-100），`null` = 还没有任何字节发出去。
+   * 口径与 `ProfilePage` 同一处逐条相同：`xhr.upload.onprogress` 的**字节**进度，
+   * 不是"第几片传完了"（头像档永远只有 1 片）。
+   */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
 
@@ -201,30 +223,54 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     loadProfile().catch(console.error)
   }, [loadProfile])
 
-  useEffect(() => {
-    if (profile) {
-      setFormData({
-        email: profile.user_email || '',
-        signature: profile.user_signature || '',
-      })
-    }
-  }, [profile])
+  /**
+   * 表单当前值：动过就用用户那份，没动过（或者动完之后 `profile` 换了一份新的）
+   * 就从 `profile` 现种一份。
+   *
+   * `draft.source === profile` 比的是**对象身份**：`getProfile()` 每次都返回新对象，
+   * 所以任何一次成功的 `loadProfile()` 都会让未提交的编辑让位给服务端那一份。
+   * 这与此前那个 `useEffect(..., [profile])` 回填的行为一致，区别只在于这里没有
+   * "已经拿到新 profile、但表单还是旧的"那一拍。
+   */
+  const formData = draft && draft.source === profile ? draft.values : profileFormValues(profile)
+  const setFormData = (values: ProfileFormValues) => setDraft({ source: profile, values })
 
-  useEffect(() => {
-    if (profile) {
-      const emailChanged = formData.email !== (profile.user_email || '')
-      const signatureChanged = formData.signature !== (profile.user_signature || '')
-      setHasChanges(emailChanged || signatureChanged)
-    }
-  }, [formData, profile])
+  /**
+   * "有没有改过"与"该提交哪些字段"是同一个判断，所以两边共用 `pickProfileEdits`：
+   * 各写一份的话，会出现按钮亮着但请求体是空的（或反过来）的错位。
+   *
+   * 渲染时**就地算**，而不是放进 state 由 effect 去同步。
+   *
+   * ⚠️ 这一行本身**不足以**关掉「保存更改」闪一下的窗口，此前这里写反了。
+   * 真正关掉它的是上面那个 `formData` 的派生：`profile` 第一次变成非空的那一拍，
+   * 旧写法的 `formData` 还是空三元组（回填 effect 尚未执行），`pickProfileEdits`
+   * 照样算出三个键——按钮亮着、而且输入框是空的，比改之前**更差**
+   * （改之前那一拍按钮是灰的，闪的是下一拍）。现在这两个值在同一次渲染里从同一个
+   * `profile` 派生，于是 `pickProfileEdits(p, profileFormValues(p)) === {}`
+   * 这条等式直接把那一拍消掉了（用例：`profile.test.ts` 的「左逆」那条，
+   * 以及本组件用例里在 passive effect 跑之前就检查按钮的那条）。
+   */
+  const edits = pickProfileEdits(profile, formData)
+  const hasChanges = Object.keys(edits).length > 0
 
+  /**
+   * 只提交**改过**的字段——理由与 `ProfilePage.handleSubmit` 逐条相同
+   * （部分更新语义 doc:162-200；旧写法无条件带上 `email` / `signature`，
+   * 一次"只改签名"的保存会把邮箱一起重写）。差分逻辑共用 {@link pickProfileEdits}。
+   *
+   * 这一侧的保存按钮本来就绑着 `hasChanges`，所以空差分在正常操作下到不了这里；
+   * 那句 return 挡的是"按钮状态与实际差分不一致"的时序，不是主路径。
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     playButton()
+    if (!hasChanges) {
+      toast({ title: '没有需要保存的修改' })
+      return
+    }
     try {
-      await updateProfile(formData)
+      await updateProfile(edits)
       toast({ title: '成功', description: '个人资料已更新' })
-      setHasChanges(false)
       onSaved()
     } catch (error) {
       toast({
@@ -240,15 +286,28 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     fileInputRef.current?.click()
   }
 
+  /**
+   * 与 `ProfilePage.handleAvatarChange` 逐条同构（同一条四步链路、同一套错误口径），
+   * 理由写在那一处，不在这里复述一遍——两份注释会各自漂移。
+   * 简版：失败透出后端原文（`group-` 前缀账号是**永久** 400，doc:454；超限文案带真实
+   * 字节数，doc:444）、409 不自动重试（doc:445）、成功不回写（doc:411），
+   * 成功的信号是 toast 而不是"图变了"（`?t=` 是秒级缓存戳，doc:413-414），
+   * 以及——**成功的判定点是 confirm 返回，不是随后那次 `loadProfile()`**：那次 GET
+   * 失败不能把一次已完成的上传重新说成失败（500 → 假的「上传失败」，401 → 静默登出）。
+   */
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setUploadingAvatar(true)
+    setUploadProgress(null)
     try {
-      await profileApi.uploadAvatar(file)
-      await loadProfile()
+      const { file_url } = await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
+      setAvatarUrl(file_url)
       toast({ title: '成功', description: '头像上传成功' })
+      await loadProfile().catch((error) => {
+        console.error('头像已上传成功，刷新完整资料失败:', error)
+      })
     } catch (error) {
       toast({
         title: '上传失败',
@@ -257,16 +316,15 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
       })
     } finally {
       setUploadingAvatar(false)
+      setUploadProgress(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
+  // 丢掉这份改动，表单回到 `profile` 的取值——正是 `draft === null` 的含义。
   const handleReset = () => {
     playTap()
-    setFormData({
-      email: profile?.user_email || '',
-      signature: profile?.user_signature || '',
-    })
+    setDraft(null)
   }
 
   return (
@@ -275,7 +333,8 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
       <div className="flex flex-col items-center py-4">
         <div className="relative group mb-3">
           <Avatar className="h-24 w-24 border-4 border-background shadow-lg">
-            <AvatarImage src={profile?.user_avatar_url || ''} alt={displayName} />
+            {/* 补基址在 `profileApi.getProfile` 出口，理由见 ProfilePage 同一处的注释。 */}
+            <AvatarImage src={profile?.user_avatar_url ?? undefined} alt={displayName} />
             <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
               {displayName[0]?.toUpperCase() || 'U'}
             </AvatarFallback>
@@ -283,12 +342,16 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           <motion.button
             onClick={handleAvatarClick}
             disabled={uploadingAvatar}
-            className="absolute inset-0 flex items-center justify-center bg-foreground/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            className="absolute inset-0 flex items-center justify-center bg-foreground/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:opacity-100"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             {uploadingAvatar ? (
-              <Loader2 className="h-6 w-6 text-background animate-spin" />
+              uploadProgress === null ? (
+                <Loader2 className="h-6 w-6 text-background animate-spin" />
+              ) : (
+                <span className="text-sm font-semibold text-background">{Math.round(uploadProgress)}%</span>
+              )
             ) : (
               <Camera className="h-6 w-6 text-background" />
             )}
@@ -297,7 +360,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
+          accept={AVATAR_FILE_ACCEPT}
           className="hidden"
           onChange={handleAvatarChange}
         />
@@ -307,12 +370,18 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
 
       {/* 表单 */}
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/*
+          昵称可写（doc:141「1-50 字符」）。此前这里 `disabled` 且绑着只读的
+          `displayName`，与 `ProfilePage` 同一个形态——全站没有任何一个用户能改
+          自己的显示名。下限（清空）由 `profileApi.updateProfile` 的本地闸统一拦。
+        */}
         <FormInput
           icon={UserIcon}
           label="昵称"
-          value={displayName}
-          onChange={() => {}}
-          disabled
+          value={formData.nickname}
+          onChange={(v) => setFormData({ ...formData, nickname: v })}
+          placeholder="给自己起个名字"
+          maxLength={50}
         />
 
         <FormInput
@@ -389,13 +458,10 @@ function PasswordSettings() {
     e.preventDefault()
     playButton()
 
+    // 一致性检查是纯 UI 概念，留在这里；长度规则是端点契约（doc:305-306），
+    // 已收进 `profileApi.changePassword` 一处执行——理由见 `ProfilePage` 同一处。
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast({ title: '错误', description: '两次输入的新密码不一致', variant: 'destructive' })
-      return
-    }
-
-    if (passwordData.newPassword.length < 6) {
-      toast({ title: '错误', description: '新密码长度至少 6 位', variant: 'destructive' })
       return
     }
 
@@ -431,7 +497,9 @@ function PasswordSettings() {
           <div className="text-sm text-foreground">
             <p className="font-medium mb-1">密码安全提示</p>
             <ul className="space-y-0.5 text-xs text-muted-foreground">
-              <li>• 新密码长度至少 6 位</li>
+              {/* 数字来自 `PASSWORD_LIMITS`（doc:305-306），不写字面量——
+                  界面上的提示与真正执行的规则各写一份，迟早对不上。 */}
+              <li>• 新密码长度 {PASSWORD_LIMITS.newMin}-{PASSWORD_LIMITS.newMax} 位</li>
               <li>• 建议使用字母、数字和符号的组合</li>
             </ul>
           </div>
@@ -462,7 +530,7 @@ function PasswordSettings() {
         type={showPasswords.new ? 'text' : 'password'}
         value={passwordData.newPassword}
         onChange={(v) => setPasswordData({ ...passwordData, newPassword: v })}
-        placeholder="至少 6 位"
+        placeholder={`${PASSWORD_LIMITS.newMin}-${PASSWORD_LIMITS.newMax} 位`}
         rightElement={
           <button
             type="button"

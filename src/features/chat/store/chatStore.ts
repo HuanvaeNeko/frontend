@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { Message } from '@/types'
-import { messagesApi, type SyncConversationRequest, type SyncConversationResponse } from '../api/messages'
+import {
+  buildFriendConversationId,
+  messagesApi,
+  type SyncConversationRequest,
+  type SyncConversationResponse,
+} from '../api/messages'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { isAuthError } from '@/api/apiClient'
+import { pinSession, registerPristineStoreReset } from '@/lib/sessionScope'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 
@@ -390,34 +397,89 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isSyncing: false,
   
   syncMessages: async () => {
+    // 钉住"发这次同步时的那一场会话"。这个 action 的写入点有三个
+    // （`updateLastSeq` / `updateConversation` / `finally` 里的 `isSyncing`），
+    // 三个都打在**当前**这个 store 上，而登出不取消飞在半空的请求。
+    //
+    // 最难看的一条是 `updateConversation`：反查表 `localIdByConversationId` 是
+    // **发请求时**建的（属于 A），而本地会话 id 会撞——A 和 B 各自都跟 carol
+    // 聊过的话，两边那条会话的本地 id 都是 `'carol'`，于是 A 的
+    // `lastMessage`（他与 carol 的私聊最后一条正文）会写进 B 的那条会话。
+    //
+    // ⚠️ **这条今天是潜在的，不是活的**：`setConversations` / `addConversation`
+    // 在 `src` 里零调用点（`grep -rn 'setConversations' src`），`conversations`
+    // 恒为 `[]`，于是下面那句 `length === 0` 就直接 return 了——这个 action 在
+    // 生产里根本跑不到网络请求。接线补上的那天它立刻变成活的，所以守卫先接。
+    // （接线缺失本身是另一条待办，见 `api/messages.ts` 里
+    // `buildFriendConversationId` 的 JSDoc。）
+    const stillMine = pinSession()
     const conversations = get().conversations
     if (conversations.length === 0) {
       return []
     }
 
+    // 好友会话的 conversation_id 是**双方**的（`conv-{userA}-{userB}`），推导要用到自己的
+    // user_id。拿不到就没法构造合法请求——这里必须显式失败，不能拿 '' 拼一个
+    // `conv--user456` 出去：那样后端认不出，响应里不含该会话，表现回到"同步成功、0 个会话"，
+    // 也就是这条 bug 修复前的样子。
+    const myUserId = useAuthStore.getState().user?.user_id
+    if (!myUserId) {
+      console.warn('消息同步跳过：尚未拿到当前用户 user_id，无法推导好友会话 ID')
+      return []
+    }
+
     set({ isSyncing: true })
-    
+
     try {
-      // 构建同步请求
-      const syncRequests: SyncConversationRequest[] = conversations.map(conv => ({
-        conversation_id: conv.type === 'friend' 
-          ? `conv-${conv.id}` // 好友会话使用 conv- 前缀
-          : conv.id,          // 群聊直接使用 group_id
-        conversation_type: conv.type === 'friend' ? 'friend' : 'group',
-        last_seq: conv.lastSeq || 0,
-      }))
+      // conversation_id -> 本地会话 id 的反查表，和请求同时建起来。
+      //
+      // 原来的做法是对响应里的 id 做字符串切割（`conv.conversation_id.replace(/^conv-/,'')`），
+      // 对双方形式会得出 `user123-user456` 这种半截串，匹配不到任何本地会话，
+      // updateLastSeq / updateConversation 全部空转且不报错。
+      // 用发出去时就记下的映射反查，既不依赖 id 的内部结构，群会话也走同一条路。
+      const localIdByConversationId = new Map<string, string>()
+
+      const syncRequests: SyncConversationRequest[] = conversations.map(conv => {
+        const conversationId = conv.type === 'friend'
+          ? buildFriendConversationId(myUserId, conv.id)
+          : conv.id // 群聊直接用 group_id（`消息同步.md:106`）
+        localIdByConversationId.set(conversationId, conv.id)
+        return {
+          conversation_id: conversationId,
+          conversation_type: conv.type === 'friend' ? 'friend' : 'group',
+          last_seq: conv.lastSeq || 0,
+        }
+      })
 
       // 调用同步 API
       const result = await messagesApi.syncMessages(syncRequests)
-      
+
+      // 上一场会话的响应：一行都不写，也不返回 `[]`。返回 `[]` 会把"这份数据
+      // 不属于任何人"说成"同步完成、0 个会话"，正是这个 action 的 catch 分支
+      // 反复讲的那种谎报。抛错的形态与 `authStore.performRefresh` 的
+      // `Token refresh landed after session end` 一致；唯一的调用点
+      // （`useRealtimeMessages`）自带 `.catch`，不会变成 unhandled rejection。
+      if (!stillMine()) {
+        throw new Error('Message sync landed after session end')
+      }
+
       // 更新每个会话的 lastSeq
       for (const conv of result.conversations) {
-        const originalId = conv.conversation_type === 'friend'
-          ? conv.conversation_id.replace(/^conv-/, '')
-          : conv.conversation_id
-        
+        const originalId = localIdByConversationId.get(conv.conversation_id)
+
+        // 响应里出现了我们没请求过的会话 id。多半意味着 conversation_id 的推导口径
+        // 和后端对不上（见 buildFriendConversationId 的 JSDoc：字典序是推断的）。
+        // 跳过并留一条日志——静默 continue 会让口径错误再次变成不可见状态。
+        if (!originalId) {
+          console.warn(
+            '消息同步：响应里的 conversation_id 不在本次请求中，已跳过',
+            conv.conversation_id,
+          )
+          continue
+        }
+
         get().updateLastSeq(originalId, conv.latest_seq)
-        
+
         // 如果有新消息，更新未读计数
         if (conv.messages.length > 0) {
           get().updateConversation(originalId, {
@@ -431,15 +493,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.log('✅ 消息同步完成:', result.conversations.length, '个会话')
       return result.conversations
     } catch (error) {
-      // 认证错误静默处理
+      // 认证失败：不必按"同步失败"打 console.error（会话到期是预期内的），
+      // 但**照样上抛**。原来这里是 `return []`，等于把"没同步成"说成
+      // "同步完成、0 个新会话"：调用方 `useRealtimeMessages` 的 `hasSyncedRef`
+      // 已置真，本次连接不会再同步；未读计数与 lastSeq 永远停在旧值，
+      // 且没有任何地方能察觉。`[]` 是这条 bug 修好前的原样表现。
+      // 唯一的调用点自带 `.catch(...)`，上抛不会变成 unhandled rejection。
+      // 上一场会话的失败（含上面那句 landed-after-session-end）：原样上抛，
+      // 不打日志也不分档。它对当前这场会话不构成任何证据，把它报成
+      // 「消息同步失败」等于用 A 的网络状况去描述 B 的会话。
+      if (!stillMine()) throw error
       if (error instanceof Error && isAuthError(error)) {
-        console.warn('消息同步因认证问题跳过')
-        return []
+        console.warn('消息同步因认证失败中止')
+        throw error
       }
       console.error('消息同步失败:', error)
       throw error
     } finally {
-      set({ isSyncing: false })
+      // 判假时连 `isSyncing` 都不碰：B 可能正在跑他自己的同步，A 这次迟到的
+      // 收尾会把他的转圈提前关掉。会话结束时 `registerPristineStoreReset`
+      // 已经把它归零，这里没有什么需要补的。
+      if (stillMine()) set({ isSyncing: false })
     }
   },
 
@@ -460,3 +534,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 }))
+
+// 会话结束时恢复到初始状态。本 store 没有 persist，所以 `create()` 刚返回时的
+// `getState()` 就是干净的初始快照，不需要在这里再抄一遍字段名单——将来往
+// state 里加字段，重置自动覆盖它。
+registerPristineStoreReset(useChatStore)

@@ -99,3 +99,173 @@ export const getWsUrl = (): string => {
   
   return url.origin
 }
+
+/**
+ * 把后端返回的相对路径补成绝对 URL。
+ *
+ * ## 为什么放在这里，而不是解包层里
+ *
+ * 解包层（`src/lib/apiEnvelope.ts`）只负责"信封拆开后 data 长得对不对"，
+ * 它不该知道哪些字段是 URL——一旦知道，每加一个 DTO 就要去登记字段名，
+ * 而且会误伤已经是绝对地址的预签名 URL（预签名 URL 自带签名参数，
+ * 被重新拼接就直接失效）。所以两者是**正交**的：
+ *
+ *     const data = await readEnvelope<PresignedUrlResponse>(res, {...})  // 拆信封
+ *     return toAbsoluteApiUrl(data.presigned_url)                        // 补基址
+ *
+ * 顺序固定为「先解包、后补基址」，且只在 api 模块的出口做一次，组件里不再拼。
+ *
+ * ## 为什么放在 apiConfig.ts
+ *
+ * 因为基址的唯一真相在这个文件里。放在 `storage.ts` 会踩一个具体的坑：
+ * 该文件顶部的 `STORAGE_BASE_URL` 已经带了 `/api/storage` 后缀，用它拼
+ * `/api/storage/file/xxx` 会得到 `/api/storage/api/storage/file/xxx`。
+ * 放在 `getApiBaseUrl()` 旁边，这个坑从结构上不存在。
+ *
+ * 幂等：已带协议（http/https/data/blob）、协议相对（`//`）的地址原样返回，
+ * 因此重复调用安全，也不会破坏预签名 URL。
+ *
+ * 唯一的例外是**本后端正式域名**的 http(s) 绝对地址：后端把预签名 URL、`part_url`、
+ * `file_url` 以 `https://api.huanvae.cn/...` 返回，当基址被指到别处（本地去 SNI 反代），
+ * 它们的 origin 会被换成当前基址，path / query / hash 逐字保留——见
+ * {@link rewriteCanonicalApiOrigin}。基址就是正式域名时这条规则是 no-op。
+ */
+export function toAbsoluteApiUrl(path: string): string
+export function toAbsoluteApiUrl(path: string | null | undefined): string | undefined
+export function toAbsoluteApiUrl(path: string | null | undefined): string | undefined {
+  if (path === null || path === undefined) return undefined
+  const trimmed = path.trim()
+  if (trimmed === '') return undefined
+
+  // 协议相对地址：交给浏览器按当前协议解析
+  if (trimmed.startsWith('//')) return trimmed
+  // 已带任意协议（http:、https:、data:、blob:）——预签名 URL 走这条；
+  // 只有本后端正式域名的 http(s) 地址会被换成当前基址的 origin，其余原样返回
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return rewriteCanonicalApiOrigin(trimmed)
+
+  try {
+    return new URL(trimmed, `${getApiBaseUrl()}/`).href
+  } catch {
+    return trimmed
+  }
+}
+
+/**
+ * {@link toAbsoluteApiUrl} 的逆运算：把一个头像地址还原成后端要的**相对路径**。
+ *
+ * ## 为什么需要一个逆运算
+ *
+ * 本仓的约定是"在 api 出口把头像补成绝对地址"，于是 store 里的
+ * `*_avatar_url` 一律是绝对的。但有一个方向相反的消费点：webrtc 把**自己的头像
+ * 地址发回给后端**，而那两个请求体字段的文档写的是相对路径——
+ * `backend-docs/webrtc/WebRTC房间.md:154`（`POST /api/webrtc/rooms/{room_id}/join`
+ * 请求体）逐字是
+ * `"avatar_url": "avatars/guest.png?t=1706000000"  // 可选，头像相对路径`，
+ * 创建房间的 :72 同样是「可选，创建者头像相对路径」。后端把这个值原样转发给房间里
+ * 的每一个人（join 响应 `user_info` :181、`joined` 名单 :265、`peer_joined` :302
+ * 三处样例都是相对路径），所以发错形状坏的是**别人**屏幕上的图。
+ *
+ * ## 为什么丢掉整个 origin，而不是"减去当前基址"
+ *
+ * 本项目会**故意**改基址（`api.huanvae.cn` 被备案拦截时走本地无 SNI 反代），
+ * 落盘的绝对地址可能是用另一个基址拼出来的。拿当前基址去做前缀匹配，
+ * 基址一变就匹配不上、于是把 `http://127.0.0.1:8787/avatars/x.png` 原样发给后端，
+ * 转给房间里所有人。这里不比较 origin，直接丢掉它，剩下 `pathname + search + hash`。
+ *
+ * 已经是相对路径的值**原样返回**（只去掉前导 `/`），不进 `URL` 解析器：
+ * 后端给的字节不该被百分号编码改写。
+ *
+ * ## ⚠️ 它不是**逐字**的逆运算
+ *
+ * 两条分支对同一个路径可以给出不同的字节：相对分支返回原始字节，绝对分支读的是
+ * `new URL(...).pathname`，而 `URL` 会把空格、非 ASCII 等百分号编码掉——
+ * `avatars/a b.png` 与 `avatars/中文.png` 经 {@link toAbsoluteApiUrl} 再回到这里，
+ * 出来的是 `avatars/a%20b.png` / `avatars/%E4%B8%AD%E6%96%87.png`。也就是说
+ * **一个还没迁移过的客户端和一个迁移过的客户端，同一张头像发出去的 wire 值不同**，
+ * 而这个差异是在 `toAbsoluteApiUrl` 那一步产生的，本函数只是没有（也不该）把它撤销：
+ * 撤销要 `decodeURIComponent`，它会把后端有意编码进路径的 `%2F` 之类一起解开，
+ * 那是把一个不常见的差异换成一个更难查的破坏。
+ *
+ * 差异范围就是 `URL` 会重写的那些字符。本后端生成的头像路径是
+ * `avatars/<user_id>.<ext>`（`个人资料管理.md:74` 的样例
+ * `"avatars/testuser001.jpg?t=1706000000"`），落在两条分支逐字相同的那一档里，
+ * 所以"落盘值是绝对还是相对"今天观测不到差别——但那是数据形状给的，不是本函数
+ * 保证的。`src/lib/__tests__/apiConfig.test.ts` 里「两条分支对含空格的路径给出
+ * 不同的字节」那条用例把这个差异本身钉住，免得下一个人照着"逆运算"三个字
+ * 去依赖一个不存在的保证。
+ *
+ * `data:` / `blob:` 之类不是后端存储路径，返回 `undefined`（= 不带这个字段），
+ * 而不是把一个几 MB 的 data URI 发给信令服务器。
+ */
+export function toApiRelativePath(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined
+  const trimmed = value.trim()
+  if (trimmed === '') return undefined
+
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  if (!hasScheme && !trimmed.startsWith('//')) {
+    const withoutLeadingSlash = trimmed.replace(/^\/+/, '')
+    return withoutLeadingSlash === '' ? undefined : withoutLeadingSlash
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed, `${getApiBaseUrl()}/`)
+  } catch {
+    return undefined
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+
+  const relative = `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}${parsed.hash}`
+  return relative === '' ? undefined : relative
+}
+
+/**
+ * 后端的正式域名。与发现面 `GET https://ca.huanvae.cn/endpoints` 返回的 `domains` 对齐。
+ */
+const CANONICAL_API_HOSTS = ['api.huanvae.cn', 'api.huanvae.com'] as const
+
+/**
+ * 匹配 `http(s)://<正式域名>[:port]`。主机名后面必须紧跟路径、查询、hash 或字符串结尾，
+ * 所以 `api.huanvae.cn.evil.com` 这类前缀相同的主机不会命中。
+ */
+const CANONICAL_API_ORIGIN_RE = new RegExp(
+  `^https?://(?:${CANONICAL_API_HOSTS.map((host) => host.replace(/\./g, '\\.')).join('|')})(?::\\d+)?(?=[/?#]|$)`,
+  'i',
+)
+
+/**
+ * 把本后端正式域名的绝对地址改写到当前基址的 origin。
+ *
+ * ## 为什么需要
+ *
+ * 后端返回的预签名 URL（MinIO 直链）、分片上传的 `part_url`、消息里的 `file_url` 都是
+ * `https://api.huanvae.cn/...` 的绝对地址。基址指向正式域名时它们本来就能直接用；
+ * 但当基址被指到本地去 SNI 反代（`http://127.0.0.1:8787`，`api.huanvae.cn` 被备案拦截时
+ * 的开发通道），浏览器直接请求正式域名会失败，必须把 origin 换成反代。
+ *
+ * ## 为什么签名不会失效
+ *
+ * SigV4 签名覆盖的是 Host 与路径、查询参数。反代转发时显式带 `Host: api.huanvae.cn`，
+ * 所以 MinIO 看到的主机与签名时一致；这里**只替换 origin 前缀**，path / query / hash 从原字符串
+ * 逐字切出来拼回去，不经 URL 解析器重新序列化，查询串一个字节都不会变。
+ * Huanvae-Chat-App 的 `secure_proxy` 把 URL 改写到 `127.0.0.1:47823` 走的是同一条逻辑。
+ *
+ * 基址的 origin 与该地址相同时原样返回，因此幂等，生产环境零改动。
+ */
+function rewriteCanonicalApiOrigin(url: string): string {
+  const match = CANONICAL_API_ORIGIN_RE.exec(url)
+  if (!match) return url
+
+  let baseOrigin: string
+  let urlOrigin: string
+  try {
+    baseOrigin = new URL(getApiBaseUrl()).origin
+    urlOrigin = new URL(url).origin
+  } catch {
+    return url
+  }
+  if (urlOrigin === baseOrigin) return url
+
+  return `${baseOrigin}${url.slice(match[0].length)}`
+}

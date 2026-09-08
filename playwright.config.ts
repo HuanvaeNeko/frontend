@@ -17,9 +17,10 @@ import { defineConfig, devices } from '@playwright/test'
 // 的 port/url 自动推导全局 baseURL（见官方文档），顶层 use.baseURL 保留给
 // chromium/mobile 用，production project 自己覆盖一份。
 // 3100 太"大众"了：实测被本机另一个无关项目（~/Code/th 的 react-router-serve）
-// 占用过。配合下面 webServer 的 reuseExistingServer，Playwright 会直接复用那个
-// 陌生服务器，于是 29 条生产回归用例全部打到别人的应用上——响应头断言自然全挂，
-// 而失败信息看上去像是我们的代码坏了。换一个不容易撞的端口。
+// 占用过。下面两条 webServer 现在都是 `reuseExistingServer: false`，所以撞端口
+// 不会再静默复用陌生服务器，而是 Playwright 直接报错退出——但那也意味着一个
+// 常年占着 3100 的无关进程会让整套生产回归**跑不起来**，且报错指向端口而不是
+// 我们的代码。换一个不容易撞的端口，是为了这个「响亮但也很烦」的失败别常发生。
 const PRODUCTION_PORT = 39471
 const PRODUCTION_BASE_URL = `http://localhost:${PRODUCTION_PORT}`
 const MIGRATION_REGRESSION_SPEC = /migration-regression\.spec\.ts$/
@@ -66,7 +67,19 @@ export default defineConfig({
     {
       command: 'bun run dev',
       url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
+      // 2026-09-08 撤销这一条原有的 `!process.env.CI` 豁免，理由与下面生产那条
+      // 逐字相同：`webServer.url` 只检查能否拿到 200，**辨认不出对面跑的是谁的代码**。
+      //
+      // 当初写 reuse 时成立的前提是「:3000 上那个 dev server 是我自己开的」。
+      // 现在本机除主检出外还挂着六个本仓库的 worktree（`git worktree list` 共 7 条），
+      // 别的会话也会在各自的 worktree 里 `bun run dev`——先占住 :3000 的那个赢，
+      // 这套 e2e 就整体打到**另一个分支的代码**上。已经踩过两次：一次报告
+      // "dev server 跑到一半死了"，一次把失败归给了 HEAD 而在干净检出上复现不出来。
+      // 整套 suite 被静默污染，比自起一个 dev server 多花的十几秒贵得多。
+      //
+      // 关掉之后，端口被别人占着时 Playwright 直接报错退出，是响亮的失败。
+      // CI 上本来就是 false，这一行只改变本地行为。
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
@@ -77,10 +90,10 @@ export default defineConfig({
       env: { PORT: String(PRODUCTION_PORT) },
       // 这一条永远自起，不复用。webServer.url 只检查能否拿到 200，无法辨认
       // 对面是不是我们的服务器——一旦复用到陌生进程，这个 project 的用例
-      // （安全响应头、尾斜杠 301）会静默地在错误的应用上求值。上面 dev 那条
-      // 保留 reuse 是有真实便利（本地常年开着 bun run dev），而"生产构建常驻"
-      // 不是任何人的工作习惯，所以这里关掉零成本。端口被占时 Playwright 会
-      // 直接报错退出，是响亮的失败，好过悄悄测错东西。
+      // （安全响应头、尾斜杠 301）会静默地在错误的应用上求值。端口被占时
+      // Playwright 会直接报错退出，是响亮的失败，好过悄悄测错东西。
+      // （上面 dev 那条原先按"本地常年开着自己的 bun run dev"保留了 reuse，
+      // 多 worktree 之后这个前提不再成立，已一并关掉，理由见那里。）
       reuseExistingServer: false,
       timeout: 600_000,
     },

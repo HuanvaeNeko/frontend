@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getWsUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { registerSessionReset } from '@/lib/sessionScope'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）
@@ -329,8 +330,16 @@ export const useWSStore = create<WSState>((set, get) => {
           get().connect()
           return
         } catch {
-          console.error('[WebSocket] Token 刷新失败，退出登录')
-          authStore.clearAuth()
+          // 这里**不再**自己 `clearAuth()`：那是 `refreshAccessToken` 已经做过的判断的
+          // 第二份拷贝，而且是错的那一份。WebSocket 断线重连恰恰是「网络刚抖过」的
+          // 时刻，这条 catch 命中最多的就是传输层失败；无差别 clearAuth 会跑反向名单
+          // 清盘 + `resetToDefault()`，把用户自己敲进去的第三方 `aiApiKey` 销毁掉。
+          //
+          // `refreshAccessToken` 内部已经分好了档：真 401 → `clearAuth()`（会话结束），
+          // 传输层失败 → `clearCredentials()`（只丢票据）。两处各判一次的话，
+          // 严格的那一处永远赢，分档等于没有。分档定义见 `lib/sessionScope.ts` 顶部。
+          console.error('[WebSocket] Token 刷新失败，停止重连')
+          set({ reconnecting: false })
           return
         }
       }
@@ -623,3 +632,19 @@ export const useWSMessageHandler = <T>(type: string, handler: MessageHandler<T>)
   // 实际使用时应在 useEffect 中调用返回的注销函数
   return () => registerHandler<T>(type, handler)
 }
+
+/**
+ * 会话结束时断开连接。
+ *
+ * 用 `disconnect()` 而不是把状态整体重置：这条连接是**用上一个账号的 token
+ * 建立的**，只把 `ws` 字段设成 null 会留下一个仍在投递消息、仍在指数退避重连的
+ * socket——`scheduleReconnect` 的失败分支自己又会调 `clearAuth()`，正是把这个
+ * 回调挂上去的那条路径。`disconnect()` 会清定时器、递增 `activeWsId` 让旧回调
+ * 全部失效、再关掉 socket。
+ *
+ * 不清 `messageHandlers`：它是各组件在 effect 里注册、卸载时自己注销的，
+ * 与账号无关。
+ */
+registerSessionReset(() => {
+  useWSStore.getState().disconnect()
+})
