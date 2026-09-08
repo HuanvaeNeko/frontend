@@ -599,3 +599,269 @@ describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每�
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })
+
+/**
+ * `resetBackground`（`DELETE /api/profile/background`，`个人资料管理.md:458-492`）。
+ *
+ * 三件事在这一组里被钉住：
+ * 1. 写进 store 的是 **`null`**，不是响应里那个 `""`（doc:491「前端不应拼接此值
+ *    展示图片」）；
+ * 2. DELETE 与随后那次读回**不在同一个 `try`** 里——读回失败不能把一次已提交的
+ *    重置说成失败（500 ⇒ 假的「重置失败」，401 ⇒ 无解释登出）；
+ * 3. 两道会话闸都在（`set()` 之前、`settleError` 之前）。
+ */
+describe('profileStore.resetBackground', () => {
+  const withBackground = () =>
+    makeProfile({ background_url: 'https://x/cover.png', updated_at: '2026-01-02T00:00:00Z' })
+
+  it('成功后 background_url 变成 null，并拉齐其余字段', async () => {
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockResolvedValue(
+      makeProfile({ background_url: null, updated_at: '2026-02-02T00:00:00Z' }),
+    )
+    useProfileStore.setState({ profile: withBackground() })
+
+    await useProfileStore.getState().resetBackground()
+
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+    // 读回把 `updated_at` 之类这次没改的字段拉齐了。
+    expect(useProfileStore.getState().profile?.updated_at).toBe('2026-02-02T00:00:00Z')
+    expect(useProfileStore.getState().error).toBeNull()
+    expect(useProfileStore.getState().isLoading).toBe(false)
+  })
+
+  it('🔴 写进去的是 null，不是 `""`——空串**不**是"默认封面"的合法内部表示', async () => {
+    // doc:482 的响应体里 `background_url` 恒为 `""`，doc:491 逐字「前端不应拼接
+    // 此值展示图片」。`profileApi.resetBackground` 返回 `void`，所以那个 `""`
+    // 连出 api 层都不会；本条盯住 store 这一侧也没有人把它接回来。
+    // 把 action 改成 `{ ...current, background_url: '' }` → 本行红。
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    // 读回也挂掉：确保断言看的是**本 action 自己写进去的那个值**，
+    // 而不是读回带回来的 profile（否则这条断言测的是 getProfile 的返回值）。
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(new Error('读回失败'))
+    useProfileStore.setState({ profile: withBackground() })
+
+    await useProfileStore.getState().resetBackground()
+
+    const value = useProfileStore.getState().profile?.background_url
+    expect(value).toBeNull()
+    expect(value).not.toBe('')
+  })
+
+  it('读回 500：resolve、不写 error，封面已经是默认了', async () => {
+    // 把 DELETE 与读回塞回同一个 `try` → 本条红（会 reject 并写 error）。
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(
+      new ApiError('服务器内部错误', { status: 500, code: 500, endpoint: 'GET /api/profile' }),
+    )
+    useProfileStore.setState({ profile: withBackground() })
+
+    await expect(useProfileStore.getState().resetBackground()).resolves.toBeUndefined()
+
+    expect(useProfileStore.getState().error).toBeNull()
+    expect(useProfileStore.getState().isLoading).toBe(false)
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+  })
+
+  it('读回 401：不清凭证、不跳登录页——这次重置已经成功了', async () => {
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(sessionExpired('GET /api/profile'))
+    useProfileStore.setState({ profile: withBackground() })
+
+    await expect(useProfileStore.getState().resetBackground()).resolves.toBeUndefined()
+
+    expect(loggedIn()).toBe(true)
+    expect(replaceSpy).not.toHaveBeenCalled()
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+  })
+
+  it('正对照：DELETE **本身** 401 时照旧登出并 reject', async () => {
+    // 少了这一条，上面两条的 `not.toHaveBeenCalled()` 在"这条路径压根不会登出"
+    // 的实现下同样成立。
+    vi.spyOn(profileApi, 'resetBackground').mockRejectedValue(
+      sessionExpired('DELETE /api/profile/background'),
+    )
+    useProfileStore.setState({ profile: withBackground() })
+
+    await expect(useProfileStore.getState().resetBackground()).rejects.toThrow('未认证或 Token 无效')
+
+    expect(loggedIn()).toBe(false)
+    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+    // 整份资料被清掉了——不是"重置生效了"，而是 `clearAuth()` 触发 `endSession()`，
+    // 本 store 登记给它的 `clearProfile()` 把内存那一份归零（见文件底部的
+    // `registerSessionReset`）。写清楚免得下一个人把这个 `null` 读成"封面被重置了"。
+    expect(useProfileStore.getState().profile).toBeNull()
+  })
+
+  it('DELETE 失败（非认证）时封面原封不动', async () => {
+    // 上一条因为登出把整份资料清空了，看不出"失败不动封面"。这一条补上：
+    // 500 不触发登出，profile 还在，封面必须还是原来那张。
+    vi.spyOn(profileApi, 'resetBackground').mockRejectedValue(
+      new ApiError('数据库写入失败', {
+        status: 500,
+        code: 500,
+        endpoint: 'DELETE /api/profile/background',
+      }),
+    )
+    useProfileStore.setState({ profile: withBackground() })
+
+    await expect(useProfileStore.getState().resetBackground()).rejects.toThrow()
+
+    expect(useProfileStore.getState().profile?.background_url).toBe('https://x/cover.png')
+  })
+
+  it('DELETE 500：写 store.error 并 reject，不登出', async () => {
+    vi.spyOn(profileApi, 'resetBackground').mockRejectedValue(
+      new ApiError('数据库写入失败', {
+        status: 500,
+        code: 500,
+        endpoint: 'DELETE /api/profile/background',
+      }),
+    )
+    useProfileStore.setState({ profile: withBackground() })
+
+    await expect(useProfileStore.getState().resetBackground()).rejects.toThrow('数据库写入失败')
+
+    expect(useProfileStore.getState().error).toBe('数据库写入失败')
+    expect(useProfileStore.getState().isLoading).toBe(false)
+    expect(loggedIn()).toBe(true)
+    expect(replaceSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('profileStore.setBackgroundUrl', () => {
+  it('把 confirm 的 file_url 写进 background_url，其余字段一个不动', () => {
+    useProfileStore.setState({ profile: makeProfile({ user_nickname: '我', background_url: null }) })
+
+    useProfileStore.getState().setBackgroundUrl('https://x/cover.png')
+
+    expect(useProfileStore.getState().profile?.background_url).toBe('https://x/cover.png')
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('我')
+  })
+
+  it('null 表示恢复默认封面', () => {
+    useProfileStore.setState({ profile: makeProfile({ background_url: 'https://x/cover.png' }) })
+
+    useProfileStore.getState().setBackgroundUrl(null)
+
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+  })
+
+  it('profile 还是 null 时什么都不做，不凭一个 URL 造半份资料', () => {
+    useProfileStore.setState({ profile: null })
+
+    useProfileStore.getState().setBackgroundUrl('https://x/cover.png')
+
+    expect(useProfileStore.getState().profile).toBeNull()
+  })
+})
+
+/**
+ * `resetBackground` 的两道会话闸，与 `updateProfile` / `uploadAvatar` 那一组
+ * 逐条同构：一场已经死掉的会话既不能替**当前**这个人清凭证跳登录页，
+ * 也不能把它的重置结果写进当前这个人的资料。
+ */
+describe('profileStore 的会话边界：resetBackground 的每一道闸', () => {
+  const asB = () => {
+    useAuthStore.setState({
+      accessToken: 'AT-b',
+      refreshToken: 'RT-b',
+      isAuthenticated: true,
+      tokenExpiry: Date.now() + 3600_000,
+    })
+  }
+
+  it('DELETE 失败闸：上一场的 401 不清 B 的凭证、不跳登录页', async () => {
+    beginSession()
+    let rejectDelete!: (error: unknown) => void
+    vi.spyOn(profileApi, 'resetBackground').mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        rejectDelete = reject
+      }),
+    )
+    const inFlight = useProfileStore.getState().resetBackground()
+
+    endSession()
+    beginSession()
+    asB()
+
+    rejectDelete(sessionExpired('DELETE /api/profile/background'))
+    // 属于死会话的错误照样 reject，只是不再有副作用。
+    await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
+
+    // 删掉 `settleError` 前面那道闸 → `silentRedirectToLogin()` 执行，
+    // 本行停在 `expected null to be 'AT-b'`。
+    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    // 同一场里的正对照：这条 401 **确实**会登出（否则上面两行恒真）。
+    vi.spyOn(profileApi, 'resetBackground').mockRejectedValue(
+      sessionExpired('DELETE /api/profile/background'),
+    )
+    await expect(useProfileStore.getState().resetBackground()).rejects.toThrow()
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+  })
+
+  it('DELETE 成功闸：换人之后不读回、不把 A 的重置打进 B 的封面', async () => {
+    beginSession()
+    let resolveDelete!: () => void
+    vi.spyOn(profileApi, 'resetBackground').mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveDelete = () => resolve()
+      }),
+    )
+    const getSpy = vi
+      .spyOn(profileApi, 'getProfile')
+      .mockResolvedValue(makeProfile({ user_nickname: 'A 的资料' }))
+    const inFlight = useProfileStore.getState().resetBackground()
+
+    endSession()
+    beginSession()
+    asB()
+    useProfileStore.setState({
+      profile: makeProfile({ user_nickname: 'B', background_url: 'https://x/b-cover.png' }),
+    })
+
+    resolveDelete()
+    await inFlight
+
+    // 删掉 `set()` 前面那道闸 → B 的封面被 A 的那次重置抹掉，还会多打一次读回。
+    expect(getSpy).not.toHaveBeenCalled()
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('B')
+    expect(useProfileStore.getState().profile?.background_url).toBe('https://x/b-cover.png')
+
+    // 正对照（同一个 spy）：活着的会话里这次读回**确实**会发生。
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    await useProfileStore.getState().resetBackground()
+    expect(getSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('读回闸：读回落地时已经换人 → 一个字节都不写进 B 的 store', async () => {
+    beginSession()
+    vi.spyOn(profileApi, 'resetBackground').mockResolvedValue(undefined)
+    let resolveGet!: (profile: UserProfile) => void
+    vi.spyOn(profileApi, 'getProfile').mockReturnValue(
+      new Promise<UserProfile>((resolve) => {
+        resolveGet = resolve
+      }),
+    )
+    useProfileStore.setState({ profile: makeProfile({ background_url: 'https://x/a-cover.png' }) })
+    const inFlight = useProfileStore.getState().resetBackground()
+
+    // 等 DELETE 落地：本地补丁打上了，说明请求已经越过上一道闸，现在停在读回上。
+    await vi.waitFor(() =>
+      expect(useProfileStore.getState().profile?.background_url).toBeNull(),
+    )
+
+    endSession()
+    beginSession()
+    asB()
+    useProfileStore.setState({ profile: makeProfile({ user_nickname: 'B' }) })
+
+    resolveGet(makeProfile({ user_nickname: 'A 的资料' }))
+    await inFlight
+
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('B')
+  })
+})

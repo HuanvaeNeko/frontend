@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { makeProfileWire } from '../../api/__tests__/profileFixture'
+import { makeProfile, makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfilePage from '../ProfilePage'
 
@@ -277,8 +277,14 @@ describe('ProfilePage 上传头像', () => {
 
   const avatarFile = () => new File(['abcd'], 'me.png', { type: 'image/png' })
 
+  /**
+   * ⚠️ 按 `data-testid` 取，**不能**再用 `querySelector('input[type="file"]')`：
+   * P5 之后本页有**两个** file input（头像与封面），后者若排在前面，
+   * 这一整组头像用例会静默地去驱动封面那条链路——请求序列全对（同一条四步链路），
+   * 只有 `avatar_target` 一个字段不同，断言基本发现不了。
+   */
   const fileInput = (): HTMLInputElement => {
-    const input = document.querySelector('input[type="file"]')
+    const input = document.querySelector('[data-testid="avatar-file-input"]')
     if (!(input instanceof HTMLInputElement)) throw new Error('找不到头像 input')
     return input
   }
@@ -559,5 +565,396 @@ describe('ProfilePage 上传头像', () => {
     // 500（会话仍在）时它留在 store 里并渲染出来，401（会话结束）时它跟着账号一起消失。
     expect(useProfileStore.getState().profile).toBeNull()
     expect(localStorage.getItem('profile-storage')).toBeNull()
+  })
+})
+
+/**
+ * 封面（资料背景图）的消费端。
+ *
+ * 与头像同一条四步预签名链路（`个人资料管理.md:362-369`），只差
+ * `avatar_target: 'user_background'`（doc:389）；重置走
+ * `DELETE /api/profile/background`（doc:458-492，成功响应是文档写明的**裸**体）。
+ *
+ * 同样**不 mock store、不 mock profileApi**，只 stub 全局 fetch 与那两处非 fetch
+ * 的边界（SHA-256 与分片 PUT 用的 XHR），验的是整条链路在屏幕上的结果。
+ */
+describe('ProfilePage 资料封面', () => {
+  const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
+
+  const envelope = (data: unknown) => json({ success: true, code: 200, data })
+
+  const BG_SESSION = {
+    mode: 'multipart',
+    preview_support: 'inline_preview',
+    multipart_upload_id: 'upload-id-bg',
+    expires_in: 3600,
+    // 与头像那组同样是**合成**的 2 片形状，理由逐条相同（见那一组的注释）：
+    // 真实封面上传永远只有 1 片，这里切 2 片只为在没有真 XHR 的环境里驱动出
+    // 一个 50% 的中间值。
+    chunk_size: 2,
+    total_chunks: 2,
+    file_key: 'background/u1.png',
+    max_file_size: 10485760,
+    instant_upload: false,
+    existing_file_url: null,
+  }
+
+  const BG_CONFIRM = {
+    file_url: 'avatars/background/u1.png?t=1706000000',
+    file_key: 'background/u1.png',
+    file_size: 4,
+    content_type: 'image/png',
+    preview_support: 'inline_preview',
+  }
+
+  /** doc:479-485 的成功响应体，逐字（**裸**的：没有 success / code / data）。 */
+  const RESET_BARE_BODY = { background_url: '', message: '背景图已重置为默认' }
+
+  const coverFile = () => new File(['abcd'], 'cover.png', { type: 'image/png' })
+
+  const backgroundInput = (): HTMLInputElement => {
+    const input = document.querySelector('[data-testid="background-file-input"]')
+    if (!(input instanceof HTMLInputElement)) throw new Error('找不到封面 input')
+    return input
+  }
+
+  /** 渲染到 DOM 上的封面 `src`（`null` = 根本没挂 `<img>`，即默认封面）。 */
+  const renderedCoverSrc = () =>
+    document.querySelector('[data-testid="profile-cover-image"]')?.getAttribute('src') ?? null
+
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+    vi.spyOn(storageApi, 'uploadChunk').mockResolvedValue(undefined)
+  })
+
+  it('默认封面（background_url 为 null）时不挂 <img>，也不渲染「恢复默认」', async () => {
+    fetchMock.mockResolvedValue(json({ success: true, code: 200, data: PROFILE_DTO }))
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    expect(renderedCoverSrc()).toBeNull()
+    expect(screen.queryByText('恢复默认')).toBeNull()
+    // 「更换封面」在任何状态下都在。
+    expect(screen.getByText('更换封面')).toBeTruthy()
+  })
+
+  it('后端把 background_url 给成空串时，整条链路的结果仍是默认封面', async () => {
+    // ⚠️ 这一条**不是**在钉渲染点的判据：`emptyableStr` 在 `profileApi.getProfile`
+    // 出口就把 `''` 归一成了 `null`，所以走到组件手里的已经是 `null`。
+    // 实测过：把 `coverImageSrc` 换成 `backgroundUrl ?? undefined`，本条照样绿。
+    // 渲染点自己那道闸由**下一条**用例钉住。
+    fetchMock.mockResolvedValue(
+      json({ success: true, code: 200, data: { ...PROFILE_DTO, background_url: '' } }),
+    )
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    expect(document.querySelector('[data-testid="profile-cover-image"]')).toBeNull()
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+  })
+
+  it('🔴 store 里直接是空串时，渲染点自己也判成默认封面——DOM 上不能出现 <img src="">', async () => {
+    // 空 `src` 不是"不加载"：浏览器会把它解析成**当前页面地址**并真的发一次请求，
+    // 把整张 HTML 当图片下载（`Navigation.tsx` 的 `avatarSrc` 注释记的是同一个坑）。
+    //
+    // ⚠️ 本条钉的是**结果**（DOM 上没有 src 为空串的 img），**不是** `coverImageSrc`
+    // 这一个实现。已实测：单独把 `coverImageSrc` 换成 `backgroundUrl ?? undefined`，
+    // 本条**照样绿**——因为 JSX 那侧写的是 `coverSrc ? <img/> : null`，`''` 也是假值。
+    // 两层独立地挡同一件事，要同时改坏才渲染得出 `src=""`。`coverImageSrc` 自己由
+    // `profile.test.ts` 的同名 describe 钉住（那一组对 `?? undefined` 确实变红）。
+    //
+    // 这个 `''` 从哪来：`DELETE /api/profile/background` 的响应体里
+    // `background_url` **恒为** `""`（doc:482、:491「前端不应拼接此值展示图片」）。
+    // 本仓今天不会把它写进 store（`resetBackground` 写的是 `null`），所以这一条
+    // 必须**绕过 api 层**直接把 `''` 放进 store：上一条那种走 wire 的写法测不到
+    // 渲染点，因为 `emptyableStr` 在出口就把它归一掉了。
+    //
+    // 挂载时那次 `loadProfile()` 让它 500：否则读回会把 store 里这份种子覆盖掉，
+    // 用例又退回成"测上游归一"。500 只写 `error`，不动 `profile`。
+    useProfileStore.setState({
+      profile: makeProfile({ user_email: 'old@example.com', background_url: '' }),
+    })
+    fetchMock.mockResolvedValue(json({ error: '服务器内部错误' }, 500))
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    // 前提检查：种子确实还在 store 里（否则下面两行在"profile 变 null"时恒真）。
+    expect(useProfileStore.getState().profile?.background_url).toBe('')
+
+    expect(document.querySelector('[data-testid="profile-cover-image"]')).toBeNull()
+    // 更直接的说法：整页没有任何一个 src 为空串的 img。
+    const emptySrcImages = Array.from(document.querySelectorAll('img')).filter(
+      (img) => img.getAttribute('src') === '',
+    )
+    expect(emptySrcImages).toHaveLength(0)
+  })
+
+  it('有封面时渲染绝对地址，并出现「恢复默认」', async () => {
+    // 后端给的是**相对**路径（doc:265「需拼接 STORAGE_BASE_URL」），
+    // 补基址在 `profileApi.getProfile` 出口。把那一处删掉 → 本行红。
+    fetchMock.mockResolvedValue(
+      json({
+        success: true,
+        code: 200,
+        data: { ...PROFILE_DTO, background_url: 'avatars/background/u1.jpg?t=1706000000' },
+      }),
+    )
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await waitFor(() =>
+      expect(renderedCoverSrc()).toBe(`${getApiBaseUrl()}/avatars/background/u1.jpg?t=1706000000`),
+    )
+    expect(screen.getByText('恢复默认')).toBeTruthy()
+  })
+
+  it('上传封面：四步链路、真实进度、成功后 DOM 上是绝对地址', async () => {
+    let releaseSecondPart: () => void = () => {}
+    const secondPart = new Promise<void>((resolve) => {
+      releaseSecondPart = () => resolve()
+    })
+    let partUrlCalls = 0
+    let profileGetCount = 0
+
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        profileGetCount += 1
+        // 第二次 GET 是上传成功之后那次读回。后端已在 confirm 把这个地址写进
+        // `users."user-background-url"`（doc:410-411），所以这里如实返回它——
+        // 否则读回会用一份 `background_url: null` 的旧资料把刚上传的封面盖掉，
+        // 那是夹具在说谎，不是被测行为。
+        return json({
+          success: true,
+          code: 200,
+          data:
+            profileGetCount === 1
+              ? PROFILE_DTO
+              : { ...PROFILE_DTO, background_url: BG_CONFIRM.file_url },
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) return envelope(BG_SESSION)
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        partUrlCalls += 1
+        if (partUrlCalls === 2) await secondPart
+        return envelope({
+          part_url: `https://api.huanvae.cn/avatars/background/u1.png?partNumber=${partUrlCalls}&X-Amz-Signature=s`,
+          part_number: partUrlCalls,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(BG_CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(backgroundInput(), coverFile())
+
+    try {
+      // 4 字节切 2 片，第一片传完 = 50%。进度回调没接上（`onProgress` 不传）
+      // 或退回不确定态的转圈 → 本行红。
+      expect(await screen.findByText('50%')).toBeTruthy()
+    } finally {
+      // 单飞锁是模块级状态，卡住一次上传会污染同文件后面的用例。
+      releaseSecondPart()
+    }
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '资料背景图已更新' }),
+    )
+
+    // 第 1 步请求体里的 avatar_target 必须是 user_background（doc:389）。
+    // 少了这一句，本条对"上传的是封面还是头像"是瞎的——两条链路的请求序列一模一样。
+    const requestCall = fetchMock.mock.calls.find(
+      (call: unknown[]) => String(call[0]) === `${STORAGE_BASE}/upload/request`,
+    ) as [string, RequestInit]
+    expect(JSON.parse(String(requestCall[1].body)).avatar_target).toBe('user_background')
+
+    // 已删除的旧 multipart 端点一个请求都不该收到（doc:352-355）。
+    const log = fetchMock.mock.calls.map(
+      (call: unknown[]) =>
+        `${(call[1] as RequestInit | undefined)?.method ?? 'GET'} ${String(call[0])}`,
+    )
+    expect(log.some((line) => line.includes('/api/profile/background'))).toBe(false)
+    // doc:410-411：后端已经写回，客户端不再 PUT。
+    expect(log.some((line) => line.startsWith(`PUT ${PROFILE_BASE}`))).toBe(false)
+
+    await waitFor(() =>
+      expect(renderedCoverSrc()).toBe(
+        `${getApiBaseUrl()}/avatars/background/u1.png?t=1706000000`,
+      ),
+    )
+  })
+
+  it('confirm 成功后那次资料刷新 500：仍然弹成功，封面照样落到 DOM 上', async () => {
+    // 与头像那条同型：把上传与随后那次 GET 塞回同一个 `try` → 本条红
+    // （屏幕上会出现「上传失败」，而后端此刻已经写回 `users."user-background-url"`）。
+    let profileGetCount = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        profileGetCount += 1
+        return profileGetCount === 1
+          ? json({ success: true, code: 200, data: PROFILE_DTO })
+          : json({ error: '服务器内部错误' }, 500)
+      }
+      if (url === `${STORAGE_BASE}/upload/request`) {
+        return envelope({ ...BG_SESSION, chunk_size: 4, total_chunks: 1 })
+      }
+      if (url.startsWith(`${STORAGE_BASE}/multipart/part_url`)) {
+        return envelope({
+          part_url: 'https://api.huanvae.cn/avatars/background/u1.png?X-Amz-Signature=s',
+          part_number: 1,
+          expires_in: 3600,
+        })
+      }
+      if (url === `${STORAGE_BASE}/upload/confirm`) return envelope(BG_CONFIRM)
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+
+    await userEvent.upload(backgroundInput(), coverFile())
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '资料背景图已更新' }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
+    // 读回确实发生过（否则"读回失败不影响成功"这句话没有被验证）。
+    await waitFor(() => expect(profileGetCount).toBe(2))
+
+    const absolute = `${getApiBaseUrl()}/avatars/background/u1.png?t=1706000000`
+    expect(useProfileStore.getState().profile?.background_url).toBe(absolute)
+    await waitFor(() => expect(renderedCoverSrc()).toBe(absolute))
+  })
+
+  it('恢复默认：打 DELETE、裸响应照常成功、封面回到默认', async () => {
+    let profileGetCount = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url === PROFILE_BASE && method === 'GET') {
+        profileGetCount += 1
+        return json({
+          success: true,
+          code: 200,
+          data:
+            profileGetCount === 1
+              ? { ...PROFILE_DTO, background_url: 'avatars/background/u1.jpg?t=1' }
+              : { ...PROFILE_DTO, background_url: null },
+        })
+      }
+      // doc:479-485：**裸**响应，没有 success / code / data。
+      // 把 `resetBackground` 换成 readEnvelope → 这里会抛「响应缺少 data 字段」，
+      // 屏幕上出现「重置失败」，本条红。
+      if (url === `${PROFILE_BASE}/background` && method === 'DELETE') {
+        return json(RESET_BARE_BODY)
+      }
+      throw new Error(`未预期的请求: ${method} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+    await waitFor(() => expect(renderedCoverSrc()).not.toBeNull())
+
+    await userEvent.click(screen.getByText('恢复默认'))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '已恢复默认封面' }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '重置失败' }))
+
+    const log = fetchMock.mock.calls.map(
+      (call: unknown[]) =>
+        `${(call[1] as RequestInit | undefined)?.method ?? 'GET'} ${String(call[0])}`,
+    )
+    expect(log).toContain(`DELETE ${PROFILE_BASE}/background`)
+
+    // store 里写进去的是 `null`，不是响应里那个 `""`（doc:491）。
+    expect(useProfileStore.getState().profile?.background_url).toBeNull()
+    // 封面区回到默认：`<img>` 整个消失，「恢复默认」也跟着收起来。
+    await waitFor(() => expect(renderedCoverSrc()).toBeNull())
+    await waitFor(() => expect(screen.queryByText('恢复默认')).toBeNull())
+  })
+
+  it('恢复默认失败时透出后端原文，且绝不弹「成功」', async () => {
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url === PROFILE_BASE && method === 'GET') {
+        return json({
+          success: true,
+          code: 200,
+          data: { ...PROFILE_DTO, background_url: 'avatars/background/u1.jpg?t=1' },
+        })
+      }
+      if (url === `${PROFILE_BASE}/background` && method === 'DELETE') {
+        return json({ error: '数据库写入失败' }, 500)
+      }
+      throw new Error(`未预期的请求: ${method} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+    await waitFor(() => expect(renderedCoverSrc()).not.toBeNull())
+
+    await userEvent.click(screen.getByText('恢复默认'))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: '重置失败',
+        description: '数据库写入失败',
+        variant: 'destructive',
+      }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: '已恢复默认封面' }),
+    )
+    // 失败的重置不动封面。
+    expect(renderedCoverSrc()).not.toBeNull()
+  })
+
+  it('恢复默认遇到 401：跳登录页，但**依然**弹失败提示、绝不弹「成功」', async () => {
+    // `profileStore.settleError` 认出 401 后会 `silentRedirectToLogin()`，但那个
+    // action **依然 rethrow**（见 `settleError` 的 JSDoc：改回 `return` 会让这里
+    // 弹「成功」）。所以跳转与失败提示**同时**发生，这不是遗漏。
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url === PROFILE_BASE && method === 'GET') {
+        return json({
+          success: true,
+          code: 200,
+          data: { ...PROFILE_DTO, background_url: 'avatars/background/u1.jpg?t=1' },
+        })
+      }
+      if (url === `${PROFILE_BASE}/background` && method === 'DELETE') {
+        return json({ error: '未认证或 Token 无效' }, 401)
+      }
+      throw new Error(`未预期的请求: ${method} ${url}`)
+    })
+
+    renderPage()
+    await screen.findByDisplayValue('old@example.com')
+    await waitFor(() => expect(renderedCoverSrc()).not.toBeNull())
+
+    await userEvent.click(screen.getByText('恢复默认'))
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: '重置失败',
+        description: '未认证或 Token 无效',
+        variant: 'destructive',
+      }),
+    )
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
+    expect(window.location.replace).toHaveBeenCalledWith('/app/login')
   })
 })

@@ -1,6 +1,6 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { storageApi, type AvatarUploadProgress, type AvatarUploadResult } from '@/api/storage'
-import { assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
+import { ApiError, assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
 import { asRecord, bool, describe as describeValue, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
 
@@ -42,7 +42,15 @@ export interface UserProfile {
   user_signature: string | null
   /** 相对路径，已在 {@link absoluteAvatar} 补基址（doc:98）。 */
   user_avatar_url: string | null
-  /** 资料背景图，相对路径，同样已补基址；`null` = 默认封面（doc:99）。P5 消费。 */
+  /**
+   * 资料背景图，相对路径，同样已补基址；`null` = 默认封面（doc:99）。
+   *
+   * P5 把它接上了消费方（`ProfilePage` 的封面区、{@link profileApi.uploadBackground}、
+   * {@link profileApi.resetBackground}），因此它**已经从宽松档升到严格档**——
+   * 见 {@link unconsumedNullableStr} 的 JSDoc 里写下的那条约定（「`background_url`
+   * 由 P5 消费，届时它变成"被消费的一段"，应当跟着升到严格档并补测试」）。
+   * 现在它走 {@link emptyableStr}：缺键抛错，`''` 与 `null` 一并归一成 `null`。
+   */
   background_url: string | null
   /** `male` / `female` / `other`，`null` = 未设置（doc:100）。见下方宽松解析的理由。 */
   gender: string | null
@@ -62,6 +70,69 @@ export interface UserProfile {
   group_invite_policy: ProfilePolicy
   created_at: string
   updated_at: string
+}
+
+/**
+ * `GET /api/profile/{user_id}/public` 的 `data`（`PublicProfileResponse`，
+ * 字段表 `个人资料管理.md:259-269`、样例 :240-254）。
+ *
+ * 🔴 **刻意不复用 {@link UserProfile}，也不从它派生**：本端点是一个**窄 DTO**，
+ * 与自己那份完整资料**不同构**。doc:271-273 逐条列出它**不返回**的东西——
+ * `user_email`、`admin`，以及四个隐私/可见性设置（`allow_search` /
+ * `search_visible_by_id` / `friend_request_policy` / `group_invite_policy`）。
+ * 拿 {@link profileResponse} 去解一份**完全合规**的 `/public` 响应，
+ * `bool(payload,'allow_search')` 会当场抛「allow_search 缺失」——把正常响应
+ * 判成形状错误。groups 模块的 {@link import('@/features/chat/api/groups').PublicGroupInfo}
+ * 是同一形态、同一结论（那里复用 `Group` 会要求三档已被收掉的 scope 字段）。
+ *
+ * ## ⚠️ 文档在字段集上自相矛盾，这里赌的是哪一边
+ *
+ * - **四字段说**：正文 :223 逐字「仅返回公开字段（用户 ID、昵称、签名、头像），
+ *   **不含**邮箱与隐私/可见性设置」。
+ * - **九字段说**：字段表 :259-269 与响应样例 :243-253 **两个独立来源**都给出九个，
+ *   多出 `background_url` / `gender` / `birthday` / `region` / `created_at`；
+ *   收尾的注意事项 :271-273 也是按九字段口径写的（它列的"不返回"清单里
+ *   **没有**这五个，只有 `user_email` / `admin` / 四个隐私设置）。
+ *
+ * 后端在这台机器上**打不到**（`api.huanvae.cn` 被 ICP 拦截，无 SNI 那条路要客户端
+ * 证书），所以这不是一个可以查证的事实，只能是一次**风险取舍**。这里的下注：
+ *
+ * - **两种读法都保证的那四个** —— `user_id` / `user_nickname` / `user_signature`
+ *   / `user_avatar_url` —— 走**严格**档（缺键即 `ApiShapeError`）。它们是这个端点
+ *   存在的理由：四个全没有的话，拿到的对象对任何调用点都没有用，静默返回一个
+ *   四个 `null` 只是把"这次请求什么都没拿到"藏起来。而且两种读法都保证它们在，
+ *   所以严格档在**任何一种**后端读法下都不会误伤。
+ * - **只有九字段说保证的那五个** —— `background_url` / `gender` / `birthday` /
+ *   `region` / `created_at` —— 走**宽松**档（{@link unconsumedNullableStr}：
+ *   每次命中都 warn 并按 `null` 处理，不抛）。若后端按四字段说实现，这五个键根本
+ *   不会来，严格档会让**每一次**调用都失败；宽松档则让调用照常成功，同时在控制台
+ *   留下五条点名到字段的 warn，漂移是可归因的而不是一次全盘失败。
+ *
+ * **赌错了会怎样**：如果后端其实按四字段说实现，`created_at` 之类会恒为 `null`，
+ * 将来接"注册时间"那一行的人会看到一个空值 + 一条 warn（可 grep），而不是白屏。
+ * 反方向——后端按九字段实现而这里把五个都判严格——才是那种"一个正常响应打不开
+ * 整个页面"的失败，代价大得多。所以宁可这一侧偏保守。
+ *
+ * ⚠️ 因此 `created_at` 声明成 `string | null`，尽管字段表 :269 写的是不可空的
+ * `string`。类型必须说的是**这一层真的可能返回什么**，不是文档希望它是什么。
+ */
+export interface PublicProfileResponse {
+  user_id: string
+  user_nickname: string
+  /** 个性签名（doc:263）。`''` 与 `null` 一并归一成 `null`，同 {@link emptyableStr}。 */
+  user_signature: string | null
+  /** 相对路径，已在 {@link absoluteAvatar} 补基址（doc:264「需拼接 `STORAGE_BASE_URL`」）。 */
+  user_avatar_url: string | null
+  /** 相对路径，已补基址（doc:265，同一句「需拼接」；`null` = 默认封面）。宽松档。 */
+  background_url: string | null
+  /** `male` / `female` / `other`，`null` = 未设置（doc:266）。宽松档。 */
+  gender: string | null
+  /** ISO 日期 `YYYY-MM-DD`，`null` = 未设置（doc:267）。宽松档。 */
+  birthday: string | null
+  /** 地区自由文本，`null` = 未设置（doc:268）。宽松档。 */
+  region: string | null
+  /** 注册时间 ISO 8601（doc:269）。宽松档 ⇒ 可能是 `null`，理由见本接口 JSDoc。 */
+  created_at: string | null
 }
 
 /**
@@ -176,39 +247,64 @@ function emptyableStr(payload: Record<string, unknown>, key: string): string | n
 }
 
 /**
- * **本批还没有消费者**的可空字符串字段：`background_url` / `gender` / `birthday`
- * / `region`。缺席或类型不对时 `console.warn` 一次并按 `null` 处理，**不抛**。
+ * 宽松档的**唯一**实现：缺席或类型不对时 `console.warn` 一次并按 `null` 处理，**不抛**。
  *
- * ## 为什么这四个不走严格档
+ * ## 本文件为什么恰好有两档
  *
  * groups 那一批已经踩过：一个**被严格解析、却没有任何消费者**的字段，在后端某天
  * 改名/下线时会把整个请求打成形状错误——付出的代价是所有人都打不开资料页，
  * 换来的收益是零（没人读它）。reviewer 把那个当成真缺陷提了，那一批定下的规矩是
  * **「谁消费哪一段，谁校验哪一段」**。
  *
- * 所以本文件里两档并存，界线就是"本批有没有接上消费者"：
- * - `allow_search` / `search_visible_by_id` / 两个 `*_policy` → **严格**
- *   （`bool()` / {@link policyOf} 会抛）。本批把它们接进了设置页的隐私区，
- *   少一个字段就意味着面板上有个开关被渲染成它实际不是的状态——那比抛错难查得多，
- *   而且错的方向恰好是"看起来不可被搜索、实际可以"。
- * - 这四个 → **宽松**。`background_url` 由 P5 消费，届时它变成"被消费的一段"，
- *   应当跟着升到严格档并补测试。
+ * 所以本文件里两档并存，**没有第三档**：曾经存在过的"缺键静默返回 null"那一支
+ * 已经被删掉（见 {@link emptyableStr} 的同名段落），因为它连自己的 JSDoc 都不承认。
+ * **宽松 ≠ 静默**：每一次命中都打一条带**端点名 + 字段名**的 warn，所以漂移是可见的、
+ * 可归因的、可 grep 的，只是不再有能力让所有人打不开一个页面。
  *
- * 宽松 ≠ 静默：**每一次**命中都打一条带端点名和字段名的 warn，所以漂移是可见的、
- * 可归因的，只是不再有能力让所有人打不开资料页。
+ * ## 两个调用点各自的理由不同，所以 `context.reason` 必须由调用点写
+ *
+ * - `GET /api/profile` 的 `gender` / `birthday` / `region`：**本仓还没有消费方**。
+ *   （`background_url` 曾经也在这一档，P5 把它接上了封面区，已按此处约定升到
+ *   {@link emptyableStr} 的严格档并补了用例。）
+ * - `GET /api/profile/{user_id}/public` 的五个字段：**文档自相矛盾**，
+ *   :223 的正文说四字段、:259-269 的字段表与 :243-253 的样例说九字段，
+ *   而后端在本机不可达、无从实测。理由与取舍写在 {@link PublicProfileResponse} 上。
+ *
+ * 严格档在同一文件里的对照是 `bool()` / {@link policyOf} / {@link emptyableStr}：
+ * 四个隐私字段少一个就意味着设置面板上有个开关被渲染成它实际不是的状态——
+ * 那比抛错难查得多，而且错的方向恰好是"看起来不可被搜索、实际可以"。
  */
-function unconsumedNullableStr(payload: Record<string, unknown>, key: string): string | null {
+function unconsumedNullableStr(
+  payload: Record<string, unknown>,
+  key: string,
+  context: { endpoint: string; reason: string },
+): string | null {
   const value = payload[key]
   if (typeof value === 'string') return value === '' ? null : value
   if (value !== null) {
     console.warn(
-      `[profile] GET /api/profile: ${key} ${
+      `[profile] ${context.endpoint}: ${key} ${
         value === undefined ? '缺失' : `不是字符串或 null（实际是 ${describeValue(value)}）`
-      }，本批无消费方，按 null 处理；P5 接入 background_url 时应升为严格校验`,
+      }，${context.reason}，按 null 处理`,
     )
   }
   return null
 }
+
+/** `GET /api/profile` 上还没有消费方的那三个字段。 */
+const PROFILE_UNCONSUMED = {
+  endpoint: 'GET /api/profile',
+  reason: '本仓暂无消费方',
+} as const
+
+/**
+ * `/public` 上「只有九字段说保证」的那五个字段。取舍见 {@link PublicProfileResponse}：
+ * 正文 :223 说四个、字段表 :259-269 与样例 :243-253 说九个，后端不可达无法实测。
+ */
+const PUBLIC_PROFILE_DISPUTED = {
+  endpoint: 'GET /api/profile/{user_id}/public',
+  reason: '文档 :223（四字段）与 :259-269 字段表/:243-253 样例（九字段）冲突，后端不可达无法实测',
+} as const
 
 /** 三档策略枚举，取值不对就抛（doc:156「否则返回 400（service 层校验）」）。 */
 function policyOf(payload: Record<string, unknown>, key: string): ProfilePolicy {
@@ -236,13 +332,16 @@ const profileResponse: Parser<UserProfile> = {
       user_email: emptyableStr(payload, 'user_email'),
       user_signature: emptyableStr(payload, 'user_signature'),
       user_avatar_url: absoluteAvatar(emptyableStr(payload, 'user_avatar_url')),
-      // 与头像同一列数据、同一句「需拼接 STORAGE_BASE_URL」（doc:99）。P5 只负责
-      // 上传/删除那两个端点；补基址属于"读这个字段"的一部分，留到 P5 等于先埋一遍
-      // P2 已经修过的 404。
-      background_url: absoluteAvatar(unconsumedNullableStr(payload, 'background_url')),
-      gender: unconsumedNullableStr(payload, 'gender'),
-      birthday: unconsumedNullableStr(payload, 'birthday'),
-      region: unconsumedNullableStr(payload, 'region'),
+      // 与头像同一列数据、同一句「需拼接 STORAGE_BASE_URL」（doc:99）。
+      //
+      // 🔴 P5 把它从宽松档**升到了严格档**（`emptyableStr`：缺键抛错、`''` ⇒ `null`）。
+      // 判据就是上一批写下的那条界线——它现在有消费方了：`ProfilePage` 的封面区读它，
+      // `uploadBackground` / `resetBackground` 写它。少这个键不再是"没人在乎"，
+      // 而是"封面区拿不到该渲染什么"，正是严格档存在的场合。
+      background_url: absoluteAvatar(emptyableStr(payload, 'background_url')),
+      gender: unconsumedNullableStr(payload, 'gender', PROFILE_UNCONSUMED),
+      birthday: unconsumedNullableStr(payload, 'birthday', PROFILE_UNCONSUMED),
+      region: unconsumedNullableStr(payload, 'region', PROFILE_UNCONSUMED),
       admin: str(payload, 'admin'),
       allow_search: bool(payload, 'allow_search'),
       search_visible_by_id: bool(payload, 'search_visible_by_id'),
@@ -252,6 +351,87 @@ const profileResponse: Parser<UserProfile> = {
       updated_at: str(payload, 'updated_at'),
     }
   },
+}
+
+/**
+ * `GET /api/profile/{user_id}/public` 的 `data` → {@link PublicProfileResponse}。
+ *
+ * 严格四个 + 宽松五个，界线与理由逐条写在 {@link PublicProfileResponse} 上，
+ * 这里不复述（两份注释会各自漂移）。一句话：**两种读法都保证的走严格，
+ * 只有九字段说保证的走宽松**。
+ *
+ * 🔴 不要"顺手"改成复用 {@link profileResponse}：那会要求 `user_email` / `admin`
+ * / 四个隐私字段，而 doc:271-273 明写本端点**不返回**它们——一份完全合规的响应
+ * 会被判成形状错误。反方向同样错：把九个全升成严格档，则一个按 :223 那种四字段
+ * 读法实现的后端会让**每一次**调用失败。两个方向都有用例盯着。
+ */
+const publicProfileResponse: Parser<PublicProfileResponse> = {
+  parse(input: unknown): PublicProfileResponse {
+    const payload = asRecord(input, 'GET /api/profile/{user_id}/public 的 data')
+    return {
+      user_id: str(payload, 'user_id'),
+      user_nickname: str(payload, 'user_nickname'),
+      user_signature: emptyableStr(payload, 'user_signature'),
+      user_avatar_url: absoluteAvatar(emptyableStr(payload, 'user_avatar_url')),
+      background_url: absoluteAvatar(
+        unconsumedNullableStr(payload, 'background_url', PUBLIC_PROFILE_DISPUTED),
+      ),
+      gender: unconsumedNullableStr(payload, 'gender', PUBLIC_PROFILE_DISPUTED),
+      birthday: unconsumedNullableStr(payload, 'birthday', PUBLIC_PROFILE_DISPUTED),
+      region: unconsumedNullableStr(payload, 'region', PUBLIC_PROFILE_DISPUTED),
+      created_at: unconsumedNullableStr(payload, 'created_at', PUBLIC_PROFILE_DISPUTED),
+    }
+  },
+}
+
+/**
+ * 目标用户不存在（HTTP 404，doc:277-284：`{"success": false, "code": 404,
+ * "error": "用户不存在"}`）。
+ *
+ * 与 `groups.ts` 的 `isGroupNotFound` 同型同理由：这**不是**一次故障，而是一个
+ * 确定的答案——"这个 user_id 上没有人"。调用点该渲染的是「用户不存在」，
+ * 不是一条红色的「加载失败，请重试」外加一颗永远点不出结果的重试按钮。
+ * 分诊按**状态码**，不做文案匹配（后端原文是中文，改一个字就会让匹配失效）。
+ */
+export function isProfileNotFound(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 404
+}
+
+/**
+ * 资料背景图 → 可以直接放进 `src` 的地址；默认封面时返回 `undefined`。
+ *
+ * ## 为什么"默认封面"需要一个函数才判得对
+ *
+ * 同一个状态在这条 API 上有**三种**表示：
+ * 1. 数据库列是 `null`（doc:464「后端将 `background_url` 置为 `null`」）；
+ * 2. `GET /api/profile` 把它读成 `null`（字段表 doc:99 的 `string|null`）；
+ * 3. `DELETE /api/profile/background` 的成功响应把它写成**空串** `""`
+ *    （doc:482、:491「恒为空字符串 `""`……**前端不应拼接此值展示图片**」）。
+ *
+ * 所以 `backgroundUrl ?? undefined` 是**不够**的：`??` 只挡 `null` / `undefined`，
+ * `""` 会原样落进 `src`。而 `<img src="">` 不是"不加载"——浏览器会把空 `src`
+ * 解析成**当前页面地址**并真的发一次请求，把整张 HTML 当图片下载。
+ * （本仓已经记过同一个坑：`Navigation.tsx` 的 `avatarSrc` 那一处注释写着
+ * 「真会因空串发请求的是**裸 `<img>`**」。封面区用的正是裸 `<img>`。）
+ *
+ * ## ⚠️ 它是**三层里的一层**，不是唯一那道闸——说清楚免得高估它
+ *
+ * 今天有三处各自独立地把 `''` 判成"默认封面"：
+ * 1. `profileApi.getProfile` 出口的 {@link emptyableStr}（`''` ⇒ `null`），
+ *    所以正常链路上根本走不到 `''`；
+ * 2. 本函数；
+ * 3. `ProfilePage` 那一侧写的是 `coverSrc ? <img/> : null`——**真值判断**，
+ *    `''` 同样是假值。
+ *
+ * 结果是：单独把本函数换成 `backgroundUrl ?? undefined`，页面上**依然**不会出现
+ * `<img src="">`（已实测：`ProfilePage.test.tsx` 那条用例照样绿）。要真渲染出空
+ * `src`，得同时改坏其中两处。所以本函数的价值是**把这条规则写成一个有名字、
+ * 被单测直接钉住的表达式**（`profile.test.ts` 的 `coverImageSrc` 那一组对
+ * `?? undefined` 确实变红），而不是"最后一道防线"——它不是。
+ */
+export function coverImageSrc(backgroundUrl: string | null | undefined): string | undefined {
+  if (backgroundUrl === null || backgroundUrl === undefined) return undefined
+  return backgroundUrl.trim() === '' ? undefined : backgroundUrl
 }
 
 // ============================================
@@ -639,5 +819,172 @@ export const profileApi = {
 
     console.log('✅ 头像上传成功:', result.file_url)
     return result
+  },
+
+  /**
+   * 上传**资料背景图**（封面）—— 与头像同一条四步预签名链路
+   *
+   * 🔴 `POST /api/profile/background`（`multipart/form-data`）与
+   * `POST /api/profile/avatar`、`POST /api/groups/{id}/avatar` 同一批于 2026-08-28
+   * **删除、无兼容层**（`个人资料管理.md:352-355` 逐字：「两条
+   * `multipart/form-data` 端点**已整套删除**」）。现在走 storage 的
+   * `upload/request → part_url → PUT → upload/confirm`（doc:362-369）。
+   *
+   * ## 与 {@link profileApi.uploadAvatar} 的**唯一**差别就是一个字段
+   *
+   * `avatar_target: 'user_background'`（doc:389 的三档取值之一）。其余全部相同，
+   * 而且是**真的相同**，不是"大概相同"——逐条对过 doc:385-394 与
+   * `文件存储管理.md:114-132` 的两张字段表：
+   *
+   * - **大小上限一样**：10 MB。上限按 `file_type` 取（doc:393
+   *   `FileValidator::AVATAR_MAX_BYTES`；storage 文档 :138-139「上限按 `file_type` 取，
+   *   不绑就等于没上限」、:950「头像 / 资料背景图 / 群头像 | < 10MB」），
+   *   而三档 `avatar_target` 共用 `file_type: 'avatar'`，所以**没有**背景图专属的上限。
+   * - **MIME 与扩展名白名单一样**：doc:391 扩展名必须是 jpg/jpeg/png/gif/webp、
+   *   doc:392 `content_type` 收 jpeg/png/gif/webp/jpg/tiff——两条都挂在
+   *   `storage_location=avatars` 这一档上，字段表里没有任何一行按 `avatar_target` 分叉。
+   *   所以复用 `storageApi` 的 `AVATAR_*` 白名单是对的，不是偷懒。
+   * - **落点不同的只有 object key 与写回列**（doc:418-422）：
+   *   `background/{user_id}.{ext}` → `users."user-background-url"`。这两样都在**服务端**
+   *   决定，客户端不传、也不该传。
+   *
+   * ## `related_id` 必须**根本没有这个键**
+   *
+   * doc:390：`related_id` **仅** `group_avatar` 需要且必填；`user_avatar` /
+   * `user_background` **携带即 400**，doc:440 复述并写明「不静默忽略」。
+   * 注意是"携带"，不是"值不对"——所以 `related_id: undefined` **不安全**：
+   * 那一样是把键写进了对象，只是碰巧被 `JSON.stringify` 丢掉。
+   * `buildAvatarUploadPayload` 用的是"只在 `group_avatar` 档才展开这个键"的构造方式，
+   * 由 `profile.test.ts` 里截住 `requestAvatarUpload` 入参的那条 `Object.hasOwn`
+   * 断言钉住（背景图与头像**各有一条**）。⚠️ 那条断言**不能**改成读
+   * `JSON.parse(init.body)`：序列化会把 `undefined` 值的键和"根本没这个键"抹平成
+   * 同一串字节，wire-level 断言对这条约束恒真。
+   *
+   * ## 成功之后**不要**回写
+   *
+   * doc:410-411：后端已在 confirm 那一步把 `file_url` 写进
+   * `users."user-background-url"`，客户端「**无需**再调 `PUT /api/profile` 回写」。
+   * 何况 `PUT /api/profile` 的字段表（doc:139-150）里根本没有 `background_url`
+   * 这一格，回写连发都发不出去。
+   *
+   * @param onProgress 按**字节**报的直传进度（`percent` 来自 `xhr.upload.onprogress`）。
+   *   理由与头像那一处逐条相同：分片固定 30 MB（`文件存储管理.md:185`）而上限 10 MB
+   *   ⇒ 永远只有 1 片，按分片报等于只有 100% 一个取值，还得等字节全部传完才出现。
+   * @throws {Error} 超 10 MB / MIME / 扩展名不在白名单（客户端便利检查，闸在后端）
+   * @throws {Error} 同一落点已有上传在飞（单飞键是 `'user_background'`，与头像的
+   *   `'user_avatar'` **是两把不同的锁**——换封面和换头像可以并行，doc:445 要防的是
+   *   **同一目标**的并发接管）
+   * @throws {ApiError} 后端失败，文案是后端原文；409 用 `isUploadSessionExpired`
+   *   分诊，**不要自动重试**（会话被接管 doc:445、已过期 :447、已失效/重复确认 :449-450）
+   */
+  uploadBackground: async (
+    file: File,
+    onProgress?: (progress: AvatarUploadProgress) => void,
+  ): Promise<AvatarUploadResult> => {
+    console.log('🖼️ 上传资料背景图:', file.name)
+
+    const result = await storageApi.uploadAvatar(
+      file,
+      { avatar_target: 'user_background' },
+      onProgress,
+    )
+
+    console.log('✅ 资料背景图上传成功:', result.file_url)
+    return result
+  },
+
+  /**
+   * 重置资料背景图为默认封面
+   * DELETE /api/profile/background（`个人资料管理.md:458-492`，§6）
+   *
+   * ## 🔴 这个端点的成功响应是**裸的**，而且是**文档说的**
+   *
+   * doc:479-485 逐字：
+   *
+   * ```json
+   * { "background_url": "", "message": "背景图已重置为默认" }
+   * ```
+   *
+   * 没有 `success`、没有 `code`、没有 `data`。doc:460 也点明它不在 2026-08-28
+   * 那次并入的范围内（「本端点**没有变**」）——它是本模块里唯一一条既没被信封化、
+   * 也没被改造的端点。
+   *
+   * 所以这里**没有** `readEnvelope`：那一支会走到 `unwrapData` 的
+   * 「响应缺少 data 字段」并抛 `ApiShapeError` + 上报一条误报的形状告警，
+   * 把一次**完全正常**的重置判成失败。用的是 {@link assertEnvelopeOk}——本仓
+   * 「响应体里没有可消费内容」的那一档，它只判成功与否（HTTP 状态码 +
+   * `success === false`），**根本不去碰 `data`**，因此对裸响应和信封响应都成立。
+   *
+   * ## 为什么这**不是** `legacyBare`
+   *
+   * `legacyBare` 记的是**欠账**：「这个端点的形状我们没验证过，姑且当裸的，
+   * 但每次命中都 warn，让 `grep legacyBare` 能把债列出来」——本文件的
+   * {@link PROFILE_LEGACY_BARE} 就是那样一条，它的理由逐字是"后端不可达、无法实测"。
+   * 本端点的情形**相反**：文档在 §6 里**正面写出了**这个响应体，它就该是裸的，
+   * 没有任何东西要被"清理"。给它挂一条 `legacyBare` 会有两个具体坏处：
+   * 每一次成功重置都打一条永远不该被消除的 warn，以及让 `grep legacyBare` 的结果
+   * 里混进一笔**永远还不掉**的假债，真正的欠账因此贬值。
+   *
+   * ## 返回 `void`：响应体里没有一个字段是可用的
+   *
+   * - `background_url` **恒为 `""`**，而字段表 doc:491 逐字写着
+   *   「**前端不应拼接此值展示图片**」。它不是地址，是一个"已重置"的哨兵值——
+   *   把它当 URL 用（拼基址、塞进 `src`）正是这一条要禁止的事。所以它连**出这个
+   *   函数**都不该，更不会去过 `toAbsoluteApiUrl`。
+   *   ⚠️ 同一个"默认封面"状态在这条 API 上有**三种**表示：数据库列 `null`
+   *   （doc:464）、`GET /api/profile` 读出来的 `null`、以及这里的 `""`。
+   *   渲染侧统一用 {@link coverImageSrc} 判，`??` 是不够的（它挡不住 `""`）。
+   * - `message` 是一句成功提示，不带"这次为什么成功"的任何信息。理由与
+   *   {@link profileApi.updateProfile} 那一段逐条相同：调用点弹的是自己的中文 toast，
+   *   透出后端原文没有收益。（这一条的原文碰巧也是中文，但那是巧合，不是理由。）
+   *
+   * @throws {ApiError} 后端失败，带真实状态码；401 会被 `isAuthError` 认出来
+   */
+  resetBackground: async (): Promise<void> => {
+    console.log('🧹 重置资料背景图')
+
+    // 请求体：无（doc:468）。
+    const response = await fetchWithAuth(`${PROFILE_BASE_URL}/background`, {
+      method: 'DELETE',
+    })
+
+    await assertEnvelopeOk(response, {
+      endpoint: 'DELETE /api/profile/background',
+      fallbackMessage: '重置资料背景图失败',
+    })
+    console.log('✅ 资料背景图已重置为默认')
+  },
+
+  /**
+   * 获取**他人**的公开资料
+   * GET /api/profile/{user_id}/public（`个人资料管理.md:219-284`，§3）
+   *
+   * 鉴权：任意登录用户均可访问（doc:225）。返回的是窄 DTO
+   * {@link PublicProfileResponse}——**不是** {@link UserProfile}，理由与字段集上
+   * 那处文档矛盾的取舍全写在该接口的 JSDoc 上。
+   *
+   * 🔴 **404 = "这个 user_id 上没有人"，是一个答案，不是一次故障**
+   * （doc:277-284）。用 {@link isProfileNotFound} 分诊，让调用点渲染「用户不存在」，
+   * 而不是一条红色的「加载失败」加一颗永远点不出结果的重试按钮。
+   *
+   * `user_id` 过 `encodeURIComponent`：它是用户自己取的字符串，含 `/`、`?`、`#`
+   * 会把路径整个改掉。⚠️ 说明白——**本后端对已编码路径段的处理没在这台机器上验证过**
+   * （`api.huanvae.cn` 不可达）；选它是因为对文档给出的那种 id
+   * （doc:236 的 `testuser001`）编码是**恒等**的，所以对真实取值零行为差异，
+   * 而对畸形 id 它是唯一不会造出错误 URL 的写法。
+   */
+  getPublicProfile: async (userId: string): Promise<PublicProfileResponse> => {
+    console.log('👥 获取他人公开资料:', userId)
+
+    const response = await fetchWithAuth(
+      `${PROFILE_BASE_URL}/${encodeURIComponent(userId)}/public`,
+      { method: 'GET' },
+    )
+
+    return readEnvelope<PublicProfileResponse>(response, {
+      endpoint: 'GET /api/profile/{user_id}/public',
+      fallbackMessage: '获取用户公开资料失败',
+      parse: publicProfileResponse,
+    })
   },
 }

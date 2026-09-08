@@ -8,11 +8,13 @@ import {
   Calendar,
   Eye,
   EyeOff,
+  ImagePlus,
   Loader2,
   Lock,
   Mail,
   RefreshCw,
   Shield,
+  Undo2,
   User as UserIcon,
   Monitor,
   ArrowRight,
@@ -26,16 +28,30 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { pickProfileEdits, profileApi, profileFormValues } from '@/features/profile/api/profile'
+import {
+  coverImageSrc,
+  pickProfileEdits,
+  profileApi,
+  profileFormValues,
+} from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { ROUTES } from '@/lib/routes'
 
 export default function Profile() {
   const router = useRouter()
   const { toast } = useToast()
-  const { profile, isLoading, loadProfile, updateProfile, setAvatarUrl } = useProfileStore()
+  const {
+    profile,
+    isLoading,
+    loadProfile,
+    updateProfile,
+    setAvatarUrl,
+    setBackgroundUrl,
+    resetBackground,
+  } = useProfileStore()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const backgroundInputRef = useRef<HTMLInputElement>(null)
 
   /**
    * 初值从**已经在 store 里**的资料种出来（`profile` 是持久化字段，刷新之后
@@ -67,6 +83,17 @@ export default function Profile() {
    */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [changingPassword, setChangingPassword] = useState(false)
+  /**
+   * 封面（资料背景图）的局部态，与头像那两格**各自独立**。
+   *
+   * 不复用头像那两个 state，是因为两条链路的单飞锁在 `storageApi` 里就是分开的
+   * （单飞键 `user_avatar` vs `user_background`，`storage.ts` 的
+   * `avatarSingleFlightKey`）——换头像和换封面可以同时进行，共用一格进度会让
+   * 两个百分比互相覆盖。
+   */
+  const [uploadingBackground, setUploadingBackground] = useState(false)
+  const [backgroundProgress, setBackgroundProgress] = useState<number | null>(null)
+  const [resettingBackground, setResettingBackground] = useState(false)
 
   useEffect(() => {
     loadProfile().catch(console.error)
@@ -158,6 +185,87 @@ export default function Profile() {
     }
   }
 
+  /**
+   * 换封面。与 {@link handleAvatarChange} **逐条同构**——同一条四步预签名链路
+   * （`个人资料管理.md:362-369`）、同一套错误口径、同一个"成功的判定点是 confirm
+   * 返回、不是随后那次 GET"。那四条理由写在上面那个函数的 JSDoc 上，这里不复述
+   * （两份注释会各自漂移）。
+   *
+   * 与头像的差别只有两处，都不在这一层：
+   * - 请求体里 `avatar_target` 是 `'user_background'`（doc:389），由
+   *   `profileApi.uploadBackground` 填；
+   * - object key 落在 `background/{user_id}.{ext}`、写回 `users."user-background-url"`
+   *   （doc:421），由**服务端**决定。
+   *
+   * ⚠️ `POST /api/profile/background` 这条旧的 multipart 端点已随头像那条一起
+   * 于 2026-08-28 删除（doc:352-355），这里一个请求都不该打到它。
+   */
+  const handleBackgroundChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingBackground(true)
+    setBackgroundProgress(null)
+    try {
+      const { file_url } = await profileApi.uploadBackground(file, ({ percent }) =>
+        setBackgroundProgress(percent),
+      )
+      // confirm 已经 200 ⇒ 后端已写回 `users."user-background-url"`（doc:410-411）：
+      // 先兑现结果，再去拉齐其余字段，那次 GET 失败不能把已完成的上传说成失败。
+      setBackgroundUrl(file_url)
+      toast({ title: '成功', description: '资料背景图已更新' })
+      await loadProfile().catch((error) => {
+        console.error('背景图已上传成功，刷新完整资料失败:', error)
+      })
+    } catch (error) {
+      toast({
+        title: '上传失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive',
+      })
+    } finally {
+      setUploadingBackground(false)
+      setBackgroundProgress(null)
+      // 不清 value 就等于"失败之后不许重选同一个文件"，理由同头像那一处。
+      if (backgroundInputRef.current) backgroundInputRef.current.value = ''
+    }
+  }
+
+  /**
+   * 恢复默认封面（`DELETE /api/profile/background`，doc:458-492）。
+   *
+   * 走 store 的 action 而不是直接调 api：重置**会**改本 store 持有的状态
+   * （`profile.background_url`），而且没有进度要报，理由写在
+   * `profileStore.resetBackground` 的 JSDoc 上。上传那一侧反过来（要报进度、
+   * 会长时间占住 `isLoading`），所以留在本组件自管局部态。
+   *
+   * 失败文案透出后端原文，理由同头像那一处：把「数据库写入失败」这类具体原因
+   * 替换成一句自造的「请稍后重试」就是在丢信息。§6（doc:458-492）没有给错误表，
+   * 所以这一侧对失败原因**不做任何分档**，原样透出。
+   *
+   * ⚠️ 401 时 `profileStore.settleError` 会跳登录页，但那个 action **依然 reject**
+   * （那条 rethrow 是有意的，见 `settleError` 的 JSDoc：`return` 会让调用方
+   * 弹「成功」），所以下面这个 catch 照常执行、照常弹一条 destructive toast。
+   * 这与 `handleSubmit` 的 401 行为一致，不是遗漏。
+   */
+  const handleResetBackground = async () => {
+    setResettingBackground(true)
+    try {
+      await resetBackground()
+      // 文案与后端那句 `"背景图已重置为默认"`（doc:483）同义但由前端自己给出，
+      // 理由同 `updateProfile`：成功文案不带任何信息，不必透传响应体。
+      toast({ title: '成功', description: '已恢复默认封面' })
+    } catch (error) {
+      toast({
+        title: '重置失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive',
+      })
+    } finally {
+      setResettingBackground(false)
+    }
+  }
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -185,6 +293,23 @@ export default function Profile() {
 
   const displayName = profile?.user_nickname || user?.nickname || '用户'
 
+  /**
+   * 封面地址，`undefined` / 空串 = 渲染默认封面（不挂 `<img>`）。
+   *
+   * 判据走 {@link coverImageSrc} 而不是就地写 `?? undefined`：同一个"默认封面"
+   * 状态在这条 API 上有**三种**表示——数据库列 `null`（doc:464）、
+   * `GET /api/profile` 读出来的 `null`（字段表 doc:99「null=默认封面」）、
+   * 以及 `DELETE /api/profile/background` 响应里那个 `""`（doc:482、:491
+   * 「前端不应拼接此值展示图片」）。`??` 只挡前两种。
+   *
+   * ⚠️ 但**别把它当成这里唯一那道闸**：下面 JSX 里写的是 `coverSrc ? … : null`，
+   * 真值判断本身也会挡掉 `''`。两层是独立的，要同时改坏才渲染得出 `<img src="">`
+   * （已实测：单独把 `coverImageSrc` 换成 `?? undefined`，本页用例照样绿）。
+   * 这一点写在 `coverImageSrc` 的 JSDoc 上，那里有完整的三层清单。
+   */
+  const coverSrc = coverImageSrc(profile?.background_url)
+  const coverBusy = uploadingBackground || resettingBackground
+
   return (
     <div className="relative h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-24 md:p-6">
@@ -197,6 +322,95 @@ export default function Profile() {
             <p className="text-sm text-muted-foreground">管理头像、邮箱和账户安全</p>
           </div>
         </div>
+
+        {/*
+          资料封面（`background_url`）。写侧是 storage 的四步预签名链路
+          （`avatar_target: 'user_background'`，doc:389），重置走
+          `DELETE /api/profile/background`（doc:458-492）。
+        */}
+        <Card className="overflow-hidden">
+          <div className="relative h-36 w-full bg-gradient-to-br from-primary/25 via-primary/10 to-muted md:h-48">
+            {/*
+              没有封面时**不渲染 `<img>`**，让底下那层渐变作为默认封面。
+              渲染一个 `src=""` 的 `<img>` 才是真正的故障：浏览器把空 `src` 解析成当前
+              页面地址并发一次请求，把整张 HTML 当图片下载——`Navigation.tsx` 的
+              `avatarSrc` 那一处注释记的是同一个坑。
+              这里的真值判断与 {@link coverImageSrc} 是**两层独立的**同一条规则，
+              别因为其中一层在就把另一层删掉。
+            */}
+            {coverSrc ? (
+              <img
+                data-testid="profile-cover-image"
+                src={coverSrc}
+                alt="资料背景图"
+                className="h-full w-full object-cover"
+              />
+            ) : null}
+            <div className="absolute right-3 top-3 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={coverBusy}
+                onClick={() => backgroundInputRef.current?.click()}
+                className="gap-1.5 shadow-sm"
+              >
+                {uploadingBackground ? (
+                  // 进度来自 `xhr.upload.onprogress` 的**字节**数（doc:393 的 10 MB
+                  // 上限 vs 30 MB 的分片 ⇒ 永远只有 1 片，按分片报只会有 100% 一个值）。
+                  // `null` = 还没有字节发出去（在算 SHA-256 / 等 upload/request），
+                  // 那一段没有进度可报，所以显示不确定态的转圈而不是假装 0%。
+                  backgroundProgress === null ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <span className="text-xs font-semibold">{Math.round(backgroundProgress)}%</span>
+                  )
+                ) : (
+                  <>
+                    <ImagePlus className="h-4 w-4" />
+                    更换封面
+                  </>
+                )}
+              </Button>
+              {/*
+                已经是默认封面时不渲染这颗按钮：那一次 DELETE 什么都不会改变，
+                而一颗按下去没有任何可见后果的按钮比没有按钮更难理解。
+              */}
+              {coverSrc ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={coverBusy}
+                  onClick={handleResetBackground}
+                  className="gap-1.5 shadow-sm"
+                >
+                  {resettingBackground ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Undo2 className="h-4 w-4" />
+                      恢复默认
+                    </>
+                  )}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          {/*
+            白名单与头像共用同一张表（`AVATAR_FILE_ACCEPT`）：doc:391/:392 的两条规则
+            挂在 `storage_location=avatars` 上，字段表里没有任何一行按 `avatar_target`
+            分叉，所以封面**没有**自己的格式或上限。
+          */}
+          <input
+            ref={backgroundInputRef}
+            type="file"
+            accept={AVATAR_FILE_ACCEPT}
+            className="hidden"
+            data-testid="background-file-input"
+            onChange={handleBackgroundChange}
+          />
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-3">
           <Card>
@@ -240,7 +454,7 @@ export default function Profile() {
                     )}
                   </button>
                 </div>
-                <input ref={fileInputRef} type="file" accept={AVATAR_FILE_ACCEPT} className="hidden" onChange={handleAvatarChange} />
+                <input ref={fileInputRef} type="file" accept={AVATAR_FILE_ACCEPT} className="hidden" data-testid="avatar-file-input" onChange={handleAvatarChange} />
                 <div className="text-lg font-semibold">{displayName}</div>
                 <div className="text-xs text-muted-foreground">ID: {profile?.user_id || user?.user_id}</div>
               </div>

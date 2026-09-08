@@ -7,6 +7,8 @@ import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import {
   applyProfileEdits,
+  coverImageSrc,
+  isProfileNotFound,
   pickProfileEdits,
   profileApi,
   profileFormValues,
@@ -801,7 +803,10 @@ describe('profileApi.getProfile 的字段校验', () => {
     expect((error as Error).message).toContain('group_invite_policy')
   })
 
-  it('本批无人消费的四个字段：缺席只 warn，不让所有人打不开资料页', async () => {
+  it('本仓无人消费的三个字段（gender / birthday / region）：缺席只 warn，不让所有人打不开资料页', async () => {
+    // ⚠️ P5 之前这一档是**四**个：`background_url` 也在里面。它现在有消费方了
+    // （封面区 + 上传/重置两个端点），已按 `unconsumedNullableStr` 的 JSDoc 里
+    // 写下的约定升到严格档——所以它出现在下面那条"缺键照抛"的循环里，不在这里。
     // 同一个 spy 覆盖正反两侧（理由同 legacyBare 那条）。
     fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit('gender') }))
 
@@ -855,12 +860,16 @@ describe('profileApi.getProfile 的字段校验', () => {
     expect(profile.user_email).toBeNull()
   })
 
-  it('三个 emptyable 字段**缺键**照抛：空串归一是放宽，缺席不是', async () => {
+  it('四个 emptyable 字段**缺键**照抛：空串归一是放宽，缺席不是', async () => {
     // 修掉的是 `emptyableStr` 里 `value === undefined` 那一支：它把「后端明确说
-    // 没有」和「这个键根本没来」折成同一个 `null`，而这三个字段 UI 都在读
-    // （邮箱/签名输入框、三处头像）。房规见 `apiParse.nullableStr` 与 `groups.ts`
-    // 的同名 `emptyableStr`——两者对缺键都抛。
-    for (const key of ['user_email', 'user_signature', 'user_avatar_url']) {
+    // 没有」和「这个键根本没来」折成同一个 `null`，而这四个字段 UI 都在读
+    // （邮箱/签名输入框、三处头像、封面区）。房规见 `apiParse.nullableStr` 与
+    // `groups.ts` 的同名 `emptyableStr`——两者对缺键都抛。
+    //
+    // 🔴 `background_url` 是 P5 加进这个循环的：把解析器改回
+    // `unconsumedNullableStr(payload, 'background_url', ...)`（宽松档）→ 本条
+    // 在它那一轮变红（缺键只 warn 不抛）。这就是"升到严格档"这句话的执行体。
+    for (const key of ['user_email', 'user_signature', 'user_avatar_url', 'background_url']) {
       fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit(key) }))
 
       const error = await profileApi.getProfile().catch((e: unknown) => e)
@@ -1174,5 +1183,549 @@ describe('profileApi.updateProfile 的本地字段校验', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * 资料背景图上传 —— 与头像**同一条**四步预签名链路，只差 `avatar_target`。
+ *
+ * `POST /api/profile/background`（旧的 multipart 端点）与
+ * `POST /api/profile/avatar` 同一批于 2026-08-28 删除、无兼容层
+ * （`个人资料管理.md:352-355`）。所以这一组的第一条与头像那一组同型：
+ * 请求序列里**不能**出现那个已删除的端点。
+ */
+describe('profileApi.uploadBackground（四步预签名链路，avatar_target=user_background）', () => {
+  const STORAGE_BASE = `${getApiBaseUrl()}/api/storage`
+  const pngFile = () => new File(['x'], 'cover.png', { type: 'image/png' })
+
+  const envelope = (data: unknown, status = 200) =>
+    json({ success: true, code: 200, data }, status)
+
+  /** 第 1 步的响应。头像档一律不走秒传（doc:426-427），三档落点共用这条规则。 */
+  const BACKGROUND_SESSION = {
+    mode: 'multipart',
+    preview_support: 'inline_preview',
+    multipart_upload_id: 'upload-id-bg',
+    expires_in: 3600,
+    chunk_size: 31457280,
+    total_chunks: 1,
+    // object key 是 `background/{user_id}.{ext}`（doc:421），与头像那档的
+    // `{user_id}.{ext}` 不同——落点由**服务端**定，客户端不传。
+    file_key: 'background/alice.png',
+    max_file_size: 10485760,
+    instant_upload: false,
+    existing_file_url: null,
+  }
+
+  const PART_URL_DATA = {
+    part_url:
+      'https://api.huanvae.cn/avatars/background/alice.png?uploadId=x&partNumber=1&X-Amz-Signature=s',
+    part_number: 1,
+    expires_in: 3600,
+  }
+
+  /** 第 4 步的响应（doc:398-405 的形态：相对路径 + `?t=` 秒级缓存戳）。 */
+  const CONFIRM_DATA = {
+    file_url: 'avatars/background/alice.png?t=1706000000',
+    file_key: 'background/alice.png',
+    file_size: 40960,
+    content_type: 'image/png',
+    preview_support: 'inline_preview',
+  }
+
+  const mockHappyPath = () => {
+    fetchMock
+      .mockResolvedValueOnce(envelope(BACKGROUND_SESSION))
+      .mockResolvedValueOnce(envelope(PART_URL_DATA))
+      .mockResolvedValueOnce(envelope(CONFIRM_DATA))
+  }
+
+  const requestLog = () =>
+    fetchMock.mock.calls.map(
+      (call: unknown[]) =>
+        `${(call[1] as RequestInit | undefined)?.method ?? 'GET'} ${String(call[0])}`,
+    )
+
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+    vi.spyOn(storageApi, 'uploadChunk').mockResolvedValue(undefined)
+  })
+
+  it('四步按序发出，且没有一个请求打到已删除的 POST /api/profile/background', async () => {
+    mockHappyPath()
+
+    await profileApi.uploadBackground(pngFile())
+
+    expect(requestLog()).toEqual([
+      `POST ${STORAGE_BASE}/upload/request`,
+      `GET ${STORAGE_BASE}/multipart/part_url?file_key=background%2Falice.png&upload_id=upload-id-bg&part_number=1`,
+      `POST ${STORAGE_BASE}/upload/confirm`,
+    ])
+    // 上面那条 toEqual 已经蕴含这两句；单列出来是因为它们各自是本批要消灭的
+    // 一个具体形态（打已删除的端点 / 多打一次回写），而且都会真的变红。
+    expect(requestLog().some((line) => line.includes('/api/profile/background'))).toBe(false)
+    // doc:410-411：后端已在 confirm 写回 `users."user-background-url"`，
+    // 客户端「无需再调 PUT /api/profile 回写」。
+    expect(requestLog().some((line) => line.startsWith(`PUT ${PROFILE_BASE}`))).toBe(false)
+  })
+
+  it('第 1 步请求体：只有 avatar_target 与头像那档不同（doc:389 的三档取值）', async () => {
+    mockHappyPath()
+
+    await profileApi.uploadBackground(pngFile())
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(body).toEqual({
+      // `file_type` ⟺ `storage_location` 双向绑定（doc:387、:451-452），
+      // 而这条绑定是 10 MB 上限的承重件（storage 文档 :138-139）。
+      // 背景图**没有**自己的上限或白名单：两者都绑在 avatars 这一档上。
+      file_type: 'avatar',
+      storage_location: 'avatars',
+      avatar_target: 'user_background',
+      filename: 'cover.png',
+      file_size: 1,
+      content_type: 'image/png',
+      file_hash: '0'.repeat(64),
+    })
+  })
+
+  it('user_background 档：请求体对象上**根本没有** related_id 这个键（doc:390、:440「不静默忽略」）', async () => {
+    // ⚠️ 这条**不能**用 `JSON.parse(init.body)`：`JSON.stringify` 会丢掉值为
+    // undefined 的键，`{...base}` 与 `{...base, related_id: undefined}` 序列化后
+    // 逐字相同 ⇒ wire-level 断言对这条约束恒真。判据在**对象**上。
+    let captured: Record<string, unknown> | undefined
+    const requestSpy = vi
+      .spyOn(storageApi, 'requestAvatarUpload')
+      .mockImplementation(async (payload) => {
+        captured = payload as unknown as Record<string, unknown>
+        return BACKGROUND_SESSION as never
+      })
+    fetchMock.mockResolvedValueOnce(envelope(PART_URL_DATA)).mockResolvedValueOnce(envelope(CONFIRM_DATA))
+
+    await profileApi.uploadBackground(pngFile())
+
+    // 正对照：spy 确实接上了、拿到的确实是**背景图**那一档的 payload。
+    // 少了这一段，下面三条 `false` 在 spy 根本没被调用时也会"通过"。
+    expect(requestSpy).toHaveBeenCalledTimes(1)
+    if (captured === undefined) throw new Error('requestAvatarUpload 没被调用，下面的断言无从谈起')
+    expect(captured.avatar_target).toBe('user_background')
+
+    expect(Object.hasOwn(captured, 'related_id')).toBe(false)
+    expect('related_id' in captured).toBe(false)
+    expect(Object.keys(captured)).not.toContain('related_id')
+  })
+
+  it('confirm 的相对 file_url 出来是绝对地址', async () => {
+    mockHappyPath()
+
+    const result = await profileApi.uploadBackground(pngFile())
+
+    expect(result.file_url).toBe(
+      `${getApiBaseUrl()}/avatars/background/alice.png?t=1706000000`,
+    )
+    expect(result.file_key).toBe('background/alice.png')
+  })
+
+  it('单飞键与头像**不是同一把锁**：换头像的同时换封面不会被拒（doc:445 防的是同一目标）', async () => {
+    // 把头像那次挂在第 1 步上，于是 `user_avatar` 这把锁是握着的。
+    let releaseAvatar!: () => void
+    const avatarHeld = new Promise<never>((_resolve, reject) => {
+      releaseAvatar = () => reject(new Error('用例收尾：放行被挂住的头像上传'))
+    })
+    vi.spyOn(storageApi, 'requestAvatarUpload').mockImplementation(async (payload) =>
+      payload.avatar_target === 'user_avatar' ? await avatarHeld : (BACKGROUND_SESSION as never),
+    )
+    fetchMock.mockResolvedValueOnce(envelope(PART_URL_DATA)).mockResolvedValueOnce(envelope(CONFIRM_DATA))
+
+    const avatarInFlight = profileApi.uploadAvatar(new File(['x'], 'me.png', { type: 'image/png' }))
+
+    try {
+      // 把 `avatarSingleFlightKey` 改成对两档返回同一个常量 → 本行抛
+      // 「该头像正在上传中」，红。
+      await expect(profileApi.uploadBackground(pngFile())).resolves.toMatchObject({
+        file_key: 'background/alice.png',
+      })
+
+      // 正对照：**同一把**锁确实锁着。少了这一句，「单飞整个不存在」的实现
+      // 也能让上一行通过——那时上一行断言的就不再是"两把锁"这件事。
+      await expect(
+        profileApi.uploadAvatar(new File(['y'], 'me2.png', { type: 'image/png' })),
+      ).rejects.toThrow('该头像正在上传中')
+    } finally {
+      // ⚠️ 必须放行：单飞 Map 是**模块级**状态，卡住一把锁会让同文件后面的用例
+      // 全部收到「该头像正在上传中」——一条失败伪装成一片失败。
+      // `runAvatarUpload(...).finally(...)` 在 reject 上同样会删键。
+      releaseAvatar()
+      await expect(avatarInFlight).rejects.toThrow('用例收尾')
+    }
+  })
+
+  it('扩展名/MIME/大小三道客户端闸与头像共用同一张表（doc:391-393 不按 avatar_target 分叉）', async () => {
+    // 三条各自都会真的变红：把 `validateAvatarFile` 里对应那一条删掉，
+    // 该行就会变成"请求发出去了"。
+    await expect(
+      profileApi.uploadBackground(new File(['x'], 'cover.bmp', { type: 'image/png' })),
+    ).rejects.toThrow('文件扩展名不支持')
+    await expect(
+      profileApi.uploadBackground(new File(['x'], 'cover.png', { type: 'image/bmp' })),
+    ).rejects.toThrow('不支持的文件格式')
+
+    const tooBig = new File(['x'], 'cover.png', { type: 'image/png' })
+    Object.defineProperty(tooBig, 'size', { value: 10 * 1024 * 1024 + 1 })
+    await expect(profileApi.uploadBackground(tooBig)).rejects.toThrow('最大 10MB')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // 正对照：合法文件确实会发出请求（否则上面那句 `not.toHaveBeenCalled` 恒真）。
+    mockHappyPath()
+    await profileApi.uploadBackground(pngFile())
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+})
+
+/**
+ * `DELETE /api/profile/background`（`个人资料管理.md:458-492`，§6）。
+ *
+ * 🔴 本端点的成功响应是**裸的**，而且是文档正面写出来的：
+ * doc:479-485 逐字 `{"background_url": "", "message": "背景图已重置为默认"}`，
+ * 没有 `success` / `code` / `data`；doc:460 也点明它不在 2026-08-28 那次并入的
+ * 范围内（「本端点**没有**变」）。所以它既不能走 `readEnvelope`（会抛
+ * 「响应缺少 data 字段」把正常响应判成失败），也不该挂 `legacyBare`
+ * （那记的是"形状没验证过"的欠账，而这里的形状是文档说的）。
+ */
+describe('profileApi.resetBackground（DELETE，文档正面写明的裸响应）', () => {
+  /** doc:479-485 的成功响应体，逐字。 */
+  const DOCUMENTED_BARE_BODY = {
+    background_url: '',
+    message: '背景图已重置为默认',
+  }
+
+  it('打的是 DELETE /api/profile/background，不带请求体（doc:462、:468）', async () => {
+    fetchMock.mockResolvedValueOnce(json(DOCUMENTED_BARE_BODY))
+
+    await profileApi.resetBackground()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toBe(`${PROFILE_BASE}/background`)
+    expect(init.method).toBe('DELETE')
+    expect(init.body).toBeUndefined()
+  })
+
+  it('文档那份**裸**响应体照常成功——换成 readEnvelope 本条立刻红', async () => {
+    // 这一条就是"别把它机械迁移成 readEnvelope"的执行体：`readEnvelope` 会在
+    // `unwrapData` 里走到「响应缺少 data 字段（收到的键：background_url, message）」，
+    // 抛 ApiShapeError 并上报一条误报的形状告警——把一次完全正常的重置判成失败。
+    // 已实测：把实现换成 readEnvelope，本行停在 rejects。
+    fetchMock.mockResolvedValueOnce(json(DOCUMENTED_BARE_BODY))
+
+    await expect(profileApi.resetBackground()).resolves.toBeUndefined()
+  })
+
+  it('不挂 legacyBare：成功路径上一条 warn 都没有', async () => {
+    // `legacyBare` 命中时 `apiEnvelope` 每次都打 `[api-envelope] … 仍是裸响应`。
+    // 给这个端点挂一条，就等于每一次成功重置都往控制台塞一笔**永远还不掉**的
+    // 假债，让 `grep legacyBare` 的结果贬值。本行钉住"没有那条 warn"。
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(json(DOCUMENTED_BARE_BODY))
+
+    await profileApi.resetBackground()
+
+    const warned: string[] = warnMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(warned.some((line) => line.includes('legacyBare'))).toBe(false)
+    // 正对照：同一个 spy 在**确实**该 warn 的路径上是响的（否则上一行恒真——
+    // spy 没接上、或 warn 根本不会打，两种情况都会让它通过）。
+    fetchMock.mockResolvedValueOnce(json(PROFILE_DTO))
+    await profileApi.getProfile()
+    const warnedAfter: string[] = warnMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    expect(warnedAfter.some((line) => line.includes('legacyBare'))).toBe(true)
+  })
+
+  it('响应体里的 background_url:"" 不会被带出这个函数（doc:491「前端不应拼接此值展示图片」）', async () => {
+    // 返回值是 `void`：那个 `""` 是"已重置"的哨兵值，不是地址。它连出 api 层
+    // 都不该，更不会去过 `toAbsoluteApiUrl` 或落进某个 `src`。
+    fetchMock.mockResolvedValueOnce(json(DOCUMENTED_BARE_BODY))
+
+    const result = await profileApi.resetBackground()
+
+    expect(result).toBeUndefined()
+  })
+
+  it('信封化了也照常成功——本层只判"成功了没有"，不碰 data', async () => {
+    // 这不是在预测后端会改，而是说明这一层的容差方向：`assertEnvelopeOk` 对
+    // 裸响应与信封响应**都**成立，所以哪天 §6 也被信封化，这里不需要动。
+    // 反方向（readEnvelope）则只对信封成立，那才是脆的那一侧。
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: null, message: '背景图已重置为默认' }),
+    )
+
+    await expect(profileApi.resetBackground()).resolves.toBeUndefined()
+  })
+
+  it('401 抛 ApiError(401) 并被判成认证错误', async () => {
+    // refreshToken 置空：401 会先打一次 /api/auth/refresh 再重试，
+    // 那会把 mockResolvedValueOnce 的序列整体错开。
+    useAuthStore.setState({ refreshToken: null })
+    fetchMock.mockResolvedValueOnce(json({ error: '未认证或 Token 无效' }, 401))
+
+    const error = await profileApi.resetBackground().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(401)
+    expect((error as ApiError).endpoint).toBe('DELETE /api/profile/background')
+    expect(isAuthError(error as Error)).toBe(true)
+  })
+
+  it('500 是可见的普通失败，带后端原文，且**不**判成认证错误', async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: '数据库写入失败' }, 500))
+
+    const error = await profileApi.resetBackground().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(500)
+    expect((error as Error).message).toBe('数据库写入失败')
+    expect(isAuthError(error as Error)).toBe(false)
+  })
+})
+
+/**
+ * `GET /api/profile/{user_id}/public`（`个人资料管理.md:219-284`，§3）。
+ *
+ * 两件事在这一组里被钉住：
+ * 1. **窄 DTO**：解析器不是 `UserProfile` 那一份。文档 :271-273 明写本端点不返回
+ *    `user_email` / `admin` / 四个隐私设置，复用自己那份解析器会把一份**完全合规**
+ *    的响应判成形状错误。
+ * 2. **严格四 + 宽松五**：文档 :223（四字段）与 :259-269 字段表 / :243-253 样例
+ *    （九字段）互相矛盾，而后端在本机不可达。取舍写在 `PublicProfileResponse` 上。
+ */
+describe('profileApi.getPublicProfile（窄 DTO，不与 UserProfile 同构）', () => {
+  /** doc:243-253 的样例，逐字（相对路径形态的两个 URL 也照抄）。 */
+  const PUBLIC_DTO = {
+    user_id: 'testuser001',
+    user_nickname: '测试用户',
+    user_signature: 'Hello, world!',
+    user_avatar_url: 'avatars/testuser001.jpg?t=1706000000',
+    background_url: 'avatars/background/testuser001.jpg?t=1706000000',
+    gender: 'female',
+    birthday: '1995-08-20',
+    region: '上海',
+    created_at: '2025-11-25T11:00:02.221791Z',
+  }
+
+  /** 只有 :223 那条正文承认的四个字段——"四字段说"的后端会返回这个。 */
+  const FOUR_FIELD_DTO = {
+    user_id: 'testuser001',
+    user_nickname: '测试用户',
+    user_signature: 'Hello, world!',
+    user_avatar_url: 'avatars/testuser001.jpg?t=1706000000',
+  }
+
+  it('打到 GET /api/profile/{user_id}/public', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PUBLIC_DTO }))
+
+    await profileApi.getPublicProfile('testuser001')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toBe(`${PROFILE_BASE}/testuser001/public`)
+    expect(init.method).toBe('GET')
+  })
+
+  it('九字段样例（doc:243-253）整份解出来，两个相对 URL 都补了基址（doc:264-265）', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PUBLIC_DTO }))
+
+    const info = await profileApi.getPublicProfile('testuser001')
+
+    expect(info).toEqual({
+      user_id: 'testuser001',
+      user_nickname: '测试用户',
+      user_signature: 'Hello, world!',
+      user_avatar_url: `${getApiBaseUrl()}/avatars/testuser001.jpg?t=1706000000`,
+      background_url: `${getApiBaseUrl()}/avatars/background/testuser001.jpg?t=1706000000`,
+      gender: 'female',
+      birthday: '1995-08-20',
+      region: '上海',
+      created_at: '2025-11-25T11:00:02.221791Z',
+    })
+  })
+
+  it('🔴 不是 UserProfile：九个键，一个不多——没有 admin / user_email / 四个隐私字段', async () => {
+    // 这一条同时钉两个方向：
+    // - 把解析器换成 `profileResponse`（复用 UserProfile 那份）→ 上面那份**合规**的
+    //   九字段响应会在 `bool(payload,'allow_search')` 抛「allow_search 缺失」，本条红；
+    // - 顺手往 DTO 里补几个自己那边的字段 → `Object.keys` 那句红。
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PUBLIC_DTO }))
+
+    const info = await profileApi.getPublicProfile('testuser001')
+
+    expect(Object.keys(info).sort()).toEqual(
+      [
+        'background_url',
+        'birthday',
+        'created_at',
+        'gender',
+        'region',
+        'user_avatar_url',
+        'user_id',
+        'user_nickname',
+        'user_signature',
+      ].sort(),
+    )
+    // doc:271-273 那张"不返回"清单，逐条。
+    for (const forbidden of [
+      'user_email',
+      'admin',
+      'allow_search',
+      'search_visible_by_id',
+      'friend_request_policy',
+      'group_invite_policy',
+    ]) {
+      expect(Object.hasOwn(info, forbidden)).toBe(false)
+    }
+  })
+
+  it('「四字段说」的后端也能用：五个有争议的字段 warn + null，请求整体成功', async () => {
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: FOUR_FIELD_DTO }))
+
+    const info = await profileApi.getPublicProfile('testuser001')
+
+    // 整体成功——这才是"宽松"的全部含义。把这五个升成严格档 → 本条红。
+    expect(info.user_id).toBe('testuser001')
+    expect(info.user_nickname).toBe('测试用户')
+    expect(info.background_url).toBeNull()
+    expect(info.gender).toBeNull()
+    expect(info.birthday).toBeNull()
+    expect(info.region).toBeNull()
+    expect(info.created_at).toBeNull()
+
+    // 宽松 ≠ 静默：五条 warn 各自点名到字段与端点。
+    const warned: string[] = warnMock.mock.calls.map((call: unknown[]) => String(call[0]))
+    for (const key of ['background_url', 'gender', 'birthday', 'region', 'created_at']) {
+      expect(
+        warned.some(
+          (line) =>
+            line.includes(key) &&
+            line.includes('缺失') &&
+            line.includes('GET /api/profile/{user_id}/public'),
+        ),
+      ).toBe(true)
+    }
+
+    // 正对照：字段齐了就一条 warn 都没有（否则上面那组 `some` 在"恒 warn"
+    // 的实现下同样通过）。
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PUBLIC_DTO }))
+    await profileApi.getPublicProfile('testuser001')
+    expect(warnMock).not.toHaveBeenCalled()
+  })
+
+  it('两种读法都保证的四个字段走严格档：少一个就抛形状错误，且点名', async () => {
+    // 这四个是本端点存在的理由。放宽它们，一份 `{}` 会被解析成四个 null——
+    // "这次请求什么都没拿到"被藏成一个看起来正常的对象。
+    for (const key of ['user_id', 'user_nickname', 'user_signature', 'user_avatar_url']) {
+      const wire: Record<string, unknown> = { ...PUBLIC_DTO }
+      delete wire[key]
+      fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: wire }))
+
+      const error = await profileApi.getPublicProfile('u').catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ApiShapeError)
+      expect((error as Error).message).toContain(key)
+      expect((error as ApiError).endpoint).toBe('GET /api/profile/{user_id}/public')
+    }
+  })
+
+  it('user_signature / user_avatar_url 的 null 与空串都归一成 null（字段表 :263-264 写的是 string|null）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        success: true,
+        code: 200,
+        data: { ...PUBLIC_DTO, user_signature: '', user_avatar_url: null },
+      }),
+    )
+
+    const info = await profileApi.getPublicProfile('testuser001')
+
+    expect(info.user_signature).toBeNull()
+    expect(info.user_avatar_url).toBeNull()
+  })
+
+  it('user_id 为 null 照抛：宽松档只放宽那五个，没有蔓延到严格档', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: { ...PUBLIC_DTO, user_id: null } }),
+    )
+
+    await expect(profileApi.getPublicProfile('u')).rejects.toBeInstanceOf(ApiShapeError)
+  })
+
+  it('404「用户不存在」是一个可分诊的答案，不是一次通用故障（doc:277-284）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ success: false, code: 404, error: '用户不存在' }, 404),
+    )
+
+    const error = await profileApi.getPublicProfile('nobody').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(404)
+    // 后端原文原样上抛，不被一句自造的「加载失败」替换。
+    expect((error as Error).message).toBe('用户不存在')
+    expect(isProfileNotFound(error)).toBe(true)
+    // 404 **不是**认证失败：判真会让调用点静默跳登录页。
+    expect(isAuthError(error as Error)).toBe(false)
+  })
+
+  it('isProfileNotFound 的负对照：500 与形状错误都不是「用户不存在」', async () => {
+    // 少了这一条，`isProfileNotFound` 写成 `return true` 也能让上一条通过。
+    fetchMock.mockResolvedValueOnce(json({ error: '服务器内部错误' }, 500))
+    expect(isProfileNotFound(await profileApi.getPublicProfile('u').catch((e: unknown) => e))).toBe(
+      false,
+    )
+
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: {} }))
+    expect(isProfileNotFound(await profileApi.getPublicProfile('u').catch((e: unknown) => e))).toBe(
+      false,
+    )
+
+    expect(isProfileNotFound(new Error('随便一个错误'))).toBe(false)
+    expect(isProfileNotFound(null)).toBe(false)
+  })
+
+  it('user_id 里的斜杠被编码，不会把路径改掉', async () => {
+    // 文档给的 id（doc:236 `testuser001`）编码是恒等的，所以对真实取值零差异；
+    // 这一条钉的是畸形 id 不会造出 `…/a/b/public` 这种打到别的路由上的 URL。
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: PUBLIC_DTO }))
+
+    await profileApi.getPublicProfile('a/b')
+
+    expect(String((fetchMock.mock.calls[0] as [string, RequestInit])[0])).toBe(
+      `${PROFILE_BASE}/a%2Fb/public`,
+    )
+  })
+})
+
+/**
+ * 「默认封面」在这条 API 上有**三种**表示，渲染点必须把它们判成同一件事：
+ * 数据库列 `null`（doc:464）、`GET /api/profile` 读出来的 `null`（字段表 doc:99），
+ * 以及 `DELETE /api/profile/background` 响应里的空串 `""`（doc:482、:491）。
+ */
+describe('coverImageSrc（默认封面的三种表示归一）', () => {
+  it('null / undefined / 空串 / 纯空白都是"默认封面"，返回 undefined', () => {
+    // 🔴 `""` 那一条是本组的重点：把实现换成 `backgroundUrl ?? undefined`
+    // （只挡 null/undefined）→ 本条红（停在空串那一例上；空白那一例同理，
+    // 只是断言在它前面就先失败了，看不到）。
+    // 为什么它是真 bug：裸 `<img src="">` 会被浏览器解析成**当前页面地址**
+    // 并真的发一次请求，把整张 HTML 当图片下载。
+    expect(coverImageSrc(null)).toBeUndefined()
+    expect(coverImageSrc(undefined)).toBeUndefined()
+    expect(coverImageSrc('')).toBeUndefined()
+    expect(coverImageSrc('   ')).toBeUndefined()
+  })
+
+  it('正对照：真实地址原样返回，一个字节都不动', () => {
+    // 少了这一条，`coverImageSrc` 写成 `() => undefined` 也能让上一条通过。
+    const url = `${getApiBaseUrl()}/avatars/background/u1.jpg?t=1706000000`
+    expect(coverImageSrc(url)).toBe(url)
+    // 相对路径同样原样返回：补基址是 api 出口的事，不是渲染点的事。
+    expect(coverImageSrc('avatars/background/u1.jpg')).toBe('avatars/background/u1.jpg')
   })
 })

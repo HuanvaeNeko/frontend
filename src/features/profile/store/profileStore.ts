@@ -52,6 +52,8 @@ interface ProfileState {
   updateProfile: (updates: UpdateProfileRequest) => Promise<void>
   uploadAvatar: (file: File) => Promise<void>
   setAvatarUrl: (url: string) => void
+  setBackgroundUrl: (url: string | null) => void
+  resetBackground: () => Promise<void>
   clearProfile: () => void
   clearError: () => void
 }
@@ -280,6 +282,92 @@ export const useProfileStore = create<ProfileState>()(
         const currentProfile = get().profile
         if (!currentProfile) return
         set({ profile: { ...currentProfile, user_avatar_url: url } })
+      },
+
+      /**
+       * 资料背景图上传成功的落点，与 {@link setAvatarUrl} 逐条同型、同理由。
+       *
+       * `url` 是 `upload/confirm` 返回的 `file_url`，在 `storageApi` 出口
+       * （`confirmUploadResponse` 里的 `toAbsoluteApiUrl`）已经是绝对地址，这里不再拼。
+       * 后端在 confirm 那一步已经把它写进 `users."user-background-url"`
+       * （`个人资料管理.md:410-411`、:421 的落点表），所以这只是把屏幕对齐到
+       * **已经落库**的事实上，不是乐观更新。
+       *
+       * ## 为什么参数收 `string | null` 而 `setAvatarUrl` 只收 `string`
+       *
+       * 背景图有一个头像没有的状态：**恢复默认封面**。`null` 就是那个状态
+       * （`个人资料管理.md:464`「后端将 `background_url` 置为 `null`」、
+       * 字段表 doc:99「null=默认封面」）。
+       *
+       * 🔴 **不要传 `DELETE /api/profile/background` 响应里的那个 `""`。**
+       * doc:491 逐字：「恒为空字符串 `""`……前端不应拼接此值展示图片」。
+       * 重置那条路径走 {@link ProfileState.resetBackground}，它写进去的是 `null`。
+       * 万一 `""` 还是从别处漏进来，渲染点的 {@link coverImageSrc} 是第二道
+       * ——它把 `''` 和 `null` 判成同一个"默认封面"，`??` 做不到这一点。
+       *
+       * `profile` 还是 `null` 时什么都不做，理由同 {@link setAvatarUrl}。
+       */
+      setBackgroundUrl: (url: string | null) => {
+        const currentProfile = get().profile
+        if (!currentProfile) return
+        set({ profile: { ...currentProfile, background_url: url } })
+      },
+
+      /**
+       * 把资料背景图重置为默认封面
+       * DELETE /api/profile/background（`个人资料管理.md:458-492`）
+       *
+       * ## 为什么这一条进了 store，而上传背景图没有
+       *
+       * 判据与 `uploadAvatar` 那段 JSDoc 里写的是同一条：本 store 的 `isLoading`
+       * 同时驱动两个资料页的「保存更改」按钮。**上传**要报进度、可能持续好几秒，
+       * 接进来会让整段传输期间保存按钮转圈变灰，所以它留在组件里自管局部态
+       * （`uploadBackground` 与 `uploadAvatar` 同型）。**重置**是一次没有进度的
+       * DELETE，占用 `isLoading` 的时长与 {@link ProfileState.updateProfile} 自己
+       * 那一次 PUT 同量级——那一条本来就这么用，所以这里不构成新的串扰。
+       *
+       * ## ⚠️ DELETE 与随后那次读回**不在同一个 `try` 里**，这是有意的
+       *
+       * 与 `updateProfile` 逐条同构。DELETE 一旦 200，后端就已经把
+       * `users."user-background-url"` 置成 `null` 了（doc:464），这次重置**已经提交**。
+       * 把读回塞回同一个 `try` 会复活那个形态：读回 500 ⇒ 调用点弹一条红色的
+       * 「重置失败」而封面其实已经没了；读回 401 ⇒ `settleError` 认出认证错误，
+       * 一次成功的重置以**无解释登出**收场。
+       *
+       * 所以 200 之后这条路径上没有失败出口：先把 `background_url` 打成 `null`
+       * （封面区读的就是它），再去拉齐 `updated_at` 等其余字段；拉不到只留一条
+       * `console.error`。
+       *
+       * 🔴 写进去的是 `null`，**不是**响应里那个 `""`——`profileApi.resetBackground`
+       * 返回 `void`，那个 `""` 连出 api 层都不会（doc:491「前端不应拼接此值展示图片」）。
+       *
+       * 三道会话闸与 `updateProfile` 逐条同型，位置是：`settleError` 之前、
+       * 本地补丁那次 `set()` 之前、读回落地那次 `set()` 之前。一场已经死掉的会话
+       * 不能替**当前**这个人清凭证跳登录页，也不能把它的重置结果或读回写进
+       * 当前这个人的资料。三道各有一条用例，删掉任何一道都会有一条变红
+       * （`profileStore.test.ts` 的「resetBackground 的每一道闸」）。
+       */
+      resetBackground: async () => {
+        const stillMine = sessionBound()
+        set({ isLoading: true, error: null })
+        try {
+          await profileApi.resetBackground()
+        } catch (error) {
+          if (!stillMine()) throw error
+          settleError(error, '重置资料背景图失败', set)
+          throw error
+        }
+
+        if (!stillMine()) return
+        const current = get().profile
+        if (current) set({ profile: { ...current, background_url: null } })
+
+        const reloaded = await profileApi.getProfile().catch((error: unknown) => {
+          console.error('资料背景图已重置，重新拉取完整资料失败:', error)
+          return null
+        })
+        if (!stillMine()) return
+        set(reloaded ? { profile: reloaded, isLoading: false } : { isLoading: false })
       },
 
       /**
