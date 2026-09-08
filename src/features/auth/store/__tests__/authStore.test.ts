@@ -86,6 +86,19 @@ describe('authStore.login —— 信封解包', () => {
     expect(state.accessToken).toBeNull()
   })
 
+  it('login 不回 refresh_token 时仍然拒绝（refresh 那边可缺席，login 没有旧值可沿用）', async () => {
+    // 钉住两个解析器的分野：同一份"只有 access_token + expires_in"的 data，
+    // refresh 放行、login 必须拒——否则会留下"已登录但永远刷新不了"的半登录态。
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { access_token: 'AT', token_type: 'Bearer', expires_in: 900 } }),
+    )
+
+    await expect(useAuthStore.getState().login({ user_id: 'u1', password: 'p' })).rejects.toThrow(
+      /refresh_token/,
+    )
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
   it('expires_in 为 null 时抛错，而不是把 NaN 写进 tokenExpiry', async () => {
     // 解包层的 require 判定是 `payload[key] === undefined`，null 算"存在"——
     // 所以这里用的是 parse 而不是 require。这条用例就是那个选择的护栏。
@@ -190,14 +203,46 @@ describe('authStore.refreshAccessToken —— 与 login 逐字同构的第二处
     // 旧行为：resolve、accessToken=undefined、refreshToken=undefined 落盘持久化，
     // 此后 401 重试分支（`&& authStore.refreshToken`）永远进不去，故障不可逆。
     useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    // 这个 fixture 同时缺 refresh_token 与 expires_in。refresh_token 缺席自 2026-09-09
+    // 起是合法形状（见下一条），所以现在真正拦住它的是 expires_in。
     fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { access_token: 'AT2' } }))
 
-    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow(/refresh_token/)
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow(/expires_in/)
 
     const state = useAuthStore.getState()
     expect(state.accessToken).toBeNull()
     expect(state.refreshToken).toBeNull()
     expect(state.isAuthenticated).toBe(false)
+  })
+
+  it('线上实测形状：/refresh 不回 refresh_token 时沿用旧的，不再当成形状错误', async () => {
+    // 2026-09-09 huanvae.cn 控制台原样：{access_token, token_type: 'Bearer', expires_in: 900}。
+    // 此前这条形状每次都抛 ApiShapeError → clearCredentials → 15 分钟内被登出。
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { access_token: 'AT2', token_type: 'Bearer', expires_in: 900 } }),
+    )
+
+    await useAuthStore.getState().refreshAccessToken()
+
+    const state = useAuthStore.getState()
+    expect(state.accessToken).toBe('AT2')
+    // 正对照是本 describe 第一条：回了 RT2 就写 RT2。这里没回，必须还是 RT0——
+    // 写成 undefined/null 会让 401 重试分支（`&& authStore.refreshToken`）永远进不去。
+    expect(state.refreshToken).toBe('RT0')
+    expect(state.isAuthenticated).toBe(true)
+    expect(Number.isFinite(state.tokenExpiry)).toBe(true)
+  })
+
+  it('refresh_token 给了但是空串：仍是形状错误，照旧清票据并抛错', async () => {
+    // "缺席可放行"不等于"什么都放行"：给了一个非法值就是后端形状坏了
+    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { access_token: 'AT2', refresh_token: '', expires_in: 900 } }),
+    )
+
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow(/refresh_token/)
+    expect(useAuthStore.getState().accessToken).toBeNull()
   })
 })
 
