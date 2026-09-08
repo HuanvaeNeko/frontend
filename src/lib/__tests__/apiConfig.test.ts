@@ -137,10 +137,36 @@ describe('toApiRelativePath —— 发回后端时把绝对地址还原成相对
     expect(toApiRelativePath('/avatars/alice.png?t=1')).toBe('avatars/alice.png?t=1')
   })
 
-  it('与 toAbsoluteApiUrl 往返一致：补基址再还原 = 原值', () => {
+  it('与 toAbsoluteApiUrl 往返一致 —— 仅限 URL 不会重写的字符', () => {
     setApiBaseUrl(PROXY)
+    // 后端生成的头像路径就是这个形状（`个人资料管理.md:74` 的样例
+    // `"avatars/testuser001.jpg?t=1706000000"`），全是 URL 不碰的字符。
     const relative = 'avatars/alice.png?t=1706000000'
     expect(toApiRelativePath(toAbsoluteApiUrl(relative))).toBe(relative)
+  })
+
+  it('往返**不是逐字**的：含空格 / 非 ASCII 的路径会被百分号编码，两条分支给出不同的字节', () => {
+    // JSDoc 里曾经写着"两边发出去的结果逐字相同"，那是错的，而它正是"可以把本函数
+    // 当逆运算用"这个说法的全部依据。差异在 toAbsoluteApiUrl 的 `new URL().href`
+    // 那一步产生：相对分支返回原始字节，绝对分支读的是 pathname。
+    //
+    // 后果具体是：一个还没迁移过的客户端（落盘值是相对路径）和一个迁移过的客户端
+    // （落盘值是绝对地址），同一张头像发给 webrtc 的 avatar_url 不是同一个字符串。
+    setApiBaseUrl(PROXY)
+    const spaced = 'avatars/a b.png'
+
+    // 相对分支：原样（只去前导斜杠）
+    expect(toApiRelativePath(spaced)).toBe('avatars/a b.png')
+    // 绝对分支：过了一次 URL，空格变成 %20
+    expect(toApiRelativePath(toAbsoluteApiUrl(spaced))).toBe('avatars/a%20b.png')
+    // 这两个就是"同一张头像的两种 wire 值"
+    expect(toApiRelativePath(spaced)).not.toBe(toApiRelativePath(toAbsoluteApiUrl(spaced)))
+
+    // 非 ASCII 同理（中文文件名）
+    expect(toApiRelativePath('avatars/中文.png')).toBe('avatars/中文.png')
+    expect(toApiRelativePath(toAbsoluteApiUrl('avatars/中文.png'))).toBe(
+      'avatars/%E4%B8%AD%E6%96%87.png',
+    )
   })
 
   it('hash 一并保留', () => {

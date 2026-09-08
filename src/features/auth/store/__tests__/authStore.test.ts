@@ -527,3 +527,47 @@ describe('auth-storage 的 persist 迁移', () => {
     expect(useAuthStore.getState().user?.avatar_url).toBe(absolute('avatars/u1.png?t=9'))
   })
 })
+
+/**
+ * `setTokens` 今天零调用点，所以这几条钉的是**给下一个作者的陷阱**，不是现网行为。
+ *
+ * 它不调 `beginSession()`（理由见它自己的注释：清盘会毁掉同一个人的资料），
+ * 于是死窗口里的落盘闸门也不会被重新打开：`set()` 写内存成功、写盘那一次被丢弃
+ * **并把 `auth-storage` 从盘上抹掉**——内存说已登录、盘上说已登出，下一次整页加载
+ * 把人登出，中间一处报错都没有。这正是本文件顶部说的那类故障（"坏"和"好"从外面
+ * 看长得一样），所以按 `registerPristineStoreReset` 的先例用运行时抛错拦住。
+ */
+describe('setTokens —— 会话进行中才成立的前置条件', () => {
+  it('会话结束之后调用直接抛错，而不是留下"内存已登录、盘上已登出"的半截状态', async () => {
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    useAuthStore.getState().clearAuth()
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+
+    expect(() =>
+      useAuthStore
+        .getState()
+        .setTokens({ accessToken: 'AT-X', refreshToken: 'RT-X', expiresIn: 3600 }),
+    ).toThrow(/进行中的会话/)
+
+    // 抛错发生在 set() 之前：内存也没被写脏，两侧口径一致。
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+  })
+
+  it('正对照：会话进行中调用照常写内存并落盘', async () => {
+    // 没有这一条，把实现改成"永远抛错"也会绿。
+    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+
+    useAuthStore
+      .getState()
+      .setTokens({ accessToken: 'AT-X', refreshToken: 'RT-X', expiresIn: 3600 })
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-X')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(localStorage.getItem('auth-storage')).toContain('AT-X')
+  })
+})

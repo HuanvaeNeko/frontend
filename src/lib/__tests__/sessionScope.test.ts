@@ -305,15 +305,84 @@ describe('会话世代号', () => {
     expect(isSameSession(currentSessionGeneration())).toBe(true)
   })
 
-  it('每结束一场会话都换一个新号，不是在两个值之间来回翻', () => {
+  it('beginSession 也换号：开场之前取到的世代号，在新会话里不再算数', () => {
+    // 这条钉的是「换人」而不是「登出」：`clearCredentials` 那一档按定义不结束会话，
+    // 所以 A 那边在飞的请求落地时，唯一能证明"已经不是你那一场了"的事件就是
+    // B 的 beginSession()。只在 endSession 里 +1 的实现，这条红。
+    const before = currentSessionGeneration()
+    // 正对照：还没跨边界时判真，说明下面判假的是**跨边界**而不是 pinned 值本身。
+    expect(isSameSession(before)).toBe(true)
+
+    beginSession()
+
+    expect(isSameSession(before)).toBe(false)
+    // 正对照：新会话里重新取的那个是"当前"，变红的只是**旧**票据。
+    expect(isSameSession(currentSessionGeneration())).toBe(true)
+  })
+
+  it('每跨一个边界都换一个新号，不是在两个值之间来回翻', () => {
+    // 四个时点取四个号：登出、登录、再登出、再登录。全不相同才排除得掉
+    // 「在两个值之间翻」和「只有 endSession 换号」两种实现。
     const first = currentSessionGeneration()
     endSession()
     const second = currentSessionGeneration()
     beginSession()
-    endSession()
     const third = currentSessionGeneration()
+    endSession()
+    const fourth = currentSessionGeneration()
 
-    expect(new Set([first, second, third]).size).toBe(3)
+    expect(new Set([first, second, third, fourth]).size).toBe(4)
+  })
+
+  it('重置回调里嵌套跨边界时，世代号只跳一格', () => {
+    // 防重入的 return 若放在递增之后，一次登出换出的号会随回调里嵌套了几层而变——
+    // 世代号本身还是"新的"，但"跨了几个边界"不再等于"换了几场会话"，
+    // 而 `pinSession` 的语义正建立在后者上。
+    const unregister = registerSessionReset(() => {
+      endSession()
+    })
+    const before = currentSessionGeneration()
+
+    endSession()
+    unregister()
+
+    expect(currentSessionGeneration()).toBe(before + 1)
+  })
+})
+
+/**
+ * 内存副本那一半：{@link registerSessionReset} 登记的回调必须在**两个**边界上都跑。
+ * 只挂在 `endSession` 上时，`clearCredentials`（不结束会话）留在内存里的东西
+ * 没有任何东西会去动它——落盘那一半有 `beginSession` 的清盘兜底，内存那一半没有。
+ */
+describe('会话边界 —— 内存重置在两侧都跑', () => {
+  it('beginSession 也跑登记过的内存重置', () => {
+    const reset = vi.fn()
+    const unregister = registerSessionReset(reset)
+
+    beginSession()
+    expect(reset).toHaveBeenCalledTimes(1)
+
+    // 正对照：注销之后同一个边界不再调用，说明上面那次是登记生效而不是别处调的。
+    unregister()
+    beginSession()
+    expect(reset).toHaveBeenCalledTimes(1)
+  })
+
+  it('beginSession 同样是「先跑回调、再清盘」', () => {
+    // 顺序反过来的话，回调里那次落盘写入会活过这场清盘，跟着新会话一起走。
+    const unregister = registerSessionReset(() => {
+      localStorage.setItem('written-by-reset', '重置时落的盘')
+      // 正对照：同一个回调里的设备级键必须活下来，否则"没了"可能只是清盘把
+      // 所有东西都删了。
+      localStorage.setItem(DEVICE_KEY, DEVICE_VALUE)
+    })
+
+    beginSession()
+    unregister()
+
+    expect(localStorage.getItem('written-by-reset')).toBeNull()
+    expectDeviceControlSurvived()
   })
 })
 

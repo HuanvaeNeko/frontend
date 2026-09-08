@@ -351,3 +351,205 @@ describe('登出那一刻还在飞的请求', () => {
     expect(localStorage.getItem('profile-storage')).toContain('Alice')
   })
 })
+
+/**
+ * 换人这件事有**两个**时点：A 的会话结束，和 B 的会话开始。上面几组用例钉的都是
+ * 前一个；这一组钉后一个——「一次写入必须属于当前活着的那一场会话」这条不变量
+ * （定义在 `lib/sessionScope.ts` 顶部）在**会话开始**那一侧同样要成立。
+ *
+ * 三条都是同一个形状：A 在自己的会话里发出一个请求，请求还在飞的时候会话换人，
+ * 响应落在 B 的会话里。三条分别走三条不同的路：刷新成功、内存副本、以及
+ * 一份 `fetchWithAuth` 副本的 401 分支。
+ */
+describe('会话边界：属于上一场会话的写入落在 B 的会话里', () => {
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  /** 一个手动控制何时落地的 fetch 响应。 */
+  const deferredResponse = () => {
+    let release!: (response: Response) => void
+    let fail!: (error: unknown) => void
+    const promise = new Promise<Response>((resolve, reject) => {
+      release = resolve
+      fail = reject
+    })
+    return { promise, release, fail }
+  }
+
+  const loginAs = async (nickname: string) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(loginEnvelope({ nickname })))
+    await useAuthStore.getState().login({ user_id: nickname, password: 'p' })
+  }
+
+  it('clearCredentials 之后 B 登录：A 那次刷新轮换出来的新 token 进不了 auth-storage', async () => {
+    await loginAs('alice')
+
+    const pending = deferredResponse()
+    fetchMock.mockImplementationOnce(() => pending.promise)
+    const aliceRefresh = useAuthStore.getState().refreshAccessToken()
+
+    // 第三档：只丢票据、不结束会话，所以**不**经过 endSession()。
+    useAuthStore.getState().clearCredentials()
+
+    await loginAs('bob')
+    // 正对照：B 的 token 确实落了盘。没有这一句，下面的 not.toContain
+    // 可能只是因为 auth-storage 从头到尾就没被写过。
+    expect(localStorage.getItem('auth-storage')).toContain('AT-bob')
+
+    pending.release(
+      jsonResponse({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-ALICE-NEW', refresh_token: 'RT-ALICE-NEW', expires_in: 3600 },
+      }),
+    )
+    const settled = await aliceRefresh.then(
+      () => 'resolved' as const,
+      () => 'rejected' as const,
+    )
+
+    expect(localStorage.getItem('auth-storage')).not.toContain('AT-ALICE-NEW')
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().refreshToken).toBe('RT-bob')
+    // 落地时那场会话已经不在了，所以这次刷新只能失败——它换回来的那对 token
+    // 属于一个不再存在的人。
+    expect(settled).toBe('rejected')
+  })
+
+  it('传输层刷新失败留下的内存副本（含明文 aiApiKey）进不了 B 的会话', async () => {
+    await loginAs('alice')
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-alice', useCustomApi: true })
+    // 正对照：内存和盘上**都**确实有。缺内存那一句的话，下面的 toBe('') 可以被
+    // "setApiConfig 根本没写进内存" 骗过去。
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-alice')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-alice')
+
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+    // 第三档确实没毁掉它——这正是它存在的理由，网络抖一下不该销毁一份
+    // 只有用户自己知道、应用无从恢复的数据。
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-alice')
+
+    await loginAs('bob')
+
+    // 但它只能活到**下一场会话开始**为止：B 的 AI 请求不会带上 A 的 X-API-Key。
+    expect(useApiConfigStore.getState().aiApiKey).toBe('')
+    expect(useApiConfigStore.getState().useCustomApi).toBe(false)
+    expect(localStorage.getItem('api-config-storage')).toBeNull()
+  })
+
+  it('A 登出前发出的请求在 B 的会话里才 401：不刷新、不登出、不清 B 的盘', async () => {
+    await loginAs('alice')
+
+    const pending = deferredResponse()
+    fetchMock.mockImplementationOnce(() => pending.promise)
+    const aliceDevices = authApi.getDevices()
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
+
+    // 正对照：B 的会话是活的，而且他的密钥确实落了盘。
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+
+    // 这一条是给"万一真的去刷新了"准备的：刷新会失败，于是 401 分支会走到
+    // clearAuth() + 清盘。它没被消费，正是下面 toHaveBeenCalledTimes(3) 的含义。
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    pending.release(
+      jsonResponse({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
+    )
+
+    await expect(aliceDevices).rejects.toThrow()
+
+    // 三次 fetch = alice 登录 + devices + bob 登录。第四次（刷新）没有发生，
+    // 也就是说这条 401 一步都没往下走。
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+  })
+
+  it('B 自己的刷新不会被 A 那一次还在飞的刷新代答', async () => {
+    // 单飞锁（`refreshInFlight`）是 7ee0598 为压级联登出加的，它是模块级的，
+    // 于是换人之后 B 的第一次刷新会拿到 A 那一次的 promise：A 失败 = B 失败，
+    // 而每一份 fetchWithAuth 都把"刷新失败"当成"该登出了"。
+    await loginAs('alice')
+
+    const pending = deferredResponse()
+    fetchMock.mockImplementationOnce(() => pending.promise)
+    const aliceRefresh = useAuthStore.getState().refreshAccessToken()
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-bob-2', refresh_token: 'RT-bob-2', expires_in: 3600 },
+      }),
+    )
+    const bobRefresh = useAuthStore.getState().refreshAccessToken()
+
+    // A 那一次现在才失败。
+    pending.fail(new TypeError('Failed to fetch'))
+    await expect(aliceRefresh).rejects.toThrow()
+
+    // B 那一次是**另一个** promise，正常拿到自己的新 token。
+    await bobRefresh
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob-2')
+    expect(useAuthStore.getState().refreshToken).toBe('RT-bob-2')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+  })
+
+  it('A 那一次迟到的结算不会把 B 的单飞锁槽位抹掉', async () => {
+    // 上一条钉的是"B 不会拿到 A 的 promise"，这一条钉的是反方向：A 结算时那句
+    // `refreshInFlight = null` 若不认自己占的是不是当前这个槽位，就会把 B 已经
+    // 放进去的那一次抹掉——单飞锁在换人后的头一个 RTT 内失效，7ee0598 修掉的
+    // 级联刷新（一批并发请求各发一次 refresh、互相作废对方的 token）原样复发。
+    const aliceCall = deferredResponse()
+    const bobCall = deferredResponse()
+
+    await loginAs('alice')
+    fetchMock.mockImplementationOnce(() => aliceCall.promise)
+    const aliceRefresh = useAuthStore.getState().refreshAccessToken()
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+
+    fetchMock.mockImplementationOnce(() => bobCall.promise)
+    const bobRefresh = useAuthStore.getState().refreshAccessToken()
+    // 到这里一共 4 次 fetch：alice 登录、alice 刷新、bob 登录、bob 刷新。
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+
+    // A 那一次现在才落地并结算（会话已经不是它那一场，所以 reject）。
+    aliceCall.release(
+      jsonResponse({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-ALICE-NEW', refresh_token: 'RT-ALICE-NEW', expires_in: 3600 },
+      }),
+    )
+    await expect(aliceRefresh).rejects.toThrow(/session end/)
+
+    // B 的槽位必须还在：他的并发调用者继续共享同一次请求，不另发。
+    const alsoBob = useAuthStore.getState().refreshAccessToken()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+
+    bobCall.release(
+      jsonResponse({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-bob-2', refresh_token: 'RT-bob-2', expires_in: 3600 },
+      }),
+    )
+    await Promise.all([bobRefresh, alsoBob])
+    // 正对照：那一次共享的请求确实成功了，不是"根本没发过所以也没多发"。
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob-2')
+  })
+})

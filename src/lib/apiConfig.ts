@@ -173,9 +173,26 @@ export function toAbsoluteApiUrl(path: string | null | undefined): string | unde
  * 转给房间里所有人。这里不比较 origin，直接丢掉它，剩下 `pathname + search + hash`。
  *
  * 已经是相对路径的值**原样返回**（只去掉前导 `/`），不进 `URL` 解析器：
- * 后端给的字节不该被百分号编码改写。因此本函数对 `toAbsoluteApiUrl` 的输出与
- * 输入都成立，也就与"落盘值是绝对还是相对"无关——`auth-storage` 的旧值是相对的，
- * 迁移后是绝对的，两边发出去的结果逐字相同。
+ * 后端给的字节不该被百分号编码改写。
+ *
+ * ## ⚠️ 它不是**逐字**的逆运算
+ *
+ * 两条分支对同一个路径可以给出不同的字节：相对分支返回原始字节，绝对分支读的是
+ * `new URL(...).pathname`，而 `URL` 会把空格、非 ASCII 等百分号编码掉——
+ * `avatars/a b.png` 与 `avatars/中文.png` 经 {@link toAbsoluteApiUrl} 再回到这里，
+ * 出来的是 `avatars/a%20b.png` / `avatars/%E4%B8%AD%E6%96%87.png`。也就是说
+ * **一个还没迁移过的客户端和一个迁移过的客户端，同一张头像发出去的 wire 值不同**，
+ * 而这个差异是在 `toAbsoluteApiUrl` 那一步产生的，本函数只是没有（也不该）把它撤销：
+ * 撤销要 `decodeURIComponent`，它会把后端有意编码进路径的 `%2F` 之类一起解开，
+ * 那是把一个不常见的差异换成一个更难查的破坏。
+ *
+ * 差异范围就是 `URL` 会重写的那些字符。本后端生成的头像路径是
+ * `avatars/<user_id>.<ext>`（`个人资料管理.md:74` 的样例
+ * `"avatars/testuser001.jpg?t=1706000000"`），落在两条分支逐字相同的那一档里，
+ * 所以"落盘值是绝对还是相对"今天观测不到差别——但那是数据形状给的，不是本函数
+ * 保证的。`src/lib/__tests__/apiConfig.test.ts` 里「两条分支对含空格的路径给出
+ * 不同的字节」那条用例把这个差异本身钉住，免得下一个人照着"逆运算"三个字
+ * 去依赖一个不存在的保证。
  *
  * `data:` / `blob:` 之类不是后端存储路径，返回 `undefined`（= 不带这个字段），
  * 而不是把一个几 MB 的 data URI 发给信令服务器。

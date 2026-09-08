@@ -9,6 +9,8 @@ import {
   currentSessionGeneration,
   endSession,
   isSameSession,
+  isSessionLive,
+  registerSessionReset,
   sessionScopedLocalStorage,
 } from '@/lib/sessionScope'
 
@@ -120,10 +122,15 @@ const AUTH_TOKEN_LEGACY_BARE = {
 /**
  * 刷新单飞锁：正在进行的 `POST /api/auth/refresh`，并发调用者共享它。
  * 放在模块级而不是 store state 里：它不该被 persist 落盘，也不该触发订阅者重渲染。
+ *
+ * ⚠️ 它是**会话内**的锁，见下面那个边界回调：跨过会话边界必须置空。不置空的话，
+ * A 那一次还在飞的刷新会被交给 B——每一份 `fetchWithAuth` 都把"刷新失败"当成
+ * "该登出了"，于是 A 的一次网络失败（或那句 `Token refresh landed after session
+ * end`）会让刚登录的 B 被清盘 + 踢回登录页。
  */
 let refreshInFlight: Promise<void> | null = null
 
-/** 上一次成功轮换 token 的时刻（毫秒时间戳）；0 = 本次会话内还没轮换过。`clearAuth` 会归零。 */
+/** 上一次成功轮换 token 的时刻（毫秒时间戳）；0 = 本场会话内还没轮换过。 */
 let lastRotatedAt = 0
 
 /**
@@ -131,6 +138,20 @@ let lastRotatedAt = 0
  * 10 秒远大于一批并发请求的往返时间，又远小于 access token 的 15 分钟有效期。
  */
 const RECENT_ROTATION_WINDOW_MS = 10_000
+
+/**
+ * 这两个模块级变量都是**这一场会话**的状态，所以挂在会话边界上一起清，而不是
+ * 在 `clearAuth` 里手写一行——`clearCredentials` 与 `login` 都不经过 `clearAuth`，
+ * 手写那一行只覆盖三条路径里的一条。
+ *
+ * - `refreshInFlight`：理由见上。
+ * - `lastRotatedAt`：「刚轮换过就跳过」是用来压级联的。它跨会话活着的话，B 登录后
+ *   10 秒内、且 token 不临期的那次刷新会被当成 A 那一批级联而跳过。
+ */
+registerSessionReset(() => {
+  refreshInFlight = null
+  lastRotatedAt = 0
+})
 
 /**
  * 落盘格式版本。`1` = `user.avatar_url` 是**绝对地址**。
@@ -427,20 +448,31 @@ export const useAuthStore = create<AuthStore>()(
             // `aiApiKey`——只有他知道、应用无从恢复。两侧代价不对称（清少了泄露、
             // 清多了毁数据），所以只有后端**真的**说凭证不认（401）才算会话结束。
             // 分类的定义写在 `lib/sessionScope.ts` 顶部。
+            //
+            // ⚠️ 分档之前先问「这次失败还属于当前这场会话吗」：`get()` 拿到的是**当前**
+            // 的 store，而这次刷新是在上一场会话里发出去的。会话中途换了人的话，
+            // 它既证明不了当前这个人的凭证有问题（用的根本不是他的 token），
+            // 更没有资格去清当前这个人的东西——`clearAuth()` 会连带清盘，
+            // `clearCredentials()` 会把刚登录的人的票据抹掉。
+            if (!isSameSession(session)) {
+              throw error
+            }
             if (error instanceof ApiError && error.status === 401) {
               get().clearAuth()
             } else {
               // 传输层失败：只丢票据，其余一个字节不动。这不会变成泄露口子——
-              // 下一场会话必经 `beginSession()`，它开场就清盘。
+              // 下一场会话必经 `beginSession()`，它开场就跑内存重置 + 清盘。
               get().clearCredentials()
             }
             throw error
           }
 
           if (!isSameSession(session)) {
-            // 这对 token 属于一场**已经结束**的会话。原样写下去的话，`set()` 会把一对
-            // 刚轮换出来、当前有效的 token 重新写进内存并 persist 落盘，等着下一个人。
-            // 不走上面的失败分支：凭证不是"坏了"，而是"不再属于任何人"。
+            // 这对 token 属于一场**已经过去**的会话（结束了，或者已经换了下一场）。
+            // 原样写下去的话，`set()` 会把一对刚轮换出来、当前有效的 token 重新写进
+            // 内存并 persist 落盘，等着下一个人。不走上面的失败分支：凭证不是"坏了"，
+            // 而是"不再属于任何人"。这个 reject 只会交给**同一场会话**里的等待者——
+            // 单飞锁跨边界时被置空，见 `refreshInFlight` 上方的边界回调。
             throw new Error('Token refresh landed after session end')
           }
 
@@ -463,6 +495,10 @@ export const useAuthStore = create<AuthStore>()(
         // 5 个 refresh 带着同一个 refresh token 同时出去；后端每次都轮换一对新 token，
         // 5 个响应以任意顺序落进 store，最后写入的那对已被后来的轮换作废 → 全部 401
         // → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
+        //
+        // 锁是**会话内**的：跨过会话边界时那个边界回调把它置空，所以这里读到的
+        // in-flight 一定是本场会话自己发出去的。否则 B 登录后的第一次刷新会拿到
+        // A 那一次的 promise，A 一失败 B 就跟着被登出。
         if (refreshInFlight) return refreshInFlight
 
         // 刚轮换过就不再刷：用旧 token 发出去的请求会在轮换完成后收到 401，
@@ -477,23 +513,47 @@ export const useAuthStore = create<AuthStore>()(
           return
         }
 
-        refreshInFlight = performRefresh().finally(() => {
-          refreshInFlight = null
+        // 只清掉**自己**占的那个槽位。无条件 `refreshInFlight = null` 的话，
+        // 跨过会话边界后 A 那一次迟到的 finally 会把 B 已经放进去的那一次抹掉，
+        // 于是 B 的并发调用者又各发各的——单飞锁在换人后的头一个 RTT 内失效。
+        const inFlight = performRefresh().finally(() => {
+          if (refreshInFlight === inFlight) refreshInFlight = null
         })
-        return refreshInFlight
+        refreshInFlight = inFlight
+        return inFlight
       },
 
       /**
-       * ⚠️ 这里**不**调 `beginSession()`，而 `login` 调了。
+       * 会话**进行中**换一对新 token。前置条件：必须有一场活着的会话。
        *
-       * `beginSession()` 开场就清盘，只有"确实换了一场会话"时才对。本函数今天
-       * **零调用点**（`grep -rn 'setTokens' src` 只有它自己的定义与类型声明），
-       * 但它的名字是「设置 token」——将来最可能的调用形态是"会话中途换一对新
-       * token"，那时清盘会把同一个人的 profile / AI 配置一起毁掉。所以清盘留在
-       * `login` 那一处：那里有 `credentials.user_id`，是全仓唯一能证明
-       * "这是一场新会话"的地方。
+       * ## 为什么不调 `beginSession()`
+       *
+       * `beginSession()` 开场就跑内存重置 + 清盘，只有"确实换了一场会话"时才对。
+       * 本函数今天**零调用点**（`grep -rn 'setTokens' src` 只有它自己的定义与类型
+       * 声明），但它的名字是「设置 token」——将来最可能的调用形态是"会话中途换一对
+       * 新 token"，那时清盘会把同一个人的 profile / AI 配置一起毁掉。开新会话留在
+       * `login` 那一处：那里有 `credentials.user_id`，是全仓唯一能证明"这是一场
+       * 新会话"的地方。
+       *
+       * ## 为什么在死窗口里要抛错，而不是照写
+       *
+       * 不调 `beginSession()` 还有第二个后果：闸门也不会被重新打开。会话已经结束
+       * 而有人调了这里，`set()` 会成功（内存写进去了、`isAuthenticated: true`），
+       * 落盘那一次却被 {@link sessionScopedLocalStorage} 丢弃**并把 `auth-storage`
+       * 从盘上抹掉**——内存说已登录、盘上说已登出，下一次整页加载把人登出，
+       * 中间没有任何一处报错。这正是本仓最难查的那类故障（"坏"和"好"从外面看
+       * 长得一样），所以这里照 `registerPristineStoreReset` 的先例，用运行时抛错
+       * 而不是一句注释：注释拦不住下一个作者，抛错可以。
+       *
+       * 想在会话结束之后重新建立登录态，要走的是 `login`（或将来某个显式的
+       * "恢复会话"原语，它自己负责调 `beginSession()`），不是这里。
        */
       setTokens: ({ accessToken, refreshToken, expiresIn }) => {
+        if (!isSessionLive()) {
+          throw new Error(
+            'setTokens 只能在一场进行中的会话里调用：会话已结束，这次写入会成为「内存已登录、盘上已登出」的半截状态',
+          )
+        }
         set({
           accessToken,
           refreshToken,
@@ -510,13 +570,21 @@ export const useAuthStore = create<AuthStore>()(
        * `clearAuth()`，于是一次网络抖动就把 `api-config-storage` 里用户自备的第三方
        * `aiApiKey` 销毁了——那是只有他知道、应用无从恢复的数据。
        *
-       * `user` 保留：会话没有结束，页面被打回登录页之后重新登录，侧栏、AI 配置、
-       * 本地草稿都还在原处。这**不是**把泄露留到了下一个人身上——下一个人的会话
-       * 必经 `login` 里那一行 `beginSession()`，它开场就清盘（见 `lib/sessionScope.ts`）。
+       * `user` 与其余落盘/内存副本一个字节都不动：这一次失败没有证明会话结束，
+       * 而抖动是常态，把它当登出处理等于让常态去销毁不可恢复的数据。
+       *
+       * ⚠️ 这**不是**"下次登录时东西还在原处"。下一场会话必经 `login` 里那一行
+       * `beginSession()`，它开场就跑内存重置 + 清盘（`lib/sessionScope.ts`），
+       * 而那个边界**不认人**——哪怕重新登录的还是同一个人，profile 与 AI 配置
+       * 照样归零。这一档买到的是"网络抖一下**本身**不销毁任何东西"：销毁被推迟到
+       * 一个用户明确表达了意图、也看得见后果的时点。理由（以及为什么不去比对
+       * `user_id`）写在 `lib/sessionScope.ts` 顶部。
        *
        * 「会话结束 / 只是拿不到票据」这条分界的完整定义写在 `lib/sessionScope.ts` 顶部。
        */
       clearCredentials: () => {
+        // 会话还在，但票据没了：本场会话内的「刚轮换过」这个事实也随之作废，
+        // 否则接下来 10 秒内的刷新会被误跳过。跨会话那一半由边界回调负责。
         lastRotatedAt = 0
         set({
           accessToken: null,
@@ -534,7 +602,15 @@ export const useAuthStore = create<AuthStore>()(
        * ⚠️ 「挂在这一行 = 挂在全部路径上」这句话只对**入口**成立。落盘副本在这一刻
        * 还没有定局：登出时还在飞的请求会在清盘之后落地，`set()` 一写 persist 就把
        * 上一个人的数据重新写回盘上。补上那一半的是 `sessionScope` 的写入闸门与世代号
-       * （`sessionScopedLocalStorage` / `currentSessionGeneration`），不是这一行。
+       * （`sessionScopedLocalStorage` / `pinSession`），不是这一行。
+       *
+       * ⚠️ 反过来也成立、而且更危险：**这一行本身可能是上一场会话的请求触发的**。
+       * 各份 `fetchWithAuth` 在请求发起时快照了 `useAuthStore.getState()`，但手里的
+       * action 闭包是活的，于是 A 登出前发出的请求在 B 的会话里收到 401 时，调到的
+       * 是 B 的 `clearAuth()`——清盘把刚登录的 B 清干净。挡这条的是各 401 分支上的
+       * `pinSession()`，不是这里：这里没有任何办法知道调用方属于哪一场会话。
+       * 已接入的有 `api/apiClient.ts` 与 `features/auth/api/auth.ts` 两份，
+       * 其余八份见 `apiClient.ts` 里 `pinSession` 采用说明。
        *
        * 它清的是**这个账号的其余落盘副本**（profile / AI 密钥 / 上次访问路径 /
        * 以及将来任何新增的切片），名单是反向的：不在设备级白名单里的键一律删。
@@ -546,8 +622,10 @@ export const useAuthStore = create<AuthStore>()(
        * persist 的这次写入会在清盘之后重新落一个键。
        */
       clearAuth: () => {
-        // 会话没了，「刚轮换过」这个事实也随之作废；否则下一次登录后 10 秒内的刷新会被误跳过
-        lastRotatedAt = 0
+        // `lastRotatedAt` / `refreshInFlight` 不在这里清：它们挂在会话边界上
+        // （见模块顶部那个 registerSessionReset），下面的 endSession() 会跑到。
+        // 在这里再写一行的话，`clearCredentials` 与 `login` 两条不经过本函数的
+        // 路径仍然漏掉，而"这里也清了"会让人以为覆盖全了。
         set({
           accessToken: null,
           refreshToken: null,

@@ -2,6 +2,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { ApiError, isAuthApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
+import { pinSession } from '@/lib/sessionScope'
 
 const BASE_URL = getApiBaseUrl()
 
@@ -287,6 +288,41 @@ const tryRefreshToken = async (): Promise<boolean> => {
 /**
  * 带自动重试和超时的 fetch 封装
  * 当遇到认证错误时，自动尝试刷新 Token 或静默重定向到登录页面
+ *
+ * ## `isLiveSession()` —— 这条响应还属于当时那一场会话吗
+ *
+ * 请求发起时这里快照了 `useAuthStore.getState()`，但快照里攥着的 action 闭包是
+ * **活的**：响应回来时 `tryRefreshToken()` / `silentRedirectToLogin()` 打到的是
+ * **当前**那个人的 store。于是 A 登出前发出的请求若在 B 登录之后才收到 401，
+ * 它会拿 B 的 token 去刷新，刷不动就调 B 的 `clearAuth()` —— 反向名单清盘，
+ * 把刚登录的 B 连同他的 `aiApiKey` 一起清掉。三道防线一条都拦不住它：
+ * 世代号只挡写入不挡副作用，闸门在 B 的会话里是开着的，而清盘正是施害者本身。
+ *
+ * 所以 401 分支要先问一句「这条响应还属于我发它时那一场会话吗」。判假时**什么都
+ * 不做**，把 401 原样交给调用方：这条响应对当前这场会话不构成任何证据，
+ * 降级成别的清理动作只会换一种方式伤到当前这个人。
+ *
+ * ## ⚠️ 采用情况：十份 `fetchWithAuth` 里目前接了两份
+ *
+ * 和 {@link isBusiness401Request} 一样，`pinSession()` **不会**自动全仓生效——
+ * 它得在每份副本的 401 分支上各接一行。已接：
+ *
+ * - `src/api/apiClient.ts` —— 本文件；
+ * - `src/features/auth/api/auth.ts` —— 接法见那里，就是 `&& isLiveSession()`。
+ *
+ * **还没接的八份**：`features/profile/api/profile.ts`（另一场并行的
+ * 「多份 fetchWithAuth 合一」在改它，本批不碰）、`features/chat/api/friends.ts`、
+ * `features/chat/api/messages.ts`、`features/chat/api/groupMessages.ts`、
+ * `features/chat/api/groups.ts`、`features/webrtc/api/webrtc.ts`、
+ * `src/api/storage.ts`、`src/api/discovery.ts`。它们的 401 分支形状逐字相同
+ * （`if (response.status === 401 && authStore.refreshToken)`），接法就是在
+ * 函数开头加 `const isLiveSession = pinSession()`、在那个条件里加一个合取项。
+ *
+ * 这八份的**残余风险有多大**：`refreshAccessToken` 那一侧已经收窄过了——它自己
+ * 的失败分档现在也对照世代号，而单飞锁跨边界会置空，所以上一场会话的 401 在 B 的
+ * 会话里触发的刷新是**B 自己的**一次刷新，B 的 token 有效时它会成功，于是那八份
+ * 只是白重发一次 A 的请求、不会清盘。真正落到 `clearAuth()` 的只剩"B 的刷新也
+ * 恰好失败"这一段更窄的窗口。合并那份副本时把这一行带上，窗口就没了。
  */
 export const fetchWithAuth = async (
   url: string,
@@ -294,13 +330,15 @@ export const fetchWithAuth = async (
   skipAuthRedirect = false
 ): Promise<Response> => {
   const authStore = useAuthStore.getState()
+  const isLiveSession = pinSession()
 
   // 检查 Token 是否即将过期，如果是则预先刷新
   if (authStore.checkTokenExpiry() && authStore.refreshToken) {
     const refreshed = await tryRefreshToken()
     if (!refreshed && !skipAuthRedirect) {
-      silentRedirectToLogin()
-      // 抛出错误让调用者知道认证失败，而不是让 Promise 永久挂起
+      // 只在还是同一场会话时才跳转：这次刷新期间若换了人，被登出的会是刚登录的那位。
+      // 无论如何都抛错，让调用者知道认证失败，而不是让 Promise 永久挂起。
+      if (isLiveSession()) silentRedirectToLogin()
       throw new AuthenticationError('Token 刷新失败，正在重定向到登录页面')
     }
   }
@@ -315,10 +353,15 @@ export const fetchWithAuth = async (
     },
   })
 
+  // 上一场会话的 401：一步都不往下走，原样把响应交给调用方（见函数注释）。
+  if (response.status === 401 && !isLiveSession()) {
+    return response
+  }
+
   // 如果 Token 过期，尝试刷新后重试一次
   if (response.status === 401) {
     const refreshed = await tryRefreshToken()
-    
+
     if (refreshed) {
       // 刷新成功，重试请求
       const newHeaders = getAuthHeaders()
@@ -332,14 +375,14 @@ export const fetchWithAuth = async (
       
       // 如果刷新后仍然 401，说明 refresh token 也无效
       if (response.status === 401) {
-        if (!skipAuthRedirect) {
+        if (!skipAuthRedirect && isLiveSession()) {
           silentRedirectToLogin()
         }
         // 无论是否跳过重定向，都抛出明确的认证错误
         throw new AuthenticationError('Token 刷新后认证仍然失败')
       }
     } else {
-      if (!skipAuthRedirect) {
+      if (!skipAuthRedirect && isLiveSession()) {
         // 刷新失败，静默重定向
         silentRedirectToLogin()
       }

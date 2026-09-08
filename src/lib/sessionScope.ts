@@ -18,7 +18,14 @@
  *   只证明"这一次请求没成"。这一档只把 token 三件套清空，其余一个字节都不动。
  *
  * 只清凭证之所以**不会**变成泄露口子，是因为下一场会话必须经过
- * {@link beginSession}，而它做的第一件事就是清盘（见那里的注释）。
+ * {@link beginSession}，而它跑的是和 {@link endSession} 同一套清理——内存重置 +
+ * 清盘（见 {@link crossSessionBoundary}）。**代价要说清楚**：第三档保住的那份
+ * `aiApiKey` 只活到「下一场会话开始」为止，哪怕下一场会话还是同一个人。
+ * 它买到的不是"这个人重新登录后配置还在原处"，而是"网络抖一下**本身**不销毁
+ * 任何东西"——销毁被推迟到一个用户看得见、且明确表达了意图的时点（登录）。
+ * 这个边界不认人：`beginSession` 拿 `credentials.user_id` 去比对"还是不是同一个人"
+ * 是可以做的，但那会把默认清掉换成默认保留，而两侧代价不对称（少清 = 泄露给
+ * 下一个人，多清 = 毁一份数据），所以这里选不认。
  *
  * ## 为什么是**反向名单**（默认清掉），而不是一串 `clearX()`
  *
@@ -37,36 +44,53 @@
  * `app-settings` 那一条把这个默认清掉的规则推进到**字段级**：只有列出来的字段
  * 留下，往那个 store 里新增的字段默认跟着账号走。
  *
- * ## 清盘是一个**时点**，而写入不是——所以还需要世代号
+ * ## 不变量：一次写入必须属于**当前活着的那一场会话**
  *
- * 清盘只证明"这一刻盘上没有账号级数据"。登出那一刻若有一个请求还在飞
- * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`），它的响应会在
- * 清盘**之后**落地，`set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条
- * 尤其糟，落回去的是一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage`
- * 里等下一个人。三道防线，从自动到需要作者配合：
+ * 清盘只证明"这一刻盘上没有账号级数据"。会话换人那一刻若有一个请求还在飞
+ * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`、十份
+ * `fetchWithAuth` 副本里任何一个还没回来的响应），它会在清盘**之后**落地：
+ * `set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条尤其糟，落回去的是
+ * 一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage` 里等下一个人。
  *
- * 1. {@link beginSession} 的清盘 —— **完全自动，覆盖任何持久化切片**。下一场会话
- *    无论如何都要经过它，所以死窗口里漏进盘的东西活不过下一次登录，作者什么都不用做。
+ * 要点是这条不变量**不以「会话结束」为轴**。会话结束是一个时点，会话开始是另一个
+ * 时点，两者都是**会话边界**，而"这次写入属于哪一场"这个问题在两个边界上是同一个
+ * 问题。所以 {@link endSession} 与 {@link beginSession} 共用
+ * {@link crossSessionBoundary}：都跑内存重置、都清盘、都换世代号，唯一的差别是
+ * 过完之后闸门关着还是开着。曾经只有 `endSession` 换号，于是
+ * `clearCredentials`（第三档，不结束会话）之后换一个人登录，上一个人在飞的刷新
+ * 落地时 `isSameSession()` 仍然为真，而 `beginSession` 又把闸门重新开了，
+ * 那对 token 连盘都落得进去。
+ *
+ * 三道防线，从自动到需要作者配合：
+ *
+ * 1. {@link crossSessionBoundary} 的清盘 —— **完全自动，覆盖任何持久化切片**。
+ *    每一个会话边界（结束和开始）都要经过它，所以死窗口里漏进盘的东西活不过
+ *    下一次登录，作者什么都不用做。同一处还会跑登记过的内存重置，见下。
  * 2. {@link sessionScopedLocalStorage} 的写入闸门 —— 会话结束后、下一场会话开始前，
  *    对账号级键的落盘写入直接丢弃。把它当 persist 的 `storage` 用就自动生效
  *    （本仓四个持久化 store 都已接上），这是把第 1 条的窗口从"到下一次登录为止"
  *    收到"立刻"。
- * 3. {@link currentSessionGeneration} / {@link isSameSession} —— **内存**那一半只能
- *    显式做：异步 action 在发起时记下世代号，落地前对照，不一致就丢弃。闸门拦不住
- *    内存（`useAuthStore.getState().accessToken` 照样被写脏，而 API 层读的是内存）。
+ * 3. {@link currentSessionGeneration} / {@link isSameSession} / {@link pinSession}
+ *    —— **内存**那一半只能显式做：异步 action 在发起时钉住当时那一场会话，落地前
+ *    对照，不一致就丢弃。闸门拦不住内存（`useAuthStore.getState().accessToken`
+ *    照样被写脏，而 API 层读的是内存），世代号也拦不住"写入之外的副作用"：
+ *    上一场会话的 401 回来时去调当前这个人的 `clearAuth()`，破坏力比写脏内存更大，
+ *    那条同样要用 {@link pinSession} 钉住（`apiClient` / `auth.ts` 的 401 分支）。
  *
  * ## 内存副本
  *
  * 落盘副本是本模块的承重件；内存副本由 {@link registerSessionReset} /
- * {@link registerPristineStoreReset} 登记，{@link endSession} 在清盘**之前**跑它们
- * （顺序见 {@link endSession}）。内存这一半做不到"默认覆盖"——没有一个枚举得到
- * 所有 zustand store 的入口——所以它仍然是一张需要维护的名单。它没那么致命的理由是
- * 失效窗口只到下一次整页加载为止：多数登出路径以 `window.location.replace/href`
- * 结束（`silentRedirectToLogin` 的三份副本、各 API 模块 `fetchWithAuth` 的 401 分支、
- * `SettingsPage` 切换/重置服务器），整页加载本身就丢掉了全部内存状态。**不**整页加载的
- * 才需要内存这一半：`authStore.logout`（登出按钮，自身不跳转）、`DevicesPage` 撤销
- * 当前设备（`router.push`）、`wsStore` 刷新失败（完全不跳转），以及调用方自己不跳转的
- * `refreshAccessToken` 失败分支。
+ * {@link registerPristineStoreReset} 登记，{@link crossSessionBoundary} 在清盘
+ * **之前**跑它们（顺序见那里）。内存这一半做不到"默认覆盖"——没有一个枚举得到
+ * 所有 zustand store 的入口——所以它仍然是一张需要维护的名单，**漏登记一个 store
+ * 就是一次泄露**：`beginSession` 的清盘覆盖不了它，那是落盘那一半的自动性，
+ * 内存这一半没有。
+ *
+ * 名单漏登记的后果曾被"反正会整页加载"打了折扣，那个理由已经不成立：
+ * `wsStore.scheduleReconnect` 的失败分支现在完全不跳转，`ProtectedRoute` 用的是
+ * `router.replace`（`lib/navigation.ts`，react-router 客户端跳转），两条路都不
+ * 丢内存。仍然整页加载的是 `silentRedirectToLogin` 与各 `fetchWithAuth` 副本
+ * 401 分支里的 `window.location.replace/href`、以及 `SettingsPage` 切换/重置服务器。
  */
 
 /**
@@ -167,7 +191,13 @@ const DEVICE_SCOPED_KEYS: ReadonlyMap<string, DeviceScopedRule> = new Map<string
 const sessionResets = new Set<() => void>()
 
 /**
- * 登记一个"会话结束时把内存状态清干净"的回调。返回注销函数（测试用）。
+ * 登记一个"跨过会话边界时把内存状态清干净"的回调。返回注销函数（测试用）。
+ *
+ * ⚠️ **两个边界都跑**：{@link endSession}（会话结束）和 {@link beginSession}
+ * （下一场会话开始）。只挂在结束那一侧是不够的——`clearCredentials` 这一档
+ * 按定义就不结束会话，它留在内存里的东西（`useApiConfigStore` 的明文
+ * `aiApiKey`、`useProfileStore` 的资料）没有任何东西会去清，直到下一个人登录。
+ * 所以回调必须是**幂等**的：同一场登出→登录里它会被跑两次。
  *
  * 回调在**清盘之前**执行，所以回调里对 `zustand/persist` store 的写入会先落盘、
  * 再被 {@link purgeAccountScopedStorage} 按上面那张表处理——顺序反过来的话，
@@ -294,10 +324,15 @@ export function purgeAccountScopedStorage(): void {
 }
 
 /**
- * 会话世代号：每结束一场会话 +1。
+ * 会话世代号：每跨过一个会话边界 +1——**结束一场**和**开始一场**都算。
  *
  * 只增不减、不落盘：它要回答的问题是"我发起这次请求时的那场会话，还是现在这一场吗"，
  * 跨页面加载没有意义（整页加载本身就把内存状态全丢了）。
+ *
+ * 「开始也换号」不是对称性洁癖：`clearCredentials`（第三档）结束的是凭证而不是
+ * 会话，它不经过 {@link endSession}，于是**只在结束时换号**的话，A 的会话号会一路
+ * 活到 B 登录之后——A 在飞的刷新落地时 `isSameSession()` 判真，`set()` 把一对
+ * 当前有效的 token 写进 B 的 store，`beginSession` 又刚好把闸门开着，连盘都落得进去。
  */
 let sessionGeneration = 0
 
@@ -324,9 +359,41 @@ export function currentSessionGeneration(): number {
   return sessionGeneration
 }
 
-/** `generation` 是否仍是当前这一场会话（即中途没有 {@link endSession} 过）。 */
+/** `generation` 是否仍是当前这一场会话（即中途没有跨过会话边界）。 */
 export function isSameSession(generation: number): boolean {
   return generation === sessionGeneration
+}
+
+/**
+ * 钉住"现在这一场会话"，返回的谓词回答"它还活着吗"。
+ *
+ * {@link currentSessionGeneration} + {@link isSameSession} 的两行版，给**同步发起、
+ * 异步落地**的调用点用——尤其是各份 `fetchWithAuth` 的 401 分支：它们在请求发起时
+ * 快照了 `useAuthStore.getState()`，但手里攥着的 action 闭包是**活的**，响应回来时
+ * 调到的是当前那个人的 `refreshAccessToken()` / `clearAuth()`。接入方式是一行：
+ *
+ *     const isLiveSession = pinSession()          // 请求发起时
+ *     ...
+ *     if (response.status === 401 && isLiveSession()) { ...刷新重试... }
+ *
+ * 判假时正确的做法是**什么都不做**（把 401 原样交给调用方），而不是降级成别的
+ * 清理动作：这条响应属于一场已经不存在的会话，它对当前这场会话不构成任何证据。
+ */
+export function pinSession(): () => boolean {
+  const pinned = sessionGeneration
+  return () => pinned === sessionGeneration
+}
+
+/**
+ * 现在是不是一场**进行中**的会话（即不在 {@link endSession} 与 {@link beginSession}
+ * 之间的死窗口里）。
+ *
+ * 给"必须在会话内才有意义"的写入点自检用（`authStore.setTokens`）：死窗口里写内存
+ * 会成功、写盘会被闸门丢掉，得到的是"内存说已登录、盘上说已登出"的半截状态，
+ * 下一次整页加载把人登出，而中间没有任何一处报错。
+ */
+export function isSessionLive(): boolean {
+  return !inDeadWindow
 }
 
 /**
@@ -389,30 +456,33 @@ export const sessionScopedLocalStorage = {
   },
 }
 
-/** 防重入：某个重置回调若又触发了一次登出，不该把回调链再跑一遍。 */
-let ending = false
+/** 防重入：某个重置回调若又跨了一次会话边界，不该把回调链再跑一遍。 */
+let crossingBoundary = false
 
 /**
- * 结束会话：先跑内存重置，再清盘，最后关闸门 + 递增世代号。
+ * 跨过一个会话边界：先跑内存重置，再清盘，最后设置闸门 + 递增世代号。
  *
- * 唯一调用点是 `authStore.clearAuth`。**注意这句话只覆盖"入口"这一半**：全仓所有
- * 登出路径（登出按钮、401 静默跳转的十份副本、刷新的 401、撤销当前设备、切换服务器）
- * 确实都汇到那一个函数，所以不需要谁去逐条接线；但落盘副本在这一刻**还没有定局**
- * ——飞在半空的请求会在清盘之后落地。补上那一半的是闸门与世代号，见本文件顶部
- * 「清盘是一个时点，而写入不是」。
+ * {@link endSession} 与 {@link beginSession} 共用这一段，两者**唯一**的差别是
+ * `nextIsDead`——过完之后闸门是关着（会话结束了，没有下一场）还是开着（新会话
+ * 开始了）。写成一段而不是两段，是因为"这次写入属于哪一场会话"在两个边界上是
+ * 同一个问题：只在结束那一侧清理，`clearCredentials` 留下的内存副本就没有任何
+ * 东西会去动它，而世代号也会一路活到下一个人的会话里。
  *
  * 顺序不能改：
- * 1. 重置回调先跑，它们对 persist store 的写入照常落盘（此时闸门还开着）；
+ * 1. 重置回调先跑，它们对 persist store 的写入照常落盘（`beginSession` 这一侧
+ *    闸门可能还关着，那就直接被丢弃，效果一样）；
  * 2. 清盘把这些写入连同其余账号级键一起删掉；
- * 3. 最后才关闸门——放在第 1 步之前的话，重置回调自己的落盘写入会被闸门吃掉，
- *    行为虽然也对（第 2 步照样会删），但把"闸门"和"清盘"两件事的因果搅在一起，
- *    出问题时分不清是谁干的。
+ * 3. 最后才动闸门与世代号——放在第 1 步之前的话，`endSession` 这一侧重置回调
+ *    自己的落盘写入会被闸门吃掉，行为虽然也对（第 2 步照样会删），但把"闸门"
+ *    和"清盘"两件事的因果搅在一起，出问题时分不清是谁干的。
  *
  * 单个回调抛错不阻断后面的回调，更不阻断清盘：落盘副本是承重的那一半。
+ * 防重入的 `return` 放在最前面，所以嵌套那一次**整体**是空操作——世代号也不会
+ * 多跳一格，否则一次登出会按回调里嵌套了几层而换出不同的号。
  */
-export function endSession(): void {
-  if (ending) return
-  ending = true
+function crossSessionBoundary(nextIsDead: boolean): void {
+  if (crossingBoundary) return
+  crossingBoundary = true
   try {
     for (const reset of sessionResets) {
       try {
@@ -422,35 +492,51 @@ export function endSession(): void {
       }
     }
     purgeAccountScopedStorage()
-    inDeadWindow = true
+    inDeadWindow = nextIsDead
     sessionGeneration += 1
   } finally {
-    ending = false
+    crossingBoundary = false
   }
 }
 
 /**
- * 开始一场新会话：先清盘，再开闸门。
+ * 结束会话：跨过会话边界，过完之后闸门关着。
+ *
+ * 唯一调用点是 `authStore.clearAuth`。**注意这句话只覆盖"入口"这一半**：全仓所有
+ * 登出路径（登出按钮、401 静默跳转的十份副本、刷新的 401、撤销当前设备、切换服务器）
+ * 确实都汇到那一个函数，所以不需要谁去逐条接线；但落盘副本在这一刻**还没有定局**
+ * ——飞在半空的请求会在清盘之后落地。补上那一半的是闸门与世代号，见本文件顶部
+ * 「不变量：一次写入必须属于当前活着的那一场会话」。
+ */
+export function endSession(): void {
+  crossSessionBoundary(true)
+}
+
+/**
+ * 开始一场新会话：跨过会话边界，过完之后闸门开着。
  *
  * 唯一调用点是 `authStore.login` 的成功分支，且在 `set()` **之前**——反过来的话
- * 这次清盘会把刚落盘的新 token 一起删掉。
+ * 这次清理会把刚落盘的新 token 一起删掉。
  *
  * **不**挂在 `setTokens` 上：那个函数今天零调用点，而它的名字是「设置 token」，
  * 将来最可能的调用形态是"会话中途换一对新 token"，在那里清盘会把同一个人的
  * profile / AI 配置一起毁掉。`login` 是全仓唯一能证明"这是一场新会话"的地方
- * （它手里有 `credentials.user_id`）。
+ * （它手里有 `credentials.user_id`）。`setTokens` 在死窗口里的那半截状态由它
+ * 自己用 {@link isSessionLive} 自检，不靠这里兜。
  *
- * ## 为什么这里也要清一次盘
+ * ## 为什么这里也要清一次
  *
- * 这是三道防线里**唯一完全自动**的一道：将来某个持久化切片没有走
+ * 落盘那一半是三道防线里**唯一完全自动**的一道：将来某个持久化切片没有走
  * {@link sessionScopedLocalStorage}（比如作者直接 `localStorage.setItem`），它在死窗口
  * 里漏下的东西闸门管不着，但下一场会话无论如何都要经过这一行。也就是说"上一个人的
- * 数据活到下一个人的会话里"这件事，作者什么都不做也不会发生。
+ * **落盘**数据活到下一个人的会话里"这件事，作者什么都不做也不会发生。
  *
- * 它同时是 `clearCredentials`（只清凭证、不清盘）敢于存在的前提：那一档留在盘上的
- * 东西，最迟在下一个人登录的这一刻被清掉。
+ * ⚠️ 内存那一半**没有**这个自动性：它只覆盖 {@link registerSessionReset} 登记过的
+ * store，漏登记一个就是一次泄露。这里跑它们，补的是"`clearCredentials` 之后
+ * 没有任何东西会去清内存"这个洞——`clearCredentials` 是靠这一行才敢存在的，
+ * 而在这一行只清盘不清内存的时候，它那句"下一个人的会话必经 `beginSession`"
+ * 对落盘副本成立、对内存副本不成立。
  */
 export function beginSession(): void {
-  purgeAccountScopedStorage()
-  inDeadWindow = false
+  crossSessionBoundary(false)
 }

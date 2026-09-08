@@ -1,9 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { friendsApi } from '@/features/chat/api/friends'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { AuthenticationError, isAuthError, isBusiness401Request } from '../apiClient'
+import { useApiConfigStore } from '@/store/apiConfig'
+import {
+  AuthenticationError,
+  fetchWithAuth,
+  isAuthError,
+  isBusiness401Request,
+} from '../apiClient'
 
 /**
  * `isAuthError` 的消费点：`friendsStore.handleApiError`（七个 action 共用）与
@@ -198,5 +204,101 @@ describe('哨兵两端一致：抛出点的文案也被钉住', () => {
 
     expect(error).toBeInstanceOf(Error)
     expect(isAuthError(error as Error)).toBe(true)
+  })
+})
+
+/**
+ * 请求发起时这份 `fetchWithAuth` 快照了 `useAuthStore.getState()`，但快照里攥着的
+ * action 闭包是**活的**：`tryRefreshToken()` / `silentRedirectToLogin()` 打到的都是
+ * **当前**那个人的 store。于是 A 登出前发出的请求若在 B 登录之后才收到 401，
+ * 它会拿 B 的 token 去刷新，刷不动就调 B 的 `clearAuth()`——反向名单清盘，
+ * 把刚登录的 B 连同他自备的 `aiApiKey` 一起清掉。
+ *
+ * 三道防线一条都拦不住这一条：世代号只挡 `set()` 不挡副作用，写入闸门在 B 的会话里
+ * 是开着的，而清盘正是施害者本身。挡它的是 401 分支上的 `pinSession()`。
+ */
+describe('fetchWithAuth —— 上一场会话的 401 不碰当前这一场', () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  const loginEnvelope = (who: string) => ({
+    success: true,
+    code: 200,
+    data: { access_token: `AT-${who}`, refresh_token: `RT-${who}`, expires_in: 3600 },
+  })
+  const loginAs = async (who: string, fetchMock: ReturnType<typeof vi.fn>) => {
+    fetchMock.mockResolvedValueOnce(json(loginEnvelope(who)))
+    await useAuthStore.getState().login({ user_id: who, password: 'p' })
+  }
+
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    localStorage.clear()
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('换人之后才落地的 401：原样返回，不刷新、不跳转、不清 B 的盘', async () => {
+    await loginAs('alice', fetchMock)
+
+    let release!: (response: Response) => void
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    const aliceRequest = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob', fetchMock)
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
+    // 正对照：B 的会话是活的，密钥也确实落了盘。
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+
+    release(json({ success: false, code: 401, error: 'Token 无效或已过期' }, 401))
+    const response = await aliceRequest
+
+    // 401 原样交回调用方（不是 AuthenticationError，也不是重试后的 200）
+    expect(response.status).toBe(401)
+    // 三次 fetch = alice 登录 + 这个请求 + bob 登录。没有第四次（刷新）。
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+  })
+
+  it('正对照：同一场会话里的 401 照旧刷新并重发一次', async () => {
+    // 没有这一条，把 401 分支实现成"永远原样返回"也会绿——而那等于删掉整条
+    // 自动续期路径：每个 token 过期的请求都会把原始 401 抛给用户。
+    await loginAs('alice', fetchMock)
+
+    fetchMock
+      .mockResolvedValueOnce(json({ success: false, code: 401, error: 'Token 无效或已过期' }, 401))
+      .mockResolvedValueOnce(
+        json({
+          success: true,
+          code: 200,
+          data: { access_token: 'AT-alice-2', refresh_token: 'RT-alice-2', expires_in: 3600 },
+        }),
+      )
+      .mockResolvedValueOnce(json({ success: true, code: 200, data: { friends: [] } }))
+
+    const response = await fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
+
+    expect(response.status).toBe(200)
+    // 四次 = 登录 + 401 + 刷新 + 重发
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(useAuthStore.getState().accessToken).toBe('AT-alice-2')
   })
 })

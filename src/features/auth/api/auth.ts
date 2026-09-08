@@ -2,6 +2,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { getAuthApiUrl } from '@/lib/apiConfig'
 import { assertEnvelopeOk, readEnvelope } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
+import { pinSession } from '@/lib/sessionScope'
 
 // 获取认证头
 const getAuthHeaders = (): HeadersInit => {
@@ -18,7 +19,12 @@ const fetchWithAuth = async (
   options: RequestInit = {}
 ): Promise<Response> => {
   const authStore = useAuthStore.getState()
-  
+  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
+  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
+  // 落地时必须先确认会话还是同一场。接法与判假时该做什么见
+  // `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
+  const isLiveSession = pinSession()
+
   // 检查 Token 是否即将过期，如果是则刷新
   if (authStore.checkTokenExpiry() && authStore.refreshToken) {
     try {
@@ -38,8 +44,13 @@ const fetchWithAuth = async (
     },
   })
 
-  // 如果 Token 过期，尝试刷新后重试一次
-  if (response.status === 401 && authStore.refreshToken) {
+  // 如果 Token 过期，尝试刷新后重试一次。
+  //
+  // ⚠️ `isLiveSession()` 不是可选项：`authStore.refreshToken` 是**发起时**的快照，
+  // 上一场会话的 401 照样能满足它，而 `refreshAccessToken()` / `clearAuth()` 打的是
+  // 当前那个人的 store——清盘会把刚登录的那位连同他的 aiApiKey 一起清掉。
+  // 判假时什么都不做，把 401 原样返回给调用方（`readEnvelope` 会抛成 ApiError）。
+  if (response.status === 401 && authStore.refreshToken && isLiveSession()) {
     try {
       await authStore.refreshAccessToken()
       const newHeaders = getAuthHeaders()
