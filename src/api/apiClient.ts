@@ -20,10 +20,6 @@ export class AuthenticationError extends Error {
   }
 }
 
-// 标记是否正在进行 Token 刷新（防止并发刷新）
-let isRefreshing = false
-let refreshPromise: Promise<boolean> | null = null
-
 /**
  * 前端**自己**写死的「未认证」哨兵文案，**整串相等**才算命中。
  *
@@ -118,15 +114,17 @@ const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/p
  *
  * ## ⚠️ 往 `BUSINESS_401_ENDPOINTS` 加一行**不会**自动全仓库生效
  *
- * 这张表只在**调用了本函数**的那份 401 分支里被查。全仓库十份 `fetchWithAuth`
- * 定义（`apiClient` 导出的这份 + 九份模块副本：auth / profile / friends /
- * messages / groupMessages / groups / webrtc / storage / discovery），
- * 今天**只有一处**调它：
+ * 这张表只在**调用了本函数**的那份 401 分支里被查。全仓库有**十份**
+ * `fetchWithAuth` 定义——`grep -rn 'const fetchWithAuth' src | grep -v __tests__`
+ * 数出来是 10：`apiClient` 导出的这份 + 九份模块副本
+ * （auth / profile / friends / messages / groupMessages / groups / webrtc /
+ * storage / discovery）。今天**只有一处**调本函数：
  *
- * - `src/features/profile/api/profile.ts:59` —— 唯一的生产调用点。
+ * - `src/features/profile/api/profile.ts` 的 `fetchWithAuth`，401 分支上那个
+ *   `!isBusiness401Request(...)` 合取项 —— 唯一的生产调用点。
  *
- * 其余九份的 401 分支仍是裸的 `if (response.status === 401 && refreshToken)`，
- * 对本表一无所知。所以给别的模块的端点加一行，在那个模块里**是空操作**：
+ * 其余九份的 401 分支**不查这张表**（条件里只有状态码、`refreshToken`
+ * 和 `isLiveSession()`），所以给别的模块的端点加一行，在那个模块里**是空操作**：
  * 那条请求照旧刷新 token、原样重发一遍、刷新失败就静默登出。
  *
  * 让它生效必须在那份副本的 401 分支上显式接进来（`&& !isBusiness401Request(
@@ -253,36 +251,46 @@ const fetchWithTimeout = async (
 }
 
 /**
- * 尝试刷新 Token
- * 返回 true 表示刷新成功，false 表示刷新失败
+ * 尝试刷新 Token。返回 true 表示刷新成功，false 表示刷新失败。
+ *
+ * 只做一件事：把 `refreshAccessToken()` 的「抛错 / 不抛错」翻译成 `boolean`。
+ *
+ * ## 这里**没有**第二把单飞锁，是有意的
+ *
+ * 原来这个函数自带一对模块级的 `isRefreshing` / `refreshPromise`，并发调用共享
+ * 同一个 promise。那把锁与 `authStore.refreshAccessToken` 的 `refreshInFlight`
+ * 做的是同一件事，而两者只有下面那一把是**会话内**的（`registerSessionReset`
+ * 跨边界置空，`.finally` 只清自己占的槽位）。上面这一把不是，后果实测过：
+ *
+ *   A 的请求 401 → 刷新挂起 → `clearAuth()` → B 登录 → B 自己的请求 401 →
+ *   命中 `isRefreshing && refreshPromise`，拿到的是 **A** 那一次的 promise →
+ *   A 断网失败 → B 这条 401 分支读到 `refreshed === false`，而
+ *   `isLiveSession()` 在 B 的会话里判**真** → `silentRedirectToLogin()` →
+ *   `clearAuth()` 把刚登录的 B 连同他的 `aiApiKey` 一起清掉。
+ *
+ * 修法不是「再给这一把也接上边界回调」，而是**把它删掉**：去重本来就发生在
+ * 下面那个漏斗里（十份 `fetchWithAuth` 副本和 `wsStore` 都调到同一个
+ * `refreshAccessToken`，锁放在那里才对所有人生效），上面这一把提供不了任何
+ * 额外的去重，只多出一个必须被单独维护成会话内的状态。删掉之后，
+ * 「apiClient 有一把没被会话作用域化的锁」这件事在结构上不可能复发。
+ *
+ * 钉住它的用例：`sessionHandoff.test.tsx`「B 自己的 401 不会被 A 那一次
+ * apiClient 刷新代答」——把这对模块级变量加回来，那条必红。
  */
 const tryRefreshToken = async (): Promise<boolean> => {
   const authStore = useAuthStore.getState()
-  
+
   if (!authStore.refreshToken) {
     return false
   }
 
-  // 如果已经在刷新中，等待刷新完成
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise
+  try {
+    await authStore.refreshAccessToken()
+    return true
+  } catch (error) {
+    console.warn('Token 刷新失败:', error)
+    return false
   }
-
-  isRefreshing = true
-  refreshPromise = (async () => {
-    try {
-      await authStore.refreshAccessToken()
-      return true
-    } catch (error) {
-      console.warn('Token 刷新失败:', error)
-      return false
-    } finally {
-      isRefreshing = false
-      refreshPromise = null
-    }
-  })()
-
-  return refreshPromise
 }
 
 /**
@@ -302,27 +310,42 @@ const tryRefreshToken = async (): Promise<boolean> => {
  * 不做**，把 401 原样交给调用方：这条响应对当前这场会话不构成任何证据，
  * 降级成别的清理动作只会换一种方式伤到当前这个人。
  *
- * ## ⚠️ 采用情况：十份 `fetchWithAuth` 里目前接了两份
+ * ## ⚠️ 采用情况：十份 `fetchWithAuth` 里接了九份
  *
  * 和 {@link isBusiness401Request} 一样，`pinSession()` **不会**自动全仓生效——
- * 它得在每份副本的 401 分支上各接一行。已接：
+ * 它得在每份副本的 401 分支上各接一行 `&& isLiveSession()`。已接九份：
+ * 本文件 + `features/auth/api/auth.ts` + `features/chat/api/friends.ts` /
+ * `messages.ts` / `groupMessages.ts` / `groups.ts` +
+ * `features/webrtc/api/webrtc.ts` + `api/storage.ts` + `api/discovery.ts`。
+ * 后八份的函数体（去掉注释与空白）**逐字相同**，本文件这份不同（多了超时、
+ * `skipAuthRedirect`、以及刷新后仍 401 的分支）。
  *
- * - `src/api/apiClient.ts` —— 本文件；
- * - `src/features/auth/api/auth.ts` —— 接法见那里，就是 `&& isLiveSession()`。
+ * **还没接的一份**：`features/profile/api/profile.ts`——它归另一场并行的
+ * 「多份 fetchWithAuth 合一」，本批不碰。它的 401 分支也是全仓唯一一个带
+ * 第三个合取项 `!isBusiness401Request(...)` 的，所以那句"八份逐字相同"
+ * 对它本来也不成立。
  *
- * **还没接的八份**：`features/profile/api/profile.ts`（另一场并行的
- * 「多份 fetchWithAuth 合一」在改它，本批不碰）、`features/chat/api/friends.ts`、
- * `features/chat/api/messages.ts`、`features/chat/api/groupMessages.ts`、
- * `features/chat/api/groups.ts`、`features/webrtc/api/webrtc.ts`、
- * `src/api/storage.ts`、`src/api/discovery.ts`。它们的 401 分支形状逐字相同
- * （`if (response.status === 401 && authStore.refreshToken)`），接法就是在
- * 函数开头加 `const isLiveSession = pinSession()`、在那个条件里加一个合取项。
+ * ## 这一行比 `performRefresh` 的世代号对照多挡住了什么
  *
- * 这八份的**残余风险有多大**：`refreshAccessToken` 那一侧已经收窄过了——它自己
- * 的失败分档现在也对照世代号，而单飞锁跨边界会置空，所以上一场会话的 401 在 B 的
- * 会话里触发的刷新是**B 自己的**一次刷新，B 的 token 有效时它会成功，于是那八份
- * 只是白重发一次 A 的请求、不会清盘。真正落到 `clearAuth()` 的只剩"B 的刷新也
- * 恰好失败"这一段更窄的窗口。合并那份副本时把这一行带上，窗口就没了。
+ * `performRefresh` 的 catch 已经对照世代号，**每一份副本都白拿**这层保护：
+ * 上一场会话里发出的刷新落地时不会去清当前这个人的票据。但那条只管
+ * 「一次**已经发出**的刷新落地时怎么办」，而本行管的是「上一场会话的 401
+ * 回来时，要不要**发起一次新的**刷新」。不挡的话，`refreshAccessToken()` 用的是
+ * **当前这个人的** refresh token，属于他自己的一次刷新，世代号对照全程判真：
+ *
+ * 1. 刷新成功 ⇒ A 的那条请求被带着 **B 的** access token 原样重发。跨会话重放：
+ *    请求内容是 A 的，身份是 B 的。世代号对照拦不住——它只看写入，不看请求。
+ * 2. 刷新失败（B 的网络抖一下就够）⇒ 副本的 catch 跑 `clearAuth()` +
+ *    `window.location.href`，刚登录的 B 被清盘并踢回登录页。
+ * 3. 无论成败都白轮换一次 B 的 token。
+ *
+ * 所以这不是"把一个已经很窄的窗口再收窄一点"，第 1 条是漏斗**完全没有**覆盖的
+ * 一类。九份各自钉了一条用例，逐个删掉那个合取项都必红：
+ * 七份模块副本在 `src/api/__tests__/sessionScopedFetchWithAuth.test.ts`
+ * （`describe.each` 一份一条，报出来带模块名）；`auth.ts` 那份在
+ * `sessionHandoff.test.tsx`「A 登出前发出的请求在 B 的会话里才 401」；
+ * 本文件这份在 `src/api/__tests__/apiClient.test.ts`
+ * 「换人之后才落地的 401：原样返回，不刷新、不跳转、不清 B 的盘」。
  */
 export const fetchWithAuth = async (
   url: string,

@@ -3,6 +3,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { ROUTES } from '@/lib/routes'
+import { pinSession } from '@/lib/sessionScope'
 
 const MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/messages`
 
@@ -21,6 +22,11 @@ const fetchWithAuth = async (
   options: RequestInit = {}
 ): Promise<Response> => {
   const authStore = useAuthStore.getState()
+  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
+  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
+  // 落地时必须先确认会话还是同一场。接法、以及这一行比 `performRefresh` 的世代号
+  // 对照多挡住了什么，见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
+  const isLiveSession = pinSession()
   
   if (authStore.checkTokenExpiry() && authStore.refreshToken) {
     try {
@@ -40,7 +46,11 @@ const fetchWithAuth = async (
     },
   })
 
-  if (response.status === 401 && authStore.refreshToken) {
+  // ⚠️ `isLiveSession()` 不是可选项：`authStore.refreshToken` 是**发起时**的快照，
+  // 上一场会话的 401 照样能满足它，而 `refreshAccessToken()` / `clearAuth()` 打的是
+  // 当前那个人的 store——清盘会把刚登录的那位连同他的 aiApiKey 一起清掉。
+  // 判假时什么都不做，把 401 原样交回调用方。
+  if (response.status === 401 && authStore.refreshToken && isLiveSession()) {
     try {
       await authStore.refreshAccessToken()
       const newHeaders = getAuthHeaders()

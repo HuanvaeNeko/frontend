@@ -488,9 +488,13 @@ export const useAuthStore = create<AuthStore>()(
           lastRotatedAt = Date.now()
         }
 
-        // 单飞：并发调用共享同一个 in-flight 请求。九份 `fetchWithAuth` 副本
-        // （apiClient / auth / profile / friends / messages / groupMessages / groups /
-        // webrtc / storage）和 wsStore 都直接调到这里，锁只有放在这个漏斗里才对所有人生效。
+        // 单飞：并发调用共享同一个 in-flight 请求。**十份** `fetchWithAuth` 定义
+        // （`grep -rn 'const fetchWithAuth' src | grep -v __tests__` 数出来是 10：
+        // apiClient / auth / profile / friends / messages / groupMessages / groups /
+        // webrtc / storage / discovery）和 wsStore 都直接调到这里，
+        // 锁只有放在这个漏斗里才对所有人生效——`apiClient` 曾经在这之上还压着
+        // 第二把模块级的锁，而那一把不是会话内的，见 `apiClient.tryRefreshToken`
+        // 的注释（本批已删）。
         // 2026-09-07 线上实锤：页面加载时 5 个请求来自 4 份副本，各自发现 token 临期，
         // 5 个 refresh 带着同一个 refresh token 同时出去；后端每次都轮换一对新 token，
         // 5 个响应以任意顺序落进 store，最后写入的那对已被后来的轮换作废 → 全部 401
@@ -609,8 +613,9 @@ export const useAuthStore = create<AuthStore>()(
        * action 闭包是活的，于是 A 登出前发出的请求在 B 的会话里收到 401 时，调到的
        * 是 B 的 `clearAuth()`——清盘把刚登录的 B 清干净。挡这条的是各 401 分支上的
        * `pinSession()`，不是这里：这里没有任何办法知道调用方属于哪一场会话。
-       * 已接入的有 `api/apiClient.ts` 与 `features/auth/api/auth.ts` 两份，
-       * 其余八份见 `apiClient.ts` 里 `pinSession` 采用说明。
+       * 十份里已接入九份，还差 `features/profile/api/profile.ts`（归并行的
+       * 「多份 fetchWithAuth 合一」）——名单与「这一行比世代号对照多挡住了什么」
+       * 见 `apiClient.ts` 里 `fetchWithAuth` 的 `pinSession` 采用说明。
        *
        * 它清的是**这个账号的其余落盘副本**（profile / AI 密钥 / 上次访问路径 /
        * 以及将来任何新增的切片），名单是反向的：不在设备级白名单里的键一律删。

@@ -4,12 +4,16 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { DesktopSidebar } from '@/components/layout/app-shell/Navigation'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
+import { friendsApi, type PendingRequest } from '@/features/chat/api/friends'
+import { groupsApi, type GroupMember } from '@/features/chat/api/groups'
+import { messagesApi, type SyncMessagesResponse } from '@/features/chat/api/messages'
 import { useGroupStore } from '@/features/chat/store/groupStore'
 import { profileApi, type UserProfile } from '@/features/profile/api/profile'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { fetchWithAuth } from '@/api/apiClient'
+import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { useApiConfigStore } from '@/store/apiConfig'
 import { useWSStore } from '@/store/wsStore'
 import { authApi } from '../../api/auth'
@@ -67,6 +71,39 @@ const renderSidebar = () =>
 const avatarImg = () => document.querySelector('img[alt="Avatar"]')
 
 let fetchMock: ReturnType<typeof vi.fn>
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+/** 一个手动控制何时落地的 fetch 响应。 */
+const deferredResponse = () => {
+  let release!: (response: Response) => void
+  let fail!: (error: unknown) => void
+  const promise = new Promise<Response>((resolve, reject) => {
+    release = resolve
+    fail = reject
+  })
+  return { promise, release, fail }
+}
+
+/** 一个手动控制何时落地的任意值。 */
+const deferred = <T,>() => {
+  let release!: (value: T) => void
+  let fail!: (error: unknown) => void
+  const promise = new Promise<T>((resolve, reject) => {
+    release = resolve
+    fail = reject
+  })
+  return { promise, release, fail }
+}
+
+const loginAs = async (nickname: string) => {
+  fetchMock.mockResolvedValueOnce(jsonResponse(loginEnvelope({ nickname })))
+  await useAuthStore.getState().login({ user_id: nickname, password: 'p' })
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -362,28 +399,6 @@ describe('登出那一刻还在飞的请求', () => {
  * 一份 `fetchWithAuth` 副本的 401 分支。
  */
 describe('会话边界：属于上一场会话的写入落在 B 的会话里', () => {
-  const jsonResponse = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    })
-
-  /** 一个手动控制何时落地的 fetch 响应。 */
-  const deferredResponse = () => {
-    let release!: (response: Response) => void
-    let fail!: (error: unknown) => void
-    const promise = new Promise<Response>((resolve, reject) => {
-      release = resolve
-      fail = reject
-    })
-    return { promise, release, fail }
-  }
-
-  const loginAs = async (nickname: string) => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(loginEnvelope({ nickname })))
-    await useAuthStore.getState().login({ user_id: nickname, password: 'p' })
-  }
-
   it('clearCredentials 之后 B 登录：A 那次刷新轮换出来的新 token 进不了 auth-storage', async () => {
     await loginAs('alice')
 
@@ -551,5 +566,227 @@ describe('会话边界：属于上一场会话的写入落在 B 的会话里', (
     await Promise.all([bobRefresh, alsoBob])
     // 正对照：那一次共享的请求确实成功了，不是"根本没发过所以也没多发"。
     expect(useAuthStore.getState().accessToken).toBe('AT-bob-2')
+  })
+})
+
+/**
+ * 三个 store 的跨会话暴露面，端到端各钉一条。
+ *
+ * 逐个 action 的表驱动用例在各自的 store 测试里
+ * （`friendsStore.test.ts` / `groupStore.test.ts` / `chatStore.test.ts` 的
+ * 「跨会话边界」几组）。这里补的是**整条路**：真的走 `login` / `clearAuth` /
+ * `login`，而不是 `useAuthStore.setState` 直接摆状态；`FriendList` 之类的渲染点
+ * 读的正是这些 store 的内存副本。
+ *
+ * 审阅者复现这条 bug 时的原始形状就是下面第一条：登录 alice →
+ * `friendsApi.getPendingRequests` 返回一个还没落地的 promise →
+ * `loadPendingRequests()` → `clearAuth()` → 登录 bob → 让 A 的那一行落地。
+ * 在 8c048b8 那棵树上它报的是
+ * `expected [ { request_id: 'r1', …(5) } ] to deeply equal []`。
+ */
+describe('三个 store：上一场会话的响应落在 B 的会话里', () => {
+  it('friendsStore：A 的待处理好友请求不会出现在 B 的内存里', async () => {
+    await loginAs('alice')
+
+    const pending = deferred<PendingRequest[]>()
+    vi.spyOn(friendsApi, 'getPendingRequests').mockReturnValue(pending.promise)
+    const inFlight = useFriendsStore.getState().loadPendingRequests()
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+
+    // 正对照：B 确实登进来了，而且这一刻列表确实是空的——没有这两句，
+    // 下面的 toEqual([]) 可能只是"这份数据从来没被写进去过"。
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useFriendsStore.getState().pendingRequests).toEqual([])
+
+    pending.release([
+      {
+        request_id: 'r1',
+        request_user_id: 'carol',
+        request_message: 'A 的申请人',
+        request_time: '2026-01-01T00:00:00Z',
+        requester_nickname: 'Carol',
+        requester_avatar_url: null,
+      },
+    ])
+    await inFlight
+
+    // 泄露的是申请人 ID、昵称和申请留言，`FriendList` 直接渲染它们。
+    expect(useFriendsStore.getState().pendingRequests).toEqual([])
+  })
+
+  it('groupStore：A 那个群的成员名单不会出现在 B 的内存里', async () => {
+    await loginAs('alice')
+
+    const pending = deferred<{ members: GroupMember[]; total: number }>()
+    vi.spyOn(groupsApi, 'getMembers').mockReturnValue(pending.promise)
+    const inFlight = useGroupStore.getState().loadGroupMembers('alice-g1')
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useGroupStore.getState().currentGroupMembers).toEqual([])
+
+    pending.release({
+      members: [
+        {
+          user_id: 'alice-member',
+          user_nickname: 'A 的群友',
+          user_avatar_url: null,
+          role: 'member',
+          group_nickname: null,
+          joined_at: '2026-01-01T00:00:00Z',
+          join_method: 'search',
+          muted_until: null,
+        },
+      ],
+      total: 1,
+    })
+    await inFlight
+
+    expect(useGroupStore.getState().currentGroupMembers).toEqual([])
+  })
+
+  it('chatStore：A 的私聊正文不会写进 B 那条同名会话', async () => {
+    // 本地会话 id 会撞：A 和 B 各自都跟 carol 聊过，两边那条会话的本地 id
+    // 都是 'carol'，而反查表是**发请求时**建的（属于 A）。
+    await loginAs('alice')
+    const carolConv = { id: 'carol', type: 'friend' as const, name: 'Carol', unreadCount: 0 }
+    useChatStore.getState().setConversations([carolConv])
+
+    let capturedId = ''
+    const pending = deferred<SyncMessagesResponse>()
+    vi.spyOn(messagesApi, 'syncMessages').mockImplementation((requests) => {
+      capturedId = requests[0].conversation_id
+      return pending.promise
+    })
+    const inFlight = useChatStore.getState().syncMessages()
+    await vi.waitFor(() => expect(capturedId).not.toBe(''))
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+    useChatStore.getState().setConversations([carolConv])
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useChatStore.getState().conversations[0]).toEqual(carolConv)
+
+    pending.release({
+      conversations: [
+        {
+          conversation_id: capturedId,
+          conversation_type: 'friend',
+          messages: [
+            {
+              message_uuid: 'm-alice-carol',
+              sender_id: 'carol',
+              receiver_id: 'alice',
+              message_content: 'A 和 carol 的私聊内容',
+              message_type: 'text',
+              file_uuid: null,
+              file_url: null,
+              file_size: null,
+              file_hash: null,
+              filename: null,
+              content_type: null,
+              image_width: null,
+              image_height: null,
+              seq: 999,
+              send_time: '2026-09-07T03:00:00Z',
+            },
+          ],
+          latest_seq: 999,
+          has_more: false,
+        },
+      ],
+    })
+    await expect(inFlight).rejects.toThrow(/session end/)
+
+    expect(useChatStore.getState().conversations[0]).toEqual(carolConv)
+  })
+
+  it('friendsStore：A 的 401 不会调到 B 的 clearAuth()', async () => {
+    // `handleApiError` 的认证分支带一个**写入之外的副作用**：
+    // `silentRedirectToLogin()` → `clearAuth()` → 反向名单清盘。
+    // 只挡住 `set()` 的话这一条依然会把刚登录的 B 连同他的 aiApiKey 清掉。
+    await loginAs('alice')
+
+    const pending = deferred<PendingRequest[]>()
+    vi.spyOn(friendsApi, 'getPendingRequests').mockReturnValue(pending.promise)
+    const inFlight = useFriendsStore.getState().loadPendingRequests()
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
+
+    // 正对照：B 的密钥确实落了盘。
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+
+    pending.fail(
+      new ApiError('未认证或 Token 无效', {
+        status: 401,
+        code: 401,
+        endpoint: 'GET /api/friends/requests/pending',
+      }),
+    )
+    await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+  })
+})
+
+/**
+ * `apiClient` 曾经在 `authStore.refreshInFlight` **之上**还压着第二把单飞锁
+ * （模块级的 `isRefreshing` / `refreshPromise`），而只有下面那一把是会话内的。
+ * 于是 B 自己的 401 会拿到 A 那一次的刷新 promise：A 断网 = B 被登出。
+ *
+ * 修法是把上面那把删掉（去重本来就发生在下面那个漏斗里），所以这条用例同时也是
+ * 「别再加回来」的守门人。
+ */
+describe('apiClient 的刷新去重只有一把锁，而且是会话内的', () => {
+  it('B 自己的 401 不会被 A 那一次 apiClient 刷新代答', async () => {
+    await loginAs('alice')
+
+    // A 的请求收到 401 → `tryRefreshToken()` → 刷新请求挂起。
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'expired' }, 401))
+    const aliceRefreshCall = deferredResponse()
+    fetchMock.mockImplementationOnce(() => aliceRefreshCall.promise)
+    const aliceReq = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
+    // 等到 A 的刷新**真的**发出去了：alice 登录 + A 的请求 + A 的刷新 = 3 次。
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+
+    useAuthStore.getState().clearAuth()
+    await loginAs('bob')
+    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
+    // 正对照：B 的密钥确实落了盘。
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
+
+    // B 自己的一次 401：应当由 **B 自己的**刷新来回答，然后原样重发。
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'expired' }, 401))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        code: 200,
+        data: { access_token: 'AT-bob-2', refresh_token: 'RT-bob-2', expires_in: 3600 },
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, code: 200, data: [] }))
+    const bobReq = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
+
+    // A 那一次现在才失败（断网）。加回那把模块级锁的话，这一句会同时判决 B：
+    // 实测是 `isAuthenticated=false`、`accessToken=null`、`api-config-storage=null`。
+    aliceRefreshCall.fail(new TypeError('Failed to fetch'))
+    await expect(aliceReq).rejects.toThrow()
+
+    const bobResponse = await bobReq
+    expect(bobResponse.status).toBe(200)
+    expect(useAuthStore.getState().accessToken).toBe('AT-bob-2')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
+    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
   })
 })

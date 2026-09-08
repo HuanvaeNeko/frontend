@@ -47,7 +47,8 @@
  * ## 不变量：一次写入必须属于**当前活着的那一场会话**
  *
  * 清盘只证明"这一刻盘上没有账号级数据"。会话换人那一刻若有一个请求还在飞
- * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`、十份
+ * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`、
+ * `friendsStore` / `groupStore` / `chatStore` 的任何一个异步 action、十份
  * `fetchWithAuth` 副本里任何一个还没回来的响应），它会在清盘**之后**落地：
  * `set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条尤其糟，落回去的是
  * 一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage` 里等下一个人。
@@ -75,7 +76,56 @@
  *    对照，不一致就丢弃。闸门拦不住内存（`useAuthStore.getState().accessToken`
  *    照样被写脏，而 API 层读的是内存），世代号也拦不住"写入之外的副作用"：
  *    上一场会话的 401 回来时去调当前这个人的 `clearAuth()`，破坏力比写脏内存更大，
- *    那条同样要用 {@link pinSession} 钉住（`apiClient` / `auth.ts` 的 401 分支）。
+ *    那条同样要用 {@link pinSession} 钉住。
+ *
+ *    ⚠️ **第 3 道和第 1 道不一样：它没有任何自动性，漏接一个 action 就是一个洞。**
+ *    第 1 道遍历 `localStorage` 的全部键，作者什么都不做也覆盖得到；这一道要
+ *    一个 action 一个 action 地接。今天接了的全部在这里（改的时候一起改）：
+ *
+ *    - **异步 action 的写入**：`authStore.refreshAccessToken`（`performRefresh`
+ *      两处对照）、`profileStore` 三个（`sessionBound()` / `stillMine()`）、
+ *      `friendsStore` 七个、`groupStore` 五个、`chatStore.syncMessages`。
+ *      后三个 store 是 2026-09-08 才接的。**它们的暴露程度不一样，别一概而论**：
+ *      `friendsStore` 的 `friends` / `pendingRequests` / `sentRequests` 与
+ *      `groupStore` 的 `myGroups` / `selectionError` 今天就被 `FriendList.tsx` /
+ *      `GroupList.tsx` 渲染，是**活的**（A 的申请人 ID、昵称、申请留言，
+ *      A 的群名与群里最后一条消息的正文，会出现在 B 的侧栏上）；
+ *      `groupStore.currentGroupMembers` / `currentGroupNotices` 今天零渲染点，
+ *      `chatStore.syncMessages` 因为 `conversations` 恒为 `[]` 连请求都发不出去
+ *      ——这两处是**潜在的**，守卫为接线补上的那天准备。
+ *    - **写入之外的副作用**：各份 `fetchWithAuth` 的 401 分支
+ *      （`refreshAccessToken()` + `clearAuth()` + 跳登录页）。十份里接了九份，
+ *      名单与还差哪一份见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释；
+ *      `friendsStore.handleApiError` 走的是同一条（它会 `silentRedirectToLogin()`），
+ *      所以那七个 catch 在调它**之前**先对照世代号。
+ *
+ *    ⚠️ **上面那张单子是"接了哪些"，不是"全覆盖"。** 截至 2026-09-08 已知还没接的
+ *    三处，写在这里免得下一个人把它读成后者：
+ *
+ *    - `store/wsStore.ts` 的 `scheduleReconnect`：`await refreshAccessToken()`
+ *      之后成功分支 `set({reconnectAttempts:0, reconnecting:false})` + `get().connect()`，
+ *      失败分支 `set({reconnecting:false})`。退避重连的那个 `setTimeout` 被边界
+ *      回调里的 `disconnect()` 挡住了（清定时器 + 递增 `activeWsId`），
+ *      但**这个 await 的续体挡不住**：A 的重连在 B 的会话里落地，会写 B 的重连状态
+ *      并替 B 建一条他没要求的连接。
+ *    - `features/chat/components/ChatWindow.tsx`：`setMessages` / `prependMessages` /
+ *      `addMessage` / `updateLastMessage` 全是 `chatStore` 的 action，而四个异步
+ *      回调（首屏加载、`loadMoreMessages`、`handleSendMessage`、`handleSendFile`，
+ *      以及删除/撤回后那两次 `setMessages`）都在 `await` **之后**调它们。
+ *      组件会因为跳登录页而卸载，但卸载**不取消 promise**，写的又是 store 而不是
+ *      组件局部状态——A 的消息正文会落进 B 的 `chatStore.messages`。
+ *      这一处比本文件覆盖的三个 store 更靠外：守卫要么下沉进 store 的那几个
+ *      同步 action（它们今天没有异步边界可钉），要么在组件里各钉一次。
+ *    - `features/profile/api/profile.ts` 的 `fetchWithAuth` 401 分支——第十份，
+ *      归并行的「多份 fetchWithAuth 合一」。
+ *
+ *    两处**看起来**危险但今天不是的，一并记下来免得重复排查：
+ *    `ProfilePage` / `ProfileModal` 在 `await profileApi.uploadAvatar(...)` 之后
+ *    调 `setAvatarUrl(file_url)`，而那个 action 开头就是 `if (!currentProfile) return`
+ *    ——跨过边界后 `profile` 已经是 `null`，写不进去；
+ *    `FriendList.handleDeleteFriend` 的 `setSelectedConversation(null)` 外面套着
+ *    `if (selectedConversation?.id === friendUserId)`，边界之后同样恒假。
+ *    两者都是**结构上恰好**安全，不是钉过世代号，改动它们时这个性质会悄悄消失。
  *
  * ## 内存副本
  *

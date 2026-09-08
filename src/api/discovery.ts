@@ -3,6 +3,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { ROUTES } from '@/lib/routes'
+import { pinSession } from '@/lib/sessionScope'
 
 /**
  * 统一发现搜索 `GET /api/discovery/search`（`backend-docs/discovery/发现搜索.md`）。
@@ -39,8 +40,13 @@ const getAuthHeaders = (): HeadersInit => {
 }
 
 /**
- * 带一次刷新重试的 fetch。与 `groups.ts` / `friends.ts` / `storage.ts` 的同名函数
- * 逐字同型（本仓四个 api 模块各带一份，是既有约定）。
+ * 带一次刷新重试的 fetch。全仓有**十份**同名定义
+ * （`grep -rn 'const fetchWithAuth' src | grep -v __tests__`），本份与
+ * `groups.ts` / `friends.ts` / `messages.ts` / `groupMessages.ts` / `webrtc.ts` /
+ * `storage.ts` / `auth.ts` 七份逐字同型；另有两份不同型：`apiClient.ts` 导出的
+ * 那份（多了超时、`skipAuthRedirect`、刷新后仍 401 的分支），以及 `profile.ts`
+ * 那份（401 分支多一个 `!isBusiness401Request(...)` 合取项）。
+ * 「多份合一」的工作正在另一个 worktree 里进行。
  *
  * **只对 401 做刷新与登出**。403 原样返回给解包层，抛成带 `status` 的 `ApiError`
  * 交给调用点——本端点的 403 只可能是普通权限不足，把它并进认证失败会变成一次
@@ -48,6 +54,11 @@ const getAuthHeaders = (): HeadersInit => {
  */
 const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
   const authStore = useAuthStore.getState()
+  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
+  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
+  // 落地时必须先确认会话还是同一场。接法、以及这一行比 `performRefresh` 的世代号
+  // 对照多挡住了什么，见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
+  const isLiveSession = pinSession()
 
   if (authStore.checkTokenExpiry() && authStore.refreshToken) {
     try {
@@ -67,7 +78,11 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
     },
   })
 
-  if (response.status === 401 && authStore.refreshToken) {
+  // ⚠️ `isLiveSession()` 不是可选项：`authStore.refreshToken` 是**发起时**的快照，
+  // 上一场会话的 401 照样能满足它，而 `refreshAccessToken()` / `clearAuth()` 打的是
+  // 当前那个人的 store——清盘会把刚登录的那位连同他的 aiApiKey 一起清掉。
+  // 判假时什么都不做，把 401 原样交回调用方。
+  if (response.status === 401 && authStore.refreshToken && isLiveSession()) {
     try {
       await authStore.refreshAccessToken()
       const newHeaders = getAuthHeaders()

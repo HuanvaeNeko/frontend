@@ -107,7 +107,14 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
 
   it('已部署用户落盘的相对路径原样发出（迁移跑之前的那一批）', async () => {
     // `auth-storage` 的 migrate 是本分支才加的，已部署用户的落盘值仍是相对路径。
-    // 两种落盘形状发出去必须逐字相同，否则这条转换本身成了新的漂移源。
+    //
+    // 这条断言钉的是「相对分支不改字节」：`avatars/alice.png?t=1706000000` 里
+    // 全是 `URL` 不会重写的字符，所以它和上面那条（绝对分支）恰好给出同一个串。
+    // ⚠️ 别把这条读成「两种落盘形状发出去永远逐字相同」——那句话是**错的**，
+    // `toApiRelativePath` 的 JSDoc 里写着它不是逐字的逆运算：
+    // `avatars/a b.png` 走绝对分支会变成 `avatars/a%20b.png`。这条用例用的路径
+    // 结构上碰不到那个差异，所以它**没有能力**证伪那句话。真正把差异钉住的是
+    // `lib/__tests__/apiConfig.test.ts` 的「往返**不是逐字**的」那一条。
     useAuthStore.setState({
       user: { user_id: 'alice', avatar_url: 'avatars/alice.png?t=1706000000' },
     })

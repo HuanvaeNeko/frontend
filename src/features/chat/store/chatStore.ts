@@ -8,7 +8,7 @@ import {
 } from '../api/messages'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { isAuthError } from '@/api/apiClient'
-import { registerPristineStoreReset } from '@/lib/sessionScope'
+import { pinSession, registerPristineStoreReset } from '@/lib/sessionScope'
 
 export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
 
@@ -397,6 +397,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isSyncing: false,
   
   syncMessages: async () => {
+    // 钉住"发这次同步时的那一场会话"。这个 action 的写入点有三个
+    // （`updateLastSeq` / `updateConversation` / `finally` 里的 `isSyncing`），
+    // 三个都打在**当前**这个 store 上，而登出不取消飞在半空的请求。
+    //
+    // 最难看的一条是 `updateConversation`：反查表 `localIdByConversationId` 是
+    // **发请求时**建的（属于 A），而本地会话 id 会撞——A 和 B 各自都跟 carol
+    // 聊过的话，两边那条会话的本地 id 都是 `'carol'`，于是 A 的
+    // `lastMessage`（他与 carol 的私聊最后一条正文）会写进 B 的那条会话。
+    //
+    // ⚠️ **这条今天是潜在的，不是活的**：`setConversations` / `addConversation`
+    // 在 `src` 里零调用点（`grep -rn 'setConversations' src`），`conversations`
+    // 恒为 `[]`，于是下面那句 `length === 0` 就直接 return 了——这个 action 在
+    // 生产里根本跑不到网络请求。接线补上的那天它立刻变成活的，所以守卫先接。
+    // （接线缺失本身是另一条待办，见 `api/messages.ts` 里
+    // `buildFriendConversationId` 的 JSDoc。）
+    const stillMine = pinSession()
     const conversations = get().conversations
     if (conversations.length === 0) {
       return []
@@ -438,6 +454,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // 调用同步 API
       const result = await messagesApi.syncMessages(syncRequests)
 
+      // 上一场会话的响应：一行都不写，也不返回 `[]`。返回 `[]` 会把"这份数据
+      // 不属于任何人"说成"同步完成、0 个会话"，正是这个 action 的 catch 分支
+      // 反复讲的那种谎报。抛错的形态与 `authStore.performRefresh` 的
+      // `Token refresh landed after session end` 一致；唯一的调用点
+      // （`useRealtimeMessages`）自带 `.catch`，不会变成 unhandled rejection。
+      if (!stillMine()) {
+        throw new Error('Message sync landed after session end')
+      }
+
       // 更新每个会话的 lastSeq
       for (const conv of result.conversations) {
         const originalId = localIdByConversationId.get(conv.conversation_id)
@@ -474,6 +499,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // 已置真，本次连接不会再同步；未读计数与 lastSeq 永远停在旧值，
       // 且没有任何地方能察觉。`[]` 是这条 bug 修好前的原样表现。
       // 唯一的调用点自带 `.catch(...)`，上抛不会变成 unhandled rejection。
+      // 上一场会话的失败（含上面那句 landed-after-session-end）：原样上抛，
+      // 不打日志也不分档。它对当前这场会话不构成任何证据，把它报成
+      // 「消息同步失败」等于用 A 的网络状况去描述 B 的会话。
+      if (!stillMine()) throw error
       if (error instanceof Error && isAuthError(error)) {
         console.warn('消息同步因认证失败中止')
         throw error
@@ -481,7 +510,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.error('消息同步失败:', error)
       throw error
     } finally {
-      set({ isSyncing: false })
+      // 判假时连 `isSyncing` 都不碰：B 可能正在跑他自己的同步，A 这次迟到的
+      // 收尾会把他的转圈提前关掉。会话结束时 `registerPristineStoreReset`
+      // 已经把它归零，这里没有什么需要补的。
+      if (stillMine()) set({ isSyncing: false })
     }
   },
 
