@@ -310,20 +310,22 @@ const tryRefreshToken = async (): Promise<boolean> => {
  * 不做**，把 401 原样交给调用方：这条响应对当前这场会话不构成任何证据，
  * 降级成别的清理动作只会换一种方式伤到当前这个人。
  *
- * ## ⚠️ 采用情况：十份 `fetchWithAuth` 里接了九份
+ * ## ⚠️ 采用情况：十份 `fetchWithAuth` **全部**接上
  *
  * 和 {@link isBusiness401Request} 一样，`pinSession()` **不会**自动全仓生效——
- * 它得在每份副本的 401 分支上各接一行 `&& isLiveSession()`。已接九份：
+ * 它得在每份副本的 401 分支上各接一行 `&& isLiveSession()`。十份：
  * 本文件 + `features/auth/api/auth.ts` + `features/chat/api/friends.ts` /
  * `messages.ts` / `groupMessages.ts` / `groups.ts` +
- * `features/webrtc/api/webrtc.ts` + `api/storage.ts` + `api/discovery.ts`。
- * 后八份的函数体（去掉注释与空白）**逐字相同**，本文件这份不同（多了超时、
- * `skipAuthRedirect`、以及刷新后仍 401 的分支）。
+ * `features/webrtc/api/webrtc.ts` + `api/storage.ts` + `api/discovery.ts` +
+ * `features/profile/api/profile.ts`。中间八份的函数体（去掉注释与空白）
+ * **逐字相同**；本文件这份不同（多了超时、`skipAuthRedirect`、以及刷新后仍 401
+ * 的分支），`profile.ts` 那份也不同——它的 401 分支是全仓唯一一个带第四个合取项
+ * `!isBusiness401Request(...)` 的（`PUT /api/profile/password` 的「旧密码错误」
+ * 也是 401）。
  *
- * **还没接的一份**：`features/profile/api/profile.ts`——它归另一场并行的
- * 「多份 fetchWithAuth 合一」，本批不碰。它的 401 分支也是全仓唯一一个带
- * 第三个合取项 `!isBusiness401Request(...)` 的，所以那句"八份逐字相同"
- * 对它本来也不成立。
+ * profile 那一份是最后接上的：它此前被留给另一场并行的「多份 fetchWithAuth
+ * 合一」，而那份工作从九个提交之前的树上分叉、把十份重写了一遍且一道闸都没带，
+ * 无论如何都要重做，所以先把闸接上。
  *
  * ## 这一行比 `performRefresh` 的世代号对照多挡住了什么
  *
@@ -340,8 +342,8 @@ const tryRefreshToken = async (): Promise<boolean> => {
  * 3. 无论成败都白轮换一次 B 的 token。
  *
  * 所以这不是"把一个已经很窄的窗口再收窄一点"，第 1 条是漏斗**完全没有**覆盖的
- * 一类。九份各自钉了一条用例，逐个删掉那个合取项都必红：
- * 七份模块副本在 `src/api/__tests__/sessionScopedFetchWithAuth.test.ts`
+ * 一类。十份各自钉了一条用例，逐个删掉那个合取项都必红：
+ * 八份模块副本在 `src/api/__tests__/sessionScopedFetchWithAuth.test.ts`
  * （`describe.each` 一份一条，报出来带模块名）；`auth.ts` 那份在
  * `sessionHandoff.test.tsx`「A 登出前发出的请求在 B 的会话里才 401」；
  * 本文件这份在 `src/api/__tests__/apiClient.test.ts`

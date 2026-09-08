@@ -4,7 +4,7 @@ import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import { beginSession, endSession } from '@/lib/sessionScope'
-import { profileApi } from '../../api/profile'
+import { profileApi, type UserProfile } from '../../api/profile'
 import { makeProfile } from '../../api/__tests__/profileFixture'
 import { migrateProfilePersist, useProfileStore } from '../profileStore'
 
@@ -95,6 +95,80 @@ describe('profileStore.updateProfile', () => {
 
     expect(useProfileStore.getState().profile?.user_email).toBe('new@example.com')
     expect(useProfileStore.getState().error).toBeNull()
+  })
+})
+
+/**
+ * PUT 成功、随后那次读回失败 —— **不是**一次失败的保存。
+ *
+ * 这是 P2 已经在头像那条路径上修过的同一个形态（`ProfilePage.handleAvatarChange`
+ * 的 JSDoc 逐字写着「把这两步塞回同一个 `try` 就会复活这个 bug」，而它自己的
+ * `loadProfile()` 带着独立的 `.catch`）。本 action 此前把 PUT 与读回放在同一个
+ * `try` 里，于是：
+ * - 读回 500 ⇒ 一次后端**已经提交**的修改被报告成「保存失败」，
+ *   `PrivacySettings` 的开关随后停回相反的位置（它读的就是本 store 的 `profile`）；
+ * - 读回 401 ⇒ `settleError` 认出认证错误，`silentRedirectToLogin()`——
+ *   一次成功的保存以无解释登出收场。
+ */
+describe('profileStore.updateProfile：PUT 已提交之后读回失败', () => {
+  const readBackFailure = (status: number) =>
+    new ApiError(status === 401 ? '未认证或 Token 无效' : '服务器内部错误', {
+      status,
+      code: status,
+      endpoint: 'GET /api/profile',
+    })
+
+  it('读回 500：resolve、不写 error，profile 跟上这次已提交的修改', async () => {
+    useProfileStore.setState({ profile: makeProfile({ allow_search: true }) })
+    const put = vi.spyOn(profileApi, 'updateProfile').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(readBackFailure(500))
+
+    await expect(
+      useProfileStore.getState().updateProfile({ allow_search: false }),
+    ).resolves.toBeUndefined()
+
+    // 正对照：PUT 确实发了这一次修改（否则下面三行在"什么都没做"时也成立）。
+    expect(put).toHaveBeenCalledWith({ allow_search: false })
+    expect(useProfileStore.getState().error).toBeNull()
+    // 后端已经提交了 `false`，屏幕上就不能还写着 `true`。
+    expect(useProfileStore.getState().profile?.allow_search).toBe(false)
+    expect(useProfileStore.getState().isLoading).toBe(false)
+  })
+
+  it('读回 401：不清凭证、不跳登录页——这次保存已经成功了', async () => {
+    useProfileStore.setState({ profile: makeProfile({ user_signature: '旧签名' }) })
+    vi.spyOn(profileApi, 'updateProfile').mockResolvedValue(undefined)
+    vi.spyOn(profileApi, 'getProfile').mockRejectedValue(readBackFailure(401))
+
+    await expect(
+      useProfileStore.getState().updateProfile({ signature: '新签名' }),
+    ).resolves.toBeUndefined()
+
+    expect(loggedIn()).toBe(true)
+    expect(replaceSpy).not.toHaveBeenCalled()
+    expect(useProfileStore.getState().profile?.user_signature).toBe('新签名')
+  })
+
+  it('正对照：PUT **本身**失败时，照旧写 error 并 reject', async () => {
+    // 没有这一条，上面两条在"updateProfile 从此永不失败"时同样成立。
+    useProfileStore.setState({ profile: makeProfile({ allow_search: true }) })
+    vi.spyOn(profileApi, 'updateProfile').mockRejectedValue(
+      new ApiError('Validation error: email: Invalid email format', {
+        status: 400,
+        code: 400,
+        endpoint: 'PUT /api/profile',
+      }),
+    )
+    const get = vi.spyOn(profileApi, 'getProfile').mockResolvedValue(makeProfile())
+
+    await expect(useProfileStore.getState().updateProfile({ email: 'x' })).rejects.toThrow(
+      'Validation error',
+    )
+
+    expect(useProfileStore.getState().error).toContain('Validation error')
+    // PUT 没成功就不该有读回，profile 也一个字段都不该动。
+    expect(get).not.toHaveBeenCalled()
+    expect(useProfileStore.getState().profile?.allow_search).toBe(true)
   })
 })
 
@@ -345,6 +419,182 @@ describe('profileStore 的会话边界：失败半边', () => {
 
     await expect(useProfileStore.getState().loadProfile()).rejects.toThrow('未认证或 Token 无效')
 
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+  })
+})
+
+/**
+ * `updateProfile` 与 `uploadAvatar` 的**每一道**会话闸，一条用例一道。
+ *
+ * 上面那组只覆盖了 `loadProfile`，而它的 JSDoc 却写着「三个 action」。实测过：
+ * 本组存在之前，`updateProfile` / `uploadAvatar` 里的那四道 `stillMine()` 逐个
+ * 注释掉，全仓 740 条用例**一条都不红**——那句概括当时是假的。
+ *
+ * 现在是五道：`updateProfile` 的读回被挪出 PUT 那个 `try` 之后，
+ * 「PUT 落地时已经换人」与「读回落地时已经换人」变成两个不同的时点，各占一道
+ * （前者顺带挡住了一次**跨会话发出**的 GET——旧写法那道闸在 GET **之后**，
+ * 换人之后照样会拿 B 的凭证去发 A 的读回）。五道各自的变异结果写在各自的用例里。
+ *
+ * 每条都用「请求还在飞的时候换人」的真实时序（`endSession()` + `beginSession()`），
+ * 而不是直接改世代号：`endSession` 会顺带跑 `clearProfile()`，B 的 store 因此是干净的，
+ * A 的落地若漏进来就是可见的脏值。
+ */
+describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每一道闸', () => {
+  const asB = () => {
+    useAuthStore.setState({
+      accessToken: 'AT-b',
+      refreshToken: 'RT-b',
+      isAuthenticated: true,
+      tokenExpiry: Date.now() + 3600_000,
+    })
+  }
+  const png = () => new File(['x'], 'a.png', { type: 'image/png' })
+
+  it('updateProfile 的 PUT 失败闸：上一场的 401 不清 B 的凭证、不跳登录页', async () => {
+    beginSession()
+    let rejectPut!: (error: unknown) => void
+    vi.spyOn(profileApi, 'updateProfile').mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        rejectPut = reject
+      }),
+    )
+    const inFlight = useProfileStore.getState().updateProfile({ email: 'a@example.com' })
+
+    endSession()
+    beginSession()
+    asB()
+
+    rejectPut(sessionExpired('PUT /api/profile'))
+    // 属于死会话的错误照样 reject，只是不再有副作用。
+    await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
+
+    // 删掉这道闸 → `settleError` 认出 401 并 `silentRedirectToLogin()`：
+    // 本行停在 `expected null to be 'AT-b'`。
+    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    // 同一场里的正对照：这条 401 **确实**会登出（否则上面两行恒真）。
+    vi.spyOn(profileApi, 'updateProfile').mockRejectedValue(sessionExpired('PUT /api/profile'))
+    await expect(
+      useProfileStore.getState().updateProfile({ email: 'b@example.com' }),
+    ).rejects.toThrow()
+    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+  })
+
+  it('updateProfile 的 PUT 成功闸：换人之后不读回、不把 A 的修改打进 B 的资料', async () => {
+    beginSession()
+    let resolvePut!: () => void
+    vi.spyOn(profileApi, 'updateProfile').mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolvePut = () => resolve()
+      }),
+    )
+    const getSpy = vi.spyOn(profileApi, 'getProfile').mockResolvedValue(
+      makeProfile({ user_nickname: 'A 的资料' }),
+    )
+    const inFlight = useProfileStore.getState().updateProfile({ allow_search: false })
+
+    endSession()
+    beginSession()
+    asB()
+    useProfileStore.setState({ profile: makeProfile({ user_nickname: 'B', allow_search: true }) })
+
+    resolvePut()
+    await inFlight
+
+    // 删掉这道闸 → A 的那次 PUT 会带出一次读回，B 的 profile 被 A 的资料覆盖。
+    expect(getSpy).not.toHaveBeenCalled()
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('B')
+    expect(useProfileStore.getState().profile?.allow_search).toBe(true)
+
+    // 正对照（同一个 spy）：活着的会话里这次读回**确实**会发生。
+    vi.spyOn(profileApi, 'updateProfile').mockResolvedValue(undefined)
+    await useProfileStore.getState().updateProfile({ allow_search: false })
+    expect(getSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('updateProfile 的读回闸：读回落地时已经换人 → 一个字节都不写进 B 的 store', async () => {
+    beginSession()
+    vi.spyOn(profileApi, 'updateProfile').mockResolvedValue(undefined)
+    let resolveGet!: (profile: UserProfile) => void
+    vi.spyOn(profileApi, 'getProfile').mockReturnValue(
+      new Promise<UserProfile>((resolve) => {
+        resolveGet = resolve
+      }),
+    )
+    useProfileStore.setState({ profile: makeProfile({ allow_search: true }) })
+    const inFlight = useProfileStore.getState().updateProfile({ allow_search: false })
+
+    // 等 PUT 落地：本地补丁打上了，说明请求已经越过上一道闸，现在停在读回上。
+    await vi.waitFor(() =>
+      expect(useProfileStore.getState().profile?.allow_search).toBe(false),
+    )
+
+    endSession()
+    beginSession()
+    asB()
+    useProfileStore.setState({ profile: makeProfile({ user_nickname: 'B' }) })
+
+    resolveGet(makeProfile({ user_nickname: 'A 的资料' }))
+    await inFlight
+
+    // 删掉这道闸 → B 的侧栏（`Navigation` 直接读本 store）挂上 A 的昵称与头像。
+    expect(useProfileStore.getState().profile?.user_nickname).toBe('B')
+  })
+
+  it('uploadAvatar 的成功闸：A 的 file_url 不写进 B 的资料', async () => {
+    beginSession()
+    let resolveUpload!: (result: { file_url: string; file_key: string }) => void
+    const uploadSpy = vi.spyOn(profileApi, 'uploadAvatar').mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpload = resolve
+      }),
+    )
+    useProfileStore.setState({ profile: makeProfile({ user_avatar_url: 'https://x/a.png' }) })
+    const inFlight = useProfileStore.getState().uploadAvatar(png())
+
+    endSession()
+    beginSession()
+    asB()
+    useProfileStore.setState({ profile: makeProfile({ user_avatar_url: 'https://x/b.png' }) })
+
+    resolveUpload({ file_url: 'https://x/a-new.png', file_key: 'a.png' })
+    await inFlight
+
+    // 删掉这道闸 → B 的头像被换成 A 刚传的那张。
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe('https://x/b.png')
+
+    // 正对照（同一个 spy、同一个返回值）：活着的会话里它**确实**会写进去。
+    uploadSpy.mockResolvedValue({ file_url: 'https://x/a-new.png', file_key: 'a.png' })
+    await useProfileStore.getState().uploadAvatar(png())
+    expect(useProfileStore.getState().profile?.user_avatar_url).toBe('https://x/a-new.png')
+  })
+
+  it('uploadAvatar 的失败闸：上一场的 401 不清 B 的凭证、不跳登录页', async () => {
+    beginSession()
+    let rejectUpload!: (error: unknown) => void
+    vi.spyOn(profileApi, 'uploadAvatar').mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectUpload = reject
+      }),
+    )
+    const inFlight = useProfileStore.getState().uploadAvatar(png())
+
+    endSession()
+    beginSession()
+    asB()
+
+    rejectUpload(sessionExpired('GET /api/profile'))
+    await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
+
+    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    // 正对照：同一场会话里的同一个错误**确实**会登出。
+    vi.spyOn(profileApi, 'uploadAvatar').mockRejectedValue(sessionExpired('GET /api/profile'))
+    await expect(useProfileStore.getState().uploadAvatar(png())).rejects.toThrow()
     expect(useAuthStore.getState().accessToken).toBeNull()
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })

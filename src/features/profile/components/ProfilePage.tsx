@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { pickProfileEdits, profileApi } from '@/features/profile/api/profile'
+import { pickProfileEdits, profileApi, profileFormValues } from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { ROUTES } from '@/lib/routes'
 
@@ -37,7 +37,21 @@ export default function Profile() {
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = useState({ nickname: '', email: '', signature: '' })
+  /**
+   * 初值从**已经在 store 里**的资料种出来（`profile` 是持久化字段，刷新之后
+   * rehydrate 出来就已经在了），而不是空三元组。空三元组会在首屏留一拍空表单，
+   * 那一拍点「保存更改」发出去的是 `nickname: ''`——本页的保存按钮**不**绑
+   * `hasChanges`（只绑 `isLoading`），所以它是可点的；`assertValidUpdate` 会在任何
+   * fetch 之前抛「昵称长度需为 1-50 个字符」，损失只是一条看不懂的提示。
+   *
+   * ⚠️ 这条改动**没有用例钉住**，说明白：RTL 的 `render()` 包在 `act()` 里，回填
+   * effect 在返回之前就跑完了，两种写法在 DOM 上收敛到同一个稳定态；`ProfileModal`
+   * 那一侧能钉是因为它的按钮绑着 `hasChanges`，`disabled` 属性的变化能被
+   * `MutationObserver` 逐次提交地看见（见 `ProfileModal.test.tsx` 的「不闪」那条），
+   * 而本页没有这样一个随之翻转的属性。被钉住的是共用的那个纯函数
+   * （`profile.test.ts` 的「左逆」）。
+   */
+  const [formData, setFormData] = useState(() => profileFormValues(profile))
   const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
   const [showPasswords, setShowPasswords] = useState({ old: false, new: false, confirm: false })
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -58,14 +72,10 @@ export default function Profile() {
     loadProfile().catch(console.error)
   }, [loadProfile])
 
+  // 资料后到时（或每次 `loadProfile()` 带回新一份时）回填。与上面的初值共用
+  // {@link profileFormValues}：同一个三元组写两遍就是两份会各自漂移的口径。
   useEffect(() => {
-    if (profile) {
-      setFormData({
-        nickname: profile.user_nickname,
-        email: profile.user_email || '',
-        signature: profile.user_signature || '',
-      })
-    }
+    if (profile) setFormData(profileFormValues(profile))
   }, [profile])
 
   /**

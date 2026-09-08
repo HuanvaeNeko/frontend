@@ -168,6 +168,84 @@ describe('PrivacySettings 保存', () => {
     expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('true')
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '已保存' }))
   })
+
+  it('读回失败不把已提交的保存说成失败：开关跟着后端走，不弹「保存失败」', async () => {
+    // 这条用例的形状取自 reviewer 的探针：PUT 200、随后那次 GET 500。
+    // 修复前 `profileStore.updateProfile` 把两步放在同一个 `try` 里，于是一次
+    // **后端已经提交**的隐私变更在界面上是：红色的「保存失败」+ 开关弹回原位，
+    // 而后端存的是新值——用户以为自己还能被搜到/搜不到，事实相反。
+    let getCount = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        getCount += 1
+        // 第一次 GET 是面板自己的 `loadProfile()`，必须成功（否则渲染不出开关）；
+        // 第二次是 PUT 之后的读回，让它 500。
+        return getCount === 1
+          ? json({ success: true, code: 200, data: makeProfileWire({ allow_search: true }) })
+          : json({ error: '服务器内部错误' }, 500)
+      }
+      if (url === PROFILE_BASE && init?.method === 'PUT') return json({ message: 'ok' })
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    render(<PrivacySettings />)
+    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+
+    await userEvent.click(switchByLabel('允许被搜索'))
+
+    // 正对照：PUT 发出去了、读回也确实发生并失败了（否则下面两行测的是别的东西）。
+    await waitFor(() => expect(putBodies()).toEqual([{ allow_search: false }]))
+    await waitFor(() => expect(getCount).toBe(2))
+
+    await waitFor(() =>
+      expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('false'),
+    )
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: '已保存' }))
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: '保存失败' }),
+    )
+  })
+})
+
+/**
+ * 读路径的失败态。
+ *
+ * 此前这个组件对 `loadProfile()` 的 reject **没有任何分支**：`ready` 停在 `false`，
+ * 屏幕上留下一句永远转不完的「正在加载隐私设置…」。那正是这一轮在消灭的静默形态——
+ * 用户既不知道发生了什么，也没有任何能自己走出去的动作。
+ */
+describe('PrivacySettings 的读失败态', () => {
+  it('读失败时画出失败与后端原文，并给一个能走出去的「重试」', async () => {
+    let attempts = 0
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        attempts += 1
+        return attempts === 1
+          ? json({ error: '服务器内部错误' }, 500)
+          : json({ success: true, code: 200, data: makeProfileWire({ allow_search: false }) })
+      }
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+
+    render(<PrivacySettings />)
+
+    // 把 `if (loadError)` 那一屏删掉 → 本行红（页面上只剩「正在加载隐私设置…」）。
+    await waitFor(() => expect(screen.getByText(/隐私设置读取失败/)).toBeTruthy())
+    // 后端原文要在屏幕上，不是一句自造的"请稍后重试"。
+    expect(screen.getByText(/服务器内部错误/)).toBeTruthy()
+    // 失败态下**不能**渲染开关：一个猜出来的取值比这条提示危险得多。
+    expect(screen.queryByRole('switch')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    // 正对照：重试真的重跑了那次读，而且用的是这一次拿回来的值（`false`）。
+    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+    expect(attempts).toBe(2)
+    expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryByText(/隐私设置读取失败/)).toBeNull()
+  })
 })
 
 /**

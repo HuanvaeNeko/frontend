@@ -94,8 +94,8 @@
  *      `chatStore.syncMessages` 因为 `conversations` 恒为 `[]` 连请求都发不出去
  *      ——这两处是**潜在的**，守卫为接线补上的那天准备。
  *    - **写入之外的副作用**：各份 `fetchWithAuth` 的 401 分支
- *      （`refreshAccessToken()` + `clearAuth()` + 跳登录页）。十份里接了九份，
- *      名单与还差哪一份见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释；
+ *      （`refreshAccessToken()` + `clearAuth()` + 跳登录页）。十份现已全部接入，
+ *      名单与各自的用例见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释；
  *      `friendsStore.handleApiError` 走的是同一条（它会 `silentRedirectToLogin()`），
  *      所以那七个 catch 在调它**之前**先对照世代号。
  *

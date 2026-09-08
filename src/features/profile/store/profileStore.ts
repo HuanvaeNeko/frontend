@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { profileApi, type UserProfile, type UpdateProfileRequest } from '../api/profile'
+import {
+  applyProfileEdits,
+  profileApi,
+  type UserProfile,
+  type UpdateProfileRequest,
+} from '../api/profile'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
@@ -175,20 +180,43 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
+      /**
+       * ⚠️ **PUT 与随后那次读回不在同一个 `try` 里，这是有意的。**
+       *
+       * 两步塞回同一个 `try` 会复活 P2 已经在头像那条路径上修掉的形态
+       * （`ProfilePage.handleAvatarChange` 的 JSDoc 逐字写着这句话，它自己那次
+       * `loadProfile()` 也确实带着独立的 `.catch`）：PUT 已经 200、后端**已经提交**，
+       * 而 GET 500 会让调用方弹一条红色的「保存失败」，GET 401 更进一步——
+       * `settleError` 认出认证错误，一次成功的保存以无解释登出收场。
+       *
+       * 所以 200 之后这条路径上**没有失败出口**：先按 {@link applyProfileEdits}
+       * 把这次已提交的修改落到内存里（`PrivacySettings` 的开关读的就是它），
+       * 再去拉齐其余字段；拉不到就只留一条 `console.error`。
+       */
       updateProfile: async (updates: UpdateProfileRequest) => {
         const stillMine = sessionBound()
         set({ isLoading: true, error: null })
         try {
           await profileApi.updateProfile(updates)
-          // 重新加载完整的 profile
-          const profile = await profileApi.getProfile()
-          if (!stillMine()) return
-          set({ profile, isLoading: false })
         } catch (error) {
           if (!stillMine()) throw error
           settleError(error, '更新个人资料失败', set)
           throw error
         }
+
+        // 这道闸挡的是"PUT 落地时已经换人"：接着往下会拿**当前**这个人的凭证发一次
+        // GET，并把上一个人的修改写进他的 store。判假时什么都不写（理由同 sessionBound）。
+        if (!stillMine()) return
+        const current = get().profile
+        if (current) set({ profile: applyProfileEdits(current, updates) })
+
+        // 重新加载完整的 profile：拿 `updated_at` 等这次没改的字段。
+        const reloaded = await profileApi.getProfile().catch((error: unknown) => {
+          console.error('个人资料已保存，重新拉取完整资料失败:', error)
+          return null
+        })
+        if (!stillMine()) return
+        set(reloaded ? { profile: reloaded, isLoading: false } : { isLoading: false })
       },
 
       /**

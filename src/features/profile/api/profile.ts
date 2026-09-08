@@ -5,6 +5,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
 import { asRecord, bool, describe as describeValue, str } from '@/lib/apiParse'
 import { ROUTES } from '@/lib/routes'
+import { pinSession } from '@/lib/sessionScope'
 
 const PROFILE_BASE_URL = `${getApiBaseUrl()}/api/profile`
 
@@ -23,7 +24,12 @@ const fetchWithAuth = async (
   options: RequestInit = {}
 ): Promise<Response> => {
   const authStore = useAuthStore.getState()
-  
+  // 钉住"发这个请求时的那一场会话"。下面 401 分支里的每一个动作打的都是**当前**
+  // 那个人的 store（`authStore` 是快照，但它攥着的 action 闭包是活的），所以响应
+  // 落地时必须先确认会话还是同一场。接法、以及这一行比 `performRefresh` 的世代号
+  // 对照多挡住了什么，见 `api/apiClient.ts` 里 `fetchWithAuth` 的注释。
+  const isLiveSession = pinSession()
+
   // 检查 Token 是否即将过期，如果是则刷新
   if (authStore.checkTokenExpiry() && authStore.refreshToken) {
     try {
@@ -58,7 +64,21 @@ const fetchWithAuth = async (
   // 代价写明：这类端点上**真的**会话失效不再自动刷新重试，用户会看到一条可见的
   // 失败提示、重试一次即可（进门处的临期预刷新仍然有效，覆盖了绝大多数过期）。
   // 可见的错误可恢复，无解释的登出不可恢复。
-  if (response.status === 401 && authStore.refreshToken && !isBusiness401Request(options.method, url)) {
+  //
+  // ⚠️ `isLiveSession()` 同样不是可选项，理由与别的九份副本逐条相同：
+  // `authStore.refreshToken` 是**发起时**的快照，上一场会话的 401 照样能满足它，
+  // 而 `refreshAccessToken()` / `clearAuth()` 打的是当前那个人的 store——清盘会把
+  // 刚登录的那位连同他的 aiApiKey 一起清掉。判假时什么都不做，把 401 原样交回
+  // 调用方。本文件这一条曾是十份里唯一没接的（当时的理由是"归另一场并行的合并
+  // 工作"，而那份工作从九个提交之前的树上分叉、把十份全重写了一遍且一道闸都没带，
+  // 无论如何都要重做）。用例在 `api/__tests__/sessionScopedFetchWithAuth.test.ts`
+  // 的 `COPIES` 表里，本模块那一行叫 `features/profile/api/profile.ts`。
+  if (
+    response.status === 401 &&
+    authStore.refreshToken &&
+    isLiveSession() &&
+    !isBusiness401Request(options.method, url)
+  ) {
     try {
       await authStore.refreshAccessToken()
       const newHeaders = getAuthHeaders()
@@ -224,13 +244,27 @@ const PROFILE_LEGACY_BARE = {
  * 拒。于是「用户清空了签名」这种完全正常的账号，会在读侧把整个资料页炸掉。
  * `''` 与 `null` 一并归一成 `null`（= 未设置），其余非字符串照抛。
  *
- * 同族做法见 `groups.ts` 的 `emptyableStr`（那里 `''` 直接出现在文档样例里）。
+ * ## 放宽的只有 `''`，**缺键仍然算错**
+ *
+ * 这里曾经写的是 `if (value === null || value === undefined) return null`——
+ * 一个连自己的 JSDoc 都不承认的第三档：`user_email` / `user_signature` /
+ * `user_avatar_url` 被后端改名或下线时静默解析成 `null`，不抛、不 warn、
+ * 不留任何痕迹，而这三个字段 UI **都在读**（两个资料页的邮箱与签名输入框、
+ * 三处头像）。本文件只应该有两档，界线写在 {@link unconsumedNullableStr} 上，
+ * 而「宽松」那一档的定义是**每次命中都 warn**（同处：「宽松 ≠ 静默」）。
+ *
+ * 空串是文档给出的合法取值（上面那三行引用），缺键不是：字段表 doc:96-98 把这
+ * 三个和 `user_id` 一样无条件列出。房规同 `apiParse.nullableStr`（`=== null`
+ * 之外一律交给 `str()`，缺键照抛）与 `groups.ts` 的同名 `emptyableStr`
+ * （`undefined` 落进 `typeof !== 'string'` 那一支抛错）。
  */
 function emptyableStr(payload: Record<string, unknown>, key: string): string | null {
   const value = payload[key]
-  if (value === null || value === undefined) return null
+  if (value === null) return null
   if (typeof value !== 'string') {
-    throw new Error(`${key} 应为字符串或 null，实际是 ${describeValue(value)}`)
+    throw new Error(
+      `${key} 应为字符串或 null，实际是 ${value === undefined ? '缺失' : describeValue(value)}`,
+    )
   }
   return value === '' ? null : value
 }
@@ -377,6 +411,30 @@ function assertValidUpdate(body: Record<string, unknown>): void {
   }
 }
 
+/** 两个资料表单共用的三格取值。输入框只认字符串，所以 `null` 一律是空串。 */
+export interface ProfileFormValues {
+  nickname: string
+  email: string
+  signature: string
+}
+
+/**
+ * 资料 → 表单初值。{@link pickProfileEdits} 的**左逆**：
+ * `pickProfileEdits(p, profileFormValues(p))` 对任何 `p` 都是 `{}`（有用例钉着）。
+ *
+ * 这条等式就是「保存更改」按钮不会闪的全部理由：表单只要是从**当前这份**资料
+ * 种出来的，差分就必然为空，按钮必然是灰的。`ProfileModal` 此前把初值写成空三元组
+ * 再靠一个 `useEffect` 回填，于是 `profile` 刚变成非空的那一拍，差分拿"空表单"
+ * 对"有值的资料"算出三个键——按钮亮着、输入框却是空的。
+ */
+export function profileFormValues(profile: UserProfile | null): ProfileFormValues {
+  return {
+    nickname: profile?.user_nickname ?? '',
+    email: profile?.user_email ?? '',
+    signature: profile?.user_signature ?? '',
+  }
+}
+
 /**
  * 把表单当前值与已加载的资料对照，只挑出**真的被改过**的字段。
  *
@@ -395,7 +453,7 @@ function assertValidUpdate(body: Record<string, unknown>): void {
  */
 export function pickProfileEdits(
   current: UserProfile | null,
-  form: { nickname: string; email: string; signature: string },
+  form: ProfileFormValues,
 ): UpdateProfileRequest {
   if (!current) return {}
   const edits: UpdateProfileRequest = {}
@@ -403,6 +461,62 @@ export function pickProfileEdits(
   if (form.email !== (current.user_email ?? '')) edits.email = form.email
   if (form.signature !== (current.user_signature ?? '')) edits.signature = form.signature
   return edits
+}
+
+/** 写侧的 `''` 是"清空"，读侧把它归一成 `null`（见 {@link emptyableStr}）；这里跟同一套。 */
+const emptyToNull = (value: string): string | null => (value === '' ? null : value)
+
+/**
+ * 每个可写字段落到 `UserProfile` 上的写法。**类型即穷尽性**：
+ * `UpdateProfileRequest` 新增一个字段而这里忘了跟，TS 当场报缺键。
+ *
+ * 三个字段两侧不同名（`nickname`/`email`/`signature` ⇄ `user_*`），
+ * 这张表是全仓唯一写下这个对应关系的地方——{@link pickProfileEdits} 是它的反向。
+ */
+type ProfileEditAppliers = {
+  [K in keyof Required<UpdateProfileRequest>]: (
+    draft: UserProfile,
+    value: NonNullable<UpdateProfileRequest[K]>,
+  ) => void
+}
+
+const PROFILE_EDIT_APPLIERS: ProfileEditAppliers = {
+  nickname: (draft, value) => { draft.user_nickname = value },
+  email: (draft, value) => { draft.user_email = emptyToNull(value) },
+  signature: (draft, value) => { draft.user_signature = emptyToNull(value) },
+  allow_search: (draft, value) => { draft.allow_search = value },
+  search_visible_by_id: (draft, value) => { draft.search_visible_by_id = value },
+  friend_request_policy: (draft, value) => { draft.friend_request_policy = value },
+  group_invite_policy: (draft, value) => { draft.group_invite_policy = value },
+  // `gender` 只有三档取值，`assertValidUpdate` 已挡掉 `''`，不需要归一。
+  gender: (draft, value) => { draft.gender = value },
+  birthday: (draft, value) => { draft.birthday = emptyToNull(value) },
+  region: (draft, value) => { draft.region = emptyToNull(value) },
+}
+
+/**
+ * 把一次**后端已经答应下来**的部分更新落到手上这份 `UserProfile` 上。
+ *
+ * 调用点只有一个：`profileStore.updateProfile` 在 `PUT /api/profile` 返回 200
+ * **之后**。那一刻这次修改已经提交（成功响应 doc:203-208），随后那次 `GET`
+ * 只是"把其余字段拉齐"；GET 失败时若什么都不做，屏幕上留下的是**修改前**的值——
+ * 用户看到「已保存」，开关却弹回原位，而后端存的是新值。
+ *
+ * ⚠️ 这**不是**乐观更新：乐观更新是在请求发出去之前就改界面、失败再回滚。
+ * 这里一个字节都不动，直到后端说 200 为止，所以也没有回滚可以写错。
+ *
+ * 与读回的差别只可能出现在后端**归一化了**某个值的场合（例如把邮箱转小写）。
+ * 那种差别会在下一次成功的 `loadProfile()` 被纠正，而代价对比是：
+ * 显示一个后端刚接受的值 vs 显示一个后端已经不再持有的值。
+ */
+export function applyProfileEdits(current: UserProfile, edits: UpdateProfileRequest): UserProfile {
+  const draft = { ...current }
+  for (const key of Object.keys(PROFILE_EDIT_APPLIERS) as (keyof UpdateProfileRequest)[]) {
+    const value = edits[key]
+    if (value === undefined) continue
+    ;(PROFILE_EDIT_APPLIERS[key] as (draft: UserProfile, value: unknown) => void)(draft, value)
+  }
+  return draft
 }
 
 // ============================================

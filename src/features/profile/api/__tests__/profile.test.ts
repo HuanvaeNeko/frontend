@@ -5,7 +5,13 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
-import { pickProfileEdits, profileApi, type UpdateProfileRequest } from '../profile'
+import {
+  applyProfileEdits,
+  pickProfileEdits,
+  profileApi,
+  profileFormValues,
+  type UpdateProfileRequest,
+} from '../profile'
 import { makeProfile, makeProfileWire } from './profileFixture'
 
 /**
@@ -23,7 +29,10 @@ import { makeProfile, makeProfileWire } from './profileFixture'
  * 只断言 `rejects.toThrow(...)` 的话，把 status 写错（比如恒填 500）
  * 也照样通过——而分类器读的正是这个字段。
  *
- * 响应体的读法（`data.data || data` 等）本批一个字没动，属于后续批次。
+ * 响应体的读法（`data.data || data`）**已经在本文件里换掉了**，不是后续批次：
+ * 见 `describe('profileApi.getProfile 的信封解包')` 与
+ * `describe('profileApi.getProfile 的字段校验')`。本行此前写的是"本批一个字没动"，
+ * 与那两组用例、以及它们上方那句"被替掉的是 `data.data || data`"直接矛盾。
  */
 
 // getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定。
@@ -846,6 +855,34 @@ describe('profileApi.getProfile 的字段校验', () => {
     expect(profile.user_email).toBeNull()
   })
 
+  it('三个 emptyable 字段**缺键**照抛：空串归一是放宽，缺席不是', async () => {
+    // 修掉的是 `emptyableStr` 里 `value === undefined` 那一支：它把「后端明确说
+    // 没有」和「这个键根本没来」折成同一个 `null`，而这三个字段 UI 都在读
+    // （邮箱/签名输入框、三处头像）。房规见 `apiParse.nullableStr` 与 `groups.ts`
+    // 的同名 `emptyableStr`——两者对缺键都抛。
+    for (const key of ['user_email', 'user_signature', 'user_avatar_url']) {
+      fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit(key) }))
+
+      const error = await profileApi.getProfile().catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ApiShapeError)
+      expect((error as Error).message).toContain(key)
+    }
+
+    // 同一条用例里的两侧对照，缺一不可：
+    // - 放宽档还在（缺 `gender` 仍然只 warn 不抛），证明上面三条不是"什么都抛"；
+    // - `''` 仍然归一成 `null`，证明上面三条抛的是缺键而不是把放宽整个撤回。
+    warnMock.mockClear()
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: omit('gender') }))
+    await expect(profileApi.getProfile()).resolves.toMatchObject({ gender: null })
+    expect(warnMock).toHaveBeenCalled()
+
+    fetchMock.mockResolvedValueOnce(
+      json({ success: true, code: 200, data: makeProfileWire({ user_avatar_url: '' }) }),
+    )
+    await expect(profileApi.getProfile()).resolves.toMatchObject({ user_avatar_url: null })
+  })
+
   it('admin 是字符串 "false"（不是布尔），16 个字段一个不少地带出来', async () => {
     // 正对照：上面几条都在验"少字段会怎样"，这条验"齐了会怎样"。
     // 最后那句 `Object.keys(profile).sort()` 覆盖全部 16 个键——把解析器改成
@@ -987,6 +1024,111 @@ describe('pickProfileEdits', () => {
   it('昵称改了就带上昵称（本批之前输入框是 disabled 的，改不了）', () => {
     expect(pickProfileEdits(current, formOf({ nickname: '新昵称' }))).toEqual({
       nickname: '新昵称',
+    })
+  })
+
+  it('左逆：从一份资料种出来的表单，差分必然为空', () => {
+    // 这条等式是「保存更改」不会闪的**全部**理由（`ProfileModal` 那一侧靠它把
+    // "表单空着但按钮亮着"那一拍消掉）。三种形态各来一份：有值 / `null` /
+    // 空串——后两种在输入框里都长成"空的"，差分必须同样为空。（解析器出口只会给
+    // `null`，空串那份来自落盘 rehydrate 的旧值。）
+    for (const profile of [
+      current,
+      makeProfile({ user_email: null, user_signature: null }),
+      makeProfile({ user_email: '', user_signature: '' }),
+    ]) {
+      expect(pickProfileEdits(profile, profileFormValues(profile))).toEqual({})
+    }
+
+    // 正对照：种出来之后**改一个字**，差分立刻非空——上面那句不是"永远返回 {}"。
+    const seeded = profileFormValues(current)
+    expect(pickProfileEdits(current, { ...seeded, nickname: `${seeded.nickname}丁` })).toEqual({
+      nickname: `${current.user_nickname}丁`,
+    })
+  })
+
+  it('资料为 null 时表单是三个空串（输入框只认字符串）', () => {
+    expect(profileFormValues(null)).toEqual({ nickname: '', email: '', signature: '' })
+  })
+})
+
+/**
+ * `applyProfileEdits`：一次**后端已经答应下来**的部分更新 → 新的 `UserProfile`。
+ *
+ * 只有一个调用点：`profileStore.updateProfile` 在 PUT 拿到 200 之后。它存在的理由
+ * 是那次读回可能失败——失败时若什么都不做，屏幕上留的是**修改前**的值，而后端存的
+ * 是新值（`PrivacySettings` 的开关就是这么弹回相反位置的）。
+ *
+ * 三个字段两侧不同名（`nickname`/`email`/`signature` ⇄ `user_*`），所以这里逐个点名；
+ * 漏一个的后果是"这个字段保存成功但界面不动"，比整体失败更难查。
+ */
+describe('applyProfileEdits', () => {
+  const current = makeProfile({
+    user_nickname: '旧昵称',
+    user_email: 'old@example.com',
+    user_signature: '旧签名',
+    allow_search: true,
+    search_visible_by_id: true,
+    friend_request_policy: 'manual',
+    group_invite_policy: 'manual',
+    gender: null,
+    birthday: null,
+    region: null,
+  })
+
+  it('十个可写字段逐个落到对应的 UserProfile 字段上（含三个改名的）', () => {
+    const applied = applyProfileEdits(current, {
+      nickname: '新昵称',
+      email: 'new@example.com',
+      signature: '新签名',
+      allow_search: false,
+      search_visible_by_id: false,
+      friend_request_policy: 'auto_reject',
+      group_invite_policy: 'auto_accept',
+      gender: 'female',
+      birthday: '1995-08-20',
+      region: '上海',
+    })
+
+    expect(applied).toEqual({
+      ...current,
+      user_nickname: '新昵称',
+      user_email: 'new@example.com',
+      user_signature: '新签名',
+      allow_search: false,
+      search_visible_by_id: false,
+      friend_request_policy: 'auto_reject',
+      group_invite_policy: 'auto_accept',
+      gender: 'female',
+      birthday: '1995-08-20',
+      region: '上海',
+    })
+  })
+
+  it('没带的字段一个都不动（部分更新语义 doc:162-189）', () => {
+    const applied = applyProfileEdits(current, { allow_search: false })
+
+    expect(applied).toEqual({ ...current, allow_search: false })
+    // 原对象不被就地改写：store 靠引用变化触发重渲染。
+    expect(current.allow_search).toBe(true)
+  })
+
+  it('清空一格：写侧的空串 = 读侧的 null，两侧口径同一套', () => {
+    // 读侧 `emptyableStr` 把 `''` 归一成 `null`；这里若原样存 `''`，
+    // 下一次 `loadProfile()` 回来就会变成 `null`，同一个账号在两拍之间不一样。
+    const applied = applyProfileEdits(current, { email: '', signature: '', region: '' })
+
+    expect(applied.user_email).toBeNull()
+    expect(applied.user_signature).toBeNull()
+    expect(applied.region).toBeNull()
+  })
+
+  it('与 pickProfileEdits 对得上：一次真实编辑的差分打回去，就是编辑后的那份资料', () => {
+    const edited = { ...profileFormValues(current), signature: '新签名' }
+
+    expect(applyProfileEdits(current, pickProfileEdits(current, edited))).toEqual({
+      ...current,
+      user_signature: '新签名',
     })
   })
 })

@@ -613,9 +613,9 @@ export const useAuthStore = create<AuthStore>()(
        * action 闭包是活的，于是 A 登出前发出的请求在 B 的会话里收到 401 时，调到的
        * 是 B 的 `clearAuth()`——清盘把刚登录的 B 清干净。挡这条的是各 401 分支上的
        * `pinSession()`，不是这里：这里没有任何办法知道调用方属于哪一场会话。
-       * 十份里已接入九份，还差 `features/profile/api/profile.ts`（归并行的
-       * 「多份 fetchWithAuth 合一」）——名单与「这一行比世代号对照多挡住了什么」
-       * 见 `apiClient.ts` 里 `fetchWithAuth` 的 `pinSession` 采用说明。
+       * 十份现已全部接入（最后一份 `features/profile/api/profile.ts`）——名单与
+       * 「这一行比世代号对照多挡住了什么」见 `apiClient.ts` 里 `fetchWithAuth` 的
+       * `pinSession` 采用说明。
        *
        * 它清的是**这个账号的其余落盘副本**（profile / AI 密钥 / 上次访问路径 /
        * 以及将来任何新增的切片），名单是反向的：不在设备级白名单里的键一律删。

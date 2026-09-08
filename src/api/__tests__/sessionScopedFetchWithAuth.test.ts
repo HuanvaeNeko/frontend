@@ -6,12 +6,13 @@ import { groupMessagesApi } from '@/features/chat/api/groupMessages'
 import { groupsApi } from '@/features/chat/api/groups'
 import { messagesApi } from '@/features/chat/api/messages'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { profileApi } from '@/features/profile/api/profile'
 import { webrtcApi } from '@/features/webrtc/api/webrtc'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { useApiConfigStore } from '@/store/apiConfig'
 
 /**
- * 七份 `fetchWithAuth` 副本的 401 分支：`pinSession()` 那一行各自钉一遍。
+ * 八份 `fetchWithAuth` 副本的 401 分支：`pinSession()` 那一行各自钉一遍。
  *
  * ## 这一行比 `performRefresh` 的世代号对照多挡住了什么
  *
@@ -39,8 +40,16 @@ import { useApiConfigStore } from '@/store/apiConfig'
  *
  * 十份副本是十段各自独立的代码，公共用例只能证明"至少有一份接了"。
  * 「多份 fetchWithAuth 合一」正在另一个 worktree 里进行——合并之后接手的那一份
- * 仍然要让这七条全绿，任何一份在合并中把 `isLiveSession()` 丢掉，
+ * 仍然要让这八条全绿，任何一份在合并中把 `isLiveSession()` 丢掉，
  * 这张表就会指名道姓地报出是哪个模块。
+ *
+ * ## 这张表之外的两份
+ *
+ * `features/auth/api/auth.ts` 在 `sessionHandoff.test.tsx`「A 登出前发出的请求在
+ * B 的会话里才 401」；`api/apiClient.ts` 导出的那份在 `apiClient.test.ts`
+ * 「换人之后才落地的 401：原样返回，不刷新、不跳转、不清 B 的盘」。
+ * 八 + 二 = 全仓十份 `fetchWithAuth` 定义
+ * （`grep -rn 'const fetchWithAuth' src | grep -v __tests__`）。
  */
 
 const loginEnvelope = (nickname: string) => ({
@@ -80,8 +89,13 @@ const loginAs = async (nickname: string) => {
 
 /**
  * 每份副本挑一个 GET：只要走到那一份 `fetchWithAuth` 就够，具体端点不重要。
- * 七个调用最终都会 reject（401 / 500 都不是合法响应），所以下面统一
+ * 八个调用最终都会 reject（401 / 500 都不是合法响应），所以下面统一
  * `.catch(() => {})` 或 `rejects.toThrow()`，不依赖各自的解包形状。
+ *
+ * `profile.ts` 挑 `GET /api/profile`：它的 401 分支是全仓唯一一个带第四个合取项
+ * （`!isBusiness401Request(...)`，前三个是状态码 / `refreshToken` / `isLiveSession()`）
+ * 的，而那张白名单里只有 `PUT /api/profile/password`，所以 GET 照常走刷新重试，
+ * 与其余七份在这两条用例上的行为一致。
  */
 const COPIES: ReadonlyArray<{ readonly module: string; readonly call: () => Promise<unknown> }> = [
   { module: 'features/chat/api/friends.ts', call: () => friendsApi.getFriendsList() },
@@ -98,6 +112,7 @@ const COPIES: ReadonlyArray<{ readonly module: string; readonly call: () => Prom
     call: () =>
       searchDiscovery({ keyword: 'k', section: 'groups', row: parseDiscoveryGroupCard }),
   },
+  { module: 'features/profile/api/profile.ts', call: () => profileApi.getProfile() },
 ]
 
 beforeEach(() => {

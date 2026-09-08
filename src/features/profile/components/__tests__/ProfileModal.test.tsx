@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { makeProfileWire } from '../../api/__tests__/profileFixture'
+import { makeProfile, makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfileModal from '../ProfileModal'
 
@@ -346,5 +346,85 @@ describe('ProfileModal 保存个人资料', () => {
     // 正对照：挂载时那次 GET 确实发生过（否则"没有 PUT"是句空话）。
     expect(fetchMock.mock.calls.length).toBeGreaterThan(0)
     expect(putBodies()).toEqual([])
+  })
+})
+
+/**
+ * 「保存更改」在**首屏那一拍**就是灰的。
+ *
+ * 稳定态测不出这件事：修好之前，回填 `formData` 的那个 effect 跑完之后按钮同样是灰的，
+ * 闪的是中间那一拍。所以这里观察的是**每一次 DOM 提交**，用 `MutationObserver` 记
+ * `disabled` 属性的变化——一条 `oldValue === null` 的记录就意味着"这个按钮曾经以可点
+ * 的状态提交过一次"。
+ *
+ * 修好之前，`profile` 已经在 store 里（持久化字段，刷新后 rehydrate 就是这个形态）
+ * 而 `formData` 初值是空三元组，于是首屏那一拍：按钮可点、输入框却是空的——
+ * 点下去发的是 `nickname: ''`，`assertValidUpdate` 在任何 fetch 之前就抛。
+ * 实测把这里的派生换回「空初值 + `useEffect` 回填」，本条用例会拿到两条
+ * `oldValue === null` 的记录（保存更改与重置各一条）。
+ */
+describe('ProfileModal 的首屏：保存按钮不闪', () => {
+  /**
+   * 某个元素上 `disabled` 属性的变化记录。**只数条数，不看方向**：
+   * happy-dom 在"加上"与"摘掉"两种方向上都把 `oldValue` 报成 `null`（实测），
+   * 所以方向判据在这里是假的。而条数就够用——首屏那段里，按钮要么一直是灰的
+   * （零条），要么曾经以可点的状态提交过（≥1 条）。下面正对照 2 证明这个计数
+   * 确实会动，不是恒零。
+   */
+  const disabledChanges = (records: MutationRecord[], target: Element) =>
+    records.filter((record) => record.target === target && record.attributeName === 'disabled')
+
+  it('资料已在 store 里时，保存按钮从第一次提交起就是灰的', async () => {
+    // 挂载时那次 GET 带回一份**不同**的邮箱：等它出现在屏幕上，就说明首屏的每一次
+    // 提交（含 store 回填那一次）都已经发生完了。
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const url = String(input)
+      if (url === PROFILE_BASE && (init?.method ?? 'GET') === 'GET') {
+        return json({
+          success: true,
+          code: 200,
+          data: { ...PROFILE_DTO, user_email: 'fresh@example.com' },
+        })
+      }
+      throw new Error(`未预期的请求: ${init?.method ?? 'GET'} ${url}`)
+    })
+    // 关键前提：资料**在渲染之前**就已经在 store 里（rehydrate 之后的常态）。
+    // 昵称与那次 GET 带回来的一致，只有邮箱不同：这样"昵称输入框有值"这句话在
+    // 首屏与读回之后都成立，而 `fresh@example.com` 仍然能标出读回已经落地。
+    useProfileStore.setState({
+      profile: makeProfile({ user_nickname: '测试用户', user_email: 'old@example.com' }),
+    })
+
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((batch) => records.push(...batch))
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ['disabled'],
+    })
+
+    render(<ProfileModal isOpen onClose={() => {}} />)
+    await screen.findByDisplayValue('fresh@example.com')
+    records.push(...observer.takeRecords())
+
+    const save = screen.getByRole('button', { name: /保存更改/ })
+    // 正对照 1：按钮在屏幕上，而且首屏的输入框**有值**——不是"什么都没渲染出来"。
+    expect((save as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByDisplayValue('测试用户') as HTMLInputElement).value).toBe('测试用户')
+
+    // 首屏那段里 `disabled` 一次都没动过 = 它从第一次提交起就在。
+    expect(disabledChanges(records, save)).toEqual([])
+
+    // 正对照 2（同一个 observer、同一次挂载）：真的改一个字段，`disabled` 会被摘掉，
+    // 于是这里**必须**收到记录。没有这一段，上面那句 `toEqual([])` 在
+    // "observer 根本没接上"时同样成立。
+    const nickname = screen.getByDisplayValue('测试用户')
+    await userEvent.type(nickname, '丁')
+    records.push(...observer.takeRecords())
+    observer.disconnect()
+
+    expect((save as HTMLButtonElement).disabled).toBe(false)
+    expect(disabledChanges(records, save).length).toBeGreaterThan(0)
   })
 })
