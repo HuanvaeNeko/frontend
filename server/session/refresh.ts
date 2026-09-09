@@ -72,12 +72,23 @@ function parseRefresh(body: unknown): RefreshPayload {
 }
 
 async function performRefresh(store: SessionStore, session: Session): Promise<string> {
+  // 打上游之前必须重读一遍库里的当前记录，不能信调用方传进来的 session 快照：
+  // 单飞表（inFlight）只挡得住「两次调用在同一个 tick 里重叠」，挡不住调用方在
+  // `store.get` 和 `ensureFreshAccessToken` 之间有过 await、或者干脆长期持有一份
+  // 快照——那种情况下单飞表早被上一轮的 .finally 清空了，陈旧快照会再次触发刷新，
+  // 并把陈旧的 refresh_token 发给上游。今天后端不轮换 refresh_token，代价只是一次
+  // 多余的请求（CAS 会输，读到赢家 token，结果仍正确）；一旦后端启用轮换，重放
+  // 旧 RT 换到的就是 401 → SessionDead——会话明明健康，用户却被登出。
+  const current = store.get(session.id)
+  if (!current) throw new SessionDead()
+  if (current.accessExpiresAt - Date.now() > REFRESH_WINDOW_MS) return current.accessToken
+
   let response: Response
   try {
     response = await fetch(`${upstreamHttp()}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: session.refreshToken }),
+      body: JSON.stringify({ refresh_token: current.refreshToken }),
     })
   } catch (error) {
     throw new UpstreamUnavailable(error)
@@ -101,18 +112,18 @@ async function performRefresh(store: SessionStore, session: Session): Promise<st
   const next = {
     accessToken: parsed.access_token,
     // 缺席 → 沿用旧的。形状仍受上面校验（给了却不是非空字符串照抛）
-    refreshToken: parsed.refresh_token ?? session.refreshToken,
+    refreshToken: parsed.refresh_token ?? current.refreshToken,
     accessExpiresAt: now + parsed.expires_in * 1000,
     now,
   }
 
-  const won = store.updateTokens(session.id, session.accessExpiresAt, next)
+  const won = store.updateTokens(session.id, current.accessExpiresAt, next)
   if (won) return next.accessToken
 
   // CAS 输了：别人已经刷完并写进去了。用赢家那份，绝不覆盖。
-  const current = store.get(session.id)
-  if (!current) throw new SessionDead()
-  return current.accessToken
+  const winner = store.get(session.id)
+  if (!winner) throw new SessionDead()
+  return winner.accessToken
 }
 
 export async function ensureFreshAccessToken(store: SessionStore, session: Session): Promise<string> {

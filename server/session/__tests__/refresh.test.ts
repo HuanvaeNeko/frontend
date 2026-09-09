@@ -1,3 +1,6 @@
+// @vitest-environment node
+// 本文件不构造带 cookie/sec-*/host 头的 Request，不受 happy-dom 的头部过滤影响；
+// 加这行只是为了和 server/**/__tests__ 下其余文件保持一致（Ruling G）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase } from '../db'
 import { SessionDead, UpstreamUnavailable, ensureFreshAccessToken, resetRefreshInFlight } from '../refresh'
@@ -92,6 +95,25 @@ describe('ensureFreshAccessToken', () => {
 
     expect(token).toBe('AT-winner')
     expect(store.get('s1')?.accessToken).toBe('AT-winner')
+  })
+
+  it('陈旧快照 + 库里已刷新 → 不再打上游（否则一旦后端启用 refresh_token 轮换，重放旧 RT 会把健康会话打成 SessionDead）', async () => {
+    const s = seed(store, NOW + 30_000) // 调用方持有的快照：按它的 accessExpiresAt 判断还差 30s，够格触发刷新
+    // 模拟「在拿到 s 和调用 ensureFreshAccessToken 之间，会话已经被别的请求刷新过」：
+    // 直接改库，完全不经过 s——这正是单飞表挡不住的那种陈旧（两次调用不重叠）
+    store.updateTokens('s1', NOW + 30_000, {
+      accessToken: 'AT-fresh', refreshToken: 'RT-fresh', accessExpiresAt: NOW + 900_000, now: NOW,
+    })
+    // 若实现真的拿 s 里陈旧的 RT-old 打上游，这里模拟一个已经启用轮换的后端：
+    // RT-old 早被换成 RT-fresh 了，理应被拒——用它来让「打了不该打的请求」这件事
+    // 产生一个无法被忽略的后果，而不只是白多发一次
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: false, code: 401, error: 'Token 无效或已过期' }), { status: 401 }))
+
+    const token = await ensureFreshAccessToken(store, s)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(token).toBe('AT-fresh')
+    expect(store.get('s1')?.accessToken).toBe('AT-fresh')
   })
 
   it('上游 401：删会话并抛 SessionDead', async () => {
