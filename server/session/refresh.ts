@@ -1,4 +1,5 @@
 import { upstreamHttp } from '../upstream'
+import { killSession } from './kill'
 import type { Session, SessionStore } from './store'
 
 /** 后端明确说凭证不认（401）。会话已死，必须删。 */
@@ -95,7 +96,7 @@ async function performRefresh(store: SessionStore, session: Session): Promise<st
   }
 
   if (response.status === 401) {
-    store.delete(session.id)
+    killSession(store, session.id)
     throw new SessionDead()
   }
   if (!response.ok) throw new UpstreamUnavailable(`上游 ${response.status}`)

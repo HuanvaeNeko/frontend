@@ -3,6 +3,7 @@ import { openDatabase } from './db'
 import { createSessionStore, type SessionStore } from './store'
 
 export { SESSION_COOKIE_NAME, clearSessionCookie, cookieOptionsFromEnv, readSessionId, serializeSessionCookie } from './cookie'
+export { killSession } from './kill'
 export { SessionDead, UpstreamUnavailable, ensureFreshAccessToken } from './refresh'
 export type { Session, SessionStore, SessionUser } from './store'
 

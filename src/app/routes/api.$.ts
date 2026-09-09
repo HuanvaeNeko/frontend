@@ -9,6 +9,7 @@ import {
   crossSiteRejectedResponse,
   ensureFreshAccessToken,
   getSessionStore,
+  killSession,
   readSessionId,
   sessionExpiredResponse,
   upstreamUnavailableResponse,
@@ -33,10 +34,13 @@ async function handle(request: Request): Promise<Response> {
 
   const url = new URL(request.url)
   const pathWithQuery = `${url.pathname}${url.search}`
+  // 仅用于下面两处判定(404 守卫、isBusiness401Path)，去掉尾斜杠避免被绕过；
+  // pathWithQuery 转发用的仍是原始 url.pathname，转发绝不能重新编码或改动字节。
+  const path = url.pathname.replace(/\/+$/, '') || '/'
 
   // 刷新是 BFF 的事，客户端不得驱动它。404 而不是 403：这个端点对浏览器
   // 而言就是不存在。
-  if (url.pathname === '/api/auth/refresh') {
+  if (path === '/api/auth/refresh') {
     return new Response(JSON.stringify({ success: false, code: 404, error: '该端点不对浏览器开放' }), {
       status: 404, headers: { 'content-type': 'application/json' },
     })
@@ -60,8 +64,8 @@ async function handle(request: Request): Promise<Response> {
 
   const response = await forwardToUpstream(request, { pathWithQuery, authorization: `Bearer ${accessToken}` })
 
-  if (response.status === 401 && !isBusiness401Path(request.method, url.pathname)) {
-    store.delete(id)
+  if (response.status === 401 && !isBusiness401Path(request.method, path)) {
+    killSession(store, id)
     // 原样透传上游的 body 与状态码，只额外清 cookie。BFF 不改写后端文案。
     const headers = new Headers(response.headers)
     headers.set('set-cookie', clearSessionCookie(cookieOptionsFromEnv()))

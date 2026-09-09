@@ -5,10 +5,10 @@ import {
   cookieOptionsFromEnv,
   crossSiteRejectedResponse,
   getSessionStore,
+  killSession,
   readSessionId,
 } from '../../../server/session'
 import { upstreamHttp } from '../../../server/upstream'
-import { closeSessionSockets } from '../../../server/ws/registry'
 
 /**
  * `POST /api/auth/logout` —— 销会话。
@@ -35,11 +35,12 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
       } catch {
         // 尽力而为。失败不影响本地登出。
       }
-      store.delete(id)
     }
 
-    // 该会话名下所有还活着的 WS 一并关掉：否则登出后那条连接还在替他收消息
-    closeSessionSockets(id)
+    // 会话死亡的唯一出口：删行 + 关掉该会话名下所有还活着的 WS，否则登出后那条
+    // 连接还在替他收消息。cookie 指向的行不存在时 delete 是 no-op，killSession
+    // 仍会关 WS——不额外分支。
+    killSession(store, id)
   }
 
   return new Response(JSON.stringify({ success: true, code: 200 }), {

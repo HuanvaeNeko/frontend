@@ -2,6 +2,7 @@
 // 本文件不构造带 cookie/sec-*/host 头的 Request，不受 happy-dom 的头部过滤影响；
 // 加这行只是为了和 server/**/__tests__ 下其余文件保持一致（Ruling G）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { registerSessionSocket } from '../../ws/registry'
 import { openDatabase } from '../db'
 import { SessionDead, UpstreamUnavailable, ensureFreshAccessToken, resetRefreshInFlight } from '../refresh'
 import { createSessionStore, type SessionStore } from '../store'
@@ -122,6 +123,17 @@ describe('ensureFreshAccessToken', () => {
 
     await expect(ensureFreshAccessToken(store, s)).rejects.toBeInstanceOf(SessionDead)
     expect(store.get('s1')).toBe(null)
+  })
+
+  it('上游 401：关掉该会话名下的 WS（killSession 与删会话是同一条路径）', async () => {
+    const s = seed(store, NOW + 30_000)
+    const closed: Array<[number | undefined, string | undefined]> = []
+    registerSessionSocket('s1', { close: (c, r) => { closed.push([c, r]) } })
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: false, code: 401, error: 'Token 无效或已过期' }), { status: 401 }))
+
+    await expect(ensureFreshAccessToken(store, s)).rejects.toBeInstanceOf(SessionDead)
+
+    expect(closed).toEqual([[1000, 'session ended']])
   })
 
   it('上游 502：抛 UpstreamUnavailable，会话保留（传输失败 ≠ 会话结束）', async () => {

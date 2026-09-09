@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_COOKIE_NAME, getSessionStore, resetSessionStore } from '../../../../server/session'
 import { resetRefreshInFlight } from '../../../../server/session/refresh'
+import { registerSessionSocket } from '../../../../server/ws/registry'
 import { action, loader } from '../api.$'
 
 const NOW = 1_000_000
@@ -86,6 +87,18 @@ describe('BFF 鉴权代理 /api/*', () => {
     expect((await getSessionStore()).get(id)).toBe(null)
   })
 
+  it('上游 401（普通端点）关掉该会话名下的 WS', async () => {
+    const id = await makeSession()
+    const closed: Array<[number | undefined, string | undefined]> = []
+    registerSessionSocket(id, { close: (c, r) => { closed.push([c, r]) } })
+    fetchMock.mockResolvedValueOnce(new Response('{"success":false,"code":401,"error":"未授权访问"}', { status: 401 }))
+
+    const res = await loader(args(authed('http://app.test/api/friends', id)))
+
+    expect(res.status).toBe(401)
+    expect(closed).toEqual([[1000, 'session ended']])
+  })
+
   it('上游 401（业务 401 端点：改密）：原样透传，会话**不动**', async () => {
     const id = await makeSession()
     fetchMock.mockResolvedValueOnce(new Response('{"success":false,"code":401,"error":"Old password is incorrect"}', { status: 401 }))
@@ -99,6 +112,22 @@ describe('BFF 鉴权代理 /api/*', () => {
     // 这是本条的要点：打错一次旧密码不能把人踢下线
     expect(res.headers.get('set-cookie')).toBe(null)
     expect((await getSessionStore()).get(id)?.accessToken).toBe('AT-live')
+  })
+
+  it('上游 401（业务 401 端点）不关 WS', async () => {
+    const id = await makeSession()
+    const closed: Array<[number | undefined, string | undefined]> = []
+    registerSessionSocket(id, { close: (c, r) => { closed.push([c, r]) } })
+    fetchMock.mockResolvedValueOnce(new Response('{"success":false,"code":401,"error":"Old password is incorrect"}', { status: 401 }))
+
+    const res = await action(args(authed('http://app.test/api/profile/password', id, {
+      method: 'PUT', body: '{"old_password":"x","new_password":"y"}',
+    })))
+
+    expect(res.status).toBe(401)
+    expect(closed).toEqual([])
+    // 正对照：会话行还在，证明「没关 WS」不是因为会话已经死了导致 registry 查无此 id
+    expect((await getSessionStore()).get(id)).not.toBe(null)
   })
 
   it('上游 403：原样透传，会话不动（后端用 403 表示普通权限拒绝）', async () => {
@@ -138,6 +167,8 @@ describe('BFF 鉴权代理 /api/*', () => {
 
   it('刷新时上游 401：删会话、401、**不**转发原请求', async () => {
     const id = await makeSession({ accessExpiresAt: NOW + 30_000 })
+    const closed: Array<[number | undefined, string | undefined]> = []
+    registerSessionSocket(id, { close: (c, r) => { closed.push([c, r]) } })
     fetchMock.mockResolvedValueOnce(new Response('{"code":401}', { status: 401 }))
 
     const res = await loader(args(authed('http://app.test/api/friends', id)))
@@ -145,6 +176,8 @@ describe('BFF 鉴权代理 /api/*', () => {
     expect(res.status).toBe(401)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect((await getSessionStore()).get(id)).toBe(null)
+    // SessionDead 走的也是 killSession：证明这条路径同样关 WS，不只是登出/非业务 401 两条
+    expect(closed).toEqual([[1000, 'session ended']])
   })
 
   it('刷新时上游 5xx：502，会话保留，不转发原请求', async () => {
@@ -163,6 +196,29 @@ describe('BFF 鉴权代理 /api/*', () => {
     const res = await action(args(authed('http://app.test/api/auth/refresh', id, { method: 'POST', body: '{}' })))
     expect(res.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(res.headers.get('content-type')).toContain('application/json')
+    expect(await res.json()).toEqual({ success: false, code: 404, error: '该端点不对浏览器开放' })
+  })
+
+  it('POST /api/auth/refresh/（尾斜杠）同样 404，不能靠尾斜杠绕过守卫', async () => {
+    const id = await makeSession()
+    const res = await action(args(authed('http://app.test/api/auth/refresh/', id, { method: 'POST', body: '{}' })))
+    expect(res.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('PUT /api/profile/password/（尾斜杠）上游 401：仍按业务 401 处理，会话不动', async () => {
+    const id = await makeSession()
+    fetchMock.mockResolvedValueOnce(new Response('{"success":false,"code":401,"error":"Old password is incorrect"}', { status: 401 }))
+
+    const res = await action(args(authed('http://app.test/api/profile/password/', id, {
+      method: 'PUT', body: '{"old_password":"x","new_password":"y"}',
+    })))
+
+    expect(res.status).toBe(401)
+    // 尾斜杠不能让判定表漏判——漏判方向是静默登出
+    expect(res.headers.get('set-cookie')).toBe(null)
+    expect((await getSessionStore()).get(id)).not.toBe(null)
   })
 
   it('跨站的非 GET：403 且不打上游', async () => {
