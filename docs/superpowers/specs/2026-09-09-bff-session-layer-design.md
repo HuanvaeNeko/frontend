@@ -221,7 +221,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 生产（`Bun.serve`）：
 - `GET /ws` 且 `Upgrade: websocket` → cookie → 会话 → `ensureFresh` → 失败按 4.4 的 1–3 步回 HTTP 状态（浏览器侧表现为 close 1006）；成功 → `server.upgrade(req, { data: { sessionId, token } })`。
 - `open`：`new WebSocket(\`${BFF_UPSTREAM_WS}/ws?token=${encodeURIComponent(token)}\`)`；登记到 `sessionId → Set<ws>`。
-- 文本 / 二进制帧双向转发；任一侧 `close(code, reason)` → 以同一 code 关另一侧；注销登记。
+- 文本 / 二进制帧双向转发；浏览器侧 `close(code, reason)` → 以同一 code 关上游；上游侧关闭 → 经 `relayCloseCode` 映射后关浏览器侧：1000 原样（那是 `closeSessionSockets` 表达「会话结束、别重连」的码），3000–4999 与 1002–1014（除 1005/1006）原样，其余（1001 / 1005 / 1006 / 1015 …）→ **1011**。原因：1005/1006/1015 按协议不能作为关闭码发送，Bun 会把它们连同 1001 静默改写成 1000，而客户端 `wsStore` 对 1000/1001 明确不重连 —— 原样下发会把「上游掉线 / edge 重启」伪装成「正常关闭」，聊天连接静默死亡到用户刷新页面为止（Task 9 评审实测）。注销登记。
 - `logout` / 会话删除 → 关闭该会话名下所有 WS（code 1000）。
 
 开发（`vite.config.ts`）：`server.proxy['/ws'] = { target: BFF_UPSTREAM_WS, ws: true, configure(proxy) { proxy.on('proxyReqWs', …) } }`，钩子里用 `node:sqlite` **同步**读会话、把 `proxyReq.path` 改成 `/ws?token=…`。**诚实限制**：钩子是同步的，不能刷新；连接时 token 已过期则由上游握手 401 → 现有重连退避接管；而 `ChatPage` 挂载时的 `loadProfile()` 总会先经 4.4 把它刷新。
