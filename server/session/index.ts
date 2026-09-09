@@ -1,3 +1,4 @@
+import { clearSessionCookie, cookieOptionsFromEnv } from './cookie'
 import { openDatabase } from './db'
 import { createSessionStore, type SessionStore } from './store'
 
@@ -25,4 +26,34 @@ export function getSessionStore(): Promise<SessionStore> {
 /** 仅供测试：丢掉单例，让下一次调用重新打开 */
 export function resetSessionStore(): void {
   storePromise = null
+}
+
+/**
+ * BFF 自己产生的三种响应之一：会话失效。
+ *
+ * 形状与后端的错误信封一致（`{success:false, code, error}`），让客户端的解包层
+ * 不必为 BFF 单开一条分支。**这是 BFF 唯一会自己造的错误文案** ——
+ * 其余一律上游原样，见 spec §6。
+ */
+export function sessionExpiredResponse(): Response {
+  return new Response(JSON.stringify({ success: false, code: 401, error: '会话已失效，请重新登录' }), {
+    status: 401,
+    headers: { 'content-type': 'application/json', 'set-cookie': clearSessionCookie(cookieOptionsFromEnv()) },
+  })
+}
+
+/** 上游不可达。透传 502，不编造文案（edge 那份 JSON 已经说明了原因） */
+export function upstreamUnavailableResponse(): Response {
+  return new Response(JSON.stringify({ success: false, code: 502, error: '后端暂时不可用，请稍后重试' }), {
+    status: 502,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/** 跨站写请求。SameSite=Lax 之外的第二道 */
+export function crossSiteRejectedResponse(): Response {
+  return new Response(JSON.stringify({ success: false, code: 403, error: '跨站请求已被拒绝' }), {
+    status: 403,
+    headers: { 'content-type': 'application/json' },
+  })
 }

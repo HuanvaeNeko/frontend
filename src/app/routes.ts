@@ -1,6 +1,15 @@
 import { type RouteConfig, index, layout, route } from '@react-router/dev/routes'
 
 export default [
+  // ── BFF 资源路由（只有 loader/action，没有组件） ──
+  // 具体路径排在 `api/*` 之前。RR 的路由排序本身也让静态段优先于 splat，
+  // 但显式排序让下一个读这个文件的人不必去查 RR 的排序规则。
+  route('api/auth/login', 'routes/api.auth.login.ts'),
+  // 注册必须独立一条：它是**未登录**用户发起的，落进 `api/*` 会被要求会话 cookie
+  route('api/auth/register', 'routes/api.auth.register.ts'),
+  route('api/auth/logout', 'routes/api.auth.logout.ts'),
+  route('api/session', 'routes/api.session.ts'),
+
   index('routes/home.tsx'),
   route('downloads', 'routes/downloads.tsx'),
   route('~offline', 'routes/offline.tsx'),
