@@ -40,3 +40,8 @@ export function closeSessionSockets(sessionId: string): void {
   }
   sockets.delete(sessionId)
 }
+
+/** 仅供测试：清空登记表 */
+export function resetSessionSocketRegistry(): void {
+  sockets.clear()
+}

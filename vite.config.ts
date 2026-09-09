@@ -4,6 +4,8 @@ import { reactRouter } from '@react-router/dev/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { DatabaseSync } from 'node:sqlite'
+import { SESSION_SELECT_BY_ID_SQL } from './server/session/sql'
 
 const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8')) as {
   version: string
@@ -125,6 +127,49 @@ export default defineConfig(({ command, mode }) => {
         },
       },
     },
-    server: { port: 3000 },
+    server: {
+      port: 3000,
+      proxy: {
+        // 开发环境的 WS 代理。
+        //
+        // 为什么不能和生产共用一段代码：生产是 Bun.serve 的原生 websocket 处理器，
+        // 开发是 `react-router dev` 起的 Vite server —— 帧的收发两边都由平台做，
+        // 我们只共享「cookie → token」这一段。这是诚实的不对称，不是隐藏的分叉。
+        //
+        // ⚠️ proxyReqWs 是**同步**回调，读不了异步打开的 session store，
+        // 所以这里自己用 node:sqlite 同步查一次。语句从 server/session/sql.ts 取，
+        // 与 store 共用同一份字符串，避免两处各写一遍 SELECT 然后分叉。
+        //
+        // 同步也意味着**这里不能刷新 token**：连接时若 access token 已过期，
+        // 上游会在握手时回 401，客户端现有的重连退避接管；而 ChatPage 挂载时的
+        // loadProfile() 总会先经 /api/* 把它刷新。开发环境可以接受这个限制。
+        '/ws': {
+          target: env.BFF_UPSTREAM_WS || 'ws://127.0.0.1:8787',
+          ws: true,
+          changeOrigin: true,
+          configure(proxy) {
+            proxy.on('proxyReqWs', (proxyReq, req) => {
+              const cookie = req.headers.cookie ?? ''
+              const match = /(?:^|;\s*)hv_session=([^;]+)/.exec(cookie)
+              if (!match) return
+
+              const dbPath = env.SESSION_DB_PATH
+              if (!dbPath) return
+
+              try {
+                const db = new DatabaseSync(dbPath)
+                const row = db.prepare(SESSION_SELECT_BY_ID_SQL).get(match[1]) as { access_token?: string } | undefined
+                db.close()
+                if (row?.access_token) {
+                  proxyReq.path = `/ws?token=${encodeURIComponent(row.access_token)}`
+                }
+              } catch {
+                // 读不到就让上游按「没有 token」处理（HTTP 400），不静默伪造一个
+              }
+            })
+          },
+        },
+      },
+    },
   }
 })

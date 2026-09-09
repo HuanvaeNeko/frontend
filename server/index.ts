@@ -11,6 +11,7 @@ import type { ServerBuild } from 'react-router'
 // 没人在服务端调用到才没出过问题；改成从这个零依赖的小模块导入，从结构上
 // 消除这个隐患。
 import { filterSensitiveData } from '../src/config/filterSensitiveData'
+import { type UpstreamPump, pumpUpstream, resolveWsToken } from './ws/proxy'
 
 // vite.config.ts 把 react-dom 打进了 build/server/index.js（noExternal），
 // 那段代码在运行时读 process.env.NODE_ENV 来决定用生产版还是开发版实现。
@@ -74,6 +75,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()',
 }
 
+// 这些前缀属于下面注册的 BFF 资源路由（会话代理、头像/文件透传等）。
+// public/ 静态文件查找必须跳过它们，否则一个同名的 public/ 文件会静默抢在
+// BFF 路由之前返回，且不会有任何报错——只会表现成"接口神秘地不工作了"。
+const BFF_PREFIXES = ['/api/', '/avatars/', '/user-file/', '/friends-file/', '/apps/']
+
 const { createRequestHandler } = await import('react-router')
 
 // @ts-ignore 构建产物，仅在 build 后存在；build 后其类型是压缩产物的结构化推断，
@@ -87,10 +93,23 @@ function withSecurityHeaders(res: Response): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
 }
 
-Bun.serve({
+const server = Bun.serve<{ sessionId: string; token: string; pump?: UpstreamPump }>({
   port: PORT,
   async fetch(request) {
     const url = new URL(request.url)
+
+    // WS 升级：cookie → 会话 → token，然后把连接交给下面的 websocket 处理器。
+    // 必须在 handler(request) 之前 —— RR 的 request handler 不认识升级请求。
+    if (url.pathname === '/ws' && request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+      const auth = await resolveWsToken(request)
+      // 失败时返回普通 HTTP 响应：升级还没发生，这是唯一能表达失败的方式。
+      // 浏览器侧看到 close 1006，现有重连退避接管。
+      if (!auth.ok) return withSecurityHeaders(auth.response)
+
+      const upgraded = server.upgrade(request, { data: { sessionId: auth.sessionId, token: auth.token } })
+      if (upgraded) return undefined as unknown as Response
+      return withSecurityHeaders(new Response('升级失败', { status: 400 }))
+    }
 
     // spec §6.3 把六条安全头范围定在 /*，健康检查端点不是例外——即使探测方是
     // Docker healthcheck 而不是浏览器，也没有理由让这一条路径少一份纵深防御。
@@ -140,10 +159,13 @@ Bun.serve({
       }
     }
 
-    // public/ 下的其余静态文件
-    const publicFile = Bun.file(`build/client${url.pathname}`)
-    if (url.pathname !== '/' && (await publicFile.exists())) {
-      return withSecurityHeaders(new Response(publicFile))
+    // public/ 下的其余静态文件。BFF_PREFIXES 命中的路径必须跳过这条查找，
+    // 理由见上面 BFF_PREFIXES 声明处的注释。
+    if (!BFF_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+      const publicFile = Bun.file(`build/client${url.pathname}`)
+      if (url.pathname !== '/' && (await publicFile.exists())) {
+        return withSecurityHeaders(new Response(publicFile))
+      }
     }
 
     // 真实客户端 IP 在 CF-Connecting-IP 头（socket 远端地址是 cloudflared 的容器 IP）。
@@ -151,6 +173,19 @@ Bun.serve({
     // 否则会把所有用户当成同一个 IP。
 
     return withSecurityHeaders(await handler(request))
+  },
+  websocket: {
+    open(ws) {
+      const { sessionId, token } = ws.data as { sessionId: string; token: string }
+      // 管道存回 ws.data：Bun 的 ServerWebSocket 没有别的地方挂状态
+      ;(ws.data as { pump?: UpstreamPump }).pump = pumpUpstream(sessionId, token, ws)
+    },
+    message(ws, message) {
+      ;(ws.data as { pump?: UpstreamPump }).pump?.forward(message as string | ArrayBufferLike)
+    },
+    close(ws, code, reason) {
+      ;(ws.data as { pump?: UpstreamPump }).pump?.close(code, reason)
+    },
   },
 })
 
