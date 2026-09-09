@@ -235,7 +235,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 | 文件 | 改动 |
 |---|---|
 | `authStore.ts` | state 删 `accessToken / refreshToken / tokenExpiry`；`login/logout/register` 打同源 BFF；新增 `restoreSession()`（`GET /api/session`）；**删除** `refreshAccessToken`、`checkTokenExpiry`、`refreshInFlight`、`lastRotatedAt`、`clearCredentials`、`setTokens`；persist 只留 `user`（首帧秒开），`version` +1，迁移**主动删除**落盘的 token 字段 |
-| `authedFetch.ts` | 退化为 `fetch(url, { credentials: 'same-origin', … })`：删 `Authorization`、预检刷新、401 刷新重试、`pinSession`；401 → 不在 business-401 表内则 `clearAuth` + 跳登录 |
+| `authedFetch.ts` | 退化为 `fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...options.headers } })`：删 `Authorization`、预检刷新、401 刷新重试、`pinSession`；**保留**默认 `Content-Type: application/json`（旧 `getAuthHeaders` 的另一半——全仓没有任何调用点自带它，删掉会让所有 JSON 写请求变成 `text/plain`，BFF 原样透传不兜）；401 → 不在 business-401 表内则 `clearAuth` + 跳登录。`apiClient.ts` 四个动词方法各自保留 30 s 超时（`AbortController`，与调用方 `signal` 合并），BFF 侧不设超时由 Caddy 兜（§2） |
 | `wsStore.ts` | `new WebSocket('/ws')`（同源；协议由 `location.protocol` 推）；删「失败 3 次就刷 token」逻辑 |
 | `ProtectedRoute.tsx` | 门槛从 persist 水合改为 `restoreSession()` 的结果；localStorage 里的 `user` 只用于首帧渲染，不作授权依据 |
 | `sessionScope.ts` | **保留**登出清盘与 store 世代号（内存里的跨账号仍是真问题）；删 token 相关 reset 与 `auth-storage` 闸门特例 |
