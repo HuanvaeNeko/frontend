@@ -12,6 +12,7 @@
     "lint:fix": "biome lint --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:bun": "bun test store.bun",
     "test:e2e": "playwright test"
   },
   "dependencies": {
