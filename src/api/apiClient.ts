@@ -1,8 +1,9 @@
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '../lib/apiConfig'
 import { ApiError, isAuthApiError } from '@/lib/apiEnvelope'
+import { isBusiness401Endpoint } from '@/lib/business401'
 import { ROUTES } from '@/lib/routes'
-import { fetchWithAuth, isBusiness401Endpoint } from './authedFetch'
+import { fetchWithAuth } from './authedFetch'
 
 const BASE_URL = getApiBaseUrl()
 

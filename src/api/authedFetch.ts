@@ -1,43 +1,10 @@
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { isBusiness401Path } from '@/lib/business401'
 import { ROUTES } from '@/lib/routes'
 import { isSessionLive, pinSession } from '@/lib/sessionScope'
 
 const BASE_URL = getApiBaseUrl()
-
-/**
- * HTTP 状态码是 401、但**语义是业务失败**的端点。
- *
- * 「401 ⇒ 会话失效」在本后端有写在文档正文里的反例：
- *
- * - `PUT /api/profile/password`（`backend-docs/profile/个人资料管理.md:288`
- *   的「### 4. 修改密码（受保护）」一节，端点行 :290）：**旧密码填错返回 401**，
- *   body 是 `{"error": "Old password is incorrect"}`（同节 :332；:345 又写了
- *   一遍「旧密码验证失败返回 401 状态码」）。
- * - 尚未加进表里的一条：`POST /api/webrtc/rooms/{id}/join` 的**房间密码错误
- *   也是 401**（`backend-docs/webrtc/WebRTC房间.md:228` 错误码表：
- *   `| 401 | 密码错误 |`）。列出来是为了说明「401 不等于会话失效」在这个后端
- *   不是孤例；**故意不加**——加它会改变 webrtc 模块今天的行为，那是另一件事，
- *   要配自己的用例，不该搭本次合并的车。
- *
- * ## 合并把这张表的作用域从「一个模块」变成了「全部十个」
- *
- * 合并之前这张表只在 `profile.ts` 那一份 `fetchWithAuth` 的 401 分支上被查
- * （十份副本里唯一带第四个合取项的那份），给别的模块的端点加一行是空操作。
- * 现在只剩一份 {@link fetchWithAuth}，**表对十个模块同时生效**。
- * 今天这是空操作（表里只有一个 profile 端点，别的模块碰不到它），
- * 但往后加一行就是十个模块一起改行为——加行的人必须自己带用例。
- *
- * 表里的字符串必须与 `ApiError.endpoint`、以及「方法 + URL 的 pathname」
- * 两侧都逐字一致，两侧各有用例钉住（都在
- * `src/features/profile/api/__tests__/profile.test.ts`）：
- * - 端点串一致：「旧密码错误的 401 抛 ApiError，端点字段可被白名单识别」；
- * - 表与真实请求一致：「旧密码错误的 401：不刷新、不重发、不轮换 token」；
- * - 不登出：「旧密码错误的 401：即使刷新会失败，也不清 token、不跳登录页」，
- *   配一条正对照「对照：普通端点刷新失败时**确实**会 clearAuth + 跳登录页」
- *   钉住下面 {@link redirectToLogin} 那一跳。
- */
-const BUSINESS_401_ENDPOINTS: ReadonlySet<string> = new Set(['PUT /api/profile/password'])
 
 /**
  * 这个**请求**（方法 + 路径）是不是业务 401 端点。
@@ -55,17 +22,8 @@ export const isBusiness401Request = (method: string | undefined, url: string): b
   } catch {
     return false
   }
-  return BUSINESS_401_ENDPOINTS.has(`${(method ?? 'GET').toUpperCase()} ${pathname}`)
+  return isBusiness401Path(method, pathname)
 }
-
-/**
- * `ApiError.endpoint` 形态的同一张表，给 `apiClient.ts` 的 `isAuthError` 用。
- *
- * 表本身留在本文件（运行时真正查它的是 {@link fetchWithAuth}），
- * 分类器那一档只是「拿到 ApiError 之后」的兜底。
- */
-export const isBusiness401Endpoint = (endpoint: string): boolean =>
-  BUSINESS_401_ENDPOINTS.has(endpoint)
 
 /**
  * 预刷新期间跨过了会话边界，这条请求在**发出之前**就作废了。
