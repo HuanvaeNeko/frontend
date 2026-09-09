@@ -205,10 +205,10 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 1. 无 `hv_session` cookie → 401。
 2. 会话不存在 → 401 + 清 cookie。
-3. `ensureFresh`：`SessionDead` → 删会话 + 清 cookie + 401；`UpstreamUnavailable` → 502（透传 `edge` 的 JSON 体）。
+3. `ensureFresh`：`SessionDead` → 删会话 + **关闭该会话名下的 WS** + 清 cookie + 401；`UpstreamUnavailable` → 502（BFF 自造响应体，见 §6 条目 2；会话与 cookie 都不动）。
 4. 组装上游请求：`${BFF_UPSTREAM_HTTP}${pathname}${search}`；方法、body 流式转发（`request.body` + `duplex: 'half'`）；头**剥掉** hop-by-hop（`connection` `keep-alive` `transfer-encoding` `upgrade` `te` `trailer` `proxy-authorization` `proxy-connection`）、`cookie` / `host` / `authorization`（凭证只能由 BFF 注入），以及浏览器可伪造的来源头（`x-forwarded-for` `x-forwarded-host` `x-forwarded-proto` `x-forwarded-port` `x-real-ip` `forwarded` `via` —— Caddy 对 XFF 是追加而非替换，伪造值会作为链条首元素抵达源站；BFF 自己需要真实 IP 时只读 Cloudflare 覆写的 `cf-connecting-ip`，且**不**替上游合成 XFF）；**加** `Authorization: Bearer <token>`；`User-Agent` 原样转发。
 5. 响应：状态码 + 头 + body 流式回传。头剥 hop-by-hop（`connection` `keep-alive` `transfer-encoding` `upgrade` `te` `trailer` `proxy-authenticate` `proxy-connection`）、上游的 `set-cookie`（会话由 BFF 全权管理），以及 **`content-encoding` 与 `content-length`**：`fetch` 在 Node 与 Bun 下都会透明解压上游 body 却把这两个头原样留下，转发出去就是「声称 gzip、长度是压缩前的、body 却是明文」，浏览器报 `ERR_CONTENT_DECODING_FAILED`。只剥请求侧的 `accept-encoding` 不够（运行时会自己补上），必须在响应侧剥，由运行时按实际 body 重新分帧。
-6. 上游 **401**：端点在 `BUSINESS_401_ENDPOINTS` 内 → 原样透传、会话不动；否则视为会话死亡 → 删会话 + 清 cookie + 原样回 401。
+6. 上游 **401**：端点在 `BUSINESS_401_ENDPOINTS` 内 → 原样透传、会话不动；否则视为会话死亡 → 删会话 + **关闭该会话名下的 WS** + 清 cookie + 原样回 401。「删会话 + 关 WS」是同一个 `killSession(store, id)`，登出 / 本条 / `SessionDead` 三处共用，不允许各自只做一半。
 7. 上游 403 与其余 4xx/5xx → **原样透传，不碰会话**。后端用 403 表示普通权限拒绝，这是 P1 用「静默登出」换来的教训。
 8. **不做「401 后刷新重试」。** 新鲜度在转发前保证；重试 = 重放非幂等请求，正是 P1b 修过的「重放改密请求」类 bug。
 
@@ -269,7 +269,7 @@ BFF **不改写上游文案**：只要手里有一个上游响应（任何状态
 2. 上游不可达 502（刷新或登录时 fetch 抛错 / 刷新时上游 5xx / 登录响应形状坏）：`{"success":false,"code":502,"error":"后端暂时不可用，请稍后重试"}`。刷新端点的 5xx body 描述的是刷新那一次请求而不是浏览器发出的这一次，**不**转给浏览器。
 3. 跨站写请求 403：`{"success":false,"code":403,"error":"跨站请求已被拒绝"}`（请求根本没发往上游）。
 4. 请求体不合格 400（登录缺 `user_id` / body 不是合法 JSON）：`{"success":false,"code":400,"error":…}`（同上，没发往上游）。
-5. `/api/auth/refresh` 从浏览器来 404（该端点对浏览器不存在）。
+5. `/api/auth/refresh` 从浏览器来 404（该端点对浏览器不存在）：`{"success":false,"code":404,"error":"该端点不对浏览器开放"}`。这一条只在 `api.$.ts` 里出现，写成字面量而不是助手。
 
 转发链路上 edge 自己的 502 JSON（Caddy `handle_errors`）属于「有上游响应」，原样透传。
 
