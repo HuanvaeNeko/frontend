@@ -47,9 +47,22 @@ export interface ClientSocket {
 
 export interface UpstreamPump {
   /** 浏览器 → 上游 */
-  forward(data: string | ArrayBufferLike): void
+  forward(data: string | ArrayBufferView | ArrayBufferLike): void
   /** 浏览器侧关了，关上游 */
   close(code?: number, reason?: string): void
+}
+
+/**
+ * 1005 / 1006 / 1015 按协议**不能**作为关闭码发送；Bun 收到这三个会静默改写成 1000，
+ * 1001 同样被改写成 1000。而 wsStore 对 1000/1001 明确不重连
+ * （`event.code !== 1000 && event.code !== 1001`），于是「上游掉线」会伪装成
+ * 「正常关闭」，聊天连接静默死亡到用户刷新页面为止。映射成 1011。
+ */
+function relayCloseCode(code: number): number {
+  if (code === 1000) return 1000
+  if (code >= 3000 && code <= 4999) return code
+  if (code >= 1002 && code <= 1014 && code !== 1005 && code !== 1006) return code
+  return 1011
 }
 
 /**
@@ -63,7 +76,7 @@ export interface UpstreamPump {
 export function pumpUpstream(sessionId: string, token: string, client: ClientSocket): UpstreamPump {
   const url = `${upstreamWs()}/ws?token=${encodeURIComponent(token)}`
   const upstream = new WebSocket(url)
-  const queue: (string | ArrayBufferLike)[] = []
+  const queue: (string | ArrayBufferView | ArrayBufferLike)[] = []
   let open = false
 
   registerSessionSocket(sessionId, client)
@@ -71,12 +84,12 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
   upstream.onopen = () => {
     open = true
     // 上游握手完成前浏览器可能已经发了帧，补发出去，不丢
-    for (const item of queue) upstream.send(item as string)
+    for (const item of queue) upstream.send(item)
     queue.length = 0
   }
 
   upstream.onmessage = (event: MessageEvent) => {
-    client.send(event.data as string | ArrayBufferLike)
+    client.send(event.data)
   }
 
   upstream.onclose = (event: CloseEvent) => {
@@ -84,7 +97,7 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
     // 用上游的 code 关浏览器侧：access token 到期导致的关闭要如实传下去，
     // 客户端的重连才会在新一次升级里触发刷新。
     try {
-      client.close(event.code, event.reason)
+      client.close(relayCloseCode(event.code), event.reason)
     } catch {
       // 已经关了
     }
@@ -101,7 +114,7 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
 
   return {
     forward(data) {
-      if (open) upstream.send(data as string)
+      if (open) upstream.send(data)
       else queue.push(data)
     },
     close(code, reason) {

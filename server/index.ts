@@ -107,7 +107,7 @@ const server = Bun.serve<{ sessionId: string; token: string; pump?: UpstreamPump
       if (!auth.ok) return withSecurityHeaders(auth.response)
 
       const upgraded = server.upgrade(request, { data: { sessionId: auth.sessionId, token: auth.token } })
-      if (upgraded) return undefined as unknown as Response
+      if (upgraded) return undefined
       return withSecurityHeaders(new Response('升级失败', { status: 400 }))
     }
 
@@ -176,15 +176,19 @@ const server = Bun.serve<{ sessionId: string; token: string; pump?: UpstreamPump
   },
   websocket: {
     open(ws) {
-      const { sessionId, token } = ws.data as { sessionId: string; token: string }
+      const { sessionId, token } = ws.data
       // 管道存回 ws.data：Bun 的 ServerWebSocket 没有别的地方挂状态
-      ;(ws.data as { pump?: UpstreamPump }).pump = pumpUpstream(sessionId, token, ws)
+      ws.data.pump = pumpUpstream(sessionId, token, ws)
+      // token 只在上面这一行构造上游 URL 时用一次；用完立刻清掉，不让它在连接
+      // 整个生命周期里一直挂在 ws.data 上（最容易被日后一行 console.log(ws.data)
+      // 或 Sentry 顺手带走的地方）
+      ws.data.token = ''
     },
     message(ws, message) {
-      ;(ws.data as { pump?: UpstreamPump }).pump?.forward(message as string | ArrayBufferLike)
+      ws.data.pump?.forward(message as string | ArrayBufferLike)
     },
     close(ws, code, reason) {
-      ;(ws.data as { pump?: UpstreamPump }).pump?.close(code, reason)
+      ws.data.pump?.close(code, reason)
     },
   },
 })

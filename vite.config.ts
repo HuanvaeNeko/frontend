@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { DatabaseSync } from 'node:sqlite'
+import { SESSION_COOKIE_NAME } from './server/session/cookie'
 import { SESSION_SELECT_BY_ID_SQL } from './server/session/sql'
 
 const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8')) as {
@@ -150,21 +151,27 @@ export default defineConfig(({ command, mode }) => {
           configure(proxy) {
             proxy.on('proxyReqWs', (proxyReq, req) => {
               const cookie = req.headers.cookie ?? ''
-              const match = /(?:^|;\s*)hv_session=([^;]+)/.exec(cookie)
+              // cookie 名从 SESSION_COOKIE_NAME 取，不手抄字符串：那样改一次 cookie
+              // 名，这里会悄悄漏改，开发环境 WS 鉴权跟着静默失效且没有任何报错
+              const match = new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`).exec(cookie)
               if (!match) return
 
               const dbPath = env.SESSION_DB_PATH
               if (!dbPath) return
 
+              let db: DatabaseSync | undefined
               try {
-                const db = new DatabaseSync(dbPath)
+                db = new DatabaseSync(dbPath)
                 const row = db.prepare(SESSION_SELECT_BY_ID_SQL).get(match[1]) as { access_token?: string } | undefined
-                db.close()
                 if (row?.access_token) {
                   proxyReq.path = `/ws?token=${encodeURIComponent(row.access_token)}`
                 }
               } catch {
-                // 读不到就让上游按「没有 token」处理（HTTP 400），不静默伪造一个
+                // 读不到就让上游按「没有 token」处理（HTTP 400），不静默伪造一个；
+                // 只打路径，绝不打 token / cookie
+                console.warn(`[ws-proxy] 读会话库失败：${dbPath}`)
+              } finally {
+                db?.close()
               }
             })
           },
