@@ -206,15 +206,15 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 1. 无 `hv_session` cookie → 401。
 2. 会话不存在 → 401 + 清 cookie。
 3. `ensureFresh`：`SessionDead` → 删会话 + 清 cookie + 401；`UpstreamUnavailable` → 502（透传 `edge` 的 JSON 体）。
-4. 组装上游请求：`${BFF_UPSTREAM_HTTP}${pathname}${search}`；方法、body 流式转发（`request.body` + `duplex: 'half'`）；头**剥掉** hop-by-hop（`connection` `keep-alive` `transfer-encoding` `upgrade` `te` `trailer` `proxy-*`）与 `cookie` / `host`；**加** `Authorization: Bearer <token>`；`User-Agent` 原样转发。
-5. 响应：状态码 + 头（剥 hop-by-hop）+ body 流式回传。
+4. 组装上游请求：`${BFF_UPSTREAM_HTTP}${pathname}${search}`；方法、body 流式转发（`request.body` + `duplex: 'half'`）；头**剥掉** hop-by-hop（`connection` `keep-alive` `transfer-encoding` `upgrade` `te` `trailer` `proxy-authorization` `proxy-connection`）、`cookie` / `host` / `authorization`（凭证只能由 BFF 注入），以及浏览器可伪造的来源头（`x-forwarded-for` `x-forwarded-host` `x-forwarded-proto` `x-forwarded-port` `x-real-ip` `forwarded` `via` —— Caddy 对 XFF 是追加而非替换，伪造值会作为链条首元素抵达源站；BFF 自己需要真实 IP 时只读 Cloudflare 覆写的 `cf-connecting-ip`，且**不**替上游合成 XFF）；**加** `Authorization: Bearer <token>`；`User-Agent` 原样转发。
+5. 响应：状态码 + 头 + body 流式回传。头剥 hop-by-hop（`connection` `keep-alive` `transfer-encoding` `upgrade` `te` `trailer` `proxy-authenticate` `proxy-connection`）、上游的 `set-cookie`（会话由 BFF 全权管理），以及 **`content-encoding` 与 `content-length`**：`fetch` 在 Node 与 Bun 下都会透明解压上游 body 却把这两个头原样留下，转发出去就是「声称 gzip、长度是压缩前的、body 却是明文」，浏览器报 `ERR_CONTENT_DECODING_FAILED`。只剥请求侧的 `accept-encoding` 不够（运行时会自己补上），必须在响应侧剥，由运行时按实际 body 重新分帧。
 6. 上游 **401**：端点在 `BUSINESS_401_ENDPOINTS` 内 → 原样透传、会话不动；否则视为会话死亡 → 删会话 + 清 cookie + 原样回 401。
 7. 上游 403 与其余 4xx/5xx → **原样透传，不碰会话**。后端用 403 表示普通权限拒绝，这是 P1 用「静默登出」换来的教训。
 8. **不做「401 后刷新重试」。** 新鲜度在转发前保证；重试 = 重放非幂等请求，正是 P1b 修过的「重放改密请求」类 bug。
 
 ### 4.5 透传代理 `passthrough.$.ts`
 
-与 4.4 的 4–5 步相同，但：不读 cookie、不查会话、**绝不设置 `Authorization`**。这是硬约束，测试用 `Object.hasOwn(headers, 'authorization') === false` 断言在头对象本身上（不看序列化结果 —— 本仓已在这类断言上栽过）。
+与 4.4 的 4–5 步相同，但：不读 cookie、不查会话、**绝不设置 `Authorization`**。这是硬约束，测试用 `headers.has('authorization') === false` 断言在头对象本身上（不看序列化结果；**不能**用 `Object.hasOwn(headers, …)` —— `Headers` 的头不是自有属性，那个断言恒为 false、永远绿，本仓已在这类断言上栽过）。
 
 ### 4.6 WS 代理 `server/ws/proxy.ts` + `server/index.ts`
 
@@ -278,12 +278,14 @@ BFF **不发明错误文案**。它自己只产生三种响应：
 - 会话 id 32 字节 CSPRNG；cookie `HttpOnly`；生产 `Secure`。
 - 私钥永不进仓：`secrets/` 在 `.gitignore`，alice 上 mode 600，由 owner 放置；本仓是公开仓库。
 - `Authorization` 只在 4.4 注入，透传分支结构上不可达（独立模块、测试钉住）。
+- 浏览器带来的 `authorization` / `cookie` 与来源头（`x-forwarded-*` `x-real-ip` `forwarded` `via`）在转发前一律剥掉：凭证只能由 BFF 注入，来源头交给上游会成为限流 / 审计 / 拼绝对 URL 时可被任意伪造的输入。
+- `redirect: 'manual'`：BFF 不替浏览器追随上游 3xx（预签名下载常靠 302 的 `Location`；追随还会把 BFF 变成会追内网链接的出网客户端）。
 
 ## 8. 测试
 
 **单元（vitest / Node）**：会话存储用 `node:sqlite` 跑全部契约用例；同一组用例另以 `bun test` 跑 `bun:sqlite` 驱动。刷新的 CAS 与进程内单飞（并发 N 次只打一次上游；CAS 失败重读）、cookie 序列化、hop-by-hop 剥离、`business401` 表、登录解析器、`refresh_token` 缺席沿用。
 
-**资源路由（vitest + 假上游 `http.createServer`）**：bearer 注入；body 流式逐字节一致（上传大小 > 单个 chunk）；上游 401 → 会话删除且 `Set-Cookie` 清除；business-401 端点 401 会话不动；403 原样透传会话不动；`/api/auth/refresh` 404；透传前缀头对象上 `Object.hasOwn(…, 'authorization') === false` 且不读 cookie；`Sec-Fetch-Site: cross-site` 的 POST 被拒。
+**资源路由（vitest + 假上游 `http.createServer`）**：bearer 注入；body 流式逐字节一致（上传大小 > 单个 chunk）；上游 401 → 会话删除且 `Set-Cookie` 清除；business-401 端点 401 会话不动；403 原样透传会话不动；`/api/auth/refresh` 404；透传前缀头对象上 `headers.has('authorization') === false` 且不读 cookie；`Sec-Fetch-Site: cross-site` 的 POST 被拒。
 
 **WS 代理（假上游 WS）**：token 出现在上游 URL、不出现在浏览器侧任何地方；文本 / 二进制双向；close code 传递；无会话 → 401；logout 关闭该会话的 WS。
 
