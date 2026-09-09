@@ -64,7 +64,15 @@ function parseLogin(userId: string, body: unknown): LoginTokens {
 export async function action({ request }: ActionFunctionArgs): Promise<Response> {
   if (isCrossSiteWrite(request)) return crossSiteRejectedResponse()
 
-  const payload = (await request.json()) as { user_id?: unknown; password?: unknown }
+  let payload: { user_id?: unknown; password?: unknown }
+  try {
+    payload = (await request.json()) as typeof payload
+  } catch {
+    return new Response(JSON.stringify({ success: false, code: 400, error: '请求体不是合法 JSON' }), {
+      status: 400, headers: { 'content-type': 'application/json' },
+    })
+  }
+
   const userId = typeof payload.user_id === 'string' ? payload.user_id : ''
   if (userId === '') {
     return new Response(JSON.stringify({ success: false, code: 400, error: '缺少 user_id' }), {

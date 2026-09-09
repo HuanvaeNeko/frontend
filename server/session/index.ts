@@ -29,11 +29,12 @@ export function resetSessionStore(): void {
 }
 
 /**
- * BFF 自己产生的三种响应之一：会话失效。
+ * spec §6 条目 1：「无上游响应可引」时 BFF 自造的几种响应之一——会话失效。
  *
  * 形状与后端的错误信封一致（`{success:false, code, error}`），让客户端的解包层
- * 不必为 BFF 单开一条分支。**这是 BFF 唯一会自己造的错误文案** ——
- * 其余一律上游原样，见 spec §6。
+ * 不必为 BFF 单开一条分支。其余几种见同文件的 upstreamUnavailableResponse
+ * （条目 2）、crossSiteRejectedResponse（条目 3），以及各路由里请求体不合格的 400
+ * （条目 4）——这不是唯一一条，只是这一条。
  */
 export function sessionExpiredResponse(): Response {
   return new Response(JSON.stringify({ success: false, code: 401, error: '会话已失效，请重新登录' }), {
@@ -42,7 +43,12 @@ export function sessionExpiredResponse(): Response {
   })
 }
 
-/** 上游不可达。透传 502，不编造文案（edge 那份 JSON 已经说明了原因） */
+/**
+ * spec §6 条目 2：只在**没有上游响应可转发**时才会走到这里——fetch 直接抛错
+ * （登录或刷新阶段都可能），或者（刷新场景下）refresh 端点回了 5xx / 响应形状坏。
+ * refresh 端点 5xx 时 body 其实是存在的，但那份 body 描述的是刷新这一次请求，
+ * 不是浏览器发出的原始请求，所以不转发；此时自造这条 502 文案是唯一诚实的选项。
+ */
 export function upstreamUnavailableResponse(): Response {
   return new Response(JSON.stringify({ success: false, code: 502, error: '后端暂时不可用，请稍后重试' }), {
     status: 502,
