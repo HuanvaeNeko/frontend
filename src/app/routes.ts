@@ -9,6 +9,13 @@ export default [
   route('api/auth/register', 'routes/api.auth.register.ts'),
   route('api/auth/logout', 'routes/api.auth.logout.ts'),
   route('api/session', 'routes/api.session.ts'),
+  route('api/*', 'routes/api.$.ts'),
+  // 四条透传前缀指向同一个模块，必须各给一个 id：RR 用 (file, id) 唯一标识路由，
+  // 同一文件注册多次不给 id 会报重复定义。
+  route('avatars/*', 'routes/passthrough.$.ts', { id: 'passthrough-avatars' }),
+  route('user-file/*', 'routes/passthrough.$.ts', { id: 'passthrough-user-file' }),
+  route('friends-file/*', 'routes/passthrough.$.ts', { id: 'passthrough-friends-file' }),
+  route('apps/*', 'routes/passthrough.$.ts', { id: 'passthrough-apps' }),
 
   index('routes/home.tsx'),
   route('downloads', 'routes/downloads.tsx'),
