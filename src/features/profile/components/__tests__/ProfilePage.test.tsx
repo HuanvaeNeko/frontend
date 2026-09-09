@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
+import { beginSession } from '@/lib/sessionScope'
 import { makeProfile, makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfilePage from '../ProfilePage'
@@ -76,6 +77,14 @@ const renderPage = () =>
   )
 
 beforeEach(() => {
+  // 每条用例都从一场**活着的**会话开始。下面的 setState 绕过了 login()，而 login()
+  // 才是生产里调 beginSession() 的地方；不补这一句的话，「后端 401」那几条经
+  // clearAuth → endSession 把 sessionScope 的模块级状态翻成死窗口（inDeadWindow=true、
+  // generation+1）之后，同文件后面的每一条都活在死窗口里：每次落盘都被丢弃并
+  // console.warn 一次，只是碰巧没有用例去读它。实测（stderr 打点）：401 那条之后
+  // live=false 一直持续到文件结束。重开会话还顺带给了一道闸——上一条用例里已经发出、
+  // 还没回来的请求，其 store 写入会被 stillMine() 判成过期而丢弃，不再污染这一条。
+  beginSession()
   localStorage.clear()
   toastMock.mockClear()
   // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
@@ -102,13 +111,27 @@ afterEach(() => {
  * **差分**，一个字段都没碰时请求根本不会发出去（见本 describe 最后两条）。
  * 旧写法里"什么都不改直接点保存"照样会发一个 `{email, signature}` 的请求——
  * 那正是本批要修的缺陷（把没碰过的字段一起重写）。
+ *
+ * 改字段一律用 `fireEvent.change` **一次**写入，不用 `userEvent.type` 逐键敲。
+ * 不是嫌 user-event 不真实，是实测出来的两笔账（2026-09，8 核机器，4 性能 + 4 能效）：
+ *
+ * - 本页每个键都让整页重渲染一次（`formData` 是页级 state），15 个字符 ≈ 300 ms
+ *   ——空闲时已经如此。这一组因此是全套 919 条里最贵的（540/359/260/248/172 ms），
+ *   机器一忙（另一套测试并行、或半数 worker 落在能效核上）就顶到 vitest 5 s 的
+ *   用例超时。
+ * - 更要命的是超时**之后**：vitest 判了超时却停不掉用例体，剩下的键继续敲进
+ *   `document.activeElement`——那时它已经是**下一条**用例刚聚焦的邮箱框。实测两份
+ *   `new@example.com` 交错成 `@examnpelwe@.ecxoammple`，`type="email"` 的约束校验
+ *   让表单**静默拒绝提交**：没有 PUT、没有 toast，下一条以「toast 调用 0 次」失败。
+ *   全套稳定只红这几条、单跑本文件必绿，就是这条链路。
+ *
+ * 一次 `change` 事件是同步的：没有 15 次重渲染，也没有能漏进下一条用例的尾巴；
+ * React 的 onChange 照常触发，差分走的还是 `pickProfileEdits` 同一条路。
  */
 describe('ProfilePage 保存个人资料', () => {
   /** 把邮箱改成一个新值——最短的"制造一处差分"。 */
   const editEmail = async (value: string) => {
-    const input = await screen.findByDisplayValue('old@example.com')
-    await userEvent.clear(input)
-    await userEvent.type(input, value)
+    fireEvent.change(await screen.findByDisplayValue('old@example.com'), { target: { value } })
   }
 
   it('后端 400 校验失败时只弹失败提示，绝不弹「成功」', async () => {
@@ -187,9 +210,7 @@ describe('ProfilePage 保存个人资料', () => {
       .mockResolvedValueOnce(json({ success: true, code: 200, data: PROFILE_DTO }))
 
     renderPage()
-    const signature = await screen.findByDisplayValue('签名')
-    await userEvent.clear(signature)
-    await userEvent.type(signature, '新签名')
+    fireEvent.change(await screen.findByDisplayValue('签名'), { target: { value: '新签名' } })
 
     await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
 
@@ -207,10 +228,10 @@ describe('ProfilePage 保存个人资料', () => {
 
     renderPage()
     const nickname = await screen.findByLabelText('昵称')
-    // 正对照：这个断言在 `disabled` 还在时直接红（userEvent 拒绝对 disabled 输入打字）。
+    // 正对照：`disabled` 还在时这一行直接红。这条断言不能删——`fireEvent.change` 对
+    // disabled 输入照样派发事件（不像 userEvent 会拒绝），下面那句替不了它把关。
     expect((nickname as HTMLInputElement).disabled).toBe(false)
-    await userEvent.clear(nickname)
-    await userEvent.type(nickname, '新昵称')
+    fireEvent.change(nickname, { target: { value: '新昵称' } })
 
     await userEvent.click(screen.getByRole('button', { name: '保存更改' }))
 
