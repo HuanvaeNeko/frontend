@@ -568,6 +568,7 @@ describe('ProfilePage 上传头像', () => {
     // 不再自己调 `silentRedirectToLogin()`（`.replace`）。跳转本身没有消失，只是
     // 换成了 `fetchWithAuth` 那一次（`.href`），断言跟着换。
     expect(hrefSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+    expect(window.location.replace).not.toHaveBeenCalled() // 只跳一次，且是 fetchWithAuth 那一次
 
     // 会话既然结束了，store 里就不该再留着这个人的资料——`clearAuth` 会走
     // `endSession()`，把 profile 连同 `profile-storage` 一起清掉。
@@ -969,5 +970,6 @@ describe('ProfilePage 资料封面', () => {
     )
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
     expect(hrefSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+    expect(window.location.replace).not.toHaveBeenCalled() // 只跳一次，且是 fetchWithAuth 那一次
   })
 })

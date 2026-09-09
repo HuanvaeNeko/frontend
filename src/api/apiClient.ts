@@ -162,23 +162,90 @@ export const safeApiCall = async <T>(
 }
 
 /**
+ * `apiClient` 四个动词方法专用的 30 秒超时——**客户端侧**，且只在这四个方法上。
+ *
+ * BFF 不给代理请求设超时（`server/proxy/forward.ts` 的 `fetch` 没有 `signal`），
+ * Caddy 也只管上游拨号超时，不管一条请求能拖多久。上游卡死时如果客户端不设
+ * 上限，`lowcodeApi.*` / `diagnostic.ts`（本文件仅有的两个消费者）的 promise
+ * 会永久 pending——两者都只读 `response.ok`、谁都不 catch，用户看到的是一个
+ * 转不完的圈。曾经这四个方法显式传 `{ timeoutMs: 30000 }`，是全仓库唯一带
+ * 超时的调用点；Task 11 把 `fetchWithAuth` 退化成同源裸 `fetch` 时连同
+ * `AuthedFetchConfig` 一起删掉了，这里补回等价物。
+ *
+ * 只放在这四个方法上、不放回 `fetchWithAuth` 本身：`api/storage.ts` 的大文件
+ * 传输也走 `fetchWithAuth`，默认若有超时，长传会开始以一句没有任何调用方
+ * 解析的「请求超时」失败。
+ */
+const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * 建一个到点自动 `abort` 的 `AbortController`，并与调用方自带的 `options.signal`
+ * **合成**而不是覆盖——`{ ...options, signal: controller.signal }` 会把调用方
+ * 传进来的那个静默盖掉（合并前 `apiClient.fetchWithTimeout` 正是这个写法），
+ * 于是这里改成调用方一取消，合成的 controller 跟着中止。
+ *
+ * `timedOut()` 供调用方在 `catch` 里分辨这次 abort 是不是我们自己的定时器开的
+ * 枪：是 → 译成「请求超时，请检查网络连接」；不是（调用方自己取消）→ 原样上抛。
+ * 不用 `AbortSignal.timeout`/`AbortSignal.any`：测试跑在 happy-dom 上，
+ * 两者的支持程度不确定，手写等价物更可控。
+ */
+const withTimeout = (
+  options: RequestInit,
+  ms: number,
+): { init: RequestInit; clear: () => void; timedOut: () => boolean } => {
+  const controller = new AbortController()
+  const callerSignal = options.signal
+  let timedOut = false
+
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, ms)
+
+  const relayAbort = () => controller.abort(callerSignal?.reason)
+  if (callerSignal) {
+    if (callerSignal.aborted) relayAbort()
+    else callerSignal.addEventListener('abort', relayAbort, { once: true })
+  }
+
+  return {
+    init: { ...options, signal: controller.signal },
+    clear: () => {
+      clearTimeout(timer)
+      callerSignal?.removeEventListener('abort', relayAbort)
+    },
+    timedOut: () => timedOut,
+  }
+}
+
+/** 发一次带超时的请求；`finally` 保证定时器与监听器不会泄漏到下一次调用。 */
+const sendWithTimeout = async (url: string, options: RequestInit): Promise<Response> => {
+  const { init, clear, timedOut } = withTimeout(options, REQUEST_TIMEOUT_MS)
+  try {
+    return await fetchWithAuth(url, init)
+  } catch (error) {
+    if (timedOut() && error instanceof Error && error.name === 'AbortError') {
+      throw new Error('请求超时，请检查网络连接', { cause: error })
+    }
+    throw error
+  } finally {
+    clear()
+  }
+}
+
+/**
  * 通用 API 客户端，自动处理认证。
  *
  * 消费者只有 `features/lowcode/api/lowcode.ts` 与 `api/diagnostic.ts`，
  * 两者都只读 `response.ok`、谁都不 catch。
- *
- * ⚠️ 曾经这四个方法显式传超时（`{ timeoutMs: 30000 }`），是全仓库唯一带超时
- * 的调用点。Task 11 把 `fetchWithAuth` 退化成同源裸 `fetch` 时连同
- * `AuthedFetchConfig`/超时支持一起删掉了，这四个方法跟着掉线——今天没有
- * 测试钉住这四个端点的超时行为，掉线是无声的。
  */
 export const apiClient = {
   get: async (path: string, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, { ...options, method: 'GET' })
+    return sendWithTimeout(`${BASE_URL}${path}`, { ...options, method: 'GET' })
   },
 
   post: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
+    return sendWithTimeout(`${BASE_URL}${path}`, {
       ...options,
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
@@ -186,7 +253,7 @@ export const apiClient = {
   },
 
   put: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
+    return sendWithTimeout(`${BASE_URL}${path}`, {
       ...options,
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
@@ -194,7 +261,7 @@ export const apiClient = {
   },
 
   delete: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, {
+    return sendWithTimeout(`${BASE_URL}${path}`, {
       ...options,
       method: 'DELETE',
       body: data ? JSON.stringify(data) : undefined,

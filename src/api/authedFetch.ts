@@ -47,9 +47,24 @@ const redirectToLogin = (): void => {
  * - 不是 → 清本地登录态并跳登录页。
  *
  * 刻意**不**做「401 后重试」：BFF 已经保证了新鲜度，重试只会重放一个非幂等请求。
+ *
+ * ## `Content-Type: application/json` 是保留的默认值，不是新加的
+ *
+ * 旧 `getAuthHeaders()` 做两件事：拼 `Authorization`，和给一个默认
+ * `Content-Type: application/json`。这里删掉的只是前者——全仓没有任何调用点
+ * 自带这个头（`grep -rn "Content-Type" src` 的命中全是构造 mock **响应**时写的），
+ * 少了它，字符串 `body` 会被浏览器补成 `text/plain;charset=UTF-8`，而 BFF 对
+ * 请求侧 `content-type` 原样转发、不做任何归一化（`server/proxy/forward.ts` 的
+ * `STRIP_FROM_REQUEST` 不含它）。合并顺序 `{ 默认, ...options.headers }` 与
+ * 旧代码 `{ ...getAuthHeaders(), ...options.headers }` 一致：调用方的头仍然
+ * 覆盖默认值。
  */
 export const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const response = await fetch(url, { ...options, credentials: 'same-origin' })
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+  })
 
   if (response.status === 401 && !isBusiness401Request(options.method, url)) {
     useAuthStore.getState().clearAuth()

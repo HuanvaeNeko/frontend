@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { friendsApi } from '@/features/chat/api/friends'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { AuthenticationError, isAuthError } from '../apiClient'
+import { apiClient, AuthenticationError, isAuthError } from '../apiClient'
 // 业务 401 白名单的查询函数住在 `authedFetch.ts`（表本身住在
 // `src/lib/business401.ts`）；`apiClient.ts` 只剩分类器与四个动词方法。
 import { isBusiness401Request } from '../authedFetch'
@@ -211,3 +211,74 @@ describe('哨兵两端一致：抛出点的文案也被钉住', () => {
 // 「清本地态 + 跳登录」，跨会话最坏结果是多跳一次登录页（与
 // `authedFetch.test.ts` 顶部对 `sessionScopedFetchWithAuth.test.ts` 的说明
 // 是同一件事）。
+
+/**
+ * `apiClient` 四个动词方法的 30 秒超时（I-3：随 `AuthedFetchConfig` 一起被
+ * 静默删掉，两侧都无替代，见 `apiClient.ts` 顶部 `withTimeout` 的注释）。
+ *
+ * 只打 `apiClient.get`：四个方法共用同一个 `sendWithTimeout`，钉住共享逻辑
+ * 一次就够，不必对 post/put/delete 逐一重复同一件事。
+ */
+describe('apiClient 的 30 秒超时', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('上游卡死：30 秒后拒绝，译成「请求超时，请检查网络连接」', async () => {
+    fetchMock.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            const abort = new Error('aborted')
+            abort.name = 'AbortError'
+            reject(abort)
+          })
+        }),
+    )
+
+    const pending = expect(apiClient.get('/api/probe')).rejects.toThrow('请求超时，请检查网络连接')
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    await pending
+  })
+
+  it('正对照：没到 30 秒就回来，照常返回响应，且定时器被清掉', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    const response = await apiClient.get('/api/probe')
+
+    expect(response.status).toBe(200)
+    // 上一条证明"到点会拒绝"；这一条证明"没到点不会误伤"，且 `clear()` 真的
+    // 清掉了定时器——如果没清，这里就不会是 0。
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('调用方自己 abort：拿到的是调用方的取消，不是超时文案', async () => {
+    const caller = new AbortController()
+    fetchMock.mockImplementationOnce(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => {
+            const abort = new Error('caller aborted')
+            abort.name = 'AbortError'
+            reject(abort)
+          })
+        }),
+    )
+
+    const pending = apiClient.get('/api/probe', { signal: caller.signal })
+    caller.abort()
+
+    // 超时定时器还没到点（只过去了 0 秒），这次 abort 只可能是调用方自己发的。
+    await expect(pending).rejects.toThrow('caller aborted')
+  })
+})
