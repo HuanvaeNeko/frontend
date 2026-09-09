@@ -12,6 +12,10 @@ const STRIP_FROM_REQUEST = new Set([
   // 凭证只能由 BFF 注入。请求自带的 authorization 一律不信——否则浏览器侧
   // 可以自己塞一个头绕过会话检查。
   'authorization',
+  // 浏览器带来的来源头一律不可信：Caddy 对 X-Forwarded-For 是追加而非替换，
+  // 伪造值会作为链条首元素抵达源站；BFF 自己也不替上游合成 XFF。
+  'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port',
+  'x-real-ip', 'forwarded', 'via',
 ])
 
 const STRIP_FROM_RESPONSE = new Set([
@@ -20,6 +24,12 @@ const STRIP_FROM_RESPONSE = new Set([
   // 上游的 set-cookie 不透给浏览器：会话由 BFF 全权管理，
   // 后端如果哪天开始下发 cookie，也不该越过 BFF 直达浏览器。
   'set-cookie',
+  // fetch 在 Node 与 Bun 下都已经把 body 解压了，却把这两个头原样留在
+  // upstream.headers 上：content-encoding 会让浏览器再解一次，触发
+  // ERR_CONTENT_DECODING_FAILED / ZlibError；content-length 是压缩前的长度，
+  // 与解压后的实际 body 不符。只剥请求侧 accept-encoding 不够——运行时在没
+  // 该头时会自己补上，上游照样压——必须在响应侧剥，交给运行时按实际 body 重新分帧。
+  'content-encoding', 'content-length',
 ])
 
 export function buildUpstreamHeaders(request: Request, extra?: Record<string, string>): Headers {
