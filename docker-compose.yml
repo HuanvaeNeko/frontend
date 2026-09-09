@@ -22,6 +22,15 @@ services:
       # 报错永远不会上报到 Sentry，且没有任何日志或错误提示这一点。
       VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
       VITE_APP_VERSION: ${VITE_APP_VERSION}
+      # BFF：上游只指 docker 网络内的 edge，绝不出现 api.huanvae.cn
+      BFF_UPSTREAM_HTTP: http://edge:8787
+      BFF_UPSTREAM_WS: ws://edge:8787
+      SESSION_DB_PATH: /data/sessions.sqlite
+      SESSION_COOKIE_SECURE: "true"
+    volumes:
+      - sessions:/data
+    depends_on:
+      - edge
     healthcheck:
       test: ["CMD", "bun", "-e", "const r = await fetch('http://localhost:3000/healthz'); process.exit(r.ok ? 0 : 1)"]
       interval: 30s
@@ -44,7 +53,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-# 阶段 2 启用
-# volumes:
-#   pgdata:
-#   redisdata:
+  edge:
+    # 与 alice 上已在运行的 gensokyo-caddy 同一 tag。首次部署验证通过后钉 digest。
+    image: caddy:2-alpine
+    volumes:
+      - ./edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      # huanvae-ca.pem / app-client.cert.pem / app-client.key.pem
+      # 由 owner 手动放置（mode 600），永不入库——本仓是公开仓库
+      - ./secrets:/secrets:ro
+    expose: ["8787"]
+    restart: unless-stopped
+
+volumes:
+  sessions:

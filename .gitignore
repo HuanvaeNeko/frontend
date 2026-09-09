@@ -65,6 +65,10 @@ public/version.json
 # Misc
 *.pem
 
+# mTLS 客户端证书与私钥，由 owner 手动放置，永不入库
+secrets/
+docker-compose.override.yml
+
 # SDD 工作区（ledger / 简报 / 审查包，非项目产物）
 .superpowers/
 

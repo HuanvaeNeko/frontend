@@ -1,0 +1,57 @@
+# 出网层：把 BFF 的裸 HTTP 请求转成「mTLS + 不带 huanvae.cn SNI」的请求打到后端边缘。
+#
+# 为什么需要这一层：api.huanvae.cn 在阿里云被 ICP 备案拦截——边缘会被动读明文 SNI，
+# 携带 huanvae.cn 的 TLS ClientHello 直接 RST。可行路径是连 IP 字面量（或用
+# huanvae-edge 这个名字），钉私有 CA，并出示客户端证书（后端边缘 nginx 开了
+# ssl_verify_client）。这些浏览器一件都做不到，所以必须由服务端做。
+#
+# 本文件是 ~/.config/huanvae-edge/nginx.conf 那份**已在真实边缘调通**的配置的逐条移植，
+# 对应关系写在 spec §3.1。每一条都对应一次实际故障，改动前先读那张表。
+#
+# caddy adapt --config Caddyfile --adapter caddyfile（caddy:2-alpine）已验证语法，
+# 并确认以下三项落在预期的 JSON 路径（spec §10 开放问题之一，实测路径如下）：
+#   versions        -> apps.http.servers.srv0.routes[0].handle[0].transport.versions
+#                      （证实是上游 HTTP 版本，不是 TLS 版本）
+#   tls_client_auth -> apps.http.servers.srv0.routes[0].handle[0].transport.tls.client_certificate_file
+#                      / ...transport.tls.client_certificate_key_file
+#   tls_server_name -> apps.http.servers.srv0.routes[0].handle[0].transport.tls.server_name
+{
+	admin off
+	auto_https off
+}
+
+:8787 {
+	reverse_proxy https://47.105.101.42:443 https://47.104.231.235:443 {
+		# 主备而非轮询：第二个 IP 是同集群兜底，不是用来分流的
+		lb_policy first
+		lb_retries 3
+		lb_try_duration 5s
+		fail_duration 30s
+		max_fails 1
+
+		# 上游按 Host 路由，也按 Host 签发预签名 URL——必须是逻辑域名
+		header_up Host api.huanvae.cn
+
+		# SSE 与分片上传要即时刷出，不缓冲
+		flush_interval -1
+
+		transport http {
+			# 只用于校验边缘证书，不能是 huanvae.cn——那个名字会触发拦截
+			tls_server_name huanvae-edge
+			tls_trust_pool file /secrets/huanvae-ca.pem
+			tls_client_auth /secrets/app-client.cert.pem /secrets/app-client.key.pem
+			# 边缘对 h2 探测过回 401，App 也避开 h2
+			versions 1.1
+			dial_timeout 10s
+			# 连接复用是压住边缘「新建连接约 1/8 被 RST」的机制，不是性能优化
+			keepalive 60s
+			keepalive_idle_conns 16
+			keepalive_idle_conns_per_host 16
+		}
+	}
+
+	handle_errors {
+		header Content-Type application/json
+		respond `{"success":false,"code":502,"error":"BFF 到 Huanvae 边缘失败（重试已用尽），请重试"}` 502
+	}
+}

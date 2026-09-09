@@ -1,0 +1,11 @@
+# 本地开发：把 edge 发布到宿主机，让 `react-router dev`（跑在容器外）能打到它。
+# 用法：cp docker-compose.override.yml.example docker-compose.override.yml
+#      docker compose up -d edge
+# 然后 .env.development.local 里 BFF_UPSTREAM_HTTP=http://127.0.0.1:8787
+#
+# 只绑 127.0.0.1，不绑 0.0.0.0：这个端口背后是一条持证的 mTLS 出网通道，
+# 不能对局域网开放。
+services:
+  edge:
+    ports:
+      - "127.0.0.1:8787:8787"
