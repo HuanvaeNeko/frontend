@@ -13,8 +13,6 @@ import { makeProfile } from '@/features/profile/api/__tests__/profileFixture'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-// 合并之后这份 `fetchWithAuth` 住在 `authedFetch.ts`（十份副本合并成的那一份）。
-import { fetchWithAuth } from '@/api/authedFetch'
 import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { useApiConfigStore } from '@/store/apiConfig'
 import { useWSStore } from '@/store/wsStore'
@@ -394,9 +392,12 @@ describe('登出那一刻还在飞的请求', () => {
  * 前一个；这一组钉后一个——「一次写入必须属于当前活着的那一场会话」这条不变量
  * （定义在 `lib/sessionScope.ts` 顶部）在**会话开始**那一侧同样要成立。
  *
- * 三条都是同一个形状：A 在自己的会话里发出一个请求，请求还在飞的时候会话换人，
- * 响应落在 B 的会话里。三条分别走三条不同的路：刷新成功、内存副本、以及
- * `fetchWithAuth` 的 401 分支。
+ * 两条都是同一个形状：A 在自己的会话里发出一个请求，请求还在飞的时候会话换人，
+ * 响应落在 B 的会话里。两条分别走两条不同的路：刷新成功、内存副本。
+ *
+ * ⚠️ 曾经还有第三条走 `fetchWithAuth` 的 401 分支——那道闸（上一场会话的 401
+ * 不碰当前这一场）随 Task 11 一起删掉了，理由与去向见 `authedFetch.test.ts`
+ * 顶部对 `sessionScopedFetchWithAuth.test.ts` 的说明。
  */
 describe('会话边界：属于上一场会话的写入落在 B 的会话里', () => {
   it('clearCredentials 之后 B 登录：A 那次刷新轮换出来的新 token 进不了 auth-storage', async () => {
@@ -456,38 +457,12 @@ describe('会话边界：属于上一场会话的写入落在 B 的会话里', (
     expect(localStorage.getItem('api-config-storage')).toBeNull()
   })
 
-  it('A 登出前发出的请求在 B 的会话里才 401：不刷新、不登出、不清 B 的盘', async () => {
-    await loginAs('alice')
-
-    const pending = deferredResponse()
-    fetchMock.mockImplementationOnce(() => pending.promise)
-    const aliceDevices = authApi.getDevices()
-
-    useAuthStore.getState().clearAuth()
-    await loginAs('bob')
-    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
-
-    // 正对照：B 的会话是活的，而且他的密钥确实落了盘。
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-
-    // 这一条是给"万一真的去刷新了"准备的：刷新会失败，于是 401 分支会走到
-    // clearAuth() + 清盘。它没被消费，正是下面 toHaveBeenCalledTimes(3) 的含义。
-    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    pending.release(
-      jsonResponse({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
-    )
-
-    await expect(aliceDevices).rejects.toThrow()
-
-    // 三次 fetch = alice 登录 + devices + bob 登录。第四次（刷新）没有发生，
-    // 也就是说这条 401 一步都没往下走。
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-  })
+  // ⚠️ 「A 登出前发出的请求在 B 的会话里才 401：不刷新、不登出、不清 B 的盘」
+  // 曾经钉在这里。Task 11 之后 `fetchWithAuth` 不再区分「这个 401 属于哪一场
+  // 会话」——它是无状态的同源 fetch，任何非业务 401 都会 `clearAuth()` + 跳登录页，
+  // 不管这个响应对应的请求是谁发的。也就是说 A 登出前发出、在 B 登录之后才落地的
+  // 401 现在**会**把 B 也登出（跨会话最坏结果是多跳一次登录页，见
+  // `authedFetch.test.ts` 顶部的说明），这条用例断言的「不登出」不再成立。
 
   it('B 自己的刷新不会被 A 那一次还在飞的刷新代答', async () => {
     // 单飞锁（`refreshInFlight`）是 7ee0598 为压级联登出加的，它是模块级的，
@@ -739,54 +714,9 @@ describe('三个 store：上一场会话的响应落在 B 的会话里', () => {
   })
 })
 
-/**
- * `apiClient` 曾经在 `authStore.refreshInFlight` **之上**还压着第二把单飞锁
- * （模块级的 `isRefreshing` / `refreshPromise`），而只有下面那一把是会话内的。
- * 于是 B 自己的 401 会拿到 A 那一次的刷新 promise：A 断网 = B 被登出。
- *
- * 修法是把上面那把删掉（去重本来就发生在下面那个漏斗里），所以这条用例同时也是
- * 「别再加回来」的守门人。
- */
-describe('apiClient 的刷新去重只有一把锁，而且是会话内的', () => {
-  it('B 自己的 401 不会被 A 那一次 apiClient 刷新代答', async () => {
-    await loginAs('alice')
-
-    // A 的请求收到 401 → `tryRefreshToken()` → 刷新请求挂起。
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'expired' }, 401))
-    const aliceRefreshCall = deferredResponse()
-    fetchMock.mockImplementationOnce(() => aliceRefreshCall.promise)
-    const aliceReq = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
-    // 等到 A 的刷新**真的**发出去了：alice 登录 + A 的请求 + A 的刷新 = 3 次。
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-
-    useAuthStore.getState().clearAuth()
-    await loginAs('bob')
-    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
-    // 正对照：B 的密钥确实落了盘。
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-
-    // B 自己的一次 401：应当由 **B 自己的**刷新来回答，然后原样重发。
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'expired' }, 401))
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT-bob-2', refresh_token: 'RT-bob-2', expires_in: 3600 },
-      }),
-    )
-    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, code: 200, data: [] }))
-    const bobReq = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
-
-    // A 那一次现在才失败（断网）。加回那把模块级锁的话，这一句会同时判决 B：
-    // 实测是 `isAuthenticated=false`、`accessToken=null`、`api-config-storage=null`。
-    aliceRefreshCall.fail(new TypeError('Failed to fetch'))
-    await expect(aliceReq).rejects.toThrow()
-
-    const bobResponse = await bobReq
-    expect(bobResponse.status).toBe(200)
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob-2')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-  })
-})
+// ⚠️ 「apiClient 的刷新去重只有一把锁，而且是会话内的」曾经钉在这里：直接调
+// `fetchWithAuth` 两次，验证 B 自己的 401 不会被 A 那一次还在飞的刷新代答。
+// Task 11 把 `fetchWithAuth` 退化成同源裸 fetch 之后，它不再在 401 上发起任何
+// 刷新——这条用例守的那个漏洞（模块级单飞锁跨会话代答）连成因都不存在了：
+// 没有刷新调用，就没有可以被跨会话代答的刷新 promise。`authStore.refreshInFlight`
+// 自身的会话内去重仍由 `authStore` 的测试覆盖，与 `fetchWithAuth` 无关。

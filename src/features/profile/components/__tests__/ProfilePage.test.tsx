@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { ROUTES } from '@/lib/routes'
 import { makeProfile, makeProfileWire } from '../../api/__tests__/profileFixture'
 import { useProfileStore } from '../../store/profileStore'
 import ProfilePage from '../ProfilePage'
@@ -63,6 +64,7 @@ const json = (body: unknown, status = 200) =>
 const PROFILE_DTO = makeProfileWire({ user_email: 'old@example.com', user_signature: '签名' })
 
 let fetchMock: ReturnType<typeof vi.fn>
+let hrefSpy: Mock<(value: string) => void>
 
 const renderPage = () =>
   render(
@@ -87,6 +89,8 @@ beforeEach(() => {
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window.location, 'replace').mockImplementation(() => {})
+  hrefSpy = vi.fn()
+  vi.spyOn(window.location, 'href', 'set').mockImplementation(hrefSpy)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -555,9 +559,15 @@ describe('ProfilePage 上传头像', () => {
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
 
     // ⚠️ 跳登录页**依然会发生**，而且是对的：`GET /api/profile` 的 401 就是会话真的
-    // 失效了，那是 profileStore 对所有 action 的统一口径。本批修的不是这个跳转，
-    // 是"跳转之前先告诉用户他刚做的事失败了"这句谎话。
-    expect(window.location.replace).toHaveBeenCalledWith('/app/login')
+    // 失效了。本批修的不是这个跳转，是"跳转之前先告诉用户他刚做的事失败了"这句谎话。
+    //
+    // 跳转的**发起者**变了：Task 11 之后 `fetchWithAuth` 自己在 401 上就
+    // `clearAuth()` + `window.location.href = ...`，早于响应回到 `profileStore`。
+    // 于是 `profileStore.settleError` 的 `stillMine()` 闸门——它挡的是"上一场会话的
+    // 响应落在当前会话"——看到会话世代号已经变了，判定"不是我的"而直接 rethrow，
+    // 不再自己调 `silentRedirectToLogin()`（`.replace`）。跳转本身没有消失，只是
+    // 换成了 `fetchWithAuth` 那一次（`.href`），断言跟着换。
+    expect(hrefSpy).toHaveBeenCalledWith(ROUTES.auth.login)
 
     // 会话既然结束了，store 里就不该再留着这个人的资料——`clearAuth` 会走
     // `endSession()`，把 profile 连同 `profile-storage` 一起清掉。
@@ -922,9 +932,12 @@ describe('ProfilePage 资料封面', () => {
   })
 
   it('恢复默认遇到 401：跳登录页，但**依然**弹失败提示、绝不弹「成功」', async () => {
-    // `profileStore.settleError` 认出 401 后会 `silentRedirectToLogin()`，但那个
-    // action **依然 rethrow**（见 `settleError` 的 JSDoc：改回 `return` 会让这里
-    // 弹「成功」）。所以跳转与失败提示**同时**发生，这不是遗漏。
+    // 跳转现在由 `fetchWithAuth` 自己发起（401 → `clearAuth()` +
+    // `window.location.href = ...`），早于响应回到 `resetBackground`。
+    // `resetBackground` 的 `stillMine()` 闸门见到世代号已经变了，判定"不是我的"，
+    // 直接 `throw error`（不再经过 `settleError` → `silentRedirectToLogin`）——
+    // 那个原始 `ApiError` 的 `.message` 就是后端文案，组件的 catch 拿它弹 toast。
+    // 所以跳转与失败提示**同时**发生，这不是遗漏。
     fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
       const url = String(input)
       const method = init?.method ?? 'GET'
@@ -955,6 +968,6 @@ describe('ProfilePage 资料封面', () => {
       }),
     )
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '成功' }))
-    expect(window.location.replace).toHaveBeenCalledWith('/app/login')
+    expect(hrefSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })

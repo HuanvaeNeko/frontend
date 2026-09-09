@@ -4,7 +4,6 @@ import { isUploadSessionExpired, storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
-import { ROUTES } from '@/lib/routes'
 import {
   applyProfileEdits,
   coverImageSrc,
@@ -213,23 +212,27 @@ describe('profileApi.changePassword 的本地长度闸', () => {
 /**
  * **打错当前密码时真正执行的那条路径。**
  *
- * `profile.ts` 的 `fetchWithAuth` 见到 401 且 `authStore.refreshToken` 非空时，会
- * 「刷新 token → 把同一个密码请求原样重发一遍」，刷新失败则 `clearAuth()` +
- * `location.href = /app/login`。
+ * `profileApi.changePassword` 打 `PUT /api/profile/password`，401（旧密码错误）
+ * 命中 `src/lib/business401.ts` 的白名单——`fetchWithAuth` 见到就什么都不做，
+ * 把响应原样交回调用方，`readEnvelope`/`assertEnvelopeOk` 再抛出后端原文。
  *
- * 这个 describe 把该分支的**两种结局**分开钉：刷新成功（轮换 + 重发）与刷新失败
- * （登出 + 跳登录页）。原因是"不登出"这句话只有在刷新失败的那一支上才有内容——
- * 刷新成功时本来就没有任何登出代码会执行，在那一支上断言"没登出"是恒真的。
+ * ⚠️ 这个 describe 曾经还钉着两条「对照」：普通端点的 401 会刷新 token 并重发
+ * 一次，刷新失败则 `clearAuth()` + 跳登录页。Task 11 把 `fetchWithAuth` 退化成
+ * 同源裸 fetch 之后，**所有** 401（业务的、普通的）都不再重发——普通端点的
+ * 401 现在直接 `clearAuth()` + 跳登录页，不会先打一次 refresh，那两条对照钉的
+ * 具体请求序列（`[密码, refresh, 密码]`、二次请求）已经不成立，随之删除。
+ * 普通端点 401 的新行为改由 `authedFetch.test.ts`「普通端点 401：clearAuth
+ * 并跳登录页」钉住。
  *
  * `apiClient.isAuthError` 里的 `BUSINESS_401_ENDPOINTS` 那一档**到不了这里**：
  * 它只在拿到 `ApiError` 之后做分类，而两个 UI 直接 `await profileApi.changePassword`
  * 并自己 catch，谁也不调 `isAuthError`。所以护栏必须落在这一层，用例也必须打在这一层。
  */
-describe('profileApi 的 401 刷新重试分支（refreshToken 非空）', () => {
+describe('profileApi 的业务 401（改密）：不刷新、不重发、不清盘', () => {
   const REFRESH_URL = `${getApiBaseUrl()}/api/auth/refresh`
   const ROTATED = { access_token: 'AT2', refresh_token: 'RT2', expires_in: 3600 }
 
-  /** `profile.ts:73` 的 `window.location.href = ROUTES.auth.login`，全仓库仅此一条用例盯着。 */
+  /** 反证：业务 401 不该碰 `window.location.href`，`hrefSpy` 是那道负向断言的探针。 */
   let hrefSpy: Mock<(value: string) => void>
 
   beforeEach(() => {
@@ -299,43 +302,11 @@ describe('profileApi 的 401 刷新重试分支（refreshToken 非空）', () =>
     expect((error as ApiError).message).toBe('Old password is incorrect')
   })
 
-  it('对照：普通端点（PUT /api/profile）的 401 照旧刷新并重试一次', async () => {
-    // 没有这条，把 401 分支整个关掉也能让上一条变绿。
-    let profileCalls = 0
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input === REFRESH_URL) return json({ success: true, code: 200, data: ROTATED })
-      profileCalls += 1
-      return profileCalls === 1
-        ? json({ error: '未认证或 Token 无效' }, 401)
-        : json({ message: 'Profile updated successfully' })
-    })
-
-    await expect(profileApi.updateProfile({ email: 'new@example.com' })).resolves.toBeUndefined()
-
-    expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([
-      PROFILE_BASE,
-      REFRESH_URL,
-      PROFILE_BASE,
-    ])
-    expect(useAuthStore.getState().refreshToken).toBe('RT2')
-  })
-
-  it('对照：普通端点刷新失败时**确实**会 clearAuth + 跳登录页', async () => {
-    // 上一条的 `expect(hrefSpy).not.toHaveBeenCalled()` 需要一个正对照，否则
-    // 「spy 根本没接上任何东西」也能让它绿。这条同时是 `profile.ts:70-73` 那段
-    // clearAuth + 跳转在全仓库唯一的断言——它是用户可见行为，此前一处没被覆盖。
-    fetchMock.mockImplementation(async (input: string) =>
-      input === REFRESH_URL
-        ? json({ error: 'Token 刷新失败' }, 401)
-        : json({ error: '未认证或 Token 无效' }, 401),
-    )
-
-    await expect(profileApi.updateProfile({ email: 'new@example.com' })).rejects.toThrow()
-
-    expect(useAuthStore.getState().isAuthenticated).toBe(false)
-    expect(useAuthStore.getState().accessToken).toBeNull()
-    expect(hrefSpy).toHaveBeenCalledWith(ROUTES.auth.login)
-  })
+  // ⚠️ 「对照：普通端点（PUT /api/profile）的 401 照旧刷新并重试一次」与
+  // 「对照：普通端点刷新失败时确实会 clearAuth + 跳登录页」曾经钉在这里。
+  // 两条都断言的是普通端点 401 触发「刷新 → 重发」的具体请求序列，Task 11
+  // 之后这个序列不存在了：普通端点的 401 现在一步到位 `clearAuth()` + 跳登录页，
+  // 见上面 describe 顶部的说明与 `authedFetch.test.ts`。
 })
 
 describe('profileApi.getProfile', () => {

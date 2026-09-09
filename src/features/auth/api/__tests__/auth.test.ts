@@ -90,26 +90,9 @@ describe('authApi.getDevices', () => {
   })
 })
 
-describe('登录 → 受保护请求 的端到端', () => {
-  it('登录拿到的 token 会出现在后续请求的 Authorization 头里', async () => {
-    // 这条是用户可观测面上的总闸：登录解包一旦错位，accessToken 为 undefined，
-    // getAuthHeaders 的 `...(accessToken ? {Authorization} : {})` 直接不带头，
-    // 此后每一个受保护请求都是匿名请求。断言必须落在请求头上。
-    useAuthStore.getState().clearAuth()
-    fetchMock
-      .mockResolvedValueOnce(
-        ok({ success: true, code: 200, data: { access_token: 'AT9', refresh_token: 'RT9', expires_in: 3600 } }),
-      )
-      .mockResolvedValueOnce(ok({ success: true, code: 200, data: { devices: [DEVICE], total: 1 } }))
-
-    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
-    await authApi.getDevices()
-
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit]
-    expect(url).toBe(`${AUTH_BASE}/devices`)
-    expect(init.headers).toMatchObject({ Authorization: 'Bearer AT9' })
-  })
-})
+// ⚠️ 「登录 → 受保护请求 的端到端」曾经钉在这里：登录拿到的 token 会出现在
+// 后续请求的 Authorization 头里。Task 11 之后这条属性搬到了服务端，见
+// `src/app/routes/__tests__/apiProxy.test.ts`「注入 Bearer」。
 
 describe('authApi.revokeDevice / logout', () => {
   it('撤销成功时正常返回', async () => {

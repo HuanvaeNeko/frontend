@@ -8,16 +8,6 @@ import { fetchWithAuth } from './authedFetch'
 const BASE_URL = getApiBaseUrl()
 
 /**
- * 本文件四个动词方法的超时上限（毫秒）。
- *
- * 合并之后**只有这四个方法**带超时：`fetchWithAuth` 的默认是"不超时"，
- * 因为合并进来的九份副本调的是裸 `fetch`（其中 `api/storage.ts` 要传大文件）。
- * 把 30 秒留在这里，`lowcode.ts` / `diagnostic.ts` 的行为与合并前逐字一致。
- * 理由与取舍见 `authedFetch.ts` 的 `AuthedFetchConfig.timeoutMs`。
- */
-const REQUEST_TIMEOUT = 30000
-
-/**
  * 认证错误类
  * 用于区分认证相关的错误和其他错误
  *
@@ -92,7 +82,7 @@ const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
  *    生产者**，见该类的注释。
  * 2. `ApiError` —— 带真实 HTTP 状态码。**有状态码就只看状态码，一个字都不猜**：
  *    - 401 判真（`isAuthApiError`，401-only 的理由见它的注释），
- *      但业务 401 端点除外（`authedFetch.ts` 的 `BUSINESS_401_ENDPOINTS`，
+ *      但业务 401 端点除外（`src/lib/business401.ts` 的 `BUSINESS_401_ENDPOINTS`，
  *      经 `isBusiness401Endpoint`）——**这条排除今天没有活的生产者**：
  *      改密码的真实路径在 `authedFetch.ts` 的 401 分支上，那里查的是同一张表
  *      的另一个入口 `isBusiness401Request`；
@@ -172,53 +162,43 @@ export const safeApiCall = async <T>(
 }
 
 /**
- * 通用 API 客户端，自动处理认证和超时。
+ * 通用 API 客户端，自动处理认证。
  *
  * 消费者只有 `features/lowcode/api/lowcode.ts` 与 `api/diagnostic.ts`，
- * 两者都只读 `response.ok`、谁都不 catch。超时在这一层显式传入
- * （`TIMED`），是全仓库唯一带超时的调用点。
+ * 两者都只读 `response.ok`、谁都不 catch。
+ *
+ * ⚠️ 曾经这四个方法显式传超时（`{ timeoutMs: 30000 }`），是全仓库唯一带超时
+ * 的调用点。Task 11 把 `fetchWithAuth` 退化成同源裸 `fetch` 时连同
+ * `AuthedFetchConfig`/超时支持一起删掉了，这四个方法跟着掉线——今天没有
+ * 测试钉住这四个端点的超时行为，掉线是无声的。
  */
-const TIMED = { timeoutMs: REQUEST_TIMEOUT } as const
-
 export const apiClient = {
   get: async (path: string, options?: RequestInit) => {
-    return fetchWithAuth(`${BASE_URL}${path}`, { ...options, method: 'GET' }, TIMED)
+    return fetchWithAuth(`${BASE_URL}${path}`, { ...options, method: 'GET' })
   },
 
   post: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(
-      `${BASE_URL}${path}`,
-      {
-        ...options,
-        method: 'POST',
-        body: data ? JSON.stringify(data) : undefined,
-      },
-      TIMED,
-    )
+    return fetchWithAuth(`${BASE_URL}${path}`, {
+      ...options,
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   },
 
   put: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(
-      `${BASE_URL}${path}`,
-      {
-        ...options,
-        method: 'PUT',
-        body: data ? JSON.stringify(data) : undefined,
-      },
-      TIMED,
-    )
+    return fetchWithAuth(`${BASE_URL}${path}`, {
+      ...options,
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   },
 
   delete: async (path: string, data?: unknown, options?: RequestInit) => {
-    return fetchWithAuth(
-      `${BASE_URL}${path}`,
-      {
-        ...options,
-        method: 'DELETE',
-        body: data ? JSON.stringify(data) : undefined,
-      },
-      TIMED,
-    )
+    return fetchWithAuth(`${BASE_URL}${path}`, {
+      ...options,
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    })
   },
 }
 

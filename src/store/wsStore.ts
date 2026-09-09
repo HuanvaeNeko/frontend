@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { getWsUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { registerSessionReset } from '@/lib/sessionScope'
 
@@ -284,7 +283,6 @@ interface WSState {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 10
-const TOKEN_REFRESH_THRESHOLD = 3 // 连续失败 3 次后尝试刷新 token
 const RECONNECT_BASE_DELAY = 1000 // 1 秒
 const PING_INTERVAL = 30000 // 30 秒
 
@@ -305,7 +303,7 @@ export const useWSStore = create<WSState>((set, get) => {
     }
   }
 
-  const scheduleReconnect = async (closeCode?: number) => {
+  const scheduleReconnect = async () => {
     const state = get()
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -315,35 +313,12 @@ export const useWSStore = create<WSState>((set, get) => {
     }
 
     const attempts = state.reconnectAttempts
-    const isAuthError = closeCode === 1008
-    const shouldRefreshToken = isAuthError || attempts >= TOKEN_REFRESH_THRESHOLD
 
-    // 尝试刷新 token
-    if (shouldRefreshToken) {
-      console.warn('[WebSocket] 尝试刷新 token...')
-      const authStore = useAuthStore.getState()
-      if (authStore.refreshToken) {
-        try {
-          await authStore.refreshAccessToken()
-          console.log('[WebSocket] Token 刷新成功，立即重连')
-          set({ reconnectAttempts: 0, reconnecting: false })
-          get().connect()
-          return
-        } catch {
-          // 这里**不再**自己 `clearAuth()`：那是 `refreshAccessToken` 已经做过的判断的
-          // 第二份拷贝，而且是错的那一份。WebSocket 断线重连恰恰是「网络刚抖过」的
-          // 时刻，这条 catch 命中最多的就是传输层失败；无差别 clearAuth 会跑反向名单
-          // 清盘 + `resetToDefault()`，把用户自己敲进去的第三方 `aiApiKey` 销毁掉。
-          //
-          // `refreshAccessToken` 内部已经分好了档：真 401 → `clearAuth()`（会话结束），
-          // 传输层失败 → `clearCredentials()`（只丢票据）。两处各判一次的话，
-          // 严格的那一处永远赢，分档等于没有。分档定义见 `lib/sessionScope.ts` 顶部。
-          console.error('[WebSocket] Token 刷新失败，停止重连')
-          set({ reconnecting: false })
-          return
-        }
-      }
-    }
+    // ⚠️ 这里原来有一段「连续失败 3 次就刷 token 再重连」。BFF 落地后删掉了：
+    // 刷新发生在 BFF 的升级处理里（server/ws/proxy.ts 的 resolveWsToken），
+    // 客户端手里没有 token 可刷。上游因 access token 到期关闭时，BFF 用它的
+    // close code 关浏览器侧，下面的退避重连会触发新一次升级，那一次自然带上
+    // 刷新后的 token。
 
     set({ reconnecting: true })
 
@@ -375,7 +350,7 @@ export const useWSStore = create<WSState>((set, get) => {
       const state = get()
       const authStore = useAuthStore.getState()
 
-      if (!authStore.accessToken) {
+      if (!authStore.isAuthenticated) {
         console.warn('未登录，无法连接 WebSocket')
         return
       }
@@ -405,9 +380,12 @@ export const useWSStore = create<WSState>((set, get) => {
       set({ connecting: true, error: null, reconnecting: false })
 
       try {
-        // 使用专用的 WebSocket URL 配置（包含正确的端口）
-        const wsBaseUrl = getWsUrl()
-        const url = `${wsBaseUrl}/ws?token=${encodeURIComponent(authStore.accessToken)}`
+        // 同源相对地址：协议由浏览器按 location 推（https → wss）。
+        // **不带 token** —— 凭证是 httpOnly cookie，BFF 在升级时用它查会话、
+        // 惰性刷新，再开上游 ws://edge:8787/ws?token=…。token 从此不出现在
+        // 浏览器、URL、浏览器历史与前端日志里（上线前控制台一行日志会打出
+        // 两个完整 JWT，那正是这条要消灭的）。
+        const url = '/ws'
 
         console.log('🔌 连接 WebSocket...')
         const ws = new WebSocket(url)
@@ -521,7 +499,7 @@ export const useWSStore = create<WSState>((set, get) => {
 
           // 正常关闭（1000）或用户主动断开不重连
           if (event.code !== 1000 && event.code !== 1001) {
-            scheduleReconnect(event.code)
+            scheduleReconnect()
           }
         }
 

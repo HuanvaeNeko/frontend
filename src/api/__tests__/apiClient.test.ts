@@ -1,13 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { friendsApi } from '@/features/chat/api/friends'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { useApiConfigStore } from '@/store/apiConfig'
 import { AuthenticationError, isAuthError } from '../apiClient'
-// 合并之后 `fetchWithAuth` 与业务 401 白名单都住在 `authedFetch.ts`
-// （`apiClient.ts` 只剩分类器与四个动词方法）。用例本身没变，换的只是 import。
-import { fetchWithAuth, isBusiness401Request } from '../authedFetch'
+// 业务 401 白名单的查询函数住在 `authedFetch.ts`（表本身住在
+// `src/lib/business401.ts`）；`apiClient.ts` 只剩分类器与四个动词方法。
+import { isBusiness401Request } from '../authedFetch'
 
 /**
  * `isAuthError` 的消费点：`friendsStore.handleApiError`（七个 action 共用）与
@@ -205,98 +204,10 @@ describe('哨兵两端一致：抛出点的文案也被钉住', () => {
   })
 })
 
-/**
- * 请求发起时这份 `fetchWithAuth` 快照了 `useAuthStore.getState()`，但快照里攥着的
- * action 闭包是**活的**：`tryRefreshToken()` / `silentRedirectToLogin()` 打到的都是
- * **当前**那个人的 store。于是 A 登出前发出的请求若在 B 登录之后才收到 401，
- * 它会拿 B 的 token 去刷新，刷不动就调 B 的 `clearAuth()`——反向名单清盘，
- * 把刚登录的 B 连同他自备的 `aiApiKey` 一起清掉。
- *
- * 三道防线一条都拦不住这一条：世代号只挡 `set()` 不挡副作用，写入闸门在 B 的会话里
- * 是开着的，而清盘正是施害者本身。挡它的是 401 分支上的 `pinSession()`。
- */
-describe('fetchWithAuth —— 上一场会话的 401 不碰当前这一场', () => {
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-  const loginEnvelope = (who: string) => ({
-    success: true,
-    code: 200,
-    data: { access_token: `AT-${who}`, refresh_token: `RT-${who}`, expires_in: 3600 },
-  })
-  const loginAs = async (who: string, fetchMock: ReturnType<typeof vi.fn>) => {
-    fetchMock.mockResolvedValueOnce(json(loginEnvelope(who)))
-    await useAuthStore.getState().login({ user_id: who, password: 'p' })
-  }
-
-  let fetchMock: ReturnType<typeof vi.fn>
-
-  beforeEach(() => {
-    localStorage.clear()
-    fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    vi.spyOn(console, 'log').mockImplementation(() => {})
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
-  })
-
-  it('换人之后才落地的 401：原样返回，不刷新、不跳转、不清 B 的盘', async () => {
-    await loginAs('alice', fetchMock)
-
-    let release!: (response: Response) => void
-    fetchMock.mockImplementationOnce(
-      () =>
-        new Promise<Response>((resolve) => {
-          release = resolve
-        }),
-    )
-    const aliceRequest = fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
-
-    useAuthStore.getState().clearAuth()
-    await loginAs('bob', fetchMock)
-    useApiConfigStore.getState().setApiConfig({ aiApiKey: 'sk-bob', useCustomApi: true })
-    // 正对照：B 的会话是活的，密钥也确实落了盘。
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-
-    release(json({ success: false, code: 401, error: 'Token 无效或已过期' }, 401))
-    const response = await aliceRequest
-
-    // 401 原样交回调用方（不是 AuthenticationError，也不是重试后的 200）
-    expect(response.status).toBe(401)
-    // 三次 fetch = alice 登录 + 这个请求 + bob 登录。没有第四次（刷新）。
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-    expect(useApiConfigStore.getState().aiApiKey).toBe('sk-bob')
-    expect(localStorage.getItem('api-config-storage')).toContain('sk-bob')
-  })
-
-  it('正对照：同一场会话里的 401 照旧刷新并重发一次', async () => {
-    // 没有这一条，把 401 分支实现成"永远原样返回"也会绿——而那等于删掉整条
-    // 自动续期路径：每个 token 过期的请求都会把原始 401 抛给用户。
-    await loginAs('alice', fetchMock)
-
-    fetchMock
-      .mockResolvedValueOnce(json({ success: false, code: 401, error: 'Token 无效或已过期' }, 401))
-      .mockResolvedValueOnce(
-        json({
-          success: true,
-          code: 200,
-          data: { access_token: 'AT-alice-2', refresh_token: 'RT-alice-2', expires_in: 3600 },
-        }),
-      )
-      .mockResolvedValueOnce(json({ success: true, code: 200, data: { friends: [] } }))
-
-    const response = await fetchWithAuth(`${getApiBaseUrl()}/api/friends`)
-
-    expect(response.status).toBe(200)
-    // 四次 = 登录 + 401 + 刷新 + 重发
-    expect(fetchMock).toHaveBeenCalledTimes(4)
-    expect(useAuthStore.getState().accessToken).toBe('AT-alice-2')
-  })
-})
+// ⚠️ 「fetchWithAuth —— 上一场会话的 401 不碰当前这一场」曾经钉在这里：
+// 请求发起时快照的 action 闭包是活的，上一场会话的 401 落地时不能刷新/清盘
+// 当前这个人。Task 11 把 `fetchWithAuth` 退化成同源裸 fetch 之后，客户端不再
+// 刷新、不再持 token，这道闸随刷新重试逻辑一起删掉了——401 只做
+// 「清本地态 + 跳登录」，跨会话最坏结果是多跳一次登录页（与
+// `authedFetch.test.ts` 顶部对 `sessionScopedFetchWithAuth.test.ts` 的说明
+// 是同一件事）。
