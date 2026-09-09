@@ -146,7 +146,7 @@ volumes:
 
 ```sql
 CREATE TABLE sessions (
-  id                TEXT PRIMARY KEY,   -- 32 字节随机 → base64url
+  id                TEXT PRIMARY KEY,   -- ≥ 32 字节 CSPRNG 熵：两个 UUIDv4 去横线拼接，64 个 hex 字符（244 bit）
   user_id           TEXT NOT NULL,
   access_token      TEXT NOT NULL,
   refresh_token     TEXT NOT NULL,
@@ -263,19 +263,21 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 ## 6. 错误处理原则
 
-BFF **不发明错误文案**。它自己只产生三种响应：
+BFF **不改写上游文案**：只要手里有一个上游响应（任何状态码），状态码 + body 一律原样回给浏览器。BFF 自造响应体的情形**只限于没有上游响应可引**的时刻，且穷举如下：
 
-1. 会话失效 401：`{"success":false,"code":401,"error":"会话已失效，请重新登录"}`
-2. `/api/auth/refresh` 404
-3. `edge` 的 502 JSON 原样透传
+1. 会话失效 401（无 cookie / 会话不存在 / 刷新时上游 401）：`{"success":false,"code":401,"error":"会话已失效，请重新登录"}`，并清 cookie。
+2. 上游不可达 502（刷新或登录时 fetch 抛错 / 刷新时上游 5xx / 登录响应形状坏）：`{"success":false,"code":502,"error":"后端暂时不可用，请稍后重试"}`。刷新端点的 5xx body 描述的是刷新那一次请求而不是浏览器发出的这一次，**不**转给浏览器。
+3. 跨站写请求 403：`{"success":false,"code":403,"error":"跨站请求已被拒绝"}`（请求根本没发往上游）。
+4. 请求体不合格 400（登录缺 `user_id` / body 不是合法 JSON）：`{"success":false,"code":400,"error":…}`（同上，没发往上游）。
+5. `/api/auth/refresh` 从浏览器来 404（该端点对浏览器不存在）。
 
-其余全部是上游原样（状态码 + body）。
+转发链路上 edge 自己的 502 JSON（Caddy `handle_errors`）属于「有上游响应」，原样透传。
 
 ## 7. 安全边界
 
 - **CSRF**：`SameSite=Lax` + 所有写操作是 JSON `fetch` 而非表单 → 跨站 POST 带不上 cookie；再加 `Sec-Fetch-Site: cross-site` 时拒绝非 GET（一行）。
 - BFF **只**代理 §3 列出的六个前缀；其它路径落回 RR 路由 / 404。
-- 会话 id 32 字节 CSPRNG；cookie `HttpOnly`；生产 `Secure`。
+- 会话 id ≥ 32 字节 CSPRNG 熵（两个 UUIDv4 拼接，64 hex）；cookie `HttpOnly`；生产 `Secure`。
 - 私钥永不进仓：`secrets/` 在 `.gitignore`，alice 上 mode 600，由 owner 放置；本仓是公开仓库。
 - `Authorization` 只在 4.4 注入，透传分支结构上不可达（独立模块、测试钉住）。
 - 浏览器带来的 `authorization` / `cookie` 与来源头（`x-forwarded-*` `x-real-ip` `forwarded` `via`）在转发前一律剥掉：凭证只能由 BFF 注入，来源头交给上游会成为限流 / 审计 / 拼绝对 URL 时可被任意伪造的输入。
