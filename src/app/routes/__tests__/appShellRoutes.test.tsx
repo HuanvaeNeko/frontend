@@ -30,8 +30,8 @@ describe('路由表：壳布局承载 /app/chat', () => {
     expect(flat).toContain('routes/shell/settings.$section.tsx@/app/settings/:section')
     expect(flat.some((x) => x.startsWith('routes/chat.tsx@'))).toBe(false)
     expect(flat.some((x) => x.startsWith('routes/settings.tsx@'))).toBe(false)
-    // 正对照：旧页面这一步还在（legacy-layout 之下），证明 flatten 读到了整张表
-    expect(flat).toContain('routes/friends.tsx@/app/friends')
+    // 正对照：video-meeting.tsx 这一步还在（app-shell 之外、protected-layout 之下的同级路由），证明 flatten 读到了整张表
+    expect(flat).toContain('routes/video-meeting.tsx@/app/video-meeting')
   })
 
   it('带 URL 的模态框 + AI 助手挂在 app-shell 之下，旧的 routes/files.tsx、routes/ai-chat.tsx、routes/profile.tsx 不再注册', () => {
@@ -45,8 +45,18 @@ describe('路由表：壳布局承载 /app/chat', () => {
     expect(flat.some((x) => x.startsWith('routes/files.tsx@'))).toBe(false)
     expect(flat.some((x) => x.startsWith('routes/ai-chat.tsx@'))).toBe(false)
     expect(flat.some((x) => x.startsWith('routes/profile.tsx@'))).toBe(false)
-    // 正对照：app/webrtc 这一步还留在 legacy-layout（留到第 11 步重定向），证明 flatten 读到了整张表
-    expect(flat).toContain('routes/webrtc.tsx@/app/webrtc')
+    // 正对照：同上，证明 flatten 读到了整张表
+    expect(flat).toContain('routes/video-meeting.tsx@/app/video-meeting')
+  })
+
+  it('legacy-layout 与九个旧路由模块都不再注册；五条旧 URL 指向 legacy-redirect', () => {
+    const flat = flatten(routes as unknown as RouteEntry[])
+    for (const old of ['routes/legacy-layout.tsx', 'routes/chat.tsx', 'routes/friends.tsx', 'routes/groups.tsx', 'routes/files.tsx', 'routes/webrtc.tsx', 'routes/devices.tsx', 'routes/settings.tsx', 'routes/profile.tsx', 'routes/ai-chat.tsx']) {
+      expect(flat.some((x) => x.startsWith(`${old}@`))).toBe(false)
+    }
+    for (const path of ['/app/friends', '/app/groups', '/app/webrtc', '/app/devices', '/app/group-chat']) {
+      expect(flat).toContain(`routes/shell/legacy-redirect.tsx@${path}`)
+    }
   })
 
   it('settings.$section.tsx 拒绝非法分区，回退到 appearance', () => {

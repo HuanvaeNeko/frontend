@@ -29,19 +29,13 @@ export default [
   ]),
 
   layout('routes/protected-layout.tsx', [
-    // 壳：spec §3 的三栏。本任务只挂 /app/chat*，后续任务逐条搬入
     layout('routes/app-shell.tsx', [
-      route('app/chat', 'routes/shell/chat.tsx', [
-        route(':conversationId', 'routes/shell/chat.$conversationId.tsx'),
-      ]),
+      route('app/chat', 'routes/shell/chat.tsx', [route(':conversationId', 'routes/shell/chat.$conversationId.tsx')]),
       route('app/contacts', 'routes/shell/contacts.tsx', [
         route('friends/:userId', 'routes/shell/contacts.friends.$userId.tsx'),
         route('groups/:groupId', 'routes/shell/contacts.groups.$groupId.tsx'),
       ]),
-      route('app/settings', 'routes/shell/settings.tsx', [
-        route(':section', 'routes/shell/settings.$section.tsx'),
-      ]),
-      // 带 URL 的模态框 + AI 助手整栏页（spec §3/§9）：列表栏保持最近的 chat/contacts tab
+      route('app/settings', 'routes/shell/settings.tsx', [route(':section', 'routes/shell/settings.$section.tsx')]),
       route('app/profile', 'routes/shell/profile.tsx'),
       route('app/files', 'routes/shell/files.tsx'),
       route('app/meeting', 'routes/shell/meeting.tsx'),
@@ -49,12 +43,12 @@ export default [
       route('app/miniapps', 'routes/shell/miniapps.tsx'),
       route('app/ai-chat', 'routes/shell/ai-chat.tsx'),
     ]),
-    // 过渡期：还没搬进壳的旧页面（第 11 步整段删除）
-    layout('routes/legacy-layout.tsx', [
-      route('app/friends', 'routes/friends.tsx'),
-      route('app/groups', 'routes/groups.tsx'),
-      route('app/webrtc', 'routes/webrtc.tsx'),
-    ]),
     route('app/video-meeting', 'routes/video-meeting.tsx'),
   ]),
+  // 旧 URL 重定向（spec §3）。同一模块注册五次必须各给 id（同 passthrough 的理由）
+  route('app/friends', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-friends' }),
+  route('app/groups', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-groups' }),
+  route('app/webrtc', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-webrtc' }),
+  route('app/devices', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-devices' }),
+  route('app/group-chat', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-group-chat' }),
 ] satisfies RouteConfig
