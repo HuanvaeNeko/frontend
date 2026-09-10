@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 
-export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+export function SettingsSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
     <section className="mb-6">
       <h3 className="mb-2 px-1 text-[13px] font-semibold text-muted-foreground">{title}</h3>
+      {description && <p className="mb-2 px-1 text-[12px] text-app-light">{description}</p>}
       <div className="glass-card rounded-xl p-1">{children}</div>
     </section>
   )

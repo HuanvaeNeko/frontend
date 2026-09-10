@@ -64,8 +64,8 @@ const NAV_ITEMS: NavItem[] = [
     id: 'devices',
     label: '设备',
     icon: Monitor,
-    path: ROUTES.app.devices,
-    activeMatch: (p) => p.startsWith(ROUTES.app.devices)
+    path: `${ROUTES.app.settings}/account`,
+    activeMatch: (p) => p.startsWith(`${ROUTES.app.settings}/account`)
   },
   {
     id: 'ai-chat',

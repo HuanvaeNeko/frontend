@@ -18,7 +18,7 @@ export function NotificationsSection() {
         <SettingsRow title={t('shell.settings.sound')} htmlFor="set-sound"
           right={<Switch id="set-sound" aria-label={t('shell.settings.sound')} checked={soundEnabled} onCheckedChange={(v) => setSetting('soundEnabled', v)} />} />
         <SettingsRow title={t('shell.settings.volume')} htmlFor="set-volume"
-          right={<input id="set-volume" type="range" min={0} max={100} aria-label={t('shell.settings.volume')} value={soundVolume} onChange={(e) => setSetting('soundVolume', Number(e.target.value))} />} />
+          right={<input id="set-volume" type="range" min={0} max={100} aria-label={t('shell.settings.volume')} value={Math.round(soundVolume * 100)} onChange={(e) => setSetting('soundVolume', Number(e.target.value) / 100)} />} />
       </SettingsGroup>
     </SettingsSection>
   )

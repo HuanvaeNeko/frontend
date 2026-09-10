@@ -20,7 +20,7 @@ export function AiSection() {
   const useCustomApi = useApiConfigStore((s) => s.useCustomApi)
   const setApiConfig = useApiConfigStore((s) => s.setApiConfig)
   return (
-    <SettingsSection title={t('settings.aiConfig')}>
+    <SettingsSection title={t('settings.aiConfig')} description={t('settings.aiConfigDesc')}>
       <SettingsGroup>
         <SettingsRow icon={<Wand2 className="h-4 w-4" />} title={t('settings.aiEnabled')} subtitle={t('settings.aiEnabledDesc')} htmlFor="set-ai-enabled"
           right={<Switch id="set-ai-enabled" aria-label={t('settings.aiEnabled')} checked={aiEnabled} onCheckedChange={(v) => setSetting('aiEnabled', v)} />} />
