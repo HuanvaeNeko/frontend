@@ -25,8 +25,11 @@ vi.mock('@/i18n/I18nProvider', async () => {
 
 const PUBLIC = { user_id: 'alice', user_nickname: '爱丽丝', user_signature: '早睡早起', user_avatar_url: 'https://cdn.test/a.png', background_url: null, gender: null, birthday: null, region: '杭州', created_at: null }
 
-const renderView = () =>
-  render(<RouterProvider router={createMemoryRouter([{ path: '*', element: <ProfileView userId="alice" /> }], { initialEntries: ['/app/contacts/friends/alice'] })} />)
+let testRouter: ReturnType<typeof createMemoryRouter> | null = null
+const renderView = () => {
+  testRouter = createMemoryRouter([{ path: '*', element: <ProfileView userId="alice" /> }], { initialEntries: ['/app/contacts/friends/alice'] })
+  render(<RouterProvider router={testRouter} />)
+}
 
 describe('ProfileView', () => {
   beforeEach(() => {
@@ -59,6 +62,19 @@ describe('ProfileView', () => {
     vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
     screen.getByRole('button', { name: '删除好友' }).click()
     await waitFor(() => expect(useFriendsStore.getState().removeFriend).toHaveBeenCalledWith('alice'))
+    expect(testRouter?.state.location.pathname).toBe('/app/contacts')
+  })
+
+  it('删除好友失败：显示错误、按钮恢复、不跳转', async () => {
+    useFriendsStore.setState({ removeFriend: vi.fn(async () => { throw new Error('boom') }) })
+    renderView()
+    await screen.findByText('早睡早起')
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    screen.getByRole('button', { name: '删除好友' }).click()
+    expect(await screen.findByText(/删除好友失败/)).toBeInTheDocument()
+    expect(screen.getByText(/boom/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '删除好友' })).not.toBeDisabled()
+    expect(testRouter?.state.location.pathname).toBe('/app/contacts/friends/alice')
   })
 
   it('资料接口失败时显示错误，但好友本地信息（名字/发消息）仍在', async () => {

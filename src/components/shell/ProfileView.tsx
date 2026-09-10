@@ -19,6 +19,7 @@ export function ProfileView({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [removeError, setRemoveError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -35,10 +36,13 @@ export function ProfileView({ userId }: { userId: string }) {
 
   const handleRemove = async () => {
     if (!window.confirm(t('shell.contacts.confirmRemove'))) return
+    setRemoveError(null)
     setRemoving(true)
     try {
       await removeFriend(userId)
       router.replace(ROUTES.app.contacts)
+    } catch (e: unknown) {
+      setRemoveError(e instanceof Error ? e.message : String(e))
     } finally {
       setRemoving(false)
     }
@@ -65,10 +69,13 @@ export function ProfileView({ userId }: { userId: string }) {
           {friend?.add_time && <div className="flex gap-3"><dt className="w-16 shrink-0 text-muted-foreground">{t('shell.contacts.memberSince')}</dt><dd className="text-foreground">{new Date(friend.add_time).toLocaleDateString()}</dd></div>}
         </dl>
         {friend && (
-          <div className="mt-8 flex gap-3">
-            <NavLink to={chatPath(friendConversationId(userId))} className="subtle-btn"><MessageCircle className="h-4 w-4" />{t('shell.contacts.message')}</NavLink>
-            <button type="button" onClick={handleRemove} disabled={removing} className="subtle-btn !bg-[var(--status-error-subtle)] !text-destructive"><UserMinus className="h-4 w-4" />{t('shell.contacts.removeFriend')}</button>
-          </div>
+          <>
+            <div className="mt-8 flex gap-3">
+              <NavLink to={chatPath(friendConversationId(userId))} className="subtle-btn"><MessageCircle className="h-4 w-4" />{t('shell.contacts.message')}</NavLink>
+              <button type="button" onClick={handleRemove} disabled={removing} className="subtle-btn !bg-[var(--status-error-subtle)] !text-destructive"><UserMinus className="h-4 w-4" />{t('shell.contacts.removeFriend')}</button>
+            </div>
+            {removeError && <p className="mt-3 text-[13px] text-destructive" role="alert">{t('shell.contacts.removeFailed')}: {removeError}</p>}
+          </>
         )}
       </div>
     </div>
