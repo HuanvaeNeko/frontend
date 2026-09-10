@@ -2,30 +2,18 @@ import { test, expect } from '@playwright/test'
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000'
 
-const authState = {
-  state: {
-    accessToken: 'test-token',
-    refreshToken: 'test-refresh',
-    user: {
-      user_id: 'test_user',
-      nickname: 'Test User',
-      email: 'test@example.com',
-      avatar_url: '',
-      signature: 'Hello World',
-    },
-    isAuthenticated: true,
-    tokenExpiry: Date.now() + 24 * 60 * 60 * 1000,
-  },
-  version: 0,
-}
-
 test.describe('Chat Functionality', () => {
   test.beforeEach(async ({ page }) => {
-    // Set up auth state
-    await page.addInitScript((payload) => {
-      window.localStorage.setItem('auth-storage', JSON.stringify(payload))
-    }, authState)
-    
+    // 会话现在是 httpOnly cookie，不是 localStorage 里的假 token（BFF 会话层）。
+    // page.request 与这个测试的 page 共享同一个浏览器 context 的 cookie jar，
+    // 真实登录一次之后，page 后续的导航会带上 hv_session —— 这个 dev webServer
+    // 现在也接了真实的假后端（见 playwright.config.ts 的 BFF_UPSTREAM_*），所以
+    // 这是一次真实的 cookie 换 session 而不是伪造。/api/session 不拦截，让
+    // ProtectedRoute 真的问一遍 BFF；下面 /api/profile|friends|groups/... 的
+    // page.route 拦截仍然保留——它们在浏览器侧生效，早于请求真正发给 BFF，
+    // 目的是控制这几个用例断言的具体数据形状（Alice/Bob 等），与鉴权机制无关。
+    await page.request.post('/api/auth/login', { data: { user_id: 'e2e', password: 'correct-horse' } })
+
     // Default mocks for profile to avoid auth redirect
     await page.route('**/api/profile', async (route) => {
       await route.fulfill({ 
@@ -111,12 +99,6 @@ test.describe('Chat Functionality', () => {
     const friendsPromise = page.waitForResponse(resp => resp.url().includes('/api/friends') && resp.status() === 200);
     await page.goto(`${BASE_URL}/app/chat`)
     await friendsPromise;
-
-    // Debug: check local storage and URL
-    const url = page.url()
-    const storage = await page.evaluate(() => localStorage.getItem('auth-storage'))
-    console.log('Current URL:', url)
-    console.log('Auth Storage:', storage)
 
     // Verify we are on the chat page
     await expect(page).toHaveURL(/\/app\/chat/)

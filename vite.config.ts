@@ -33,6 +33,17 @@ export default defineConfig(({ command, mode }) => {
   // Vite 默认值"。
   const env = loadEnv(mode, process.cwd(), '')
 
+  // Vite 的 loadEnv 只喂 import.meta.env，不喂 process.env；但 BFF 资源路由
+  // （src/app/routes/api.*.ts）跑在 react-router dev 里，读的是 process.env
+  // （server/upstream.ts、server/session/index.ts、server/session/cookie.ts）。
+  // 不做这一步，开发者写在 .env / .env.development.local 里的值永远到不了
+  // 它们，BFF 直接抛「缺少环境变量」。??= ：已经在 shell / CI 里显式导出的值
+  // 优先，这里只补文件里有、进程环境里还没有的那部分。
+  process.env.BFF_UPSTREAM_HTTP ??= env.BFF_UPSTREAM_HTTP
+  process.env.BFF_UPSTREAM_WS ??= env.BFF_UPSTREAM_WS
+  process.env.SESSION_DB_PATH ??= env.SESSION_DB_PATH
+  process.env.SESSION_COOKIE_SECURE ??= env.SESSION_COOKIE_SECURE
+
   return {
     // 不要再加 @vitejs/plugin-react：reactRouter() 内部已经装好了 React Fast Refresh，
     // 两者叠加会让 HMR 预导入脚本重复注入，浏览器直接报

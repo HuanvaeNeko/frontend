@@ -41,6 +41,11 @@ Thumbs.db
 coverage
 .nyc_output
 
+# BFF 会话库（本地开发与 e2e），含 WAL 边文件
+sessions.sqlite*
+e2e-sessions.sqlite*
+e2e-dev-sessions.sqlite*
+
 # Playwright (自动生成)
 test-results
 playwright-report

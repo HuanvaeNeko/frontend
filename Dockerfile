@@ -19,13 +19,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # VITE_* 在构建时被内联进产物：改这些值必须重建镜像，重启容器无效
-ARG VITE_API_URL
-ARG VITE_WS_URL
+# VITE_API_URL / VITE_WS_URL 已删除：所有请求同源打到 BFF，客户端产物里不再
+# 内联任何后端主机名。上游由运行时的 BFF_UPSTREAM_HTTP / BFF_UPSTREAM_WS 决定
+# （见 docker-compose.yml 的 app.environment），改它们只需重启容器、不必重建镜像。
 ARG VITE_SENTRY_DSN
 ARG VITE_APP_VERSION
-ENV VITE_API_URL=$VITE_API_URL \
-    VITE_WS_URL=$VITE_WS_URL \
-    VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_APP_VERSION=$VITE_APP_VERSION
 RUN bun run build
 
@@ -36,6 +35,8 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/server ./server
+# 会话库的挂载点。compose 把 sessions 卷挂在这里；目录必须存在且 bun 用户可写。
+RUN mkdir -p /data && chown bun:bun /data
 # server/index.ts 用相对路径直接 import ../src/config/filterSensitiveData
 # （零运行时依赖，见该文件顶部注释）——它不经过 react-router 的构建产物，
 # 是 Bun 在运行时对 server/index.ts 做 TS 解析时才会去找的普通文件系统路径，

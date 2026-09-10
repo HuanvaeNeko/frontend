@@ -23,7 +23,13 @@ import { defineConfig, devices } from '@playwright/test'
 // 我们的代码。换一个不容易撞的端口，是为了这个「响亮但也很烦」的失败别常发生。
 const PRODUCTION_PORT = 39471
 const PRODUCTION_BASE_URL = `http://localhost:${PRODUCTION_PORT}`
-const MIGRATION_REGRESSION_SPEC = /migration-regression\.spec\.ts$/
+// 假后端（tests/fixtures/fake-backend.ts）的端口：production 与 dev 两条
+// webServer 的 BFF_UPSTREAM_* 都指向它，见下方 webServer 数组。
+const FAKE_BACKEND_PORT = 39473
+// migration-regression.spec.ts 跑在生产构建产物上（见上面大段注释）；
+// bff-session.spec.ts 同理——它验的是真实 Bun.serve + 真实 RR 资源路由 +
+// 假后端这条完整链路，套在 chromium/mobile 的 dev server 上没有意义。
+const PRODUCTION_SPECS = /(migration-regression|bff-session)\.spec\.ts$/
 
 export default defineConfig({
   testDir: './tests',
@@ -46,12 +52,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: MIGRATION_REGRESSION_SPEC },
-    { name: 'mobile', use: { ...devices['Pixel 7'] }, testIgnore: MIGRATION_REGRESSION_SPEC },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: PRODUCTION_SPECS },
+    { name: 'mobile', use: { ...devices['Pixel 7'] }, testIgnore: PRODUCTION_SPECS },
     {
       name: 'production',
       use: { ...devices['Desktop Chrome'], baseURL: PRODUCTION_BASE_URL },
-      testMatch: MIGRATION_REGRESSION_SPEC,
+      testMatch: PRODUCTION_SPECS,
       // 默认 30s 对这个 project 偏紧：它的用例会和 chromium/mobile 的整个设备
       // 矩阵一起并发跑，本机 8 核下这套用例本身多数几十毫秒到几秒内完成，但
       // 留够余量应对并发争抢。翻倍到 60s，CI 下 workers 强制为 1 没有这个
@@ -65,8 +71,34 @@ export default defineConfig({
   ],
   webServer: [
     {
+      // 假后端：BFF 的上游。必须排在最前面——production 与下面 dev 两条的
+      // BFF_UPSTREAM_* 都指向它。/api/friends 之类端点未鉴权会回 401，而
+      // Playwright 的 url 探活要 2xx/3xx，所以探活用不需要 Bearer 的 /healthz。
+      command: 'bun run tests/fixtures/fake-backend.ts',
+      url: `http://127.0.0.1:${FAKE_BACKEND_PORT}/healthz`,
+      env: { FAKE_BACKEND_PORT: String(FAKE_BACKEND_PORT) },
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+    {
       command: 'bun run dev',
       url: 'http://localhost:3000',
+      // dev 现在也要跑真实的 BFF 资源路由：src/app/routes/api.*.ts 是 RR 路由，
+      // `react-router dev` 会执行它们，和生产走的是同一份代码，读的是
+      // process.env（vite.config.ts 的 loadEnv 只喂 import.meta.env，见那里的
+      // 补丁）。不给这三个变量，chat.spec.ts / device-matrix.spec.js 这些跑在
+      // chromium/mobile 项目（即这条 dev server）上的用例一调 BFF 路由就会撞见
+      // 「缺少环境变量」——它们现在都是真实登录换 cookie，不再是 page.route()
+      // 在浏览器侧整个伪造 /api/session。SESSION_DB_PATH 单独用一个文件名，
+      // 不与下面 production 那条的 e2e-sessions.sqlite 共用：两条 webServer
+      // 并发跑，各自持有自己的会话库更省心，不必关心 SQLite 在两个独立进程间
+      // 的并发写入语义。
+      env: {
+        BFF_UPSTREAM_HTTP: `http://127.0.0.1:${FAKE_BACKEND_PORT}`,
+        BFF_UPSTREAM_WS: `ws://127.0.0.1:${FAKE_BACKEND_PORT}`,
+        SESSION_DB_PATH: './e2e-dev-sessions.sqlite',
+        SESSION_COOKIE_SECURE: 'false',
+      },
       // 2026-09-08 撤销这一条原有的 `!process.env.CI` 豁免，理由与下面生产那条
       // 逐字相同：`webServer.url` 只检查能否拿到 200，**辨认不出对面跑的是谁的代码**。
       //
@@ -87,7 +119,13 @@ export default defineConfig({
       // 否则本地首次跑或 CI 冷启动会在构建完成前就被判定超时失败。
       command: 'bun run build && bun run start',
       url: PRODUCTION_BASE_URL,
-      env: { PORT: String(PRODUCTION_PORT) },
+      env: {
+        PORT: String(PRODUCTION_PORT),
+        BFF_UPSTREAM_HTTP: `http://127.0.0.1:${FAKE_BACKEND_PORT}`,
+        BFF_UPSTREAM_WS: `ws://127.0.0.1:${FAKE_BACKEND_PORT}`,
+        SESSION_DB_PATH: './e2e-sessions.sqlite',
+        SESSION_COOKIE_SECURE: 'false',
+      },
       // 这一条永远自起，不复用。webServer.url 只检查能否拿到 200，无法辨认
       // 对面是不是我们的服务器——一旦复用到陌生进程，这个 project 的用例
       // （安全响应头、尾斜杠 301）会静默地在错误的应用上求值。端口被占时

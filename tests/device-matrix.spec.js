@@ -2,23 +2,6 @@ import { test, expect } from '@playwright/test'
 
 const BASE_URL = globalThis.process?.env?.E2E_BASE_URL || 'http://localhost:3000'
 
-const authState = {
-  state: {
-    accessToken: 'matrix-test-token',
-    refreshToken: 'matrix-test-refresh',
-    user: {
-      user_id: 'matrix_user',
-      nickname: 'Matrix QA',
-      email: 'matrix@example.com',
-      avatar_url: '',
-      signature: '',
-    },
-    isAuthenticated: true,
-    tokenExpiry: Date.now() + 24 * 60 * 60 * 1000,
-  },
-  version: 0,
-}
-
 const matrix = [
   { name: 'SmallPhone', viewport: { width: 360, height: 640 }, orientations: ['portrait', 'landscape'] },
   { name: 'MidPhone', viewport: { width: 390, height: 844 }, orientations: ['portrait', 'landscape'] },
@@ -140,12 +123,16 @@ for (const device of matrix) {
           page.on('pageerror', (err) => runtimeErrors.push(err.message))
 
           if (pageCase.requiresAuth) {
-            await page.addInitScript((payload) => {
-              globalThis.localStorage?.setItem('auth-storage', JSON.stringify(payload))
-            }, authState)
-          } else {
-            await page.addInitScript(() => {
-              globalThis.localStorage?.removeItem('auth-storage')
+            // 会话现在是 httpOnly cookie，不是 localStorage 里的假 token（BFF 会话层，
+            // 与 tests/chat.spec.ts 的同一处改动一致）。这个 context 是本测试用
+            // browser.newContext() 现开的，没有继承 playwright.config.ts 的
+            // baseURL，所以 context.request 也要用绝对 URL —— 与下面
+            // withCacheBust() 的既有做法一致。context.request 与该 context 下
+            // 的 page 共享同一个 cookie jar，登录一次即可让随后的 page.goto
+            // 带上 hv_session。每个测试都是全新 context，不需要在非鉴权分支
+            // 显式清 cookie / localStorage。
+            await context.request.post(`${BASE_URL}/api/auth/login`, {
+              data: { user_id: 'e2e', password: 'correct-horse' },
             })
           }
 

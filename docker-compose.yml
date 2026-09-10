@@ -3,8 +3,6 @@ services:
     build:
       context: .
       args:
-        VITE_API_URL: ${VITE_API_URL}
-        VITE_WS_URL: ${VITE_WS_URL}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
         VITE_APP_VERSION: ${VITE_APP_VERSION}
     # 只对 docker 网络暴露，不 publish 到宿主机 —— 流量只经 cloudflared 进出
