@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { DesktopSidebar } from '@/components/layout/app-shell/Navigation'
+import { Sidebar } from '@/components/shell/Sidebar'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { friendsApi, type PendingRequest } from '@/features/chat/api/friends'
@@ -24,7 +24,7 @@ import { useAuthStore } from '../authStore'
  * 这是本次修复的端到端用例：把 `clearAuth` 里那一行 `endSession()` 拿掉，
  * 下面三条全红。此前 `clearAuth` 只清
  * `auth-storage` 自己那五个字段，于是：
- * - `profile-storage` 原样留着，`Navigation` 挂在每个 `/app` 页面上，直接拿它渲染
+ * - `profile-storage` 原样留着，`Sidebar` 挂在每个 `/app` 页面上，直接拿它渲染
  *   头像和昵称首字母，而只有三个页面会调 `loadProfile()`——所以 B 在 `/app/settings`、
  *   `/app/devices`、`/app/webrtc` 上，整场访问看到的都是 A 的头像；
  * - `api-config-storage` 原样留着，B 的 AI 请求会带着 A 的 `X-API-Key` 发出去。
@@ -63,13 +63,13 @@ const profileOf = (userId: string, nickname: string, avatar: string | null): Use
 const renderSidebar = () =>
   render(
     <RouterProvider
-      router={createMemoryRouter([{ path: '*', element: <DesktopSidebar /> }], {
+      router={createMemoryRouter([{ path: '*', element: <Sidebar activeTab="chat" /> }], {
         initialEntries: ['/app/chat'],
       })}
     />,
   )
 
-const avatarImg = () => document.querySelector('img[alt="Avatar"]')
+const avatarImg = () => document.querySelector('[data-testid="sidebar"] img')
 
 let fetchMock: ReturnType<typeof vi.fn>
 
@@ -130,7 +130,7 @@ describe('A 登出、B 登录', () => {
     // 设备级偏好 + 账号级偏好各一个，落在同一个 app-settings 键里
     useSettingsStore.getState().setSetting('theme', 'dark')
     useSettingsStore.getState().setSetting('showOnlineStatus', false)
-    // 两个手写键：一个账号级（Navigation 写的最后访问路径），一个设备级（记住我）
+    // 两个手写键：一个账号级（app-shell.tsx 写的最后访问路径），一个设备级（记住我）
     localStorage.setItem('last_visited_path', '/app/devices')
     localStorage.setItem('huanvae-remember-user_id', 'alice')
     localStorage.setItem('huanvae.api-base-url', getApiBaseUrl())
@@ -222,7 +222,7 @@ describe('A 登出、B 登录', () => {
 
   it('内存里的会话、好友、AI 配置、账号级设置一并归零，设备级设置不动', async () => {
     // 这一条只看内存：上面两条覆盖的是落盘。两者的分工是有必要的——
-    // 登出按钮（`Navigation` 的 `onClick={logout}`）和撤销当前设备走的是
+    // 登出按钮（设置页 `AccountSection` 的 `onClick`）和撤销当前设备走的是
     // 客户端跳转，**不整页加载**，内存副本会一路活到下一个人的会话里。
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(loginEnvelope({ nickname: 'alice' })), {
@@ -329,7 +329,7 @@ describe('会话结束 vs 只是问不到 BFF', () => {
  * 登出并不取消飞在半空的请求。`endSession()` 是一个**时点**，它跑完之后落地的
  * `set()` 会把上一个人的数据重新写进内存并 persist 回盘。
  *
- * `loadProfile` 这一条尤其能看见后果：`Navigation` 挂在每个 `/app` 页面上，
+ * `loadProfile` 这一条尤其能看见后果：`Sidebar` 挂在每个 `/app` 页面上，
  * 直接拿 `profileStore.profile` 渲染头像和昵称首字母。
  */
 describe('登出那一刻还在飞的请求', () => {

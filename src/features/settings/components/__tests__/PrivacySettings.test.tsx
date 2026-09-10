@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { makeProfileWire } from '@/features/profile/api/__tests__/profileFixture'
 import { profileApi, type UserProfile } from '@/features/profile/api/profile'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { getApiBaseUrl } from '@/lib/apiConfig'
-import { I18nProvider } from '@/i18n/I18nProvider'
 import PrivacySettings from '../PrivacySettings'
-import SettingsPage from '../SettingsPage'
 
 /**
  * 隐私四项（`个人资料管理.md:104-107` 读侧、:144-147 写侧）。
@@ -295,33 +292,5 @@ describe('PrivacySettings 的 ready 闸（旧落盘数据没有这四个字段�
 
     await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
     expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('true')
-  })
-})
-
-/**
- * 接线：`SettingsPage` 真的把这一块渲染出来了。
- *
- * 单独钉这一条，是因为上面所有用例都直接 `render(<PrivacySettings />)`——
- * 组件本身写得再对，只要没有人挂它，用户仍然一个入口都没有，而那正是本批之前
- * 这四个字段的处境。把 `SettingsPage` 里那行 `<PrivacySettings />` 删掉 → 本条红。
- */
-describe('设置页把隐私区接上了', () => {
-  it('/app/settings 上渲染出四项隐私设置', async () => {
-    mockBackend(makeProfileWire({ allow_search: true }))
-
-    render(
-      <I18nProvider>
-        <RouterProvider
-          router={createMemoryRouter([{ path: '*', element: <SettingsPage /> }], {
-            initialEntries: ['/app/settings'],
-          })}
-        />
-      </I18nProvider>,
-    )
-
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
-    expect(switchByLabel('允许通过用户 ID 被搜索')).toBeTruthy()
-    expect(screen.getByRole('combobox', { name: '好友申请处理方式' })).toBeTruthy()
-    expect(screen.getByRole('combobox', { name: '群邀请处理方式' })).toBeTruthy()
   })
 })

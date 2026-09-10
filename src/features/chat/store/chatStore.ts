@@ -10,8 +10,6 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { isAuthError } from '@/api/apiClient'
 import { pinSession, registerPristineStoreReset } from '@/lib/sessionScope'
 
-export type TabType = 'friends' | 'groups' | 'files' | 'webrtc'
-
 export interface Conversation {
   id: string
   type: 'friend' | 'group'
@@ -67,10 +65,6 @@ export interface ActiveChat {
 }
 
 interface ChatState {
-  // 当前激活的标签页
-  activeTab: TabType
-  setActiveTab: (tab: TabType) => void
-
   // 当前选中的会话
   selectedConversation: Conversation | null
   setSelectedConversation: (conversation: Conversation | null) => void
@@ -143,9 +137,6 @@ function getMessagePreviewText(messageType: string, content: string): string {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  activeTab: 'friends',
-  setActiveTab: (tab) => set({ activeTab: tab }),
-
   selectedConversation: null,
   setSelectedConversation: (conversation) => set({ selectedConversation: conversation }),
 

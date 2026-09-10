@@ -835,7 +835,7 @@ export default function VideoMeeting() {
     }
   }
 
-  const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.chatWebrtc) }
+  const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.meeting) }
 
   const copyShareLink = () => {
     copyText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)

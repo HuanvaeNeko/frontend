@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { useProfileStore } from '@/features/profile/store/profileStore'
@@ -178,5 +179,41 @@ describe('Sidebar：钉住布局', () => {
     await waitFor(() => expect(screen.queryByTestId('sidebar-more-panel')).toBeNull())
     // 焦点应该回到「更多」按钮
     expect(document.activeElement).toBe(more)
+  })
+})
+
+describe('Sidebar 的头像来源（原 Navigation.test.tsx）', () => {
+  const avatar = () => screen.getByTestId('sidebar').querySelector('img')
+
+  it('正对照：裸 <img src=""> 确实会让 React 打出空 src 警告', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<img src="" alt="" />)
+    expect(err.mock.calls.some((c) => String(c[0]).includes('empty string'))).toBe(true)
+    err.mockRestore()
+  })
+
+  it('profile 的头像是空串时不渲染 <img>，也不触发那句警告；首字母来自 profile 昵称', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    useProfileStore.setState({ profile: makeProfile({ user_nickname: '爱丽丝', user_avatar_url: '' }) })
+    renderAt('/app/chat', 'chat')
+    expect(avatar()).toBeNull()
+    expect(screen.getByText('爱')).toBeInTheDocument()
+    expect(err.mock.calls.some((c) => String(c[0]).includes('empty string'))).toBe(false)
+    err.mockRestore()
+  })
+
+  it('profile 没有头像时回落到 authStore.user（相对路径补基址）', () => {
+    useProfileStore.setState({ profile: null })
+    useAuthStore.setState({ user: { user_id: 'bob', nickname: 'Bob', avatar_url: 'avatars/bob.png' } as never })
+    renderAt('/app/chat', 'chat')
+    expect(avatar()?.getAttribute('src')).toBe(`${window.location.origin}/avatars/bob.png`)
+  })
+
+  it('两个来源都没有头像时用 user 昵称首字母', () => {
+    useProfileStore.setState({ profile: null })
+    useAuthStore.setState({ user: { user_id: 'bob', nickname: 'bob', avatar_url: null } as never })
+    renderAt('/app/chat', 'chat')
+    expect(avatar()).toBeNull()
+    expect(screen.getByText('B')).toBeInTheDocument()
   })
 })
