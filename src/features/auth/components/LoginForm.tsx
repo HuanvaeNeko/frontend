@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from '@/lib/navigation'
 import { AppLink as Link } from '@/components/common/AppLink'
-import { ArrowRight, Eye, EyeOff, Globe, Loader2, Lock, Sparkles, User } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Sparkles, User } from 'lucide-react'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,23 +14,8 @@ import { Separator } from '@/components/ui/separator'
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
 import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
-import { getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
 
 const REMEMBER_USER_KEY = 'huanvae-remember-user_id'
-const DEFAULT_PROTOCOL: 'https://' | 'http://' = 'https://'
-
-function parseServer(baseUrl: string): { protocol: 'https://' | 'http://'; host: string } {
-  try {
-    const normalized = normalizeApiBaseUrl(baseUrl)
-    const parsed = new URL(normalized)
-    return {
-      protocol: parsed.protocol === 'http:' ? 'http://' : 'https://',
-      host: parsed.host,
-    }
-  } catch {
-    return { protocol: DEFAULT_PROTOCOL, host: 'api.huanvae.cn' }
-  }
-}
 
 export default function Login() {
   const router = useRouter()
@@ -45,9 +30,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const initialServer = parseServer(getApiBaseUrl())
-  const [serverProtocol, setServerProtocol] = useState<'https://' | 'http://'>(initialServer.protocol || DEFAULT_PROTOCOL)
-  const [serverHost, setServerHost] = useState(initialServer.host)
   const nextPath = searchParams.get('next')
 
   useEffect(() => {
@@ -86,7 +68,6 @@ export default function Login() {
     playButton()
 
     try {
-      setApiBaseUrl(`${serverProtocol}${serverHost.trim()}`)
       await login(formData)
       if (rememberMe) localStorage.setItem(REMEMBER_USER_KEY, formData.user_id.trim())
       else localStorage.removeItem(REMEMBER_USER_KEY)
@@ -135,31 +116,6 @@ export default function Login() {
                 {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="server_host">服务器</Label>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-24 shrink-0 justify-center text-xs"
-                        onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
-                      >
-                        {serverProtocol}
-                      </Button>
-                      <div className="relative flex-1">
-                        <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="server_host"
-                          required
-                          value={serverHost}
-                          onChange={(e) => setServerHost(e.target.value)}
-                          className="pl-9"
-                          placeholder="api.huanvae.cn"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="user_id">{t('auth.login.userId')}</Label>
                     <div className="relative">

@@ -15,8 +15,8 @@ import { authApi } from '../auth'
  * 设备页显示"暂无设备信息"。所以断言必须落在设备条目本身上。
  */
 
-// getAuthApiUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
-// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+// 用 getAuthApiUrl() 而不是字面量：它就是 '/api/auth'（Task 12 之后硬编码，
+// 不再读任何环境变量），这里只是不想在测试里重复写死这个字符串。
 const AUTH_BASE = getAuthApiUrl()
 
 const ok = (body: unknown, status = 200) =>

@@ -1,103 +1,45 @@
 /**
- * API 配置工具
- * 统一使用 api.huanvae.cn 作为 API 地址
+ * API 配置工具。
+ *
+ * 基址永远是**同源空串**——见 {@link getApiBaseUrl}。这个文件剩下的两个函数
+ * （{@link toAbsoluteApiUrl}、{@link toApiRelativePath}）签名与行为不变，
+ * 只是解析用的基址从"可能指向别处的后端 origin"变成了浏览器当前的 `location.origin`。
  */
-
-const API_BASE_URL_STORAGE_KEY = 'huanvae.api-base-url'
-const DEFAULT_API_BASE_URL = 'https://api.huanvae.cn'
-
-function canUseStorage(): boolean {
-  return typeof window !== 'undefined'
-}
-
-function getStoredApiBaseUrl(): string | null {
-  if (!canUseStorage()) return null
-  try {
-    return localStorage.getItem(API_BASE_URL_STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-export function normalizeApiBaseUrl(rawValue: string): string {
-  const input = rawValue.trim()
-  if (!input) throw new Error('服务器地址不能为空')
-
-  const withProtocol = /^https?:\/\//i.test(input) ? input : `https://${input}`
-  let parsed: URL
-  try {
-    parsed = new URL(withProtocol)
-  } catch {
-    throw new Error('服务器地址格式无效')
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('仅支持 http 或 https 协议')
-  }
-
-  return parsed.origin
-}
-
-export function setApiBaseUrl(url: string): void {
-  if (!canUseStorage()) return
-  const normalized = normalizeApiBaseUrl(url)
-  try {
-    localStorage.setItem(API_BASE_URL_STORAGE_KEY, normalized)
-  } catch {
-    // ignore
-  }
-}
-
-export function clearApiBaseUrl(): void {
-  if (!canUseStorage()) return
-  try {
-    localStorage.removeItem(API_BASE_URL_STORAGE_KEY)
-  } catch {
-    // ignore
-  }
-}
 
 /**
- * 获取 API 基础地址
- * 统一使用: https://api.huanvae.cn
+ * API 基址 = **空串**：所有请求同源打到 BFF（`/api/*`、`/avatars/*` …）。
+ *
+ * 浏览器不再知道 `api.huanvae.cn` 存在。这不只是整洁问题——那个域名在阿里云被
+ * ICP 备案拦截，浏览器直连走不通（WS 完全连不上），必须由服务端代取。
+ *
+ * 「切换服务器」那个设置项随之移除：上游由服务端的 BFF_UPSTREAM_HTTP 决定，
+ * 不再是浏览器能改的东西。
  */
-export const getApiBaseUrl = (): string => {
-  const stored = getStoredApiBaseUrl()
-  if (stored) return stored
+export const getApiBaseUrl = (): string => ''
 
-  // 如果设置了环境变量，优先使用
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
-  }
+export const getAuthApiUrl = (): string => '/api/auth'
 
-  // 统一使用生产 API 地址
-  return DEFAULT_API_BASE_URL
-}
+/** 空串：`wsStore` 用相对 `/ws`，协议由 `location` 推 */
+export const getWsUrl = (): string => ''
 
 /**
- * 获取认证 API 地址
+ * 当前文档的 origin，`toAbsoluteApiUrl` / `toApiRelativePath` / `rewriteCanonicalApiOrigin`
+ * 三个函数共用它作为"基址为空串时"的兜底。
+ *
+ * 为什么不能直接把 `getApiBaseUrl()` 的返回值（空串）当 `new URL(x, base)` 的
+ * `base` 参数用：`URL` 构造函数拿到第二个参数时**先**把它解析成一个绝对 URL，
+ * 解析失败就直接抛——不管第一个参数自己是不是已经绝对。空串、`'/'` 都不是
+ * 合法的绝对 URL，所以 `new URL(x, '/')` 对任何 `x`（包括已经绝对的 `x`）都会抛
+ * `TypeError: Invalid URL`（已实测）。必须换成一个真正带 scheme + host 的 origin。
+ *
+ * 浏览器里就是 `location.origin`——这就是"基址"现在实际所在，BFF 与前端同源。
+ * SSR（`typeof location === 'undefined'`，React Router 8 的服务端渲染路径，
+ * Node 运行时压根不提供这个全局，不是猜测）没有它，返回 `undefined`，
+ * 调用方各自退化成根相对路径：BFF 与浏览器同源，根相对路径本来就是"当前 origin
+ * 下的绝对路径"，只是没有协议+主机前缀，交给最终渲染它的浏览器补上。
  */
-export const getAuthApiUrl = (): string => {
-  return `${getApiBaseUrl()}/api/auth`
-}
-
-/**
- * 获取 WebSocket 地址
- * 统一使用: wss://api.huanvae.cn
- */
-export const getWsUrl = (): string => {
-  // 如果设置了环境变量，优先使用
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL
-  }
-
-  const apiBaseUrl = getApiBaseUrl()
-  const url = new URL(apiBaseUrl)
-  
-  // 更换协议为 WebSocket
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  
-  return url.origin
+function documentOrigin(): string | undefined {
+  return typeof location === 'undefined' ? undefined : location.origin
 }
 
 /**
@@ -126,9 +68,9 @@ export const getWsUrl = (): string => {
  * 因此重复调用安全，也不会破坏预签名 URL。
  *
  * 唯一的例外是**本后端正式域名**的 http(s) 绝对地址：后端把预签名 URL、`part_url`、
- * `file_url` 以 `https://api.huanvae.cn/...` 返回，当基址被指到别处（本地去 SNI 反代），
- * 它们的 origin 会被换成当前基址，path / query / hash 逐字保留——见
- * {@link rewriteCanonicalApiOrigin}。基址就是正式域名时这条规则是 no-op。
+ * `file_url` 以 `https://api.huanvae.cn/...` 返回，它们的 origin 会被换成
+ * `location.origin`，path / query / hash 逐字保留——见 {@link rewriteCanonicalApiOrigin}。
+ * 地址已经落在 `location.origin` 上时这条规则是 no-op。
  */
 export function toAbsoluteApiUrl(path: string): string
 export function toAbsoluteApiUrl(path: string | null | undefined): string | undefined
@@ -140,11 +82,14 @@ export function toAbsoluteApiUrl(path: string | null | undefined): string | unde
   // 协议相对地址：交给浏览器按当前协议解析
   if (trimmed.startsWith('//')) return trimmed
   // 已带任意协议（http:、https:、data:、blob:）——预签名 URL 走这条；
-  // 只有本后端正式域名的 http(s) 地址会被换成当前基址的 origin，其余原样返回
+  // 只有本后端正式域名的 http(s) 地址会被换成 location.origin，其余原样返回
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return rewriteCanonicalApiOrigin(trimmed)
 
+  const origin = documentOrigin()
+  if (origin === undefined) return `/${trimmed.replace(/^\/+/, '')}`
+
   try {
-    return new URL(trimmed, `${getApiBaseUrl()}/`).href
+    return new URL(trimmed, `${origin}/`).href
   } catch {
     return trimmed
   }
@@ -165,12 +110,14 @@ export function toAbsoluteApiUrl(path: string | null | undefined): string | unde
  * 的每一个人（join 响应 `user_info` :181、`joined` 名单 :265、`peer_joined` :302
  * 三处样例都是相对路径），所以发错形状坏的是**别人**屏幕上的图。
  *
- * ## 为什么丢掉整个 origin，而不是"减去当前基址"
+ * ## 为什么丢掉整个 origin，而不是"减去当前 location.origin"
  *
- * 本项目会**故意**改基址（`api.huanvae.cn` 被备案拦截时走本地无 SNI 反代），
- * 落盘的绝对地址可能是用另一个基址拼出来的。拿当前基址去做前缀匹配，
- * 基址一变就匹配不上、于是把 `http://127.0.0.1:8787/avatars/x.png` 原样发给后端，
- * 转给房间里所有人。这里不比较 origin，直接丢掉它，剩下 `pathname + search + hash`。
+ * 落盘的绝对地址不一定是用**当前**这个 origin 拼出来的——同一份 localStorage
+ * 可能是上一次用别的 origin（旧版本、别的部署）访问时写下的，`authStore` 的
+ * persist `migrate` 也只是把相对路径补成绝对，不会用当前 origin 去覆盖历史值。
+ * 拿当前 origin 去做前缀匹配，origin 一变就匹配不上、于是把
+ * `http://old-deploy.example/avatars/x.png` 原样发给后端，转给房间里所有人。
+ * 这里不比较 origin，直接丢掉它，剩下 `pathname + search + hash`。
  *
  * 已经是相对路径的值**原样返回**（只去掉前导 `/`），不进 `URL` 解析器：
  * 后端给的字节不该被百分号编码改写。
@@ -208,9 +155,14 @@ export function toApiRelativePath(value: string | null | undefined): string | un
     return withoutLeadingSlash === '' ? undefined : withoutLeadingSlash
   }
 
+  // hasScheme 时 trimmed 自己已经是绝对地址，不需要 base 也能解析；协议相对的
+  // `//host/path` 需要一个 base 才能补出 scheme——用法与 toAbsoluteApiUrl 同一个
+  // origin 兜底（见 documentOrigin）。SSR 且是协议相对地址时没有 origin 可用，
+  // 落进下面的 catch，返回 undefined：编造一个协议比"不知道"更危险。
   let parsed: URL
   try {
-    parsed = new URL(trimmed, `${getApiBaseUrl()}/`)
+    const origin = documentOrigin()
+    parsed = origin === undefined ? new URL(trimmed) : new URL(trimmed, `${origin}/`)
   } catch {
     return undefined
   }
@@ -235,37 +187,48 @@ const CANONICAL_API_ORIGIN_RE = new RegExp(
 )
 
 /**
- * 把本后端正式域名的绝对地址改写到当前基址的 origin。
+ * 把本后端正式域名的绝对地址改写到 `location.origin`。
  *
- * ## 为什么需要
+ * ## 为什么需要，以及为什么 BFF 之后这条机制**更重要**了
  *
  * 后端返回的预签名 URL（MinIO 直链）、分片上传的 `part_url`、消息里的 `file_url` 都是
- * `https://api.huanvae.cn/...` 的绝对地址。基址指向正式域名时它们本来就能直接用；
- * 但当基址被指到本地去 SNI 反代（`http://127.0.0.1:8787`，`api.huanvae.cn` 被备案拦截时
- * 的开发通道），浏览器直接请求正式域名会失败，必须把 origin 换成反代。
+ * `https://api.huanvae.cn/...` 的绝对地址。BFF 落地之前，基址是可以切换的
+ * （`setApiBaseUrl` 指到本地去 SNI 反代），这条改写只在基址被指到别处时才生效，
+ * 生产环境（基址就是正式域名）是 no-op。
+ *
+ * 现在「切换服务器」已经删除，基址**永远**是同源空串，而 `api.huanvae.cn`
+ * 本身在阿里云被 ICP 备案拦截——浏览器**任何时候**都连不上它，不存在"生产环境
+ * 零改动"这回事了。这条改写从"开发时可选的便利"变成了"每一条这样的地址
+ * 不换成 `location.origin` 就是一条浏览器打不开的死链接"：少了它，用户看到的会是
+ * 一张加载失败的图、一次连不上的分片 PUT。BFF 把浏览器与 `api.huanvae.cn`
+ * 之间的路直接断掉了，这个函数是唯一还能把后端"顺嘴"带出来的那个地址接回来的地方。
  *
  * ## 为什么签名不会失效
  *
- * SigV4 签名覆盖的是 Host 与路径、查询参数。反代转发时显式带 `Host: api.huanvae.cn`，
+ * SigV4 签名覆盖的是 Host 与路径、查询参数。BFF 反代转发时显式带 `Host: api.huanvae.cn`，
  * 所以 MinIO 看到的主机与签名时一致；这里**只替换 origin 前缀**，path / query / hash 从原字符串
  * 逐字切出来拼回去，不经 URL 解析器重新序列化，查询串一个字节都不会变。
- * Huanvae-Chat-App 的 `secure_proxy` 把 URL 改写到 `127.0.0.1:47823` 走的是同一条逻辑。
  *
- * 基址的 origin 与该地址相同时原样返回，因此幂等，生产环境零改动。
+ * 地址已经落在 `location.origin` 上时原样返回，因此幂等。
  */
 function rewriteCanonicalApiOrigin(url: string): string {
   const match = CANONICAL_API_ORIGIN_RE.exec(url)
   if (!match) return url
 
-  let baseOrigin: string
+  const origin = documentOrigin()
+  if (origin === undefined) {
+    // SSR：没有 location，退化成根相对路径——理由见 documentOrigin 的注释。
+    const rest = url.slice(match[0].length)
+    return rest === '' ? '/' : rest
+  }
+
   let urlOrigin: string
   try {
-    baseOrigin = new URL(getApiBaseUrl()).origin
     urlOrigin = new URL(url).origin
   } catch {
     return url
   }
-  if (urlOrigin === baseOrigin) return url
+  if (urlOrigin === origin) return url
 
-  return `${baseOrigin}${url.slice(match[0].length)}`
+  return `${origin}${url.slice(match[0].length)}`
 }

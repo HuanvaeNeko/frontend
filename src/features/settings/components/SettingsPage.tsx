@@ -1,7 +1,6 @@
 'use client'
 
 import { useRouter } from '@/lib/navigation'
-import { useState } from 'react'
 import {
   ArrowLeft,
   Globe,
@@ -20,15 +19,12 @@ import { useNotification, requestNotificationPermission } from '@/hooks/useNotif
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
 import type { LanguagePreference } from '@/i18n/messages'
-import { clearApiBaseUrl, getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 
 function SettingRow({
   label,
@@ -55,38 +51,14 @@ export default function Settings() {
   const { t } = useI18n()
   const { toast } = useToast()
   const settings = useSettingsStore()
-  const clearAuth = useAuthStore((state) => state.clearAuth)
   const apiConfig = useApiConfigStore()
   const { notifyInfo, notifySuccess, notifyWarning, notifyError, notifyMessage } = useNotification()
-  const initialApiBaseUrl = getApiBaseUrl()
-  const [serverInput, setServerInput] = useState(initialApiBaseUrl)
 
   const handleReset = () => {
     if (!confirm(t('settings.resetConfirm'))) return
     settings.resetSettings()
     apiConfig.resetToDefault()
     toast({ title: t('settings.resetDoneTitle'), description: t('settings.resetDoneDesc') })
-  }
-
-  const handleApplyServer = () => {
-    try {
-      const normalized = normalizeApiBaseUrl(serverInput)
-      setApiBaseUrl(normalized)
-      clearAuth()
-      window.location.href = ROUTES.auth.login
-    } catch (error) {
-      toast({
-        title: '服务器地址无效',
-        description: error instanceof Error ? error.message : '请检查输入格式',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleResetServer = () => {
-    clearApiBaseUrl()
-    clearAuth()
-    window.location.href = ROUTES.auth.login
   }
 
   return (
@@ -134,27 +106,6 @@ export default function Settings() {
               <SettingRow label={t('settings.customApi')} description={t('settings.customApiDesc')}>
                 <Switch checked={apiConfig.useCustomApi} onCheckedChange={(v) => apiConfig.setApiConfig({ useCustomApi: v })} disabled={!settings.aiEnabled} />
               </SettingRow>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4 text-primary" />服务器设置</CardTitle>
-              <CardDescription>切换 API 与 WebSocket 服务器地址（切换后将重新登录）</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Label htmlFor="server_base_url">服务器地址</Label>
-              <Input
-                id="server_base_url"
-                value={serverInput}
-                onChange={(e) => setServerInput(e.target.value)}
-                placeholder="https://api.huanvae.cn"
-              />
-              <div className="text-xs text-muted-foreground">当前生效: {initialApiBaseUrl}</div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={handleApplyServer}>应用并重新登录</Button>
-                <Button variant="outline" onClick={handleResetServer}>恢复默认并重新登录</Button>
-              </div>
             </CardContent>
           </Card>
 

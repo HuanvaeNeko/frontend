@@ -47,11 +47,17 @@
  * ## 不变量：一次写入必须属于**当前活着的那一场会话**
  *
  * 清盘只证明"这一刻盘上没有账号级数据"。会话换人那一刻若有一个请求还在飞
- * （`refreshAccessToken` 的单飞 promise、`profileStore.loadProfile`、
- * `friendsStore` / `groupStore` / `chatStore` 的任何一个异步 action、
- * `fetchWithAuth` 里任何一个还没回来的响应），它会在清盘**之后**落地：
- * `set()` 一写，persist 立刻把上一个人的数据重新落盘——刷新那条尤其糟，落回去的是
- * 一对**刚轮换出来、当前有效**的 token，明文躺在 `auth-storage` 里等下一个人。
+ * （`profileStore.loadProfile`、`friendsStore` / `groupStore` / `chatStore`
+ * 的任何一个异步 action、`restoreSession` 里还没回来的那次 `GET /api/session`），
+ * 它会在清盘**之后**落地：`set()` 一写，persist 立刻把上一个人的数据重新落盘。
+ *
+ * BFF 会话层落地后，token 那一半已经不是问题了——客户端手里从此只有一个
+ * httpOnly cookie，JS 读不到、也改不了，落盘副本里根本没有"一对刚轮换出来的
+ * token 明文躺着"这种东西可泄漏。但**内存里的跨账号状态仍是真问题**：上一个人的
+ * profile（`Navigation` 直接拿 `profile.user_avatar_url` 渲染头像）、好友申请
+ * 列表、群成员名单、聊天草稿，以及 `apiConfig` 里用户自己敲进去的第三方
+ * `aiApiKey`——这些字段不清，下一个人第一屏就可能看见上一个人的头像昵称，
+ * AI 请求甚至会替下一个人把上一个人的密钥发出去。这才是这条不变量今天要挡的东西。
  *
  * 要点是这条不变量**不以「会话结束」为轴**。会话结束是一个时点，会话开始是另一个
  * 时点，两者都是**会话边界**，而"这次写入属于哪一场"这个问题在两个边界上是同一个
@@ -187,11 +193,14 @@ export const DEVICE_SCOPED_SETTING_FIELDS = [
  */
 const DEVICE_SCOPED_KEYS: ReadonlyMap<string, DeviceScopedRule> = new Map<string, DeviceScopedRule>([
   /**
-   * 这台设备连哪个后端。本项目会**故意**改基址（`api.huanvae.cn` 被备案拦截时
-   * 走本地无 SNI 反代），清掉等于每次登出都把开发通道退回默认域名。
-   * 而且 `SettingsPage.handleApplyServer` 正是「`setApiBaseUrl(新地址)` →
-   * `clearAuth()` → 跳登录页」这个顺序——清掉它会让"切换服务器"这个功能自己
-   * 把刚写进去的地址擦掉。
+   * ⚠️ 已退役（Task 12）：`apiConfig.getApiBaseUrl()` 现在是硬编码的空串，
+   * 没有任何代码再往这个键写东西了——「切换服务器」连同 `setApiBaseUrl` /
+   * `clearApiBaseUrl` 已经整个删除。留着这一条不是因为它还有效，是因为它是
+   * `sessionScope.test.ts` / `sessionHandoff.test.tsx` 里"设备级键"的示例键，
+   * 删掉这一条要连着把那些用例改成认另一个键，得不偿失。
+   *
+   * 原始理由存档：这台设备连哪个后端。本项目曾经**故意**改基址（`api.huanvae.cn`
+   * 被备案拦截时走本地无 SNI 反代），清掉等于每次登出都把开发通道退回默认域名。
    */
   ['huanvae.api-base-url', { keep: 'whole' }],
 

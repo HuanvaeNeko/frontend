@@ -461,7 +461,7 @@ describe('ProfilePage 上传头像', () => {
       expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
     )
 
-    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    const absolute = `${location.origin}/avatars/u1.png?t=1706000000`
     expect(useProfileStore.getState().profile?.user_avatar_url).toBe(absolute)
     // 本条的正身：这个值真的到了 `<img src>` 上。
     await waitFor(() => expect(renderedAvatarSrc()).toBe(absolute))
@@ -528,7 +528,7 @@ describe('ProfilePage 上传头像', () => {
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
 
     // confirm 返回的 file_url 就是结果，不依赖那次失败的 GET。
-    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    const absolute = `${location.origin}/avatars/u1.png?t=1706000000`
     expect(useProfileStore.getState().profile?.user_avatar_url).toBe(absolute)
     await waitFor(() => expect(renderedAvatarSrc()).toBe(absolute))
   })
@@ -713,7 +713,7 @@ describe('ProfilePage 资料封面', () => {
     await screen.findByDisplayValue('old@example.com')
 
     await waitFor(() =>
-      expect(renderedCoverSrc()).toBe(`${getApiBaseUrl()}/avatars/background/u1.jpg?t=1706000000`),
+      expect(renderedCoverSrc()).toBe(`${location.origin}/avatars/background/u1.jpg?t=1706000000`),
     )
     expect(screen.getByText('恢复默认')).toBeTruthy()
   })
@@ -793,7 +793,7 @@ describe('ProfilePage 资料封面', () => {
 
     await waitFor(() =>
       expect(renderedCoverSrc()).toBe(
-        `${getApiBaseUrl()}/avatars/background/u1.png?t=1706000000`,
+        `${location.origin}/avatars/background/u1.png?t=1706000000`,
       ),
     )
   })
@@ -836,7 +836,7 @@ describe('ProfilePage 资料封面', () => {
     // 读回确实发生过（否则"读回失败不影响成功"这句话没有被验证）。
     await waitFor(() => expect(profileGetCount).toBe(2))
 
-    const absolute = `${getApiBaseUrl()}/avatars/background/u1.png?t=1706000000`
+    const absolute = `${location.origin}/avatars/background/u1.png?t=1706000000`
     expect(useProfileStore.getState().profile?.background_url).toBe(absolute)
     await waitFor(() => expect(renderedCoverSrc()).toBe(absolute))
   })

@@ -19,8 +19,10 @@ import { buildFriendConversationId, messagesApi } from '../messages'
  * 唯一证据。
  */
 
-// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
-// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+// 用 getApiBaseUrl() 而不是字面量空串：这里要匹配的是**请求 URL**，和真实代码同一个
+// （硬编码的空串）基址拼出来的。Task 12 之后 getApiBaseUrl() 不再读任何环境变量——
+// 这行注释曾经说的是 .env 漂移，那个风险随「切换服务器」一起没了，留着调用只是
+// 不想在测试里重复写一遍"空串"这个假设。
 const MESSAGES_BASE = `${getApiBaseUrl()}/api/messages`
 
 const ok = (body: unknown, status = 200) =>
@@ -84,8 +86,11 @@ describe('messagesApi.getMessages', () => {
     expect(result.messages[0].message_content).toBe('你好')
     expect(result.has_more).toBe(true)
 
-    const url = new URL(String(fetchMock.mock.calls[0][0]))
-    expect(`${url.origin}${url.pathname}`).toBe(MESSAGES_BASE)
+    // 基址是空串，真实请求 URL 是根相对路径——`new URL()` 不给 base 会直接抛
+    // （"cannot be parsed as a URL"），所以这里显式给 location.origin 当 base；
+    // 比较仍然落在 pathname 上，MESSAGES_BASE 本身就是根相对路径，不带 origin。
+    const url = new URL(String(fetchMock.mock.calls[0][0]), location.origin)
+    expect(url.pathname).toBe(MESSAGES_BASE)
     expect(url.searchParams.get('friend_id')).toBe('user456')
     expect(url.searchParams.get('limit')).toBe('50')
     // 首屏不带游标：带上 before_time 会把最新一页跳过去。
@@ -193,7 +198,8 @@ describe('messagesApi.getMessages', () => {
     )
     await messagesApi.loadMoreMessages('user456', firstPage.messages)
 
-    const secondUrl = new URL(String(fetchMock.mock.calls[1][0]))
+    // 同上：根相对路径需要显式 base 才能被 new URL() 解析。
+    const secondUrl = new URL(String(fetchMock.mock.calls[1][0]), location.origin)
     expect(secondUrl.searchParams.get('before_time')).toBe('2026-09-07T01:00:00Z')
   })
 })

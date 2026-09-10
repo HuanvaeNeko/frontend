@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
-import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { beginSession } from '@/lib/sessionScope'
 import { migrateAuthPersist, useAuthStore } from '../authStore'
 
@@ -34,8 +34,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   // zustand persist 会往 localStorage 写 auth-storage；不清会污染下一条用例。
-  // 同时 getApiBaseUrl() 也读 localStorage（huanvae.api-base-url），清空后走
-  // import.meta.env.VITE_API_URL（Vitest 加载的 .env）或默认的 https://api.huanvae.cn。
+  // getApiBaseUrl() 不再读 localStorage / 环境变量——Task 12 之后它是硬编码的
+  // 空串（同源打 BFF），清不清 localStorage 都不影响它的返回值。
   localStorage.clear()
   useAuthStore.getState().clearAuth()
   setApiShapeErrorReporter(() => {})
@@ -88,7 +88,7 @@ describe('authStore.login —— 打 BFF，store 里不留 token', () => {
 
     await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
 
-    expect(useAuthStore.getState().user?.avatar_url).toBe(`${getApiBaseUrl()}/avatars/x.jpg`)
+    expect(useAuthStore.getState().user?.avatar_url).toBe(`${location.origin}/avatars/x.jpg`)
   })
 
   it('avatar_url 已经是绝对地址时原样保留，不会被二次拼接破坏', async () => {
@@ -262,7 +262,7 @@ describe('authStore.logout', () => {
 })
 
 describe('auth-storage 的 persist 迁移', () => {
-  const absolute = (path: string) => `${getApiBaseUrl()}/${path}`
+  const absolute = (path: string) => `${location.origin}/${path}`
 
   it('把落盘的相对头像路径搬成绝对地址', () => {
     // main 上写的是 `avatar_url: data.avatar_url`，也就是后端原样给的相对路径

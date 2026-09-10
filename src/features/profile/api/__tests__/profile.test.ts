@@ -37,7 +37,10 @@ import { makeProfile, makeProfileWire } from './profileFixture'
  * 与那两组用例、以及它们上方那句"被替掉的是 `data.data || data`"直接矛盾。
  */
 
-// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定。
+// 用 getApiBaseUrl() 而不是字面量空串：这里要匹配的是**请求 URL**，和真实代码
+// 同一个（硬编码的空串）基址拼出来的，不再是跟着 .env 走（Task 12 之后
+// getApiBaseUrl() 不读任何环境变量了）。响应体里补过基址的绝对地址走
+// location.origin，两者不要混用——见下面对 avatar/background 字段的断言。
 const PROFILE_BASE = `${getApiBaseUrl()}/api/profile`
 
 const json = (body: unknown, status = 200) =>
@@ -327,7 +330,7 @@ describe('profileApi.getProfile', () => {
     const profile = await profileApi.getProfile()
 
     expect(profile.user_avatar_url).toBe(
-      `${getApiBaseUrl()}/avatars/testuser001.jpg?t=1706000000`,
+      `${location.origin}/avatars/testuser001.jpg?t=1706000000`,
     )
   })
 
@@ -457,7 +460,7 @@ describe('profileApi.uploadAvatar（四步预签名链路）', () => {
     // `…/api/storage/https://api.huanvae.cn/…`，所以下面第二行也是一条真断言。
     expect(uploadChunk).toHaveBeenCalledTimes(1)
     expect(uploadChunk.mock.calls[0][0]).toBe(
-      `${getApiBaseUrl()}/avatars/alice.png?uploadId=x&partNumber=1&X-Amz-Signature=s`,
+      `${location.origin}/avatars/alice.png?uploadId=x&partNumber=1&X-Amz-Signature=s`,
     )
     expect(String(uploadChunk.mock.calls[0][0])).not.toContain('/api/storage/')
     // 上面那条 toEqual 已经蕴含这两句；单独写出来是因为它们是本批要消灭的两个具体形态，
@@ -521,7 +524,7 @@ describe('profileApi.uploadAvatar（四步预签名链路）', () => {
 
     // doc:400 的样例是相对路径 `avatars/{key}?t=…`；补基址在 api 出口做一次。
     // 断言必须是完整 URL 逐字相等——相对路径本身也是非空字符串。
-    expect(result.file_url).toBe(`${getApiBaseUrl()}/avatars/alice.png?t=1706000000`)
+    expect(result.file_url).toBe(`${location.origin}/avatars/alice.png?t=1706000000`)
     expect(result.file_key).toBe('alice.png')
   })
 
@@ -801,7 +804,7 @@ describe('profileApi.getProfile 的字段校验', () => {
     const profile = await profileApi.getProfile()
 
     expect(profile.background_url).toBe(
-      `${getApiBaseUrl()}/avatars/background/u1.jpg?t=1706000000`,
+      `${location.origin}/avatars/background/u1.jpg?t=1706000000`,
     )
   })
 
@@ -1280,7 +1283,7 @@ describe('profileApi.uploadBackground（四步预签名链路，avatar_target=us
     const result = await profileApi.uploadBackground(pngFile())
 
     expect(result.file_url).toBe(
-      `${getApiBaseUrl()}/avatars/background/alice.png?t=1706000000`,
+      `${location.origin}/avatars/background/alice.png?t=1706000000`,
     )
     expect(result.file_key).toBe('background/alice.png')
   })
@@ -1496,8 +1499,8 @@ describe('profileApi.getPublicProfile（窄 DTO，不与 UserProfile 同构）',
       user_id: 'testuser001',
       user_nickname: '测试用户',
       user_signature: 'Hello, world!',
-      user_avatar_url: `${getApiBaseUrl()}/avatars/testuser001.jpg?t=1706000000`,
-      background_url: `${getApiBaseUrl()}/avatars/background/testuser001.jpg?t=1706000000`,
+      user_avatar_url: `${location.origin}/avatars/testuser001.jpg?t=1706000000`,
+      background_url: `${location.origin}/avatars/background/testuser001.jpg?t=1706000000`,
       gender: 'female',
       birthday: '1995-08-20',
       region: '上海',

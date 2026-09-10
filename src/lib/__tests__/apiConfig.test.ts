@@ -1,21 +1,28 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import {
-  toAbsoluteApiUrl,
-  toApiRelativePath,
-  getApiBaseUrl,
-  setApiBaseUrl,
-  clearApiBaseUrl,
-} from '../apiConfig'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { toAbsoluteApiUrl, toApiRelativePath, getApiBaseUrl, getWsUrl } from '../apiConfig'
+
+describe('getApiBaseUrl / getAuthApiUrl / getWsUrl —— 基址是同源空串', () => {
+  it('getApiBaseUrl 返回空串——所有请求同源，浏览器不再知道后端主机', () => {
+    expect(getApiBaseUrl()).toBe('')
+  })
+
+  it('getWsUrl 返回空串——wsStore 用相对 /ws', () => {
+    expect(getWsUrl()).toBe('')
+  })
+})
 
 describe('toAbsoluteApiUrl', () => {
-  afterEach(() => clearApiBaseUrl())
+  it('相对路径补成同源绝对路径（toAbsoluteApiUrl 的行为不变，只是基址变了）', () => {
+    // happy-dom 的 location.origin 是 http://localhost:3000
+    expect(toAbsoluteApiUrl('avatars/a.png')).toBe(`${location.origin}/avatars/a.png`)
+  })
 
-  it('相对路径补上 API 基址', () => {
-    expect(toAbsoluteApiUrl('/api/storage/file/abc')).toBe(`${getApiBaseUrl()}/api/storage/file/abc`)
+  it('相对路径补上同源基址', () => {
+    expect(toAbsoluteApiUrl('/api/storage/file/abc')).toBe(`${location.origin}/api/storage/file/abc`)
   })
 
   it('不带前导斜杠的相对路径也能补', () => {
-    expect(toAbsoluteApiUrl('api/storage/file/abc')).toBe(`${getApiBaseUrl()}/api/storage/file/abc`)
+    expect(toAbsoluteApiUrl('api/storage/file/abc')).toBe(`${location.origin}/api/storage/file/abc`)
   })
 
   it('绝对地址原样返回（预签名 URL 不能被重新拼接，否则签名失效）', () => {
@@ -39,68 +46,93 @@ describe('toAbsoluteApiUrl', () => {
     expect(toAbsoluteApiUrl(undefined)).toBeUndefined()
     expect(toAbsoluteApiUrl('   ')).toBeUndefined()
   })
+
+  /**
+   * SSR 分支：`typeof location === 'undefined'`。React Router 8 的服务端渲染路径上
+   * 没有 `location` 全局——不是假设，是 Node 运行时压根不提供这个全局。
+   * 这里用 `vi.stubGlobal('location', undefined)` 模拟同一件事：删掉这个全局，
+   * 用完必须恢复，否则后面所有用例都会静默切换到这条分支。
+   */
+  describe('SSR：没有 location 全局', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('退化成根相对路径，而不是抛错或拼出字面量 "undefined"', () => {
+      vi.stubGlobal('location', undefined)
+
+      expect(toAbsoluteApiUrl('avatars/a.png')).toBe('/avatars/a.png')
+      expect(toAbsoluteApiUrl('/avatars/a.png')).toBe('/avatars/a.png')
+    })
+  })
 })
 
 /**
  * 后端把预签名 URL / part_url / file_url 以 `https://api.huanvae.cn/...` 的绝对地址返回。
- * 当基址被指到别处（本地去 SNI 反代 `http://127.0.0.1:8787`，见 ~/.config/huanvae-edge），
- * 浏览器直接请求正式域名会被拦截，所以要把 origin 换成当前基址；path / query / hash 必须
- * 逐字保留——SigV4 签名覆盖的是 Host 与路径参数，反代转发时显式带 `Host: api.huanvae.cn`，
- * 只换 origin 不会让签名失效。
+ * 基址永远是同源空串（Task 12 删除了「切换服务器」），所以这条改写**不再是可选的**——
+ * 浏览器压根连不上 `api.huanvae.cn`（阿里云 ICP 备案拦截），任何一条这样的绝对地址
+ * 不换成 `location.origin` 就是死链接。path / query / hash 必须逐字保留——SigV4 签名
+ * 覆盖的是 Host 与路径参数，BFF 反代转发时显式带 `Host: api.huanvae.cn`，只换 origin
+ * 不会让签名失效。
  */
-describe('toAbsoluteApiUrl：后端正式域名的绝对地址改写到当前基址', () => {
-  const PROXY = 'http://127.0.0.1:8787'
+describe('toAbsoluteApiUrl：后端返回的正式域名绝对地址被改写到同源', () => {
   const PRESIGNED =
     'https://api.huanvae.cn/user-file/conv-a-b/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=k%2F20260907%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=deadbeef'
 
-  afterEach(() => clearApiBaseUrl())
+  it('后端返回的正式域名绝对地址被改写到同源（预签名 URL 走这条）', () => {
+    const rewritten = toAbsoluteApiUrl('https://api.huanvae.cn/user-file/obj?X-Amz-Signature=deadbeef')
+    expect(rewritten).toBe(`${location.origin}/user-file/obj?X-Amz-Signature=deadbeef`)
+  })
 
-  it('基址是反代时，api.huanvae.cn 的预签名 URL 只换 origin，路径与签名参数逐字保留', () => {
-    setApiBaseUrl(PROXY)
+  it('api.huanvae.cn 的预签名 URL 只换 origin，路径与签名参数逐字保留', () => {
     expect(toAbsoluteApiUrl(PRESIGNED)).toBe(
-      `${PROXY}/user-file/conv-a-b/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=k%2F20260907%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=deadbeef`,
+      `${location.origin}/user-file/conv-a-b/images/x.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=k%2F20260907%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=deadbeef`,
     )
   })
 
   it('api.huanvae.com 同样改写（发现面 /endpoints 的 domains 列表里的第二个正式域名）', () => {
-    setApiBaseUrl(PROXY)
     expect(toAbsoluteApiUrl('https://api.huanvae.com/api/storage/file/u1')).toBe(
-      `${PROXY}/api/storage/file/u1`,
+      `${location.origin}/api/storage/file/u1`,
     )
   })
 
-  it('基址就是正式域名时原样返回（生产环境零改动）', () => {
-    setApiBaseUrl('https://api.huanvae.cn')
-    expect(toAbsoluteApiUrl(PRESIGNED)).toBe(PRESIGNED)
-  })
-
   it('非正式域名的绝对地址不动：第三方主机的预签名 URL 不属于本后端', () => {
-    setApiBaseUrl(PROXY)
     const thirdParty = 'https://minio.example.com/bucket/k?X-Amz-Signature=deadbeef'
     expect(toAbsoluteApiUrl(thirdParty)).toBe(thirdParty)
   })
 
   it('主机名要整段匹配：api.huanvae.cn.evil.com 不是正式域名', () => {
-    setApiBaseUrl(PROXY)
     const lookalike = 'https://api.huanvae.cn.evil.com/x'
     expect(toAbsoluteApiUrl(lookalike)).toBe(lookalike)
   })
 
   it('hash 片段与显式默认端口都能正确处理', () => {
-    setApiBaseUrl(PROXY)
-    expect(toAbsoluteApiUrl('https://api.huanvae.cn:443/a/b#frag')).toBe(`${PROXY}/a/b#frag`)
-    expect(toAbsoluteApiUrl('https://api.huanvae.cn')).toBe(PROXY)
+    expect(toAbsoluteApiUrl('https://api.huanvae.cn:443/a/b#frag')).toBe(`${location.origin}/a/b#frag`)
+    expect(toAbsoluteApiUrl('https://api.huanvae.cn')).toBe(location.origin)
   })
 
   it('幂等：改写后的地址再过一次不变', () => {
-    setApiBaseUrl(PROXY)
     const once = toAbsoluteApiUrl(PRESIGNED)
     expect(toAbsoluteApiUrl(once)).toBe(once)
   })
 
-  it('相对路径的补基址行为不变', () => {
-    setApiBaseUrl(PROXY)
-    expect(toAbsoluteApiUrl('avatars/u.png?t=1')).toBe(`${PROXY}/avatars/u.png?t=1`)
+  it('已经落在同源上的地址是 no-op（幂等的另一半：不会把 origin 换成它自己再兜一圈）', () => {
+    const alreadySameOrigin = `${location.origin}/user-file/obj?X-Amz-Signature=deadbeef`
+    expect(toAbsoluteApiUrl(alreadySameOrigin)).toBe(alreadySameOrigin)
+  })
+
+  /** SSR 分支：见 `toAbsoluteApiUrl` 那组同名 describe 的说明。 */
+  describe('SSR：没有 location 全局', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('退化成根相对路径，path / query / hash 逐字保留', () => {
+      vi.stubGlobal('location', undefined)
+
+      expect(toAbsoluteApiUrl('https://api.huanvae.cn/a/b?q=1#frag')).toBe('/a/b?q=1#frag')
+      expect(toAbsoluteApiUrl('https://api.huanvae.cn')).toBe('/')
+    })
   })
 })
 
@@ -111,23 +143,18 @@ describe('toAbsoluteApiUrl：后端正式域名的绝对地址改写到当前基
  * 创建房间 :72 同样），而 store 里存的是补过基址的绝对地址。
  */
 describe('toApiRelativePath —— 发回后端时把绝对地址还原成相对路径', () => {
-  const PROXY = 'http://127.0.0.1:8787'
-
-  afterEach(() => clearApiBaseUrl())
-
   it('丢掉 origin，保留 path + query（后端样例就是这个形状）', () => {
     expect(toApiRelativePath('https://api.huanvae.cn/avatars/guest.png?t=1706000000')).toBe(
       'avatars/guest.png?t=1706000000',
     )
   })
 
-  it('origin 与当前基址**不同**时也照样还原 —— 本项目会故意改基址', () => {
-    // 这条钉的是"丢掉 origin"而不是"减去当前基址"：落盘的绝对地址可能是上一次
-    // 用另一个基址拼出来的。改成前缀匹配当前基址的实现，这条红。
-    setApiBaseUrl('https://api.huanvae.cn')
-    expect(toApiRelativePath(`${PROXY}/avatars/alice.png?t=1`)).toBe('avatars/alice.png?t=1')
-    // 正对照：同一次运行里，当前基址下的地址也还原成同一个形状
-    expect(toApiRelativePath('https://api.huanvae.cn/avatars/alice.png?t=1')).toBe(
+  it('origin 与当前 location 不同时也照样还原——本函数丢的是 origin，不是"减去某个基址"', () => {
+    expect(toApiRelativePath('http://127.0.0.1:8787/avatars/alice.png?t=1')).toBe(
+      'avatars/alice.png?t=1',
+    )
+    // 正对照：同一次运行里，同源地址也还原成同一个形状
+    expect(toApiRelativePath(`${location.origin}/avatars/alice.png?t=1`)).toBe(
       'avatars/alice.png?t=1',
     )
   })
@@ -138,7 +165,6 @@ describe('toApiRelativePath —— 发回后端时把绝对地址还原成相对
   })
 
   it('与 toAbsoluteApiUrl 往返一致 —— 仅限 URL 不会重写的字符', () => {
-    setApiBaseUrl(PROXY)
     // 后端生成的头像路径就是这个形状（`个人资料管理.md:74` 的样例
     // `"avatars/testuser001.jpg?t=1706000000"`），全是 URL 不碰的字符。
     const relative = 'avatars/alice.png?t=1706000000'
@@ -152,7 +178,6 @@ describe('toApiRelativePath —— 发回后端时把绝对地址还原成相对
     //
     // 后果具体是：一个还没迁移过的客户端（落盘值是相对路径）和一个迁移过的客户端
     // （落盘值是绝对地址），同一张头像发给 webrtc 的 avatar_url 不是同一个字符串。
-    setApiBaseUrl(PROXY)
     const spaced = 'avatars/a b.png'
 
     // 相对分支：原样（只去前导斜杠）

@@ -3,7 +3,7 @@ import { render, waitFor } from '@testing-library/react'
 import { MotionGlobalConfig } from 'framer-motion'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { getApiBaseUrl, setApiBaseUrl, clearApiBaseUrl } from '@/lib/apiConfig'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { webrtcApi } from '../../api/webrtc'
 import VideoMeeting from '../VideoMeeting'
 
@@ -67,15 +67,18 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  clearApiBaseUrl()
   useAuthStore.setState({ user: null })
   vi.restoreAllMocks()
 })
 
 describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
   it('发的是相对路径，不是 store 里那个绝对地址', async () => {
+    // store 里的绝对地址永远是同源的（基址是硬编码空串，`toAbsoluteApiUrl` 落到
+    // location.origin，见其 JSDoc）——这里手写同一个形状，而不是调用
+    // getApiBaseUrl()：Task 12 之后它是空串，`${getApiBaseUrl()}/avatars/...`
+    // 只会拼出一个根相对路径，不再是"绝对地址"，会让本条用例测不出它声称的东西。
     useAuthStore.setState({
-      user: { user_id: 'alice', avatar_url: `${getApiBaseUrl()}/avatars/alice.png?t=1706000000` },
+      user: { user_id: 'alice', avatar_url: `${location.origin}/avatars/alice.png?t=1706000000` },
     })
 
     renderMeeting()
@@ -87,14 +90,14 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
     )
   })
 
-  it('基址被指到本地反代时，发出去的仍然是相对路径 —— 别人连不上 127.0.0.1', async () => {
-    // 本项目会**故意**改基址（api.huanvae.cn 被备案拦截时走本地无 SNI 反代），
-    // 这正是 `huanvae.api-base-url` 被判成设备级键的原因。原来那份实现会把
-    // `http://127.0.0.1:8787/avatars/alice.png` 发给信令服务器，再由后端转给房间里
-    // 每一个人当头像地址。
-    setApiBaseUrl('http://127.0.0.1:8787')
+  it('store 里的地址是 toAbsoluteApiUrl 真实产出的那种形状，join payload 仍然是相对路径', async () => {
+    // 「切换服务器」已经删除（Task 12），基址永远同源，不再有"基址被指到本地反代"
+    // 这种可配置场景——但结论没变：这个 origin 对房间里的其它参与者没有意义
+    // （开发环境是 localhost，生产环境也只是这台浏览器打开应用的地址，不是后端），
+    // 后端的契约写的是相对路径（WebRTC房间.md:154）。这里不手写字符串，走真实的
+    // toAbsoluteApiUrl，顺带验证它与本组件的假设一致。
     useAuthStore.setState({
-      user: { user_id: 'alice', avatar_url: 'http://127.0.0.1:8787/avatars/alice.png?t=1' },
+      user: { user_id: 'alice', avatar_url: toAbsoluteApiUrl('avatars/alice.png?t=1') },
     })
 
     renderMeeting()
@@ -102,7 +105,7 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
     await waitFor(() => expect(joinRoom).toHaveBeenCalled())
     const payload = joinRoom.mock.calls[0]?.[1] as { avatar_url?: string }
     expect(payload.avatar_url).toBe('avatars/alice.png?t=1')
-    expect(payload.avatar_url).not.toContain('127.0.0.1')
+    expect(payload.avatar_url).not.toContain(location.origin)
   })
 
   it('已部署用户落盘的相对路径原样发出（迁移跑之前的那一批）', async () => {

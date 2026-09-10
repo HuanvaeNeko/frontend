@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { getApiBaseUrl } from '@/lib/apiConfig'
 import { ApiError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import { beginSession, endSession } from '@/lib/sessionScope'
@@ -321,12 +320,12 @@ describe('profileStore 的 persist 迁移（v0 → v1）', () => {
     await useProfileStore.persist.rehydrate()
 
     expect(useProfileStore.getState().profile?.user_avatar_url).toBe(
-      `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`,
+      `${location.origin}/avatars/u1.png?t=1706000000`,
     )
   })
 
   it('已经是绝对地址的值不被再拼一次（toAbsoluteApiUrl 幂等）', async () => {
-    const absolute = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    const absolute = `${location.origin}/avatars/u1.png?t=1706000000`
     seed({ profile: { ...baseProfile, user_avatar_url: absolute } })
 
     await useProfileStore.persist.rehydrate()

@@ -175,7 +175,7 @@ describe('ProfileModal 上传头像', () => {
     // 断言落在 **DOM 的 `src`** 上：换成任何常数（实测
     // `src="avatars/BROKEN-RELATIVE.png"`）都要红。
     await waitFor(() =>
-      expect(renderedAvatarSrc()).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1706000000`),
+      expect(renderedAvatarSrc()).toBe(`${location.origin}/avatars/u1.png?t=1706000000`),
     )
   })
 
@@ -222,7 +222,7 @@ describe('ProfileModal 上传头像', () => {
 
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '上传失败' }))
     await waitFor(() =>
-      expect(renderedAvatarSrc()).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1706000000`),
+      expect(renderedAvatarSrc()).toBe(`${location.origin}/avatars/u1.png?t=1706000000`),
     )
   })
 

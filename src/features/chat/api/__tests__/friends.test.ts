@@ -18,8 +18,10 @@ import { friendsApi } from '../friends'
  * `not.toThrow()` 的话，坏代码返回的空数组同样满足，等于没测。
  */
 
-// getApiBaseUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
-// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
+// 用 getApiBaseUrl() 而不是字面量空串：这里要匹配的是**请求 URL**，和真实代码同一个
+// （硬编码的空串）基址拼出来的。Task 12 之后 getApiBaseUrl() 不再读任何环境变量——
+// 这行注释曾经说的是 .env 漂移，那个风险随「切换服务器」一起没了，留着调用只是
+// 不想在测试里重复写一遍"空串"这个假设。
 const FRIENDS_BASE = `${getApiBaseUrl()}/api/friends`
 
 const ok = (body: unknown, status = 200) =>
@@ -112,7 +114,7 @@ describe('friendsApi.getFriendsList', () => {
 
     const [friend] = await friendsApi.getFriendsList()
 
-    expect(friend.friend_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u1.jpg?t=1`)
+    expect(friend.friend_avatar_url).toBe(`${location.origin}/avatars/u1.jpg?t=1`)
   })
 
   it('头像为 null 时保持 null，不兜底成空串', async () => {
@@ -172,7 +174,7 @@ describe('friendsApi.getPendingRequests', () => {
 
     const [request] = await friendsApi.getPendingRequests()
 
-    expect(request.requester_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u2.jpg`)
+    expect(request.requester_avatar_url).toBe(`${location.origin}/avatars/u2.jpg`)
   })
 })
 
@@ -206,7 +208,7 @@ describe('friendsApi.getSentRequests', () => {
 
     const [request] = await friendsApi.getSentRequests()
 
-    expect(request.sent_to_avatar_url).toBe(`${getApiBaseUrl()}/avatars/u3.jpg`)
+    expect(request.sent_to_avatar_url).toBe(`${location.origin}/avatars/u3.jpg`)
   })
 })
 

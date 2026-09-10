@@ -4,7 +4,6 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { makeProfile } from '@/features/profile/api/__tests__/profileFixture'
 import { useProfileStore } from '@/features/profile/store/profileStore'
-import { getApiBaseUrl } from '@/lib/apiConfig'
 import { DesktopSidebar } from '../Navigation'
 
 /**
@@ -66,7 +65,7 @@ afterEach(() => {
 describe('DesktopSidebar 的头像', () => {
   it('有绝对地址时逐字渲染成 <img src>', () => {
     // 正对照。没有它，下面几条「不渲染 img」在组件整个坏掉时也会绿。
-    const src = `${getApiBaseUrl()}/avatars/u1.png?t=1706000000`
+    const src = `${location.origin}/avatars/u1.png?t=1706000000`
     useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: src } })
 
     renderSidebar()
@@ -111,14 +110,14 @@ describe('DesktopSidebar 的头像', () => {
       user: {
         user_id: 'u1',
         nickname: '测试用户',
-        avatar_url: `${getApiBaseUrl()}/avatars/u1.png?t=1`,
+        avatar_url: `${location.origin}/avatars/u1.png?t=1`,
       },
     })
     useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: '' } })
 
     renderSidebar()
 
-    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+    expect(avatarImg()?.getAttribute('src')).toBe(`${location.origin}/avatars/u1.png?t=1`)
   })
 
   it('存量 auth-storage（v0，相对路径）rehydrate 之后渲染出绝对地址', async () => {
@@ -148,13 +147,13 @@ describe('DesktopSidebar 的头像', () => {
     // 迁移已经把落盘的相对路径搬成绝对地址——这一层要紧，因为落盘值还有一个
     // **不经过本组件**的消费点：`VideoMeeting` 把 `user?.avatar_url` 发给后端当
     // 会议里的头像地址，读时归一救不到那里。
-    expect(useAuthStore.getState().user?.avatar_url).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+    expect(useAuthStore.getState().user?.avatar_url).toBe(`${location.origin}/avatars/u1.png?t=1`)
 
     useProfileStore.setState({ profile: { ...PROFILE, user_avatar_url: null } })
 
     renderSidebar()
 
-    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=1`)
+    expect(avatarImg()?.getAttribute('src')).toBe(`${location.origin}/avatars/u1.png?t=1`)
   })
 
   it('authStore 里就是相对路径时，读的时候补基址（不指望 migrate 跑过）', () => {
@@ -168,7 +167,7 @@ describe('DesktopSidebar 的头像', () => {
 
     renderSidebar()
 
-    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=3`)
+    expect(avatarImg()?.getAttribute('src')).toBe(`${location.origin}/avatars/u1.png?t=3`)
   })
 
   it('profile 落盘的相对路径同样在读的时候补基址（不指望 persist migrate 跑过）', () => {
@@ -179,6 +178,6 @@ describe('DesktopSidebar 的头像', () => {
 
     renderSidebar()
 
-    expect(avatarImg()?.getAttribute('src')).toBe(`${getApiBaseUrl()}/avatars/u1.png?t=2`)
+    expect(avatarImg()?.getAttribute('src')).toBe(`${location.origin}/avatars/u1.png?t=2`)
   })
 })

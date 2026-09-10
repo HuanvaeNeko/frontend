@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
@@ -118,5 +119,35 @@ describe('设备管理页', () => {
     // 关键断言：这条设备不能被渲染出来（尤其不能渲染成"不是当前设备"的样子）。
     expect(screen.queryByText('当前设备')).toBeNull()
     expect(screen.queryByText('Mac Chrome')).toBeNull()
+  })
+
+  /**
+   * 撤销当前设备 = 登出，必须真的走 authStore.logout()（打 BFF 的
+   * /api/auth/logout，由 BFF 删会话、清 cookie、关该会话的 WS）。
+   *
+   * 变异实测：把 DevicesPage 里的 `await logout()` 改回 `clearAuth()`，
+   * 本条红——`clearAuth()` 只清本地 state，一个字节都不会打到 /api/auth/logout，
+   * 断言里的 `some(url === '/api/auth/logout')` 永远是 false。只清本地的话
+   * cookie 还在，刷新页面就又登回去了，这正是这条用例要钉住的。
+   */
+  it('撤销当前设备会打 /api/auth/logout，不是只清本地 state', async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok({ success: true, code: 200, data: { devices: DEVICES, total: 2 } }))
+      .mockResolvedValueOnce(ok({ success: true, code: 200 })) // DELETE /api/auth/devices/d1
+      .mockResolvedValueOnce(ok({ success: true, code: 200 })) // POST /api/auth/logout
+
+    renderPage()
+    await screen.findByText('当前设备')
+
+    await userEvent.click(screen.getByText('退出登录'))
+    await userEvent.click(await screen.findByRole('button', { name: '确认' }))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]) === '/api/auth/logout')).toBe(true),
+    )
+    // 正对照：真的是 POST（logout 的 fetch 用的是 POST），不是随便什么请求
+    // 命中了这个 URL 字符串。
+    const logoutCall = fetchMock.mock.calls.find((call) => String(call[0]) === '/api/auth/logout')
+    expect((logoutCall?.[1] as RequestInit | undefined)?.method).toBe('POST')
   })
 })

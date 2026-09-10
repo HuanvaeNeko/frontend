@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from '@/lib/navigation'
 import { AppLink as Link } from '@/components/common/AppLink'
-import { ArrowRight, Check, Eye, EyeOff, Globe, Loader2, Lock, Mail, Smile, Sparkles, User, X } from 'lucide-react'
+import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Mail, Smile, Sparkles, User, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -19,23 +19,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { playButton, playTap, playSuccess, playError, warmupSound } from '@/hooks/useSound'
 import { DEFAULT_AUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 import { useI18n } from '@/i18n/I18nProvider'
-import { getApiBaseUrl, normalizeApiBaseUrl, setApiBaseUrl } from '@/lib/apiConfig'
-
-function parseServer(baseUrl: string): { protocol: 'https://' | 'http://'; host: string } {
-  try {
-    const normalized = normalizeApiBaseUrl(baseUrl)
-    const parsed = new URL(normalized)
-    return {
-      protocol: parsed.protocol === 'http:' ? 'http://' : 'https://',
-      host: parsed.host,
-    }
-  } catch {
-    return {
-      protocol: 'https://',
-      host: 'api.huanvae.cn',
-    }
-  }
-}
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
   const { t } = useI18n()
@@ -75,13 +58,9 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [mounted, setMounted] = useState(false)
-  
-  const initialServer = parseServer(getApiBaseUrl())
-  const [serverProtocol, setServerProtocol] = useState<'https://' | 'http://'>(initialServer.protocol)
 
   // Form Schema
   const registerSchema = z.object({
-    serverHost: z.string().min(1, t('common.required')),
     user_id: z.string().min(3, t('auth.register.userIdPlaceholder')),
     nickname: z.string().min(1, t('auth.register.nicknamePlaceholder')),
     email: z.string().email(t('auth.register.emailPlaceholder')),
@@ -103,7 +82,6 @@ export default function Register() {
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      serverHost: initialServer.host,
       user_id: '',
       nickname: '',
       email: '',
@@ -124,7 +102,6 @@ export default function Register() {
     playButton()
 
     try {
-      setApiBaseUrl(`${serverProtocol}${values.serverHost.trim()}`)
       await register({
         user_id: values.user_id,
         nickname: values.nickname,
@@ -158,33 +135,6 @@ export default function Register() {
 
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="serverHost"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>服务器</FormLabel>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-24 shrink-0 justify-center text-xs"
-                            onClick={() => setServerProtocol((prev) => (prev === 'https://' ? 'http://' : 'https://'))}
-                          >
-                            {serverProtocol}
-                          </Button>
-                          <div className="relative flex-1">
-                            <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <FormControl>
-                              <Input {...field} className="pl-9" placeholder="api.huanvae.cn" />
-                            </FormControl>
-                          </div>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
                   <FormField
                     control={form.control}
                     name="user_id"

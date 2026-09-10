@@ -24,7 +24,7 @@ interface Device {
 export default function Devices() {
   const router = useRouter()
   const { toast } = useToast()
-  const { clearAuth } = useAuthStore()
+  const { logout } = useAuthStore()
 
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,7 +80,10 @@ export default function Devices() {
       await authApi.revokeDevice(deviceId)
       if (isCurrent) {
         toast({ title: '已退出登录', description: '当前设备已被移除，请重新登录' })
-        clearAuth()
+        // 撤销当前设备 = 登出。必须走 authStore.logout()（它打 BFF 的
+        // /api/auth/logout，由 BFF 删会话、清 cookie、关该会话的 WS），
+        // 而不是只清本地 state —— 只清本地的话 cookie 还在，刷新页面就又登回去了。
+        await logout()
         router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
       } else {
         toast({ title: '成功', description: '设备已移除' })
