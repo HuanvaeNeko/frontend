@@ -50,14 +50,9 @@ const renderPage = () =>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    // 远期过期时间：否则 fetchWithAuth 会先打一次 /refresh，
-    // 把 mockResolvedValueOnce 的顺序错开。
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token/校验过期——同源 cookie 自动带上，
+  // 这里只需要把 isAuthenticated 摆成"已登录"。
+  useAuthStore.setState({ isAuthenticated: true })
   setApiShapeErrorReporter(() => {})
   toastMock.mockClear()
   fetchMock = vi.fn()

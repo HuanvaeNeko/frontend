@@ -25,7 +25,7 @@ export default function ChatPage() {
   const _router = useRouter()
   const pathname = usePathname()
   
-  const { user, accessToken } = useAuthStore()
+  const { user, isAuthenticated } = useAuthStore()
   const { activeTab, setActiveTab, selectedConversation, setSelectedConversation } = useChatStore()
   const { connect: connectWS } = useWSStore()
   const { loadProfile } = useProfileStore()
@@ -44,7 +44,7 @@ export default function ChatPage() {
 
   // Initialization logic
   useEffect(() => {
-    if (user && accessToken) {
+    if (user && isAuthenticated) {
       if (!useChatStore.getState().wsConnected) {
         connectWS()
       }
@@ -54,7 +54,7 @@ export default function ChatPage() {
       loadSentRequests().catch(console.error)
       loadMyGroups().catch(console.error)
     }
-  }, [user, accessToken, connectWS, loadProfile, loadFriends, loadPendingRequests, loadSentRequests, loadMyGroups])
+  }, [user, isAuthenticated, connectWS, loadProfile, loadFriends, loadPendingRequests, loadSentRequests, loadMyGroups])
 
   // Route-based tab switching
   useEffect(() => {

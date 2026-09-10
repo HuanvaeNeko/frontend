@@ -84,12 +84,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   toastMock.mockClear()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: null,
-    isAuthenticated: true,
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true })
   useProfileStore.setState({ profile: null, isLoading: false, error: null })
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)

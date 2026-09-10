@@ -22,22 +22,22 @@ import type { Message } from '../api/messages'
  * - 应用启动时自动同步增量消息
  */
 export function useRealtimeMessages() {
-  const { accessToken } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
   const { connect, disconnect, connected, registerHandler, sendMarkRead } = useWSStore()
   const chatStore = useChatStore()
   const { loadPendingRequests, loadFriends } = useFriendsStore()
   const { loadMyGroups } = useGroupStore()
-  
+
   // 标记是否已执行过初始同步
   const hasSyncedRef = useRef(false)
 
   // 自动连接
   useEffect(() => {
-    if (accessToken) {
+    if (isAuthenticated) {
       connect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken])
+  }, [isAuthenticated])
   
   // 连接成功后自动同步消息
   useEffect(() => {

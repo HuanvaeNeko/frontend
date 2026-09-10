@@ -1,30 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
-import { getApiBaseUrl, getAuthApiUrl } from '@/lib/apiConfig'
+import { getApiBaseUrl } from '@/lib/apiConfig'
 import { migrateAuthPersist, useAuthStore } from '../authStore'
 
 /**
- * 这批用例针对的是一种**静默**故障：信封化之后 `data.access_token` 恒为
- * undefined，但 `isAuthenticated: true` 是硬编码的、控制台照样打印"登录成功"、
- * `tokenExpiry` 变成 NaN 而 NaN 是 falsy 所以 `checkTokenExpiry()` 永不触发自愈。
- * 也就是说「坏」和「好」从外部看长得一模一样。
+ * ⚠️ 本文件在 BFF 会话层落地时删掉了六组用例：
+ * 1. `authStore.login —— 信封解包`（登录响应里 token 三件套的解析：access_token /
+ *    refresh_token / expires_in 的形状校验、legacyBare 豁免、user_nickname 归一）
+ * 2. `authStore.refreshAccessToken —— 与 login 逐字同构的第二处静默故障`
+ * 3. `authStore.refreshAccessToken —— 并发刷新竞态`
+ * 4. `refreshAccessToken —— 会话结束之后才落地的刷新结果`
+ * 5. `refreshAccessToken —— 传输层失败 vs 真的 401`
+ * 6. `setTokens —— 会话进行中才成立的前置条件`
  *
- * 因此每一条断言都必须落在**具体的值**上。"没抛错""能编译""控制台没红"
- * 恰恰是这个 bug 当年的表现，不能当成证明。
+ * 不是「不再测这些行为」——那些规则**整体搬到了服务端**：
+ * - 登录 / 刷新的分档与单飞：`server/session/__tests__/refresh.test.ts`
+ * - 会话边界：BFF 只认 cookie，客户端手里已经没有 token 可以在边界上写错
+ *
+ * 第 1 组里唯二还有效的断言——avatar_url 是相对路径时补成绝对地址、已经是绝对
+ * 地址时原样保留——没有被丢弃，搬进了下面新的
+ * `authStore.login —— 打 BFF，store 里不留 token`，只是响应形状从
+ * `data: {access_token, ...}` 换成了 `data: {user: {...}}`。
+ *
+ * 客户端这一侧现在只需要证明三件事：登录后 store 里没有 token、启动靠
+ * GET /api/session、502 不等于登出。
  */
-
-// getAuthApiUrl() 而不是字面量：Vitest 会加载 .env，宿主由本机反代决定，
-// 断言必须跟着同一个基址走，不能钉死某个域名（否则一换 .env 就假红）。
-const AUTH_BASE = getAuthApiUrl()
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
-const ENVELOPE = {
-  success: true,
-  code: 200,
-  data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600 },
-}
 
 let fetchMock: ReturnType<typeof vi.fn>
 
@@ -46,118 +49,40 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('authStore.login —— 信封解包', () => {
-  it('把 data 里的 token 真正存进 store（信封根部读不到，这条就是那个 bug）', async () => {
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+describe('authStore.login —— 打 BFF，store 里不留 token', () => {
+  it('登录成功后 store 里只有 user 与 isAuthenticated，没有任何 token 字段', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'alice', nickname: '爱丽丝' } } }))
 
-    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
 
-    const state = useAuthStore.getState()
-    expect(state.accessToken).toBe('AT')
-    expect(state.refreshToken).toBe('RT')
+    const state = useAuthStore.getState() as unknown as Record<string, unknown>
     expect(state.isAuthenticated).toBe(true)
-    expect(fetchMock).toHaveBeenCalledWith(`${AUTH_BASE}/login`, expect.anything())
+    expect((state.user as { nickname?: string }).nickname).toBe('爱丽丝')
+    // 这是本设计的核心断言：token 字段在 store 上根本不存在
+    expect('accessToken' in state).toBe(false)
+    expect('refreshToken' in state).toBe(false)
+    expect('tokenExpiry' in state).toBe(false)
   })
 
-  it('tokenExpiry 是有限数字，不是 NaN', async () => {
-    // 直接拦截"永不自愈"那一环：`Date.now() + undefined * 1000` = NaN，
-    // 而 checkTokenExpiry 的 `if (!tokenExpiry) return false` 把 NaN 当成"没设过期时间"，
-    // 于是主动续期永远不会触发。只断言 accessToken 是抓不到这一条的。
-    const before = Date.now()
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+  it('登录打的是同源 /api/auth/login，且带 credentials', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'alice' } } }))
 
-    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
+    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
 
-    const { tokenExpiry } = useAuthStore.getState()
-    expect(Number.isFinite(tokenExpiry)).toBe(true)
-    expect(tokenExpiry).toBeGreaterThanOrEqual(before + 3600_000 - 2000)
-    expect(tokenExpiry).toBeLessThanOrEqual(Date.now() + 3600_000)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/login')
+    expect((fetchMock.mock.calls[0][1] as RequestInit).credentials).toBe('same-origin')
   })
 
-  it('data 为空对象时拒绝登录，绝不留下"已登录但没有 token"的半登录态', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
+  it('登录失败透出后端文案，且不进登录态', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 401, error: '用户名或密码错误' }, 401))
 
-    await expect(useAuthStore.getState().login({ user_id: 'u1', password: 'p' })).rejects.toThrow(
-      /access_token/,
-    )
-
-    const state = useAuthStore.getState()
-    expect(state.isAuthenticated).toBe(false)
-    expect(state.accessToken).toBeNull()
-  })
-
-  it('login 不回 refresh_token 时仍然拒绝（refresh 那边可缺席，login 没有旧值可沿用）', async () => {
-    // 钉住两个解析器的分野：同一份"只有 access_token + expires_in"的 data，
-    // refresh 放行、login 必须拒——否则会留下"已登录但永远刷新不了"的半登录态。
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: true, code: 200, data: { access_token: 'AT', token_type: 'Bearer', expires_in: 900 } }),
-    )
-
-    await expect(useAuthStore.getState().login({ user_id: 'u1', password: 'p' })).rejects.toThrow(
-      /refresh_token/,
-    )
+    await expect(useAuthStore.getState().login({ user_id: 'alice', password: 'bad' })).rejects.toThrow(/用户名或密码错误/)
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
-  })
-
-  it('expires_in 为 null 时抛错，而不是把 NaN 写进 tokenExpiry', async () => {
-    // 解包层的 require 判定是 `payload[key] === undefined`，null 算"存在"——
-    // 所以这里用的是 parse 而不是 require。这条用例就是那个选择的护栏。
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: true, code: 200, data: { access_token: 'AT', refresh_token: 'RT', expires_in: null } }),
-    )
-
-    await expect(useAuthStore.getState().login({ user_id: 'u1', password: 'p' })).rejects.toThrow(
-      /expires_in/,
-    )
-    expect(useAuthStore.getState().tokenExpiry).toBeNull()
-  })
-
-  it('后端仍返回裸响应时靠 legacyBare 兜住，并且必须吵一声', async () => {
-    // 两份后端文档对 login/refresh 的口径冲突（auth 文档:37 是信封，
-    // README:217 是裸读），legacyBare 就是为这个不确定性准备的。
-    // 它和 `?? body` 的关键差别在于：命中裸响应会 console.warn，欠账可被 grep 出来。
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    fetchMock.mockResolvedValueOnce(ok({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }))
-
-    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
-
-    expect(useAuthStore.getState().accessToken).toBe('AT')
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('legacyBare'))
-  })
-
-  it('登录失败时把后端的真实文案透出来，而不是一句通用提示', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 401, message: '用户名或密码错误' }, 401))
-
-    await expect(useAuthStore.getState().login({ user_id: 'u1', password: 'bad' })).rejects.toThrow(
-      '用户名或密码错误',
-    )
-    expect(useAuthStore.getState().isAuthenticated).toBe(false)
-  })
-
-  it('user_nickname（profile 命名）能正确归一成 nickname', async () => {
-    // 后端 profile 模块的字段一律带 user_ 前缀（user_nickname/user_email/...），
-    // 而登录响应历史上读的是无前缀名；这条断言的是 optionalString 对
-    // user_nickname 这个新映射真的生效，不是只测到了旧的无前缀名分支。
-    fetchMock.mockResolvedValueOnce(
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_nickname: '小明' },
-      }),
-    )
-
-    await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
-
-    expect(useAuthStore.getState().user?.nickname).toBe('小明')
   })
 
   it('avatar_url 是相对路径时补成绝对地址', async () => {
     fetchMock.mockResolvedValueOnce(
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_avatar_url: 'avatars/x.jpg' },
-      }),
+      ok({ success: true, code: 200, data: { user: { user_id: 'u1', avatar_url: 'avatars/x.jpg' } } }),
     )
 
     await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
@@ -170,11 +95,7 @@ describe('authStore.login —— 信封解包', () => {
     // （指向 MinIO 的完整 URL，不是 api.huanvae.cn 下的路径）。
     const absolute = 'http://localhost:9000/avatars/testuser001.jpg'
     fetchMock.mockResolvedValueOnce(
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user_avatar_url: absolute },
-      }),
+      ok({ success: true, code: 200, data: { user: { user_id: 'u1', avatar_url: absolute } } }),
     )
 
     await useAuthStore.getState().login({ user_id: 'u1', password: 'p' })
@@ -183,318 +104,67 @@ describe('authStore.login —— 信封解包', () => {
   })
 })
 
-describe('authStore.refreshAccessToken —— 与 login 逐字同构的第二处静默故障', () => {
-  it('把 data 里的新 token 存进 store', async () => {
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: true, code: 200, data: { access_token: 'AT2', refresh_token: 'RT2', expires_in: 7200 } }),
-    )
+describe('authStore.restoreSession —— 启动时的唯一真值', () => {
+  it('200：写入 user 并进登录态', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'bob', nickname: '鲍勃' } } }))
 
-    await useAuthStore.getState().refreshAccessToken()
+    await useAuthStore.getState().restoreSession()
 
-    const state = useAuthStore.getState()
-    expect(state.accessToken).toBe('AT2')
-    expect(state.refreshToken).toBe('RT2')
-    expect(Number.isFinite(state.tokenExpiry)).toBe(true)
-    expect(state.tokenExpiry).toBeGreaterThan(Date.now() + 7000_000)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().user?.nickname).toBe('鲍勃')
   })
 
-  it('响应形状不对时清空登录态并抛错，而不是静默写入 undefined', async () => {
-    // 旧行为：resolve、accessToken=undefined、refreshToken=undefined 落盘持久化，
-    // 此后 401 重试分支（`&& authStore.refreshToken`）永远进不去，故障不可逆。
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    // 这个 fixture 同时缺 refresh_token 与 expires_in。refresh_token 缺席自 2026-09-09
-    // 起是合法形状（见下一条），所以现在真正拦住它的是 expires_in。
-    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { access_token: 'AT2' } }))
+  it('401：清空登录态（这才是「未登录」）', async () => {
+    useAuthStore.setState({ user: { user_id: 'old' }, isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 401, error: '会话已失效，请重新登录' }, 401))
 
-    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow(/expires_in/)
+    await useAuthStore.getState().restoreSession()
 
-    const state = useAuthStore.getState()
-    expect(state.accessToken).toBeNull()
-    expect(state.refreshToken).toBeNull()
-    expect(state.isAuthenticated).toBe(false)
-  })
-
-  it('线上实测形状：/refresh 不回 refresh_token 时沿用旧的，不再当成形状错误', async () => {
-    // 2026-09-09 huanvae.cn 控制台原样：{access_token, token_type: 'Bearer', expires_in: 900}。
-    // 此前这条形状每次都抛 ApiShapeError → clearCredentials → 15 分钟内被登出。
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: true, code: 200, data: { access_token: 'AT2', token_type: 'Bearer', expires_in: 900 } }),
-    )
-
-    await useAuthStore.getState().refreshAccessToken()
-
-    const state = useAuthStore.getState()
-    expect(state.accessToken).toBe('AT2')
-    // 正对照是本 describe 第一条：回了 RT2 就写 RT2。这里没回，必须还是 RT0——
-    // 写成 undefined/null 会让 401 重试分支（`&& authStore.refreshToken`）永远进不去。
-    expect(state.refreshToken).toBe('RT0')
-    expect(state.isAuthenticated).toBe(true)
-    expect(Number.isFinite(state.tokenExpiry)).toBe(true)
-  })
-
-  it('refresh_token 给了但是空串：仍是形状错误，照旧清票据并抛错', async () => {
-    // "缺席可放行"不等于"什么都放行"：给了一个非法值就是后端形状坏了
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: true, code: 200, data: { access_token: 'AT2', refresh_token: '', expires_in: 900 } }),
-    )
-
-    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow(/refresh_token/)
-    expect(useAuthStore.getState().accessToken).toBeNull()
-  })
-})
-
-/**
- * 刷新竞态（2026-09-07 线上实锤）：页面加载时 5 个请求来自 4 份不同的 `fetchWithAuth`
- * 副本，各自发现 token 临期，于是 5 个 `POST /api/auth/refresh` 带着同一个 refresh token
- * 同时出去；后端每次刷新都轮换一对新 token，5 个响应以任意顺序落进 store，最后写入的那对
- * 已被后来的轮换作废 → 全部 401 → 拿作废的 refresh token 再刷又 401 → clearAuth 跳登录。
- *
- * 合并后那一份 `fetchWithAuth`（`api/authedFetch.ts`）+ wsStore 都直接调
- * `refreshAccessToken`，所以锁必须在这个漏斗里。
- */
-describe('authStore.refreshAccessToken —— 并发刷新竞态', () => {
-  const rotated = (n: number) =>
-    ok({
-      success: true,
-      code: 200,
-      data: { access_token: `AT${n}`, refresh_token: `RT${n}`, expires_in: 900 },
-    })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('并发调用只发一次 /refresh，所有调用者共享同一对新 token', async () => {
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    // 请求悬着，保证 5 个调用在第一个完成前全部进入；每次调用给一个新 Response，
-    // 这样没有单飞锁时 5 个调用都能各自成功，失败点落在"发了 5 次"这条断言上，而不是 body 被重复读。
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    fetchMock.mockImplementation(() => gate.then(() => rotated(1)))
-
-    const calls = Array.from({ length: 5 }, () => useAuthStore.getState().refreshAccessToken())
-    release()
-    await Promise.all(calls)
-
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(useAuthStore.getState().accessToken).toBe('AT1')
-    expect(useAuthStore.getState().refreshToken).toBe('RT1')
-  })
-
-  it('成功轮换后 10 秒内再次调用不发请求，直接沿用 store 里的新 token', async () => {
-    // 级联场景：用旧 token 发出的请求在轮换完成后收到 401，会再次触发刷新；
-    // 若真的再刷，会把刚拿到的那对 token 又作废，T1 作废 T2、T2 作废 T3 地滚下去。
-    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockImplementationOnce(async () => rotated(1))
-
-    await useAuthStore.getState().refreshAccessToken()
-    vi.setSystemTime(new Date('2026-09-07T10:00:05Z'))
-    await useAuthStore.getState().refreshAccessToken()
-
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(useAuthStore.getState().accessToken).toBe('AT1')
-  })
-
-  it('10 秒窗口过后再次调用会重新刷新', async () => {
-    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockImplementationOnce(async () => rotated(1)).mockImplementationOnce(async () => rotated(2))
-
-    await useAuthStore.getState().refreshAccessToken()
-    vi.setSystemTime(new Date('2026-09-07T10:00:11Z'))
-    await useAuthStore.getState().refreshAccessToken()
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(useAuthStore.getState().accessToken).toBe('AT2')
-    expect(useAuthStore.getState().refreshToken).toBe('RT2')
-  })
-
-  it('轮换回来的 token 本身就临期时，10 秒窗口内的再次调用仍会真的刷新', async () => {
-    // 上面三条都用 expires_in: 900，新 token 离 checkTokenExpiry 的 5 分钟阈值很远，
-    // 于是「刚轮换过就跳过」的第三个合取项 `!checkTokenExpiry()` 从没被求值过——
-    // 删掉它，那三条依然全绿。这条把它钉住：后端若签发短于 5 分钟的 token，
-    // 刚拿到手就已经在该续期的区间里，此时跳过会让调用者既拿不到可用 token
-    // 又进不去刷新，10 秒内每个请求都带着临期 token 去换 401。
-    // 「刚轮换过」是用来压级联的，不是用来把自己锁在门外的。
-    vi.useFakeTimers({ now: new Date('2026-09-07T10:00:00Z') })
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    const shortLived = (n: number) =>
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: `AT${n}`, refresh_token: `RT${n}`, expires_in: 60 },
-      })
-    fetchMock
-      .mockImplementationOnce(async () => shortLived(1))
-      .mockImplementationOnce(async () => shortLived(2))
-
-    await useAuthStore.getState().refreshAccessToken()
-    vi.setSystemTime(new Date('2026-09-07T10:00:05Z'))
-    await useAuthStore.getState().refreshAccessToken()
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(useAuthStore.getState().accessToken).toBe('AT2')
-  })
-
-  it('并发刷新失败时只发一次请求、所有调用者收到同一错误、登录态只清一次，之后仍能发起新的刷新', async () => {
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    const clearAuth = vi.fn(useAuthStore.getState().clearAuth)
-    useAuthStore.setState({ clearAuth })
-    fetchMock.mockImplementation(async () =>
-      ok({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
-    )
-
-    const results = await Promise.allSettled([
-      useAuthStore.getState().refreshAccessToken(),
-      useAuthStore.getState().refreshAccessToken(),
-      useAuthStore.getState().refreshAccessToken(),
-    ])
-
-    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected', 'rejected'])
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(clearAuth).toHaveBeenCalledTimes(1)
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(useAuthStore.getState().user).toBe(null)
+  })
 
-    // in-flight 槽位已释放：重新登录后再刷新会发起新的请求
-    useAuthStore.setState({ refreshToken: 'RT0', accessToken: 'AT0', isAuthenticated: true })
-    fetchMock.mockImplementation(async () => rotated(1))
-    await useAuthStore.getState().refreshAccessToken()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(useAuthStore.getState().accessToken).toBe('AT1')
+  it('502：保持上一次状态、记错误，**不**清空登录态（后端挂了 ≠ 用户退出了）', async () => {
+    useAuthStore.setState({ user: { user_id: 'old', nickname: '老状态' }, isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 502, error: '后端暂时不可用，请稍后重试' }, 502))
+
+    await useAuthStore.getState().restoreSession()
+
+    // 正对照在上一条：401 时确实会清空。所以这里的「没清空」有意义
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().user?.nickname).toBe('老状态')
+    expect(useAuthStore.getState().error).toContain('后端暂时不可用')
+  })
+
+  it('网络失败：同 502，保持状态不登出', async () => {
+    useAuthStore.setState({ user: { user_id: 'old' }, isAuthenticated: true })
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    await useAuthStore.getState().restoreSession()
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
   })
 })
 
-/**
- * 登出那一刻还在飞的刷新请求。
- *
- * `refreshInFlight` 是模块级单飞锁，`clearAuth` 既不取消它也不作废它，
- * 于是 `performRefresh` 的成功分支会在**清盘之后**执行 `set({accessToken,...})`，
- * persist 立刻把一对**刚轮换出来、当前有效**的 token 重新写进 `auth-storage`，
- * 明文躺在那里等下一个用这台电脑的人——直到有人登录把它覆盖掉。
- */
-describe('refreshAccessToken —— 会话结束之后才落地的刷新结果', () => {
-  it('登出后落地的新 token 既不进内存也不落盘', async () => {
-    // 真的登录一次，而不是 setState：登录会走 beginSession()，此后落盘是真的会发生的，
-    // 下面那条 toBeNull 才不是"反正也没写进去过"。
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
-    // 正对照：这一刻 auth-storage 里确实有 A 的 token。
-    expect(localStorage.getItem('auth-storage')).toContain('AT')
+describe('authStore.logout', () => {
+  it('打 BFF 的 logout 并清空本地登录态', async () => {
+    useAuthStore.setState({ user: { user_id: 'alice' }, isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200 }))
 
-    // 刷新飞在半空
-    let release!: (response: Response) => void
-    fetchMock.mockImplementationOnce(
-      () =>
-        new Promise<Response>((resolve) => {
-          release = resolve
-        }),
-    )
-    const inFlight = useAuthStore.getState().refreshAccessToken()
+    await useAuthStore.getState().logout()
 
-    useAuthStore.getState().clearAuth()
-    expect(localStorage.getItem('auth-storage')).toBeNull()
-
-    // 后端**成功**轮换出一对新 token，响应现在才到
-    release(
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT-NEW', refresh_token: 'RT-NEW', expires_in: 3600 },
-      }),
-    )
-    await expect(inFlight).rejects.toThrow(/session end/)
-
-    expect(localStorage.getItem('auth-storage')).toBeNull()
-    expect(useAuthStore.getState().accessToken).toBeNull()
-    expect(useAuthStore.getState().refreshToken).toBeNull()
-  })
-
-  it('正对照：会话没结束时，同样的时序会正常写进内存与盘', async () => {
-    // 没有这一条，上面那条可以被"刷新永远不写 store"这种实现骗过去。
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
-
-    let release!: (response: Response) => void
-    fetchMock.mockImplementationOnce(
-      () =>
-        new Promise<Response>((resolve) => {
-          release = resolve
-        }),
-    )
-    const inFlight = useAuthStore.getState().refreshAccessToken()
-
-    release(
-      ok({
-        success: true,
-        code: 200,
-        data: { access_token: 'AT-NEW', refresh_token: 'RT-NEW', expires_in: 3600 },
-      }),
-    )
-    await inFlight
-
-    expect(useAuthStore.getState().accessToken).toBe('AT-NEW')
-    expect(localStorage.getItem('auth-storage')).toContain('AT-NEW')
-  })
-})
-
-/**
- * 「刷新失败」此前一律走 `clearAuth()`，而 `clearAuth` 现在会跑反向名单清盘：
- * 一次网络抖动就会销毁 `api-config-storage` 里用户自备的第三方 `aiApiKey`。
- * 这里只钉 authStore 这一侧的分档（票据清了、`user` 留下 / 全清）；
- * "密钥真的还在"那一半在 `sessionHandoff.test.tsx` 里，因为要连上其它 store。
- */
-describe('refreshAccessToken —— 传输层失败 vs 真的 401', () => {
-  it('传输层失败（断网）：清票据，但会话没结束，user 留在原处', async () => {
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
-    expect(useAuthStore.getState().user?.user_id).toBe('alice')
-
-    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
-
-    expect(useAuthStore.getState().accessToken).toBeNull()
-    expect(useAuthStore.getState().refreshToken).toBeNull()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/logout')
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
-    // 差分就在这一行：会话没结束，所以 `user` 还在，落盘的 auth-storage 也还在。
-    expect(useAuthStore.getState().user?.user_id).toBe('alice')
-    expect(localStorage.getItem('auth-storage')).toContain('alice')
+    expect(useAuthStore.getState().user).toBe(null)
   })
 
-  it('刷新端点回 401：会话结束，user 与整个 auth-storage 一起消失', async () => {
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
+  it('BFF 不可达也照样清空本地态（点了登出就该登出）', async () => {
+    useAuthStore.setState({ user: { user_id: 'alice' }, isAuthenticated: true })
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
 
-    fetchMock.mockResolvedValueOnce(
-      ok({ success: false, code: 401, error: 'Token 无效或已过期' }, 401),
-    )
-    await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
+    await useAuthStore.getState().logout()
 
-    expect(useAuthStore.getState().user).toBeNull()
-    expect(localStorage.getItem('auth-storage')).toBeNull()
-  })
-
-  it('5xx 与响应形状坏都按传输层失败处理，不当成会话结束', async () => {
-    // 502 走的是 readEnvelope 的非 401 分支；形状坏走的是 parse 抛错。
-    // 两条都曾经落进同一个无差别 clearAuth。
-    for (const bad of [
-      ok({ success: false, code: 502, error: 'bad gateway' }, 502),
-      ok({ success: true, code: 200, data: { access_token: 'AT2' } }),
-    ]) {
-      fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-      await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
-
-      fetchMock.mockResolvedValueOnce(bad)
-      await expect(useAuthStore.getState().refreshAccessToken()).rejects.toThrow()
-
-      expect(useAuthStore.getState().accessToken).toBeNull()
-      expect(useAuthStore.getState().user?.user_id).toBe('alice')
-    }
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 })
 
@@ -505,13 +175,12 @@ describe('auth-storage 的 persist 迁移', () => {
     // main 上写的是 `avatar_url: data.avatar_url`，也就是后端原样给的相对路径
     // （backend-docs/profile/个人资料管理.md:98「头像相对路径（需拼接 STORAGE_BASE_URL）」）。
     const migrated = migrateAuthPersist({
-      accessToken: 'AT',
       user: { user_id: 'u1', nickname: 'n', avatar_url: 'avatars/u1.png?t=1' },
-    }) as { accessToken: string; user: { user_id: string; nickname: string; avatar_url?: string } }
+    }) as { user: { user_id: string; nickname: string; avatar_url?: string } }
 
     expect(migrated.user.avatar_url).toBe(absolute('avatars/u1.png?t=1'))
-    // 其余字段逐字保留——迁移不是重建 state。
-    expect(migrated.accessToken).toBe('AT')
+    // 其余字段逐字保留——迁移不是重建 state。token 字段的剔除由专门的用例钉住
+    // （见下面「迁移把落盘的 token 字段删掉」），这条只管 avatar_url。
     expect(migrated.user.user_id).toBe('u1')
     expect(migrated.user.nickname).toBe('n')
   })
@@ -535,25 +204,64 @@ describe('auth-storage 的 persist 迁移', () => {
     expect(migrated.user.avatar_url).toBeUndefined()
   })
 
-  it('形状不认识时原样返回，不编造 state', () => {
-    // 迁移函数不是校验层：落盘数据坏了应该看得见，而不是被一个默认值盖住。
-    const noUser = { accessToken: 'AT' }
-    expect(migrateAuthPersist(noUser)).toBe(noUser)
+  /**
+   * ⚠️ `migrate` 的实参形状：zustand 5.0.15 的 `persistImpl`（`node_modules/zustand/
+   * middleware.js`，`options.migrate(deserializedStorageValue.state,
+   * deserializedStorageValue.version)`）传进来的是**裸的 `state`**，不是
+   * `{state, version}` 那层信封——信封在调 `migrate` 之前就已经被解开了。
+   *
+   * 这里直接传裸 state（不包一层 `{state, version}`），就是在钉住这个实参形状；
+   * 包一层看起来"更像"落盘格式，但会让 `migrateAuthPersist` 在真实 rehydrate
+   * 路径上读到 `undefined`、整个函数变成 no-op——已部署用户盘上那对真实可用的
+   * token 一个都不会被删掉，而这条测试本身却会照样通过（因为它按错的形状造了
+   * 输入）。下面「rehydrate 时真的被 persist 调用」那条用真实的
+   * `persist.rehydrate()` 路径复核了一遍同一件事，就是为了防住这一类"测试本身
+   * 用错误形状喂参数、于是永远测不出错"的陷阱。
+   */
+  it('迁移把落盘的 token 字段删掉（JWT 留在 localStorage 里正是要消灭的东西）', () => {
+    const migrated = migrateAuthPersist({
+      accessToken: 'AT',
+      refreshToken: 'RT',
+      tokenExpiry: 123,
+      isAuthenticated: true,
+      user: { user_id: 'alice', avatar_url: 'avatars/a.png' },
+    }) as Record<string, unknown>
 
-    const userIsNull = { user: null }
-    expect(migrateAuthPersist(userIsNull)).toBe(userIsNull)
-
-    // 没登录过头像的用户：`avatar_url` 压根不存在，不该被写成 undefined 键
-    const noAvatar = { user: { user_id: 'u1' } }
-    expect(migrateAuthPersist(noAvatar)).toBe(noAvatar)
-
-    expect(migrateAuthPersist(null)).toBeNull()
-    expect(migrateAuthPersist('不是对象')).toBe('不是对象')
+    expect('accessToken' in migrated).toBe(false)
+    expect('refreshToken' in migrated).toBe(false)
+    expect('tokenExpiry' in migrated).toBe(false)
+    // 正对照：user 保留（首帧渲染要用），且头像仍被补成绝对地址
+    expect((migrated.user as { user_id: string }).user_id).toBe('alice')
   })
 
-  it('rehydrate 时真的被 persist 调用（v0 落盘 → 内存里已是绝对地址）', async () => {
+  it('形状不认识时原样返回，不编造 state；但 token 字段的剔除是无条件的', () => {
+    // 迁移函数不是校验层：落盘数据坏了应该看得见，而不是被一个默认值盖住——
+    // 这三条走的是非对象输入，函数第一行就短路返回，连 identity 都不变。
+    expect(migrateAuthPersist(null)).toBeNull()
+    expect(migrateAuthPersist('不是对象')).toBe('不是对象')
+
+    // 对象输入：没有可识别的 `user` 时不编造一个，但**仍然**会剔除三个 token
+    // 字段——那一步不依赖 user 长什么样，见 `migrateAuthPersist` 的实现。
+    // 用 `toEqual` 而不是 `toBe`：剔除字段必然产生一个新对象，identity 本来
+    // 就不该相等。
+    const noUser = { accessToken: 'AT' }
+    expect(migrateAuthPersist(noUser)).toEqual({})
+
+    const userIsNull = { user: null }
+    expect(migrateAuthPersist(userIsNull)).toEqual({ user: null })
+
+    // 没登录过头像的用户：`avatar_url` 压根不存在，不该被写成一个显式的
+    // `undefined` 值再被人拿 `'avatar_url' in user` 之类的写法误读成"有这个键"
+    // ——`toEqual` 对 `{a: undefined}` 与 `{}` 视为相等，这条只钉字段值本身。
+    const noAvatar = { user: { user_id: 'u1' } }
+    expect(migrateAuthPersist(noAvatar)).toEqual({ user: { user_id: 'u1' } })
+  })
+
+  it('rehydrate 时真的被 persist 调用（v0 落盘 → 内存里已是绝对地址，且 token 字段消失）', async () => {
     // 上面几条只证明函数本身对；这一条证明它**接上了**——把 persist 配置里的
-    // `migrate:` 或 `version:` 拿掉，本条红。
+    // `migrate:` 或 `version:` 拿掉，本条红。同时它是防"`migrate` 实参形状
+    // 假设错误"这一类陷阱的最终测试：真的走 zustand 的 `persist.rehydrate()`，
+    // 不是直接调用 `migrateAuthPersist` 走一条我们自己搭的近似路径。
     localStorage.setItem(
       'auth-storage',
       JSON.stringify({
@@ -571,49 +279,23 @@ describe('auth-storage 的 persist 迁移', () => {
     await useAuthStore.persist.rehydrate()
 
     expect(useAuthStore.getState().user?.avatar_url).toBe(absolute('avatars/u1.png?t=9'))
+    // 已部署用户盘上那对真实可用的 token：rehydrate 之后必须从内存里消失。
+    const state = useAuthStore.getState() as unknown as Record<string, unknown>
+    expect('accessToken' in state).toBe(false)
+    expect('refreshToken' in state).toBe(false)
   })
 })
 
-/**
- * `setTokens` 今天零调用点，所以这几条钉的是**给下一个作者的陷阱**，不是现网行为。
- *
- * 它不调 `beginSession()`（理由见它自己的注释：清盘会毁掉同一个人的资料），
- * 于是死窗口里的落盘闸门也不会被重新打开：`set()` 写内存成功、写盘那一次被丢弃
- * **并把 `auth-storage` 从盘上抹掉**——内存说已登录、盘上说已登出，下一次整页加载
- * 把人登出，中间一处报错都没有。这正是本文件顶部说的那类故障（"坏"和"好"从外面
- * 看长得一样），所以按 `registerPristineStoreReset` 的先例用运行时抛错拦住。
- */
-describe('setTokens —— 会话进行中才成立的前置条件', () => {
-  it('会话结束之后调用直接抛错，而不是留下"内存已登录、盘上已登出"的半截状态', async () => {
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
+describe('auth-storage 的 partialize —— 只落盘 user', () => {
+  it('isAuthenticated 不落盘：盘上说已登录、cookie 已过期的半状态不能复活', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'alice' } } }))
+
     await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
 
-    useAuthStore.getState().clearAuth()
-    expect(localStorage.getItem('auth-storage')).toBeNull()
-
-    expect(() =>
-      useAuthStore
-        .getState()
-        .setTokens({ accessToken: 'AT-X', refreshToken: 'RT-X', expiresIn: 3600 }),
-    ).toThrow(/进行中的会话/)
-
-    // 抛错发生在 set() 之前：内存也没被写脏，两侧口径一致。
-    expect(useAuthStore.getState().accessToken).toBeNull()
-    expect(useAuthStore.getState().isAuthenticated).toBe(false)
-    expect(localStorage.getItem('auth-storage')).toBeNull()
-  })
-
-  it('正对照：会话进行中调用照常写内存并落盘', async () => {
-    // 没有这一条，把实现改成"永远抛错"也会绿。
-    fetchMock.mockResolvedValueOnce(ok(ENVELOPE))
-    await useAuthStore.getState().login({ user_id: 'alice', password: 'p' })
-
-    useAuthStore
-      .getState()
-      .setTokens({ accessToken: 'AT-X', refreshToken: 'RT-X', expiresIn: 3600 })
-
-    expect(useAuthStore.getState().accessToken).toBe('AT-X')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-    expect(localStorage.getItem('auth-storage')).toContain('AT-X')
+    const raw = JSON.parse(localStorage.getItem('auth-storage') as string) as {
+      state: Record<string, unknown>
+    }
+    expect('isAuthenticated' in raw.state).toBe(false)
+    expect((raw.state.user as { user_id: string }).user_id).toBe('alice')
   })
 })

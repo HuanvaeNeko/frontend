@@ -27,7 +27,7 @@ import { useFriendsStore } from '../friendsStore'
  */
 
 const replaceSpy = vi.fn()
-const loggedIn = () => useAuthStore.getState().accessToken !== null
+const loggedIn = () => useAuthStore.getState().isAuthenticated
 
 /** 会话失效：401。endpoint 逐字取自 `src/features/chat/api/friends.ts` 的抛出点。 */
 const sessionExpired = (endpoint: string) =>
@@ -96,13 +96,8 @@ const ACTIONS = [
 beforeEach(() => {
   localStorage.clear()
   replaceSpy.mockClear()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    user: { user_id: 'me' },
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'me' } })
   useFriendsStore.setState({ friends: [], pendingRequests: [], sentRequests: [], isLoading: false, error: null })
   vi.spyOn(window.location, 'replace').mockImplementation(replaceSpy)
   vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -255,11 +250,13 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
   /** A 登出 → B 登录。世代号跨过两个边界，闸门在 B 这一侧重新开着。 */
   const crossToBob = async () => {
     useAuthStore.getState().clearAuth()
+    // 会话制下 authStore.login 打同源 BFF，响应形状是 `{data: {user}}`——
+    // 没有 token 三件套。
     const loginResponse = new Response(
       JSON.stringify({
         success: true,
         code: 200,
-        data: { access_token: 'AT-bob', refresh_token: 'RT-bob', expires_in: 3600 },
+        data: { user: { user_id: 'bob' } },
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
@@ -310,7 +307,7 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
 
       // 正对照：换人这一刻 B 确实登进来了，而且 store 确实是干净的——
       // 没有这两句，下面的 toEqual(PRISTINE) 可能只是"从来没写进去过"。
-      expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+      expect(useAuthStore.getState().user?.user_id).toBe('bob')
       expect(snapshot()).toEqual(PRISTINE)
 
       pending.release(landed as never)
@@ -332,14 +329,14 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
 
       // 正对照：B 登进来了；`replaceSpy` 的接线在同一个 describe 的最后一条
       // 用例里被证明有效（同一个 beforeEach 里挂的同一个 spy）。
-      expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+      expect(useAuthStore.getState().user?.user_id).toBe('bob')
       replaceSpy.mockClear()
 
       pending.fail(sessionExpired('GET /api/friends'))
       await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
 
       // `handleApiError` 一步都没走到：B 没被清盘，也没被踢去登录页。
-      expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+      expect(useAuthStore.getState().user?.user_id).toBe('bob')
       expect(useAuthStore.getState().isAuthenticated).toBe(true)
       expect(replaceSpy).not.toHaveBeenCalled()
       expect(snapshot()).toEqual(PRISTINE)

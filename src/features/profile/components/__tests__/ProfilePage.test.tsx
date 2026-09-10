@@ -78,13 +78,8 @@ const renderPage = () =>
 beforeEach(() => {
   localStorage.clear()
   toastMock.mockClear()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    // refreshToken 置空：本文件不测刷新流程，留着会在 401 分支多打一次 /refresh。
-    refreshToken: null,
-    isAuthenticated: true,
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true })
   useProfileStore.setState({ profile: null, isLoading: false, error: null })
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)

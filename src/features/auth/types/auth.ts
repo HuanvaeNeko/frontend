@@ -14,17 +14,6 @@ export interface RegisterRequest {
   password: string
 }
 
-export interface AuthResponse {
-  access_token: string
-  refresh_token: string
-  token_type: string
-  expires_in: number
-}
-
-export interface RefreshTokenRequest {
-  refresh_token: string
-}
-
 /**
  * 当前登录用户。
  *
@@ -62,26 +51,33 @@ export interface Device {
   created_at: string
 }
 
+/**
+ * 会话制下的客户端 state：只剩「首帧渲染要用的 user」与「BFF 说不说了算的
+ * isAuthenticated」。**没有任何 token 字段**——凭证是 httpOnly cookie，浏览器
+ * 自动带上，JS 读不到、也不该读到。
+ */
 export interface AuthState {
-  accessToken: string | null
-  refreshToken: string | null
   user: User | null
   isAuthenticated: boolean
-  tokenExpiry: number | null
+  /** `restoreSession` 正在进行中——`ProtectedRoute` 用它决定要不要渲染 loading。 */
+  isRestoring: boolean
+  /**
+   * `restoreSession` 最近一次的可重试错误（502 / 网络失败）。不是"未登录"，
+   * 只是"这一次问不到 BFF"；`null` = 没有待处理的错误。
+   */
+  error: string | null
 }
 
 export interface AuthStore extends AuthState {
   login: (credentials: LoginRequest) => Promise<void>
   register: (data: RegisterRequest) => Promise<void>
   logout: () => Promise<void>
-  refreshAccessToken: () => Promise<void>
-  setTokens: (tokens: { accessToken: string; refreshToken: string; expiresIn: number }) => void
   /**
-   * 只清 token 三件套，**不**结束会话（不清盘、不跑内存重置、`user` 留下）。
-   * 用在传输层失败上——"这一次请求没成"不等于"这个账号在这台设备上的会话结束了"。
-   * 与 {@link AuthStore.clearAuth} 的分界见 `lib/sessionScope.ts` 顶部。
+   * 启动时问 BFF「我登录了吗」——这是**唯一真值**，落盘的 `user` 只用于首帧渲染，
+   * 永远不当授权依据。401 = 未登录（清登录态）；502 / 网络失败 ≠ 未登录，保持
+   * 上一次状态并记一个可重试的 {@link AuthState.error}。完整行为写在
+   * `authStore.ts` 里 `restoreSession` 自己的 JSDoc。
    */
-  clearCredentials: () => void
+  restoreSession: () => Promise<void>
   clearAuth: () => void
-  checkTokenExpiry: () => boolean
 }

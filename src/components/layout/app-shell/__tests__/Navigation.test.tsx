@@ -52,10 +52,7 @@ const emptySrcWarnings = () =>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: null,
     isAuthenticated: true,
-    tokenExpiry: Date.now() + 3600_000,
     user: { user_id: 'u1', nickname: '测试用户' },
   })
   useProfileStore.setState({ profile: null, isLoading: false, error: null })

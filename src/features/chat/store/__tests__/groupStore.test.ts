@@ -164,15 +164,13 @@ describe('groupStore 跨会话边界：上一场会话的响应落在下一场�
   }
 
   const loginAs = async (nickname: string) => {
+    // 会话制下 authStore.login 打同源 BFF，响应形状是 `{data: {user}}`——
+    // 没有 token 三件套。
     const response = new Response(
       JSON.stringify({
         success: true,
         code: 200,
-        data: {
-          access_token: `AT-${nickname}`,
-          refresh_token: `RT-${nickname}`,
-          expires_in: 3600,
-        },
+        data: { user: { user_id: nickname } },
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
@@ -237,7 +235,7 @@ describe('groupStore 跨会话边界：上一场会话的响应落在下一场�
     await crossToBob()
 
     // 正对照：B 确实登进来了，store 也确实是干净的。
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().user?.user_id).toBe('bob')
     expect(snapshot()).toEqual(PRISTINE)
 
     pending.release(landed as never)
@@ -253,7 +251,7 @@ describe('groupStore 跨会话边界：上一场会话的响应落在下一场�
 
     const inFlight = runOf(name)
     await crossToBob()
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().user?.user_id).toBe('bob')
 
     pending.fail(new Error('A 那边的失败'))
     await expect(inFlight).rejects.toThrow('A 那边的失败')

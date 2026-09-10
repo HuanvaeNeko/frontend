@@ -36,15 +36,10 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    // ⚠️ 必须是远期：fetchWithAuth 开头会 checkTokenExpiry()，
-    // token 在 5 分钟内到期就会先发一次 /refresh 请求，
-    // 把下面对 fetchMock 调用序号的断言整体错位。
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token/校验过期——同源 cookie 自动带上，
+  // 这里只需要把 isAuthenticated 摆成"已登录"，不影响下面对 fetchMock
+  // 调用序号的断言。
+  useAuthStore.setState({ isAuthenticated: true })
   setApiShapeErrorReporter(() => {})
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -93,8 +88,14 @@ describe('authApi.getDevices', () => {
 // ⚠️ 「登录 → 受保护请求 的端到端」曾经钉在这里：登录拿到的 token 会出现在
 // 后续请求的 Authorization 头里。Task 11 之后这条属性搬到了服务端，见
 // `src/app/routes/__tests__/apiProxy.test.ts`「注入 Bearer」。
+//
+// ⚠️ 这个 describe 曾经还叫 `authApi.revokeDevice / logout`，钉着 `authApi.logout`
+// 的两条用例（成功、`data: null` 不算异常）。BFF 会话层落地后 `authApi.logout`
+// 被整个删掉——登出唯一的入口收拢成了 `authStore.logout()`，它打同源
+// `/api/auth/logout` 并且不校验响应形状，覆盖见 `authStore.test.ts` 的
+// `describe('authStore.logout')`。
 
-describe('authApi.revokeDevice / logout', () => {
+describe('authApi.revokeDevice', () => {
   it('撤销成功时正常返回', async () => {
     fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: null }))
 
@@ -106,11 +107,5 @@ describe('authApi.revokeDevice / logout', () => {
     fetchMock.mockResolvedValueOnce(ok({ success: false, code: 403, error: '权限不足' }, 403))
 
     await expect(authApi.revokeDevice('d1')).rejects.toThrow('权限不足')
-  })
-
-  it('登出只校验成功与否，data 为 null 不算异常', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: null }))
-
-    await expect(authApi.logout()).resolves.toBeUndefined()
   })
 })

@@ -63,13 +63,8 @@ const resetStore = () => {
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    user: { user_id: 'user123' },
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'user123' } })
   resetStore()
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -254,15 +249,13 @@ describe('chatStore.syncMessages 跨会话边界', () => {
   }
 
   const loginAs = async (nickname: string) => {
+    // 会话制下 authStore.login 打同源 BFF，响应形状是 `{data: {user}}`——
+    // 没有 token 三件套。
     const response = new Response(
       JSON.stringify({
         success: true,
         code: 200,
-        data: {
-          access_token: `AT-${nickname}`,
-          refresh_token: `RT-${nickname}`,
-          expires_in: 3600,
-        },
+        data: { user: { user_id: nickname } },
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
@@ -314,7 +307,7 @@ describe('chatStore.syncMessages 跨会话边界', () => {
     useChatStore.setState({ conversations: [CAROL_CONV] })
 
     // 正对照：B 的这条会话此刻是干净的，B 也确实登进来了。
-    expect(useAuthStore.getState().accessToken).toBe('AT-bob')
+    expect(useAuthStore.getState().user?.user_id).toBe('bob')
     expect(bobCarol()).toEqual(CAROL_CONV)
 
     pending.release(aliceResult(id) as never)

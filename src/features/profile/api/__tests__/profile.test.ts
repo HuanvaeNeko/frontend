@@ -53,24 +53,11 @@ let warnMock: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    isAuthenticated: true,
-    // refreshToken **默认非空**，等同真实登录态。
-    //
-    // 这里原先默认置空，理由是"401 会先打一次 /api/auth/refresh 再重试，把
-    // mockResolvedValueOnce 的顺序整体错开"。代价是被置空的那七条用例里，**三条
-    // 打的正是 401**，而 401 刷新重试分支对它们结构上根本不存在——**打错当前密码时
-    // 真正执行的就是那条分支**，这正是上一版测试没看见那个 bug 的原因。
-    // 默认值不该复制出让 bug 隐身的形状。
-    //
-    // 于是反过来：默认给非空，只有少数几条「响应序列写死、多一次 refresh 就错位」
-    // 的用例在自己的 it 里就地置空，并各自写明为什么。这样新加的用例默认落在
-    // 有刷新分支的世界里，忘记设置也不会静默跳过防线。
-    refreshToken: 'RT',
-    // 远期过期时间：否则进门就会先触发一次预刷新。
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下没有 token 可读/可刷新了——fetchWithAuth 是同源裸 fetch，401 不
+  // 重试（Task 11）。这里原先有一大段关于 `refreshToken` 该不该默认非空的
+  // 权衡（避免"多打一次 /refresh 把响应序列错位"），随着刷新重试整个消失，
+  // 一并作废。
+  useAuthStore.setState({ isAuthenticated: true })
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   // 默认给个空实现：本文件好几条 401 用例（本 describe 之外）会撞上
@@ -116,10 +103,7 @@ describe('profileApi.updateProfile', () => {
 
   it('401 会话失效：抛 ApiError(401)，且**是**认证错误', async () => {
     // 本条只钉「401 响应 → 带状态码的 ApiError → 分类为认证错误」这一段。
-    // PUT /api/profile 不在业务 401 白名单里，非空 refreshToken 会让它先去打一次
-    // refresh 再重发，mockResolvedValueOnce 的单条排期会整体错位；刷新流程本身由
-    // describe「profileApi 的 401 刷新重试分支（refreshToken 非空）」的两条用例覆盖。
-    useAuthStore.setState({ refreshToken: null })
+    // 会话制下 fetchWithAuth 不重试（Task 11），一条响应就够。
     fetchMock.mockResolvedValueOnce(json({ error: '未认证或 Token 无效' }, 401))
 
     const error = await profileApi.updateProfile({ email: 'a@example.com' }).catch((e: unknown) => e)
@@ -133,10 +117,10 @@ describe('profileApi.changePassword', () => {
   it('旧密码错误的 401 抛 ApiError，端点字段可被白名单识别，不判成认证错误', async () => {
     // 文档 :329-333：旧密码错误（401）：{ "error": "Old password is incorrect" }
     //
-    // 本条走的是默认的 `refreshToken: 'RT'`：正因为白名单挡住了刷新重试，只排一条
-    // 响应就够。去掉 profile.ts 401 分支上的 `!isBusiness401Request(...)` 之后，
-    // 第二次 fetch 拿到 undefined、刷新抛错，本条会连带变红——这不是巧合，是这次
-    // 把默认值改成非空之后，普通用例也能感知那道防线的直接结果。
+    // 会话制下 fetchWithAuth 不重试，一条响应就够；这条守的是白名单本身——
+    // 去掉 profile.ts 401 分支上的 `!isBusiness401Request(...)` 之后，这个
+    // 端点会落进 authedFetch.ts 的普通 401 分支，`clearAuth()` + 跳登录页，
+    // 下面「不是认证错误」那句断言会红。
     fetchMock.mockResolvedValueOnce(json({ error: 'Old password is incorrect' }, 401))
 
     const error = await profileApi
@@ -247,12 +231,7 @@ describe('profileApi 的业务 401（改密）：不刷新、不重发、不清�
   let hrefSpy: Mock<(value: string) => void>
 
   beforeEach(() => {
-    useAuthStore.setState({
-      accessToken: 'AT',
-      refreshToken: 'RT',
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ isAuthenticated: true })
     hrefSpy = vi.fn()
     // 不 mock 的话 happy-dom 会真的把 location 换掉，后续用例读到的 href 就变了。
     vi.spyOn(window.location, 'href', 'set').mockImplementation(hrefSpy)
@@ -268,12 +247,11 @@ describe('profileApi 的业务 401（改密）：不刷新、不重发、不清�
       .catch((e: unknown) => e)
 
     // 去掉 authedFetch.ts 401 分支上的 `!isBusiness401Request(...)`（或从
-    // apiClient 的 BUSINESS_401_ENDPOINTS 删掉这个端点）→ 下面两行
-    // （refreshToken / accessToken）变红：`clearAuth()` 会把两者清空。请求
-    // 序列不受影响，仍是那一条——fetchWithAuth 从不重发，与业务 401 判定无关。
+    // apiClient 的 BUSINESS_401_ENDPOINTS 删掉这个端点）→ 下面这行变红：
+    // `clearAuth()` 会把 isAuthenticated 清成 false。请求序列不受影响，
+    // 仍是那一条——fetchWithAuth 从不重发，与业务 401 判定无关。
     expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([`${PROFILE_BASE}/password`])
-    expect(useAuthStore.getState().refreshToken).toBe('RT')
-    expect(useAuthStore.getState().accessToken).toBe('AT')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
 
     // 业务失败照常以**可见错误**的形态抛给 UI（两个组件都在 catch 里弹 destructive toast）
     expect(error).toBeInstanceOf(ApiError)
@@ -293,12 +271,11 @@ describe('profileApi 的业务 401（改密）：不刷新、不重发、不清�
       .changePassword({ old_password: 'wrong1', new_password: 'newpass456' })
       .catch((e: unknown) => e)
 
-    // 去掉 authedFetch.ts 401 分支上的 `!isBusiness401Request(...)` → 下面三行
-    // （isAuthenticated / accessToken / hrefSpy）一起变红：`clearAuth()` + 跳转
-    // 会无条件触发。请求序列不受影响，仍是那一条。
+    // 去掉 authedFetch.ts 401 分支上的 `!isBusiness401Request(...)` → 下面两行
+    // （isAuthenticated / hrefSpy）一起变红：`clearAuth()` + 跳转会无条件触发。
+    // 请求序列不受影响，仍是那一条。
     expect(fetchMock.mock.calls.map((call: unknown[]) => call[0])).toEqual([`${PROFILE_BASE}/password`])
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
-    expect(useAuthStore.getState().accessToken).toBe('AT')
     expect(hrefSpy).not.toHaveBeenCalled()
 
     // 抛给 UI 的仍然是那条业务错误，而不是刷新失败的错误（后者会被当成会话问题）。
@@ -376,9 +353,7 @@ describe('profileApi.getProfile', () => {
   })
 
   it('401 抛 ApiError(401) 并被判成认证错误', async () => {
-    // 同上一条 401 用例：GET /api/profile 不在白名单里，非空 refreshToken 会插进一次
-    // refresh + 重发，打乱这里写死的单条响应排期。刷新流程有自己的 describe 覆盖。
-    useAuthStore.setState({ refreshToken: null })
+    // 会话制下 fetchWithAuth 不重试，一条响应就够。
     fetchMock.mockResolvedValueOnce(json({ error: '未认证或 Token 无效' }, 401))
 
     const error = await profileApi.getProfile().catch((e: unknown) => e)
@@ -1447,9 +1422,7 @@ describe('profileApi.resetBackground（DELETE，文档正面写明的裸响应�
   })
 
   it('401 抛 ApiError(401) 并被判成认证错误', async () => {
-    // refreshToken 置空：401 会先打一次 /api/auth/refresh 再重试，
-    // 那会把 mockResolvedValueOnce 的序列整体错开。
-    useAuthStore.setState({ refreshToken: null })
+    // 会话制下 fetchWithAuth 不重试，一条响应就够。
     fetchMock.mockResolvedValueOnce(json({ error: '未认证或 Token 无效' }, 401))
 
     const error = await profileApi.resetBackground().catch((e: unknown) => e)

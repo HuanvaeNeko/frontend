@@ -308,6 +308,15 @@ export const useWSStore = create<WSState>((set, get) => {
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         set({ error: '无法连接到服务器，请刷新页面重试', reconnecting: false })
+
+        // 给上重连不等于「还登录着」：这是一个只读页面，可能从头到尾不发一次
+        // HTTP 请求，也就永远不会触发那个能让 `fetchWithAuth` 发现 401 并
+        // `clearAuth()` 的时机——死会话可以在 WS 这一层悄悄挂着，用户盯着一句
+        // "无法连接到服务器"却不知道其实是该重新登录了。这里借这个时机顺带
+        // 问一声 BFF「我还在登录吗」：`restoreSession` 的 401 分支会自己跑
+        // `clearAuth()` + `ProtectedRoute` 的正常跳转，502 / 网络失败分支保持
+        // 现状——不把"服务器暂时连不上"误判成"该登出了"。
+        void useAuthStore.getState().restoreSession()
       }
       return
     }

@@ -98,15 +98,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    user: { user_id: 'me' },
-    // 远期过期时间：否则 fetchWithAuth 会先打一次 /refresh，
-    // 把 mockResolvedValueOnce 的顺序和 fetchMock.mock.calls 的下标整体错开。
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'me' } })
   setApiShapeErrorReporter(() => {})
   // 预签名 URL 缓存是模块级单例，不清会在用例之间串味。
   storageApi.clearPresignedUrlCache()

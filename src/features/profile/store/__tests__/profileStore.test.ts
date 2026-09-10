@@ -34,17 +34,13 @@ const sessionExpired = (endpoint: string) =>
 
 const replaceSpy = vi.fn()
 
-const loggedIn = () => useAuthStore.getState().accessToken !== null
+const loggedIn = () => useAuthStore.getState().isAuthenticated
 
 beforeEach(() => {
   localStorage.clear()
   replaceSpy.mockClear()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true })
   useProfileStore.setState({ profile: null, isLoading: false, error: null })
   vi.spyOn(window.location, 'replace').mockImplementation(replaceSpy)
   vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -386,12 +382,7 @@ describe('profileStore 的会话边界：失败半边', () => {
     endSession()
     // B 登录：新的一场会话，凭证是新的。
     beginSession()
-    useAuthStore.setState({
-      accessToken: 'AT-b',
-      refreshToken: 'RT-b',
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ isAuthenticated: true })
 
     reject(sessionExpiredError())
     // 属于死会话的错误照样 reject（调用方仍然会看到失败），只是不再有副作用。
@@ -399,27 +390,21 @@ describe('profileStore 的会话边界：失败半边', () => {
 
     // 删掉 `if (!stillMine()) throw error` → settleError 会认出 401 并
     // `silentRedirectToLogin()`，把 B 清盘 + 跳登录页；实测本条停在下面第一行
-    // （`expected null to be 'AT-b'`），后两行是同一件事的另外两个侧面。
-    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    // （`expected false to be true`），下一行是同一件事的另一个侧面。
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(replaceSpy).not.toHaveBeenCalled()
   })
 
   it('正对照：同一场会话里的 401 **确实**会清盘并跳登录页', async () => {
-    // 没有这一条，上面那三行在"401 从来不会触发登出"时同样成立——
+    // 没有这一条，上面那两行在"401 从来不会触发登出"时同样成立——
     // 而那正是这道闸唯一有意义的前提。
     beginSession()
-    useAuthStore.setState({
-      accessToken: 'AT-b',
-      refreshToken: 'RT-b',
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ isAuthenticated: true })
     vi.spyOn(profileApi, 'getProfile').mockRejectedValue(sessionExpiredError())
 
     await expect(useProfileStore.getState().loadProfile()).rejects.toThrow('未认证或 Token 无效')
 
-    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })
@@ -442,12 +427,7 @@ describe('profileStore 的会话边界：失败半边', () => {
  */
 describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每一道闸', () => {
   const asB = () => {
-    useAuthStore.setState({
-      accessToken: 'AT-b',
-      refreshToken: 'RT-b',
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ isAuthenticated: true })
   }
   const png = () => new File(['x'], 'a.png', { type: 'image/png' })
 
@@ -470,8 +450,8 @@ describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每�
     await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
 
     // 删掉这道闸 → `settleError` 认出 401 并 `silentRedirectToLogin()`：
-    // 本行停在 `expected null to be 'AT-b'`。
-    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    // 本行停在 `expected false to be true`。
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     // 同一场里的正对照：这条 401 **确实**会登出（否则上面两行恒真）。
@@ -479,7 +459,7 @@ describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每�
     await expect(
       useProfileStore.getState().updateProfile({ email: 'b@example.com' }),
     ).rejects.toThrow()
-    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 
@@ -589,13 +569,13 @@ describe('profileStore 的会话边界：updateProfile 与 uploadAvatar 的每�
     rejectUpload(sessionExpired('GET /api/profile'))
     await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
 
-    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     // 正对照：同一场会话里的同一个错误**确实**会登出。
     vi.spyOn(profileApi, 'uploadAvatar').mockRejectedValue(sessionExpired('GET /api/profile'))
     await expect(useProfileStore.getState().uploadAvatar(png())).rejects.toThrow()
-    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })
@@ -763,12 +743,7 @@ describe('profileStore.setBackgroundUrl', () => {
  */
 describe('profileStore 的会话边界：resetBackground 的每一道闸', () => {
   const asB = () => {
-    useAuthStore.setState({
-      accessToken: 'AT-b',
-      refreshToken: 'RT-b',
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ isAuthenticated: true })
   }
 
   it('DELETE 失败闸：上一场的 401 不清 B 的凭证、不跳登录页', async () => {
@@ -790,8 +765,8 @@ describe('profileStore 的会话边界：resetBackground 的每一道闸', () =>
     await expect(inFlight).rejects.toThrow('未认证或 Token 无效')
 
     // 删掉 `settleError` 前面那道闸 → `silentRedirectToLogin()` 执行，
-    // 本行停在 `expected null to be 'AT-b'`。
-    expect(useAuthStore.getState().accessToken).toBe('AT-b')
+    // 本行停在 `expected false to be true`。
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     // 同一场里的正对照：这条 401 **确实**会登出（否则上面两行恒真）。
@@ -799,7 +774,7 @@ describe('profileStore 的会话边界：resetBackground 的每一道闸', () =>
       sessionExpired('DELETE /api/profile/background'),
     )
     await expect(useProfileStore.getState().resetBackground()).rejects.toThrow()
-    expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 

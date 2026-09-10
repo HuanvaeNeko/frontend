@@ -49,13 +49,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    user: { user_id: 'user_a' },
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'user_a' } })
   setApiShapeErrorReporter(() => {})
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)

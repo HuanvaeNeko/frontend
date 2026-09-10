@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import type { ChatMessage } from '@/types'
 import { useApiConfigStore } from '@/store/apiConfig'
-import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,7 +32,6 @@ import { ROUTES } from '@/lib/routes'
 export default function AiChat() {
   const router = useRouter()
   const { toast } = useToast()
-  const { accessToken } = useAuthStore()
   const apiConfigStore = useApiConfigStore()
 
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -79,7 +77,6 @@ export default function AiChat() {
         'Content-Type': 'application/json',
       }
 
-      if (accessToken) headers.Authorization = `Bearer ${accessToken}`
       if (apiConfigStore.useCustomApi && apiConfigStore.aiApiKey) headers['X-API-Key'] = apiConfigStore.aiApiKey
 
       const messageHistory = messages.map((msg) => ({ role: msg.role, content: msg.content }))
@@ -88,6 +85,9 @@ export default function AiChat() {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
+        // 会话制下没有 accessToken 可读——凭证是 httpOnly cookie，同源请求
+        // 浏览器自动带上。
+        credentials: 'same-origin',
         body: JSON.stringify({ messages: messageHistory, message: userMessage, stream: false }),
         signal: abortControllerRef.current.signal,
       })

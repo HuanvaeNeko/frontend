@@ -81,13 +81,8 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   useAuthStore.getState().clearAuth()
-  useAuthStore.setState({
-    accessToken: 'AT',
-    refreshToken: 'RT',
-    isAuthenticated: true,
-    user: { user_id: 'me' },
-    tokenExpiry: Date.now() + 3600_000,
-  })
+  // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
+  useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'me' } })
   setApiShapeErrorReporter(() => {})
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -1551,12 +1546,12 @@ describe('groupsApi.getGroupQrCode（后端给字符串，不给图片）', () =
     await expect(groupsApi.getGroupQrCode('g1')).rejects.toThrow(/payload/)
   })
 
-  it('403（qr_show_scope 不满足）透出后端原文，且绝不触发刷新/登出', async () => {
+  it('403（qr_show_scope 不满足）透出后端原文，且绝不触发登出', async () => {
     // 门槛是被展示群的 qr_show_scope（doc:1828、doc:209、矩阵 doc:2259），
-    // 是常规权限失败。本文件的 fetchWithAuth 只对 401 做刷新重试 + 失败登出；
-    // 把 403 并进那条分支，这条用例会在三个断言上同时红：请求发了两次、
-    // 拿到的不是 ApiError、登录态被清空。
-    useAuthStore.setState({ accessToken: 'AT', refreshToken: 'RT', isAuthenticated: true })
+    // 是常规权限失败。fetchWithAuth 只对**非业务** 401 才 clearAuth + 跳登录页；
+    // 把 403 并进那条分支，这条用例会在两个断言上同时红：拿到的不是
+    // ApiError、登录态被清空。
+    useAuthStore.setState({ isAuthenticated: true })
     fetchMock.mockResolvedValueOnce(
       ok({ success: false, code: 403, message: '你的角色不满足该群的二维码展示范围' }, 403),
     )
@@ -1570,7 +1565,6 @@ describe('groupsApi.getGroupQrCode（后端给字符串，不给图片）', () =
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
-    expect(useAuthStore.getState().accessToken).toBe('AT')
   })
 })
 

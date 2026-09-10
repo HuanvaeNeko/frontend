@@ -27,7 +27,7 @@ export interface GetDevicesResponse {
 /**
  * Auth 相关的受保护端点。
  *
- * ## 这里为什么只剩三个方法
+ * ## 这里为什么只剩两个方法
  *
  * 原来还有 `login` / `register` / `refreshToken` 三个方法，全部零调用方
  * （登录唯一入口是 `LoginForm.tsx` → `authStore.login`，注册与刷新同理都在
@@ -36,26 +36,18 @@ export interface GetDevicesResponse {
  * bug 的第二份拷贝。留着一份未解包的登录副本，下一个接手的人必然照抄，
  * 所以这次连同删除，而不是"顺手也改一下"。
  *
- * 剩下的三个方法一律走 `src/lib/apiEnvelope.ts`：不再有任何
+ * BFF 会话层落地后又删掉了 `logout`（见下方 `authApi` 里那条注释）：
+ * 登出唯一的入口收拢成了 `authStore.logout()`。
+ *
+ * 剩下的两个方法一律走 `src/lib/apiEnvelope.ts`：不再有任何
  * `if (!response.ok) { await response.json() }` 手写样板，也就不可能再写出
  * "错误分支和成功分支各读一次 body" 的二次消费。
  */
 export const authApi = {
-  /**
-   * POST /api/auth/logout（受保护）。
-   * 后端返回信封但无有意义的 data，只需确认成功与否。
-   */
-  logout: async (): Promise<void> => {
-    const authBaseUrl = getAuthApiUrl()
-    const response = await fetchWithAuth(`${authBaseUrl}/logout`, {
-      method: 'POST',
-    })
-
-    await assertEnvelopeOk(response, {
-      endpoint: 'POST /api/auth/logout',
-      fallbackMessage: '登出失败',
-    })
-  },
+  // ⚠️ 这里原来有一个 `logout`。BFF 落地后删掉了：登出现在唯一的入口是
+  // `authStore.logout()` —— 它打同源 `/api/auth/logout`，由 BFF 删会话、清 cookie、
+  // 关该会话名下的 WS。留着这一个会构成第二条路径，而它做不到后三件事。
+  // `getDevices` / `revokeDevice` 保留：它们经 `/api/*` 代理正常工作。
 
   /**
    * GET /api/auth/devices（受保护）。

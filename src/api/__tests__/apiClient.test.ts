@@ -159,8 +159,15 @@ describe('isAuthError —— 没有状态码时只认前端自己写的哨兵', 
  * 哨兵两端一致。
  *
  * 上面那组用例写的是字面量，只能钉住 `FRONTEND_AUTH_SENTINELS` 这一端：
- * **抛出点**（authStore / friends.ts）改文案时它们照样绿。
- * 下面两条改从抛出点真正取错误，两端任一改动都会红。
+ * **抛出点**（friends.ts）改文案时它们照样绿。下面这条改从抛出点真正取
+ * 错误，两端任一改动都会红。
+ *
+ * ⚠️ 这个 describe 曾经还有一条「authStore.refreshAccessToken 没有 refresh
+ * token 时抛的，就是表里那条」，钉的是 `FRONTEND_AUTH_SENTINELS` 里
+ * `'No refresh token available'` 那一条。BFF 会话层落地后 `refreshAccessToken`
+ * 整个被删掉——客户端手里已经没有 token，这句哨兵没有任何生产者了，钉它的用例
+ * 随之删除。哨兵条目本身留在 `apiClient.ts`（不是这次改动范围），只是从今往后
+ * 不会再被命中。
  */
 describe('哨兵两端一致：抛出点的文案也被钉住', () => {
   afterEach(() => {
@@ -168,33 +175,9 @@ describe('哨兵两端一致：抛出点的文案也被钉住', () => {
     useAuthStore.getState().clearAuth()
   })
 
-  it('authStore.refreshAccessToken 没有 refresh token 时抛的，就是表里那条', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    useAuthStore.setState({
-      accessToken: null,
-      refreshToken: null,
-      tokenExpiry: null,
-      isAuthenticated: false,
-    })
-
-    const error = await useAuthStore
-      .getState()
-      .refreshAccessToken()
-      .catch((e: unknown) => e)
-
-    expect(error).toBeInstanceOf(Error)
-    expect(isAuthError(error as Error)).toBe(true)
-  })
-
   it('friendsApi 拿不到自己的 user_id 时抛的，就是表里那条', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    useAuthStore.setState({
-      accessToken: 'AT',
-      refreshToken: 'RT',
-      user: null,
-      isAuthenticated: true,
-      tokenExpiry: Date.now() + 3600_000,
-    })
+    useAuthStore.setState({ user: null, isAuthenticated: true })
 
     // 这条在发请求之前就抛，不需要 stub fetch。
     const error = await friendsApi.sendFriendRequest('u2').catch((e: unknown) => e)
