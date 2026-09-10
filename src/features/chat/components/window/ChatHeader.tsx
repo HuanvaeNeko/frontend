@@ -24,7 +24,8 @@ export const ChatHeader = memo(({
   return (
     <header className={cn(
       "px-4 sm:px-6 py-3 min-h-[64px] shrink-0 border-b border-border/40 bg-card/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20 shadow-sm",
-      hideMobileHeader && "hidden md:flex"
+      // <768 折叠模式下壳的 fold-back-bar 显示会话名；≥1024 三栏桌面才显示本头部
+      hideMobileHeader && "hidden lg:flex"
     )}>
       <div className="flex items-center gap-3 overflow-hidden">
         <div className="relative">
