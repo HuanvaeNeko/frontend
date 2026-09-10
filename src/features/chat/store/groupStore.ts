@@ -18,6 +18,19 @@ interface GroupState {
   
   // 加载状态
   isLoading: boolean
+  /**
+   * `loadMyGroups` 是否已经完整跑完过一次（成功或失败都算）。
+   *
+   * 与 `friendsStore.hasLoaded` 是同一个理由、同一个用法：区分"从没问过后端"与
+   * "问过了，结果就是没有"，供 `useRouteConversation` 判断深链冷启动时该显示
+   * loading 还是 missing——`AppShellLayout` 的挂载 effect 要等首轮渲染跑完才会
+   * 触发 `loadMyGroups()`，那一帧 `isLoading` 还是初始的 `false`。
+   *
+   * 本 store 的 `loadMyGroups` catch 块里没有 `friendsStore.handleApiError` 那种
+   * 会触发 `clearAuth()`/会话重置的副作用，所以两条分支都可以直接写
+   * `hasLoaded: true`，不需要像 `friendsStore.loadFriends` 那样另外分支。
+   */
+  hasLoaded: boolean
   error: string | null
   /**
    * 选中群之后自动拉成员/公告失败时的信息，独立于上面共享的 `error`。
@@ -90,6 +103,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   currentGroupMembers: [],
   currentGroupNotices: [],
   isLoading: false,
+  hasLoaded: false,
   error: null,
   selectionError: null,
 
@@ -99,14 +113,15 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     try {
       const response = await loadGroups()
       if (!stillMine()) return
-      set({ 
+      set({
         myGroups: response,
-        isLoading: false 
+        isLoading: false,
+        hasLoaded: true,
       })
     } catch (error) {
       if (!stillMine()) throw error
       const errorMessage = error instanceof Error ? error.message : '加载群聊列表失败'
-      set({ error: errorMessage, isLoading: false })
+      set({ error: errorMessage, isLoading: false, hasLoaded: true })
       throw error
     }
   },

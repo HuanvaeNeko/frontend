@@ -44,6 +44,20 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: '联系人' })).not.toHaveAttribute('aria-current')
   })
 
+  it('URL 与 activeTab 不一致时（模态框路由下会出现，URL 变了但记住的 tab 没变）：aria-current 与高亮都跟 activeTab 走，不跟 URL 走', () => {
+    // /app/files 跟 chat/contacts 都不匹配，如果 aria-current 是靠 NavLink 自己按 URL
+    // 算的，两个 tab 此刻都不会有 aria-current；这里两次都断言"有且仅有 activeTab
+    // 指向的那个"，证明驱动它的是 prop 而不是 URL 匹配。
+    const first = renderAt('/app/files', 'contacts')
+    expect(screen.getByRole('link', { name: '联系人' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '消息' })).not.toHaveAttribute('aria-current')
+    first.unmount()
+
+    renderAt('/app/files', 'chat')
+    expect(screen.getByRole('link', { name: '消息' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '联系人' })).not.toHaveAttribute('aria-current')
+  })
+
   it('未读总数与待处理申请数各自成角标（99+ 截断）；为 0 时不渲染', () => {
     useChatStore.setState({ totalUnreadCount: 120 })
     useFriendsStore.setState({ pendingRequests: [{ request_id: 'r1' } as never, { request_id: 'r2' } as never] })

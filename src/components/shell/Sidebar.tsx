@@ -1,5 +1,5 @@
 import { MessageCircle, Moon, MoreHorizontal, Settings, Sun, Users } from 'lucide-react'
-import { NavLink } from 'react-router'
+import { Link, NavLink } from 'react-router'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { formatUnreadCount } from '@/features/chat/lib/formatUnreadCount'
@@ -61,15 +61,26 @@ export function Sidebar({ activeTab, pinnedTools = [] }: SidebarProps) {
       </NavLink>
 
       {/* APP .sidebar-nav */}
+      {/*
+        消息/联系人这两个是 Link 而不是 NavLink：NavLink 自己按 `to` 与当前 URL
+        算 isActive，再拿它同时驱动 aria-current 的取值*和*要不要显示——调用方传
+        的 aria-current prop 只在 isActive 为真时才生效（react-router 的
+        NavLinkWithRef 把它当默认值处理），于是这里写不写 `activeTab === 'chat'`
+        这个三元表达式，对渲染结果毫无影响，全由 URL 匹配决定。后续任务（模态框
+        路由）会出现 URL 与 activeTab 不一致的情况——弹窗路由的 pathname 变了，
+        但侧栏该高亮的 tab 是弹窗打开前记住的那个——这种时候 NavLink 会给错的
+        那个 tab 挂 aria-current。换成 Link，aria-current 与下面的 navBtnActive
+        类名就都只由 `activeTab` 这一个来源决定，和 URL 是否匹配无关。
+      */}
       <nav className="flex flex-1 flex-col items-center gap-2">
-        <NavLink to={ROUTES.app.chat} title={t('shell.nav.chat')} aria-label={t('shell.nav.chat')} aria-current={activeTab === 'chat' ? 'page' : undefined} className={cn(navBtn, 'relative', activeTab === 'chat' && navBtnActive)}>
+        <Link to={ROUTES.app.chat} title={t('shell.nav.chat')} aria-label={t('shell.nav.chat')} aria-current={activeTab === 'chat' ? 'page' : undefined} className={cn(navBtn, 'relative', activeTab === 'chat' && navBtnActive)}>
           <MessageCircle />
           <Badge value={formatUnreadCount(totalUnread)} testId="badge-chat" />
-        </NavLink>
-        <NavLink to={ROUTES.app.contacts} title={t('shell.nav.contacts')} aria-label={t('shell.nav.contacts')} aria-current={activeTab === 'contacts' ? 'page' : undefined} className={cn(navBtn, 'relative', activeTab === 'contacts' && navBtnActive)}>
+        </Link>
+        <Link to={ROUTES.app.contacts} title={t('shell.nav.contacts')} aria-label={t('shell.nav.contacts')} aria-current={activeTab === 'contacts' ? 'page' : undefined} className={cn(navBtn, 'relative', activeTab === 'contacts' && navBtnActive)}>
           <Users />
           <Badge value={formatUnreadCount(pendingCount)} testId="badge-contacts" />
-        </NavLink>
+        </Link>
         {pinnedTools.map((tool) => (
           <NavLink key={tool.key} to={tool.to} title={t(tool.labelKey)} aria-label={t(tool.labelKey)} className={navBtn}>
             <tool.icon />

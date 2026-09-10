@@ -10,8 +10,8 @@ const group = { group_id: 'g1', group_name: '读书会', group_avatar_url: null,
 
 describe('useRouteConversation：URL → chatStore.selectedConversation', () => {
   beforeEach(() => {
-    useFriendsStore.setState({ friends: [friend], isLoading: false })
-    useGroupStore.setState({ myGroups: [group], isLoading: false })
+    useFriendsStore.setState({ friends: [friend], isLoading: false, hasLoaded: true })
+    useGroupStore.setState({ myGroups: [group], isLoading: false, hasLoaded: true })
     useChatStore.setState({ selectedConversation: null })
   })
 
@@ -35,6 +35,26 @@ describe('useRouteConversation：URL → chatStore.selectedConversation', () => 
     expect(loading.result.current).toBe('loading')
     loading.unmount()
     useFriendsStore.setState({ isLoading: false })
+    const missing = renderHook(() => useRouteConversation('f-nobody'))
+    expect(missing.result.current).toBe('missing')
+    expect(useChatStore.getState().selectedConversation).toBe(null)
+  })
+
+  it('两个 store 都还没加载过（冷启动：isLoading 与 hasLoaded 都是初始值）时是 loading，不写 store；正对照：都标记加载完后同样的渲染变成 missing', () => {
+    // 模拟刷新 / 书签打开深链 / 登录后 last_visited_path 恢复：AppShellLayout 的
+    // useShellBootstrap effect 还没来得及跑，两个 store 停在 create() 刚返回时的
+    // 初始值——hasLoaded 是 false，不是"加载完了但没找到"的 missing。
+    useFriendsStore.setState({ isLoading: false, hasLoaded: false })
+    useGroupStore.setState({ isLoading: false, hasLoaded: false })
+    const cold = renderHook(() => useRouteConversation('f-nobody'))
+    expect(cold.result.current).toBe('loading')
+    expect(useChatStore.getState().selectedConversation).toBe(null)
+    cold.unmount()
+
+    // 正对照：同样的 id、同样找不到，只把两个 store 都补上"已经加载完成"——
+    // 证明上面那次 loading 确实是 hasLoaded 在起作用，不是巧合或者别的分支。
+    useFriendsStore.setState({ hasLoaded: true })
+    useGroupStore.setState({ hasLoaded: true })
     const missing = renderHook(() => useRouteConversation('f-nobody'))
     expect(missing.result.current).toBe('missing')
     expect(useChatStore.getState().selectedConversation).toBe(null)

@@ -430,3 +430,31 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
   })
 })
+
+/**
+ * `hasLoaded`：区分"从没问过后端"与"问过了，结果就是这样"——`useRouteConversation`
+ * 靠它判断深链冷启动（刷新 / 书签 / 登录后 last_visited_path 恢复）时该显示 loading
+ * 还是 missing，见该 hook 与本 store 里的注释。正/负各一条：成功落地一条，
+ * 失败落地一条，两条都从显式的 `hasLoaded: false` 起步，不依赖套件里前面用例
+ * 留下的状态。
+ */
+describe('friendsStore.hasLoaded：区分"没加载过"与"加载过，结果确实是这样"', () => {
+  it('初始为 false；loadFriends 成功落地后变 true', async () => {
+    useFriendsStore.setState({ hasLoaded: false })
+    expect(useFriendsStore.getState().hasLoaded).toBe(false)
+
+    vi.spyOn(friendsApi, 'getFriendsList').mockResolvedValue([])
+    await useFriendsStore.getState().loadFriends()
+
+    expect(useFriendsStore.getState().hasLoaded).toBe(true)
+  })
+
+  it('loadFriends 失败（非认证错误）后也变 true——已经问过后端一次，这次问到的是个错误', async () => {
+    useFriendsStore.setState({ hasLoaded: false })
+
+    vi.spyOn(friendsApi, 'getFriendsList').mockRejectedValue(permissionDenied('GET /api/friends'))
+    await expect(useFriendsStore.getState().loadFriends()).rejects.toThrow('权限不足')
+
+    expect(useFriendsStore.getState().hasLoaded).toBe(true)
+  })
+})

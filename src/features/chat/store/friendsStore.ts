@@ -12,6 +12,18 @@ interface FriendsState {
   sentRequests: SentRequest[]        // 已发送的请求（我发给别人的）
   onlineStatus: Map<string, boolean> // 好友在线状态
   isLoading: boolean
+  /**
+   * `loadFriends` 是否已经完整跑完过一次（成功或失败都算，见该 action 内的注释）。
+   *
+   * 区分"从没问过后端"（`isLoading===false && hasLoaded===false`，store 刚创建或
+   * 刚被会话重置清空）与"问过了，结果就是没有"（`isLoading===false && hasLoaded===true`）
+   * ——`useRouteConversation` 靠这一位判断深链冷启动时该显示 loading 还是 missing：
+   * `AppShellLayout` 的 `useShellBootstrap` effect 要等整棵树挂载完才会跑，
+   * 而 React 会先完整跑完一遍首次渲染，那一刻两个 store 的 `isLoading` 还是初始的
+   * `false`——如果只看 `isLoading`，`ChatConversation` 会在第一帧就判 missing 并把
+   * 深链 replace 掉。
+   */
+  hasLoaded: boolean
   error: string | null
 
   // Actions
@@ -120,6 +132,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   sentRequests: [],
   onlineStatus: new Map(),
   isLoading: false,
+  hasLoaded: false,
   error: null,
 
   loadFriends: async () => {
@@ -128,11 +141,20 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     try {
       const friends = await loadFriends()
       if (!stillMine()) return
-      set({ friends, isLoading: false })
+      set({ friends, isLoading: false, hasLoaded: true })
     } catch (error) {
       if (!stillMine()) throw error
       const errorMessage = handleApiError(error, '加载好友列表失败')
-      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
+      // ⚠️ 认证分支（errorMessage === null）不写 hasLoaded：`handleApiError` 在上面
+      // 这一行内部已经调过 `silentRedirectToLogin → clearAuth → endSession`，本 store
+      // 被 `registerPristineStoreReset` 同步清回了 pristine（hasLoaded 已经是 false）。
+      // `stillMine()` 挡不住这一下——它是本次调用自己触发的重置，不是"另一场会话
+      // 抢先结束"，检查点在它之前就已经通过。这里如果照抄非认证分支写一个
+      // `hasLoaded: true`，就是往刚清空的 store 上立刻叠一次脏写：页面正在整页跳转
+      // 去登录页，剩下这半秒内存里的状态没有意义，但语义上会变成"这场（即将作废的）
+      // 会话已经问完后端"，与"会话重置后的初始状态"矛盾。非认证分支才是真正问到了
+      // 后端、拿到了确定结果（哪怕是错误），只有它算"加载完成"。
+      set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false, hasLoaded: true })
       throw error
     }
   },

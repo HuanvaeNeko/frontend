@@ -290,3 +290,32 @@ describe('groupStore 跨会话边界：上一场会话的响应落在下一场�
     },
   )
 })
+
+/**
+ * `hasLoaded`：区分"从没问过后端"与"问过了，结果就是这样"——与 `friendsStore` 同一个
+ * 理由，供 `useRouteConversation` 判断深链冷启动（刷新 / 书签 / 登录后
+ * last_visited_path 恢复）时该显示 loading 还是 missing。本 store 的 `loadMyGroups`
+ * catch 块里没有 `friendsStore.handleApiError` 那种会触发 `clearAuth()`/会话重置的
+ * 副作用，所以两条分支都直接写 `hasLoaded: true`，测试也不需要像 friendsStore 那样
+ * 区分认证/非认证失败。正/负各一条，都从显式的 `hasLoaded: false` 起步。
+ */
+describe('groupStore.hasLoaded：区分"没加载过"与"加载过，结果确实是这样"', () => {
+  it('初始为 false；loadMyGroups 成功落地后变 true', async () => {
+    useGroupStore.setState({ hasLoaded: false })
+    expect(useGroupStore.getState().hasLoaded).toBe(false)
+
+    getMyGroupsMock.mockResolvedValue([])
+    await useGroupStore.getState().loadMyGroups()
+
+    expect(useGroupStore.getState().hasLoaded).toBe(true)
+  })
+
+  it('loadMyGroups 失败后也变 true——已经问过后端一次，这次问到的是个错误', async () => {
+    useGroupStore.setState({ hasLoaded: false })
+
+    getMyGroupsMock.mockRejectedValue(new Error('加载群聊列表失败'))
+    await expect(useGroupStore.getState().loadMyGroups()).rejects.toThrow('加载群聊列表失败')
+
+    expect(useGroupStore.getState().hasLoaded).toBe(true)
+  })
+})

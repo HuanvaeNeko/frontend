@@ -15,8 +15,10 @@ export type RouteConversationStatus = 'idle' | 'loading' | 'ready' | 'missing'
 export function useRouteConversation(conversationId: string | undefined): RouteConversationStatus {
   const friends = useFriendsStore((s) => s.friends)
   const friendsLoading = useFriendsStore((s) => s.isLoading)
+  const friendsHasLoaded = useFriendsStore((s) => s.hasLoaded)
   const groups = useGroupStore((s) => s.myGroups)
   const groupsLoading = useGroupStore((s) => s.isLoading)
+  const groupsHasLoaded = useGroupStore((s) => s.hasLoaded)
   const setSelectedConversation = useChatStore((s) => s.setSelectedConversation)
 
   const parsed = conversationId ? parseConversationId(conversationId) : null
@@ -26,7 +28,12 @@ export function useRouteConversation(conversationId: string | undefined): RouteC
   let status: RouteConversationStatus
   if (!conversationId) status = 'idle'
   else if (friend || group) status = 'ready'
-  else if (friendsLoading || groupsLoading) status = 'loading'
+  // 冷启动（刷新 / 书签打开深链 / 登录后 last_visited_path 恢复）时两个 store 的
+  // isLoading 都还是初始的 false——真正发起加载的 `useShellBootstrap` effect
+  // 要等 AppShellLayout 整棵树的首轮渲染跑完才会触发。只看 isLoading 的话，这里
+  // 会在第一帧就判定 missing 并把深链 replace 掉。`hasLoaded` 记的是"这个 store
+  // 有没有完整跑完过一次加载"，跟 isLoading 一起兜住"还没来得及开始加载"这个窗口。
+  else if (friendsLoading || groupsLoading || !friendsHasLoaded || !groupsHasLoaded) status = 'loading'
   else status = 'missing'
 
   useEffect(() => {
