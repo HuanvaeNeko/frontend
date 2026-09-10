@@ -16,3 +16,11 @@ playwright-report
 # 上传，并原样进 build 这个中间阶段的层里。上面的 *.md 只挡得住其中的 .md，
 # 挡不住 .diff，这里整目录排除。
 .superpowers
+
+# owner 在宿主机手放的 mTLS 证书/私钥（compose 只读挂载进 edge 容器，见
+# docker-compose.yml 的 ./secrets:/secrets:ro）。build context 是仓库根目录，
+# Dockerfile 的 build 阶段 `COPY . .`——不排除的话私钥会原样烘进 build 中间
+# 阶段的镜像层，绕过文件本身的 mode 600，且不随 `rm -rf secrets/` 消失。
+# runtime 阶段只 COPY 点名路径，本来就不会碰到它；这里挡的是 build 阶段。
+secrets
+*.pem

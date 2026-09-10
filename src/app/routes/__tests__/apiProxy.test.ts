@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_COOKIE_NAME, getSessionStore, resetSessionStore } from '../../../../server/session'
 import { resetRefreshInFlight } from '../../../../server/session/refresh'
-import { registerSessionSocket } from '../../../../server/ws/registry'
+import { registerSessionSocket, resetSessionSocketRegistry } from '../../../../server/ws/registry'
 import { action, loader } from '../api.$'
 
 const NOW = 1_000_000
@@ -35,6 +35,10 @@ describe('BFF 鉴权代理 /api/*', () => {
     process.env.SESSION_COOKIE_SECURE = 'false'
     resetSessionStore()
     resetRefreshInFlight()
+    // registry 现在挂在 globalThis（见 server/ws/registry.ts 顶部注释），会跨
+    // 模块隔离存活——不重置的话，本文件里没关 WS 的用例（如「业务 401 不关
+    // WS」）会把 sess-1 的登记留在表里，串到别的文件的同名 session id 上。
+    resetSessionSocketRegistry()
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     vi.spyOn(Date, 'now').mockReturnValue(NOW)

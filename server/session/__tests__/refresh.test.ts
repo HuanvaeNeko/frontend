@@ -2,7 +2,7 @@
 // 本文件不构造带 cookie/sec-*/host 头的 Request，不受 happy-dom 的头部过滤影响；
 // 加这行只是为了和 server/**/__tests__ 下其余文件保持一致（Ruling G）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { registerSessionSocket } from '../../ws/registry'
+import { registerSessionSocket, resetSessionSocketRegistry } from '../../ws/registry'
 import { openDatabase } from '../db'
 import { SessionDead, UpstreamUnavailable, ensureFreshAccessToken, resetRefreshInFlight } from '../refresh'
 import { createSessionStore, type SessionStore } from '../store'
@@ -30,6 +30,10 @@ describe('ensureFreshAccessToken', () => {
     process.env.BFF_UPSTREAM_HTTP = 'http://upstream.test'
     store = createSessionStore(await openDatabase(':memory:'))
     resetRefreshInFlight()
+    // registry 挂在 globalThis（见 server/ws/registry.ts），跨模块隔离存活；
+    // 本文件与 ws/__tests__/proxy.test.ts 都用 's1' 当 session id，不重置
+    // 会互相串。
+    resetSessionSocketRegistry()
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     vi.spyOn(Date, 'now').mockReturnValue(NOW)
@@ -158,5 +162,20 @@ describe('ensureFreshAccessToken', () => {
 
     await expect(ensureFreshAccessToken(store, s)).rejects.toBeInstanceOf(UpstreamUnavailable)
     expect(store.get('s1')?.accessToken).toBe('AT-old')
+  })
+
+  // expires_in: 0 必须和"缺失"一样当形状坏处理：0 会通过"是有限数字"的校验，
+  // 让 accessExpiresAt 落进过去/刷新窗口，下一个请求立刻再触发一次刷新——
+  // 正对照见上一条「线上实测值是 900」的用例，证明这不是"任何数字都该拒绝"。
+  it('响应形状坏（expires_in: 0）：抛 UpstreamUnavailable，会话保留，不落进刷新风暴', async () => {
+    const s = seed(store, NOW + 30_000)
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ success: true, code: 200, data: { access_token: 'AT-new', token_type: 'Bearer', expires_in: 0 } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ))
+
+    await expect(ensureFreshAccessToken(store, s)).rejects.toBeInstanceOf(UpstreamUnavailable)
+    expect(store.get('s1')?.accessToken).toBe('AT-old')
+    expect(store.get('s1')?.accessExpiresAt).toBe(NOW + 30_000)
   })
 })

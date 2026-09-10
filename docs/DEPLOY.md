@@ -68,6 +68,30 @@ app（Bun BFF）──明文 HTTP/WS，docker 网络内──> edge（Caddy side
 
 本地开发想连这条链路：`cp docker-compose.override.yml.example docker-compose.override.yml && docker compose up -d edge` 把 `edge` 发布到 `127.0.0.1:8787`，再在 `.env.development.local` 里设 `BFF_UPSTREAM_HTTP=http://127.0.0.1:8787` / `BFF_UPSTREAM_WS=ws://127.0.0.1:8787`（`vite.config.ts` 会把它们接进 `react-router dev` 的 `process.env`，见该文件注释）。
 
+### 边缘验收（部署门禁）
+
+`edge` 容器起来之后、正式接流量之前，必须跑一遍 `edge/probe.ts`：它对 `/api/friends` 发 40 串行 + 40 并行的未鉴权请求，判据是**全部拿到后端的 401**（连接错误、502、超时都算失败），外加一次不带 token 的 WS 握手。这是 spec 里明确要求的部署硬门禁，不是可选的烟雾测试。
+
+`edge/probe.ts` 默认打 `http://edge:8787`——这是 docker 网络内部的服务名，在 alice 宿主机上**解析不到**（`edge` 只 `expose`、不 `publish` 端口），而 runtime 镜像里也没有 `edge/` 目录，容器里跑不了这个脚本。两种可行姿势：
+
+**姿势一：一次性容器**（不改任何 compose 配置，探针跑在 `edge` 所在的 docker 网络内部，直接用服务名）：
+
+```bash
+docker run --rm --network <project>_default -v "$PWD/edge:/edge:ro" oven/bun:1.3.14-alpine bun run /edge/probe.ts http://edge:8787
+```
+
+`<project>` 是 compose 项目名，默认取自项目目录名——alice 上目录是 `huanvae-frontend`，所以网络名是 `huanvae-frontend_default`。不确定的话用 `docker network ls` 核对实际网络名（compose 项目名也可能被 `.env` 的 `COMPOSE_PROJECT_NAME` 或 `-p` 覆盖）。
+
+**姿势二：发布到宿主机**（复用「BFF / edge」小节里本地开发用的同一份 override）：
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d edge
+bun run edge/probe.ts http://127.0.0.1:8787
+```
+
+**通过标准**：输出 `失败 0 / 80`；WS 握手那行是 `WS 握手状态码 400（期望 400 missing field token）`——不带 token 时后端拒绝升级但**确实收到了请求**，证明 WS 升级也穿过了整条 mTLS 链路，不只是 REST。任何非 0 的失败数或非 400 的 WS 状态码都说明边缘链路没通，不能继续部署。
+
 ## 🔒 VPS 防火墙
 
 由于所有流量走 Cloudflare Tunnel（`cloudflared` 主动出站建连），VPS 防火墙可以对公网完全关闭 80/443，站点仍可正常访问——这比传统反向代理暴露入站端口的方案攻击面更小。部署后应验证：关闭 80/443 入站规则，站点依然可以从公网访问。
@@ -121,6 +145,10 @@ curl -s http://<host>/healthz   # 期望返回 "ok"，状态码 200
 - 浏览器发出的请求都是同源的（打到 `app` 自己），不会有 CORS 问题——如果看到 CORS 报错，说明请求没有经过 BFF，走错了路径
 - 检查 `app` 容器的 `BFF_UPSTREAM_HTTP` / `BFF_UPSTREAM_WS` 是否指向正确的 `edge` 地址
 - 检查 `edge` 容器日志（`docker compose logs edge`）和 `secrets/` 下三个证书文件是否就位、权限是否正确（`600`）
+
+### 6. 本机 `.env.development.local` 里还留着 `VITE_API_URL` / `VITE_WS_URL`
+
+这两个变量已经退役，现在没有任何代码读取它们（所有请求同源打到 BFF），留着是惰性垃圾，删掉即可，不影响任何行为。真正会出问题的是**缺少**上面「环境变量」表里新增的四个 `BFF_*` / `SESSION_*` 变量——那种情况有清楚的报错「缺少环境变量 X」，不会静默失败。
 
 ## 📚 相关资源
 

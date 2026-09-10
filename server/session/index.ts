@@ -19,7 +19,12 @@ export function getSessionStore(): Promise<SessionStore> {
   if (!storePromise) {
     const path = process.env.SESSION_DB_PATH
     if (!path) throw new Error('缺少环境变量 SESSION_DB_PATH——会话无处存放')
-    storePromise = openDatabase(path).then(createSessionStore)
+    // .catch 把失败的尝试也清掉，不能让被拒绝的 Promise 永久占住这个单例：
+    // 打库是瞬时失败的话（磁盘满、目录还没挂载好、权限问题……），不清掉的话
+    // 这个进程往后每一个请求都会立刻复用同一个已经 reject 的 Promise 拿到
+    // 500——而 /healthz 不碰 store，Docker healthcheck 照样绿，不会自愈也
+    // 不会触发重启。清掉之后下一次调用会重新尝试打开，一旦环境恢复就自愈。
+    storePromise = openDatabase(path).then(createSessionStore).catch((e) => { storePromise = null; throw e })
   }
   return storePromise
 }

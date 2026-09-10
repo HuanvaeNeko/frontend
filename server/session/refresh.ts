@@ -65,8 +65,13 @@ function parseRefresh(body: unknown): RefreshPayload {
   }
 
   const expiresIn = data.expires_in
-  if (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn)) {
-    throw new Error('expires_in 缺失或不是有限数字')
+  // <= 0 必须当形状坏处理，不能只查"是有限数字"：0/负数会通过校验直接落进
+  // accessExpiresAt = now + expiresIn * 1000，也就是"已经过期"或"立刻进入
+  // 60 秒刷新窗口"——下一个经过这个会话的请求会立刻判定需要刷新，再打一次
+  // 上游拿到同样坏的 expires_in，如此往复：变成每个请求都打一次上游刷新。
+  // 线上实测值是 900，这里防的是后端形状变坏时的自伤。
+  if (typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+    throw new Error('expires_in 缺失、不是有限数字，或者 <= 0')
   }
 
   return { access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn }

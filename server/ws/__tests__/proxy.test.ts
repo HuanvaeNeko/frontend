@@ -153,4 +153,16 @@ describe('会话 WS 登记表', () => {
 
     expect(secondClosed).toBe(true)
   })
+
+  it('两份独立求值的 registry 实例共享同一张表（生产里 SSR bundle 与 server/index.ts 各持一份）', async () => {
+    vi.resetModules()
+    const a = await import('../registry')
+    vi.resetModules()
+    const b = await import('../registry')
+    expect(a).not.toBe(b) // 确实是两份实例，否则这个测试没在测东西
+    const closed: number[] = []
+    a.registerSessionSocket('s1', { close: (c) => closed.push(c ?? 0) })
+    b.closeSessionSockets('s1') // 从另一份实例关
+    expect(closed).toEqual([1000])
+  })
 })

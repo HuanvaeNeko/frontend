@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_COOKIE_NAME, resetSessionStore } from '../../../../server/session'
 import { resetRefreshInFlight } from '../../../../server/session/refresh'
-import { registerSessionSocket } from '../../../../server/ws/registry'
+import { registerSessionSocket, resetSessionSocketRegistry } from '../../../../server/ws/registry'
 import { action as loginAction } from '../api.auth.login'
 import { action as logoutAction } from '../api.auth.logout'
 import { action as registerAction } from '../api.auth.register'
@@ -38,6 +38,9 @@ beforeEach(() => {
   process.env.SESSION_COOKIE_SECURE = 'false'
   resetSessionStore()
   resetRefreshInFlight()
+  // registry 挂在 globalThis（见 server/ws/registry.ts），跨模块隔离存活，
+  // 不重置会让本文件登记的 WS 串到别的测试文件里同名的 session id 上。
+  resetSessionSocketRegistry()
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
 })

@@ -8,6 +8,7 @@ import { enable as enableNavigationPreload } from 'workbox-navigation-preload'
 import { precacheAndRoute, type PrecacheEntry } from 'workbox-precaching'
 import { registerRoute, setCatchHandler } from 'workbox-routing'
 import { CacheFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies'
+import { isAppAsset } from '../lib/bffPrefixes'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -92,24 +93,30 @@ precacheAndRoute(precacheEntries)
 // "本应用自己的同源静态音视频文件"这个场景，所以没有加媒体路由——不是漏做，
 // 是确认过这个场景不存在。
 //
-// 硬性护栏：下面每条规则都显式加了 `isSameOrigin` 同源检查。本项目 REST
-// （`https://api.huanvae.cn`）和 WebSocket（`wss://api.huanvae.cn`）都在
-// 独立的 API 域名下（见 `src/lib/apiConfig.ts`），与本应用自己的部署域名
-// 不同源。用户头像、群头像、聊天文件等一律是后端直接返回的跨源 URL
-// （`avatar_url` / `group_avatar_url` / `sender_avatar_url` / `file_url`，
-// 见 `src/features/*/api/*.ts` 与 `src/types/models.ts`），天然不会被下面
-// 任何一条同源规则命中；不依赖"猜测某个 destination 不会用于 API 请求"这个
-// 假设——即使以后某条规则的匹配条件被放宽，同源检查也会先短路掉跨源请求。
+// 硬性护栏（2026-09 终审 I1 重写：这段注释原来说的话已被本分支证伪）。
+//
+// 原文声称"REST/WS 都在独立的 api.huanvae.cn 域名下，用户头像/群头像/聊天
+// 文件天然是跨源 URL，不会被下面任何同源规则命中"——BFF 落地后这句话整段
+// 失效：`src/lib/apiConfig.ts` 的 `toAbsoluteApiUrl` 现在把这些地址全部改写
+// 到 `location.origin`，头像、私聊图片、`/api/storage/file/{uuid}` 都变成了
+// 同源请求。如果下面仍然只判同源，它们会被 StaleWhileRevalidate 当成"本应用
+// 自己的图片"缓存 30 天——而 `endSession()`（`src/lib/sessionScope.ts`）从不
+// 清 Cache Storage，SW 里唯一能清缓存的 `CLEAR_CACHE` 消息处理零调用点
+// （`src/lib/version.ts` 里那个函数没人调）。结果是：上一个账号的头像与私聊
+// 图片以明文字节留在 Cache Storage 里，跨账号、跨登出、跨 30 天存活。
+//
+// 所以现在同源不再等于"本应用静态资源"：还要再按路径前缀排除掉 BFF 反代/
+// 透传的后端资源——那些前缀之后的响应体来自 Huanvae 后端，不是构建产物。
+// `isAppAsset`（`src/lib/bffPrefixes.ts`）做的就是"同源 AND 不在这些前缀
+// 下"这个判断；前缀常量与 `server/index.ts` 的 `BFF_PREFIXES` 语义相同，
+// 但两处代码不共享（见该文件顶部注释：runtime 镜像不带 `src/lib`）。
 // WebSocket 握手请求本身不经过 Service Worker 的 fetch 事件，规范层面就
 // 不可能被 `registerRoute` 匹配到，不需要额外处理。
-function isSameOrigin(url: URL): boolean {
-  return url.origin === self.location.origin
-}
 
 // 字体：本次修复的具体目标。CacheFirst + 一年过期——文件名都带内容 hash，
 // 换新版本会是全新 URL，不存在"缓存住旧内容"的新鲜度风险，可以放心长缓存。
 registerRoute(
-  ({ request, url }) => isSameOrigin(url) && request.destination === 'font',
+  ({ request, url }) => isAppAsset(url, self.location.origin) && request.destination === 'font',
   new CacheFirst({
     cacheName: 'static-font-assets',
     plugins: [
@@ -120,11 +127,11 @@ registerRoute(
 )
 
 // 图片：覆盖 /logo.svg、/favicon.ico 等应用自带的同源图片。不含任何用户
-// 头像/群头像/聊天图片——那些都来自 api.huanvae.cn，会被同源检查排除。
+// 头像/群头像/聊天图片——那些现在虽然同源，但会被 isAppAsset 的前缀排除挡掉。
 // StaleWhileRevalidate：先返回旧缓存、后台悄悄刷新，图片更新不敏感，不需要
 // CacheFirst 那种"命中后绝不重新请求直到过期"的强语义。
 registerRoute(
-  ({ request, url }) => isSameOrigin(url) && request.destination === 'image',
+  ({ request, url }) => isAppAsset(url, self.location.origin) && request.destination === 'image',
   new StaleWhileRevalidate({
     cacheName: 'static-image-assets',
     plugins: [
@@ -137,10 +144,10 @@ registerRoute(
 // 脚本/样式：当前 106+2=108 就是这次构建全部的 js/css，precache 已经
 // 100% 覆盖，这条规则现阶段不会有实际命中——保留作为版本切换瞬间（旧 SW
 // 的 precache 清单里还没有新部署刚产出的某个 chunk）之类边缘场景的兜底网。
-// 同样必须限定同源 + 加过期，避免变成一个悄悄增长的无界缓存。
+// 同样必须限定"应用自己的资源" + 加过期，避免变成一个悄悄增长的无界缓存。
 registerRoute(
   ({ request, url }) =>
-    isSameOrigin(url) && (request.destination === 'script' || request.destination === 'style'),
+    isAppAsset(url, self.location.origin) && (request.destination === 'script' || request.destination === 'style'),
   new StaleWhileRevalidate({
     cacheName: 'static-resources',
     plugins: [
