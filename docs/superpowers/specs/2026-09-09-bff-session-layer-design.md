@@ -46,7 +46,8 @@
                                    ├─ GET  /api/session              「我登录了吗」（RR8 资源路由）
                                    ├─ /api/*                         cookie→bearer，流式转发（RR8 资源路由 catch-all）
                                    ├─ /avatars|user-file|friends-file|apps/*  透传，不查会话、不注入 bearer
-                                   └─ /ws                            cookie→token 注入上游 query，双向管道（Bun.serve websocket）
+                                   ├─ /ws                            cookie→token 注入上游 query，双向管道（Bun.serve websocket）
+                                   └─ /ws/webrtc/rooms/*             WS 透传：不查会话、不注入 token，path+query 原样（信令用自己的 ws_token 鉴权）
                                    └─ sessions.sqlite（docker volume）
 ```
 
@@ -223,6 +224,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 - `open`：`new WebSocket(\`${BFF_UPSTREAM_WS}/ws?token=${encodeURIComponent(token)}\`)`；登记到 `sessionId → Set<ws>`。
 - 文本 / 二进制帧双向转发；浏览器侧 `close(code, reason)` → 以同一 code 关上游；上游侧关闭 → 经 `relayCloseCode` 映射后关浏览器侧：1000 原样（那是 `closeSessionSockets` 表达「会话结束、别重连」的码），3000–4999 与 1002–1014（除 1005/1006）原样，其余（1001 / 1005 / 1006 / 1015 …）→ **1011**。原因：1005/1006/1015 按协议不能作为关闭码发送，Bun 会把它们连同 1001 静默改写成 1000，而客户端 `wsStore` 对 1000/1001 明确不重连 —— 原样下发会把「上游掉线 / edge 重启」伪装成「正常关闭」，聊天连接静默死亡到用户刷新页面为止（Task 9 评审实测）。注销登记。
 - `logout` / 会话删除 → 关闭该会话名下所有 WS（code 1000）。
+- **`/ws/webrtc/rooms/*` 是 WS 透传**（与 §4.5 的 HTTP 透传同一哲学）：不查会话、不注入 token、不进登记表，`${BFF_UPSTREAM_WS}${pathname}${search}` 原样接上游——视频会议信令用 `joinRoom` 返回的 `ws_token`（或分享链接里的 `?token=`）自鉴权，参与者可能根本没有登录态。生产由 `server/index.ts` 的第二条升级分支处理；开发侧 Vite 代理键必须是精确的 `^/ws$`（聊天，注入 token）与 `^/ws/webrtc/`（透传，不改写）——`'/ws'` 前缀匹配会把信令 socket 错连到聊天端点。
 
 开发（`vite.config.ts`）：`server.proxy['/ws'] = { target: BFF_UPSTREAM_WS, ws: true, configure(proxy) { proxy.on('proxyReqWs', …) } }`，钩子里用 `node:sqlite` **同步**读会话、把 `proxyReq.path` 改成 `/ws?token=…`。**诚实限制**：钩子是同步的，不能刷新；连接时 token 已过期则由上游握手 401 → 现有重连退避接管；而 `ChatPage` 挂载时的 `loadProfile()` 总会先经 4.4 把它刷新。
 
@@ -276,7 +278,7 @@ BFF **不改写上游文案**：只要手里有一个上游响应（任何状态
 ## 7. 安全边界
 
 - **CSRF**：`SameSite=Lax` + 所有写操作是 JSON `fetch` 而非表单 → 跨站 POST 带不上 cookie；再加 `Sec-Fetch-Site: cross-site` 时拒绝非 GET（一行）。
-- BFF **只**代理 §3 列出的六个前缀；其它路径落回 RR 路由 / 404。
+- BFF **只**代理 §3 列出的七个前缀（六个 HTTP + `/ws`，外加 `/ws/webrtc/rooms/*` 的 WS 透传）；其它路径落回 RR 路由 / 404。
 - 会话 id ≥ 32 字节 CSPRNG 熵（两个 UUIDv4 拼接，64 hex）；cookie `HttpOnly`；生产 `Secure`。
 - 私钥永不进仓：`secrets/` 在 `.gitignore`，alice 上 mode 600，由 owner 放置；本仓是公开仓库。
 - `Authorization` 只在 4.4 注入，透传分支结构上不可达（独立模块、测试钉住）。
