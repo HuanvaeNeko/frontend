@@ -24,6 +24,8 @@ const zhCN = {
       pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', loading: '加载中...',
       loadFailed: '加载失败', retry: '重试', empty: '还没有会话，先去添加好友或创建群聊', noMatch: '没有匹配的会话', groupTag: '[群聊]',
     },
+    nav: { chat: '消息', contacts: '联系人', more: '更多功能', settings: '设置', profile: '个人资料', theme: '切换明暗', meeting: '视频会议', files: '我的文件', bots: '机器人', miniapps: '小程序', ai: 'AI 助手', backToList: '返回列表' },
+    empty: { title: '欢迎使用 Huanvae Chat', chat: '选择一个会话开始聊天', contacts: '选择一个联系人查看资料' },
   },
   layout: {
     mainMenu: '主菜单',
@@ -554,6 +556,8 @@ const enUS = {
       pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', loading: 'Loading...',
       loadFailed: 'Failed to load', retry: 'Retry', empty: 'No conversations yet — add a friend or create a group', noMatch: 'No matching conversations', groupTag: '[Group]',
     },
+    nav: { chat: 'Chats', contacts: 'Contacts', more: 'More', settings: 'Settings', profile: 'Profile', theme: 'Toggle theme', meeting: 'Meetings', files: 'My files', bots: 'Bots', miniapps: 'Mini apps', ai: 'AI assistant', backToList: 'Back to list' },
+    empty: { title: 'Welcome to Huanvae Chat', chat: 'Pick a conversation to start chatting', contacts: 'Pick a contact to see their profile' },
   },
   layout: {
     mainMenu: 'Main Menu',

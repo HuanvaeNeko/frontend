@@ -29,15 +29,23 @@ export default [
   ]),
 
   layout('routes/protected-layout.tsx', [
-    route('app/chat', 'routes/chat.tsx'),
-    route('app/friends', 'routes/friends.tsx'),
-    route('app/groups', 'routes/groups.tsx'),
-    route('app/files', 'routes/files.tsx'),
-    route('app/webrtc', 'routes/webrtc.tsx'),
-    route('app/ai-chat', 'routes/ai-chat.tsx'),
+    // 壳：spec §3 的三栏。本任务只挂 /app/chat*，后续任务逐条搬入
+    layout('routes/app-shell.tsx', [
+      route('app/chat', 'routes/shell/chat.tsx', [
+        route(':conversationId', 'routes/shell/chat.$conversationId.tsx'),
+      ]),
+    ]),
+    // 过渡期：还没搬进壳的旧页面（第 11 步整段删除）
+    layout('routes/legacy-layout.tsx', [
+      route('app/friends', 'routes/friends.tsx'),
+      route('app/groups', 'routes/groups.tsx'),
+      route('app/files', 'routes/files.tsx'),
+      route('app/webrtc', 'routes/webrtc.tsx'),
+      route('app/ai-chat', 'routes/ai-chat.tsx'),
+      route('app/devices', 'routes/devices.tsx'),
+      route('app/settings', 'routes/settings.tsx'),
+      route('app/profile', 'routes/profile.tsx'),
+    ]),
     route('app/video-meeting', 'routes/video-meeting.tsx'),
-    route('app/devices', 'routes/devices.tsx'),
-    route('app/settings', 'routes/settings.tsx'),
-    route('app/profile', 'routes/profile.tsx'),
   ]),
 ] satisfies RouteConfig
