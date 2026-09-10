@@ -2,9 +2,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { reactRouter } from '@react-router/dev/vite'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig, loadEnv } from 'vite'
+import { type UserConfig, defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import { DatabaseSync } from 'node:sqlite'
 import { SESSION_COOKIE_NAME } from './server/session/cookie'
 import { SESSION_SELECT_BY_ID_SQL } from './server/session/sql'
 
@@ -12,7 +11,7 @@ const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', impo
   version: string
 }
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(async ({ command, mode }): Promise<UserConfig> => {
   // Next 以前靠 next.config.js 自动把 npm_package_version 注入 process.env，
   // src/lib/version.ts 读 import.meta.env.VITE_APP_VERSION 时其实吃的是这个值。
   // 迁移后没有等价物：没有 .env 文件时 VITE_APP_VERSION 是 undefined，version.ts
@@ -48,6 +47,17 @@ export default defineConfig(({ command, mode }) => {
   for (const key of ['BFF_UPSTREAM_HTTP', 'BFF_UPSTREAM_WS', 'SESSION_DB_PATH', 'SESSION_COOKIE_SECURE'] as const) {
     if (process.env[key] === undefined && env[key]) process.env[key] = env[key]
   }
+
+  // node:sqlite 只有 dev（下面 /ws 代理的同步钩子）才需要，而且**只能在这里动态加载**：
+  // Docker 的 build 阶段没有 Node，`react-router build` 由 Bun 执行，Bun 1.3 没有
+  // node:sqlite —— 顶层静态 import 会让整份配置在 Bun 下加载失败（2026-09-10 上线时
+  // 镜像构建就是这样挂的；本机能过只是因为 react-router 的 shebang 让它跑在 Node 上）。
+  // 变量说明符 + @vite-ignore 与 server/session/db.ts 同一手法：任何打包器都无法静态
+  // 解析它，build 模式下这一行根本不会执行。
+  type SqliteModule = typeof import('node:sqlite')
+  const sqliteSpecifier = 'node:sqlite'
+  const sqlite: SqliteModule | null =
+    command === 'serve' ? ((await import(/* @vite-ignore */ sqliteSpecifier)) as SqliteModule) : null
 
   return {
     // 不要再加 @vitejs/plugin-react：reactRouter() 内部已经装好了 React Fast Refresh，
@@ -180,11 +190,11 @@ export default defineConfig(({ command, mode }) => {
               if (!match) return
 
               const dbPath = env.SESSION_DB_PATH
-              if (!dbPath) return
+              if (!dbPath || !sqlite) return
 
-              let db: DatabaseSync | undefined
+              let db: InstanceType<SqliteModule['DatabaseSync']> | undefined
               try {
-                db = new DatabaseSync(dbPath)
+                db = new sqlite.DatabaseSync(dbPath)
                 const row = db.prepare(SESSION_SELECT_BY_ID_SQL).get(match[1]) as { access_token?: string } | undefined
                 if (row?.access_token) {
                   proxyReq.path = `/ws?token=${encodeURIComponent(row.access_token)}`
