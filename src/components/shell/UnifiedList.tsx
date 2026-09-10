@@ -49,7 +49,7 @@ export function UnifiedList(props: UnifiedListProps) {
               <Plus className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="glass-surface min-w-[160px] rounded-[14px] border-[var(--glass-border)]">
+          <DropdownMenuContent align="end" className="glass-surface min-w-[160px] rounded-lg border-[var(--glass-border)]">
             <DropdownMenuItem onSelect={props.onCreateGroup}>{t('shell.list.createGroup')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={props.onAddFriend}>{t('shell.list.addFriend')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={props.onJoinGroup}>{t('shell.list.joinGroup')}</DropdownMenuItem>

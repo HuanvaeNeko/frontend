@@ -31,7 +31,7 @@ export function ConversationCard({ conversation: c, selected, onSelect, onToggle
             // APP .conversation-item:玻璃卡片 + 12px 圆角 + 卡片专用透明度
             // 原生 <button>(而不是 div+role="button"):Enter/Space 由浏览器原生派发
             // click,不用再手写 onKeyDown——那样反而会和原生 click 重复触发一次。
-            'relative mb-1 flex w-full cursor-pointer items-center gap-3 rounded-[12px] border p-3 text-left transition-[background,box-shadow,border-color] duration-200',
+            'relative mb-1 flex w-full cursor-pointer items-center gap-3 rounded-md border p-3 text-left transition-[background,box-shadow,border-color] duration-200',
             'bg-[linear-gradient(135deg,var(--card-bg-start),var(--card-bg-end))] border-[var(--card-border)] shadow-[0_2px_8px_rgba(0,0,0,0.04)]',
             'backdrop-blur-[20px] backdrop-saturate-[180%]',
             'hover:bg-[linear-gradient(135deg,var(--card-bg-hover-start),var(--card-bg-hover-end))] hover:shadow-[0_4px_12px_rgba(59,130,246,0.08)]',
@@ -39,9 +39,9 @@ export function ConversationCard({ conversation: c, selected, onSelect, onToggle
             selected && 'outline outline-2 outline-offset-[3px] outline-primary',
           )}
         >
-          <Avatar className="h-12 w-12 shrink-0 rounded-[12px] border-[1.5px] border-[var(--white-alpha-80)]">
+          <Avatar className="h-12 w-12 shrink-0 rounded-md border-[1.5px] border-[var(--white-alpha-80)]">
             {c.avatarUrl && <AvatarImage src={c.avatarUrl} alt="" />}
-            <AvatarFallback className="rounded-[12px] bg-[linear-gradient(135deg,var(--white-alpha-80),var(--white-alpha-50))] text-app-light">
+            <AvatarFallback className="rounded-md bg-[linear-gradient(135deg,var(--white-alpha-80),var(--white-alpha-50))] text-app-light">
               {c.name.slice(0, 1).toUpperCase()}
             </AvatarFallback>
           </Avatar>
@@ -67,7 +67,7 @@ export function ConversationCard({ conversation: c, selected, onSelect, onToggle
           </div>
         </button>
       </ContextMenuTrigger>
-      <ContextMenuContent className="glass-surface min-w-[160px] rounded-[14px] border-[var(--glass-border)]">
+      <ContextMenuContent className="glass-surface min-w-[160px] rounded-lg border-[var(--glass-border)]">
         <ContextMenuItem onSelect={() => onTogglePin(c.id)}>{c.pinned ? t('shell.list.unpin') : t('shell.list.pin')}</ContextMenuItem>
         <ContextMenuItem onSelect={() => onMarkRead(c.id)} disabled={c.unreadCount === 0}>{t('shell.list.markRead')}</ContextMenuItem>
       </ContextMenuContent>

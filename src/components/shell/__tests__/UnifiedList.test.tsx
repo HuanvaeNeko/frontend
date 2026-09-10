@@ -42,14 +42,22 @@ describe('UnifiedList', () => {
   it('三态：loading / error（可重试）/ empty 各自渲染，且互斥', () => {
     const onRetry = vi.fn()
     const { rerender } = render(<UnifiedList {...base} conversations={[]} status="loading" />)
+    // loading 状态：加载中文案存在，其他两态文案缺席
     expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(screen.queryByText(/加载失败/)).toBeNull()
+    expect(screen.queryByText(/还没有会话/)).toBeNull()
     rerender(<UnifiedList {...base} conversations={[]} status="error" error="网络断了" onRetry={onRetry} />)
+    // error 状态：加载失败文案存在，其他两态文案缺席
     expect(screen.getByText(/加载失败/)).toBeInTheDocument()
+    expect(screen.queryByText('加载中...')).toBeNull()
+    expect(screen.queryByText(/还没有会话/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('加载中...')).not.toBeInTheDocument()
     rerender(<UnifiedList {...base} conversations={[]} status="ready" />)
+    // ready-empty 状态：空态文案存在，其他两态文案缺席
     expect(screen.getByText(/还没有会话/)).toBeInTheDocument()
+    expect(screen.queryByText('加载中...')).toBeNull()
+    expect(screen.queryByText(/加载失败/)).toBeNull()
   })
 
   it('卡片显示名字、预览、未读角标（99+ 截断）、[群聊] 标记与置顶标识', () => {
