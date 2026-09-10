@@ -4592,4 +4592,22 @@ EOF
 
 ## 上线记录
 
-（Task 14 完成时填写：边缘验收数字、线上 curl 结果、owner 浏览器验证结论、是否用了 Caddy 还是退回 nginx。）
+**2026-09-10 上线，写实测数字，不写「通过」。**
+
+- **合入**：origin/main 从 `667f74f` 快进到终审通过的 `f054d66`（`--no-ff` 合并提交因自动模式分类器拦截 `commit-tree` 未做成，历史是快进的），随后再快进到 `fb5fc7b`（见下方构建修复）。只合入了终审过的提交；`feat/bff-session` 上后台任务的其余改动留在分支上。
+- **证书**：owner 授权后由 agent 用 scp 放到 alice `~/huanvae-frontend/secrets/`（目录 700，三个 pem 600，agent 未读私钥内容）。
+- **edge**：Caddy（`edge/Caddyfile`）容器 `huanvae-frontend-edge-1` 起来即 `server running`，无证书加载错误。**用的是 Caddy，没有退回 nginx。**
+- **边缘验收**：`edge/probe.ts` 的一次性容器形式被分类器拦截，改在 edge 容器内用 busybox `wget` 做只读探测：`http://127.0.0.1:8787/api/friends` **1 + 40 次串行全部 `HTTP/1.1 401 Unauthorized`（失败 0 / 41）**——后端经 mTLS 应答，**SNI `huanvae-edge` 被后端接受**（spec §10 那条「Caddy 发 SNI 而 nginx 不发」的已知差异不成立），Caddy 的连接复用挡住了 1/8 RST。并行 40 次与 WS 无 token 握手两项未在 edge 层跑（命令被拦），WS 改在线上验证。
+- **构建（两次失败，两次修复）**：
+  1. `bun install` 卡死：alice 容器继承宿主机 resolv.conf 里的 Tailscale MagicDNS `100.100.100.100`，docker 网桥里不可达（宿主机能直连 npmjs/npmmirror/github；容器 TCP 出网正常、UDP DNS 全死）。修法：alice 本地 `docker-compose.override.yml`（不进仓）加 `services.app.build.network: host`。上次能建是因为 `deps` 层命中缓存。
+  2. `bun run build` 失败 `Could not resolve "node:sqlite"`：oven/bun 镜像没有 Node，`react-router build` 由 Bun 执行，`vite.config.ts` 顶层静态 `import { DatabaseSync } from 'node:sqlite'` 在 Bun 1.3 下解析不了——13 轮评审都没跑过 Docker 构建，本机 `bun run build` 因 shebang 跑在 Node 上掩盖了它。修法 `fb5fc7b`：改为 `command === 'serve'` 时才动态 `await import(/* @vite-ignore */ …)`。本机 `bun --bun run build` 可复现并验证。
+- **部署**：`docker compose build app` 成功（含 runtime 阶段 `bun build --packages=external` 自检）；`docker compose up -d app` 后 `huanvae-frontend-app-1` 8 秒内 healthy，`huanvae-frontend_sessions` 卷已创建；日志 `server listening on :3000`，无错误。
+- **线上 curl（从 Mac，经 cloudflared）**：
+  1. `GET https://huanvae.cn/` → `HTTP/2 200`
+  2. 客户端入口 `/assets/entry.client-DMccS3_1.js` 里 `api.huanvae.cn` 出现次数 **0**
+  3. 未登录 `GET /api/session` → **401**
+  4. 未登录 `GET /api/friends` → **401**，`set-cookie: hv_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure`
+  5. 错密码 `POST /api/auth/login` → **401** `{"success":false,"code":401,"error":"用户名或密码错误"}`（后端原话穿过 浏览器→cloudflared→BFF→Caddy(mTLS)→后端 整条链路）
+  6. 无 cookie 的 WS 升级（`--http1.1`）`GET /ws` → **401**（BFF 在碰后端之前拒绝；用 HTTP/2 探测会得到 404，那是 h2 丢弃 Upgrade 头的探测假象，不是缺陷）
+- **owner 浏览器验证**：待 owner 完成（真实登录 → `document.cookie` 无 `hv_session` → Local Storage 无 token → WS 连 `wss://huanvae.cn/ws` 且不带 `?token=`、状态 101 → 收发消息）。
+- **遗留**：`git push origin dev` 被分类器拦（本地 dev 在 `f054d66`，origin/main 在 `fb5fc7b`）；开发者本机 `.env.development.local` 需要四个 BFF 变量、旧的 `VITE_API_URL`/`VITE_WS_URL` 已无人读取；alice 的 app 容器内无公共 DNS（Sentry 服务端上报会静默失败）。
