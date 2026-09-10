@@ -1,11 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from '@/lib/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertCircle,
-  ArrowLeft,
   Bot,
   Download,
   Loader2,
@@ -27,10 +25,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { ROUTES } from '@/lib/routes'
 
 export default function AiChat() {
-  const router = useRouter()
   const { toast } = useToast()
   const apiConfigStore = useApiConfigStore()
 
@@ -204,9 +200,6 @@ export default function AiChat() {
           <CardHeader className="space-y-3 border-b pb-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted text-primary">
                   <Bot className="h-5 w-5" />
                 </div>

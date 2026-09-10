@@ -34,6 +34,21 @@ describe('路由表：壳布局承载 /app/chat', () => {
     expect(flat).toContain('routes/friends.tsx@/app/friends')
   })
 
+  it('带 URL 的模态框 + AI 助手挂在 app-shell 之下，旧的 routes/files.tsx、routes/ai-chat.tsx、routes/profile.tsx 不再注册', () => {
+    const flat = flatten(routes as unknown as RouteEntry[])
+    expect(flat).toContain('routes/shell/profile.tsx@/app/profile')
+    expect(flat).toContain('routes/shell/files.tsx@/app/files')
+    expect(flat).toContain('routes/shell/meeting.tsx@/app/meeting')
+    expect(flat).toContain('routes/shell/bots.tsx@/app/bots')
+    expect(flat).toContain('routes/shell/miniapps.tsx@/app/miniapps')
+    expect(flat).toContain('routes/shell/ai-chat.tsx@/app/ai-chat')
+    expect(flat.some((x) => x.startsWith('routes/files.tsx@'))).toBe(false)
+    expect(flat.some((x) => x.startsWith('routes/ai-chat.tsx@'))).toBe(false)
+    expect(flat.some((x) => x.startsWith('routes/profile.tsx@'))).toBe(false)
+    // 正对照：app/webrtc 这一步还留在 legacy-layout（留到第 11 步重定向），证明 flatten 读到了整张表
+    expect(flat).toContain('routes/webrtc.tsx@/app/webrtc')
+  })
+
   it('settings.$section.tsx 拒绝非法分区，回退到 appearance', () => {
     // 变异实测：把 settings.$section.tsx 里 `isSettingsSection(section)` 那道校验去掉，
     // 本条红——非法 section（这里是 'nope'）不会被拦下，组件会直接拿 'nope' 去查

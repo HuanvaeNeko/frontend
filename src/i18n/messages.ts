@@ -28,6 +28,7 @@ const zhCN = {
     empty: { title: '欢迎使用 Huanvae Chat', chat: '选择一个会话开始聊天', contacts: '选择一个联系人查看资料' },
     contacts: { friends: '好友', groups: '群', requests: '申请', search: '搜索联系人', noFriends: '还没有好友', noGroups: '还没有加入任何群', noMatch: '没有匹配的联系人', closePanel: '收起', message: '发消息', removeFriend: '删除好友', confirmRemove: '确定删除这位好友？', removeFailed: '删除好友失败', notFriend: '不是你的好友', loadFailed: '资料加载失败', signature: '签名', region: '地区', memberSince: '成为好友' },
     settings: { title: '设置', appearance: '外观', notifications: '通知与提醒', account: '账户与安全', ai: 'AI 配置', about: '关于', theme: '主题', themeLight: '浅色', themeDark: '深色', themeAuto: '跟随系统', language: '语言', animations: '界面动画', particles: '粒子背景', notify: '桌面通知', sound: '提示音', volume: '音量', privacy: '隐私', devices: '登录设备', logout: '退出登录', version: '版本', downloads: '下载客户端' },
+    modals: { files: '我的文件', upload: '上传', meeting: '视频会议', bots: '机器人', botsEmpty: '还没有机器人', miniapps: '小程序', miniappsEmpty: '还没有小程序', open: '打开', active: '运行中', inactive: '已停用' },
   },
   layout: {
     mainMenu: '主菜单',
@@ -562,6 +563,7 @@ const enUS = {
     empty: { title: 'Welcome to Huanvae Chat', chat: 'Pick a conversation to start chatting', contacts: 'Pick a contact to see their profile' },
     contacts: { friends: 'Friends', groups: 'Groups', requests: 'Requests', search: 'Search contacts', noFriends: 'No friends yet', noGroups: 'No groups yet', noMatch: 'No matching contacts', closePanel: 'Close', message: 'Message', removeFriend: 'Remove friend', confirmRemove: 'Remove this friend?', removeFailed: 'Failed to remove friend', notFriend: 'Not your friend', loadFailed: 'Failed to load profile', signature: 'Signature', region: 'Region', memberSince: 'Friends since' },
     settings: { title: 'Settings', appearance: 'Appearance', notifications: 'Notifications', account: 'Account & security', ai: 'AI', about: 'About', theme: 'Theme', themeLight: 'Light', themeDark: 'Dark', themeAuto: 'System', language: 'Language', animations: 'Animations', particles: 'Particle background', notify: 'Desktop notifications', sound: 'Sounds', volume: 'Volume', privacy: 'Privacy', devices: 'Devices', logout: 'Log out', version: 'Version', downloads: 'Download the app' },
+    modals: { files: 'My files', upload: 'Upload', meeting: 'Meetings', bots: 'Bots', botsEmpty: 'No bots yet', miniapps: 'Mini apps', miniappsEmpty: 'No mini apps yet', open: 'Open', active: 'Active', inactive: 'Inactive' },
   },
   layout: {
     mainMenu: 'Main Menu',

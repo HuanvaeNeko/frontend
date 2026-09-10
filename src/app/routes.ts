@@ -41,15 +41,19 @@ export default [
       route('app/settings', 'routes/shell/settings.tsx', [
         route(':section', 'routes/shell/settings.$section.tsx'),
       ]),
+      // 带 URL 的模态框 + AI 助手整栏页（spec §3/§9）：列表栏保持最近的 chat/contacts tab
+      route('app/profile', 'routes/shell/profile.tsx'),
+      route('app/files', 'routes/shell/files.tsx'),
+      route('app/meeting', 'routes/shell/meeting.tsx'),
+      route('app/bots', 'routes/shell/bots.tsx'),
+      route('app/miniapps', 'routes/shell/miniapps.tsx'),
+      route('app/ai-chat', 'routes/shell/ai-chat.tsx'),
     ]),
     // 过渡期：还没搬进壳的旧页面（第 11 步整段删除）
     layout('routes/legacy-layout.tsx', [
       route('app/friends', 'routes/friends.tsx'),
       route('app/groups', 'routes/groups.tsx'),
-      route('app/files', 'routes/files.tsx'),
       route('app/webrtc', 'routes/webrtc.tsx'),
-      route('app/ai-chat', 'routes/ai-chat.tsx'),
-      route('app/profile', 'routes/profile.tsx'),
     ]),
     route('app/video-meeting', 'routes/video-meeting.tsx'),
   ]),

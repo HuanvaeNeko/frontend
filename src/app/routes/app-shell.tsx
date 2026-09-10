@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useParams } from 'react-router'
 import { AppShell } from '@/components/shell/AppShell'
 import { ContactsList } from '@/components/shell/ContactsList'
+import { useShellTab } from '@/components/shell/shellTab'
 import { SettingsSectionList } from '@/components/shell/settings/SettingsSectionList'
 import { UnifiedList } from '@/components/shell/UnifiedList'
 import { useAuthStore } from '@/features/auth/store/authStore'
@@ -15,11 +16,6 @@ import { useProfileStore } from '@/features/profile/store/profileStore'
 import { usePathname, useRouter } from '@/lib/navigation'
 import { ROUTES, chatPath } from '@/lib/routes'
 import { useWSStore } from '@/store/wsStore'
-
-function shellTabOf(pathname: string): 'chat' | 'contacts' | 'settings' {
-  if (pathname.startsWith(ROUTES.app.settings)) return 'settings'
-  return pathname.startsWith(ROUTES.app.contacts) ? 'contacts' : 'chat'
-}
 
 /** 原 ChatPage 的挂载副作用，搬到壳：整个 /app/* 只跑一次 */
 function useShellBootstrap() {
@@ -71,7 +67,7 @@ function ChatListColumn() {
 export default function AppShellLayout() {
   useShellBootstrap()
   const pathname = usePathname()
-  const tab = shellTabOf(pathname)
+  const tab = useShellTab()
   // 原 Navigation.tsx 写的"上次访问路径"（app-index.tsx 读它恢复落点；登出时由 sessionScope 清掉）。壳内每次路径变化都写
   useEffect(() => {
     if (pathname.startsWith('/app')) localStorage.setItem('last_visited_path', pathname)
