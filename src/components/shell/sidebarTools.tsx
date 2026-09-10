@@ -19,3 +19,5 @@ export const SIDEBAR_TOOLS: ReadonlyArray<SidebarTool> = [
   { key: 'miniapps', labelKey: 'shell.nav.miniapps', icon: LayoutGrid, to: ROUTES.app.miniapps },
   { key: 'ai', labelKey: 'shell.nav.ai', icon: Sparkles, to: ROUTES.app.aiChat },
 ]
+
+export const SIDEBAR_TOOLS_BY_KEY = Object.fromEntries(SIDEBAR_TOOLS.map((tool) => [tool.key, tool])) as Record<SidebarToolKey, SidebarTool>

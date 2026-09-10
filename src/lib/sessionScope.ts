@@ -242,6 +242,13 @@ const DEVICE_SCOPED_KEYS: ReadonlyMap<string, DeviceScopedRule> = new Map<string
   ['sound_enabled', { keep: 'whole' }],
   ['sound_volume', { keep: 'whole' }],
 
+  /**
+   * 侧栏工具的钉住布局（`components/shell/sidebarLayout.ts`）。这是**这台机器**上
+   * 的排版偏好，不含任何账号数据——和 APP 一样按设备保存（spec §5）；登出清掉它
+   * 等于每次换号都把用户拖好的侧栏打回默认。
+   */
+  ['huanvae.sidebar-layout', { keep: 'whole' }],
+
   ['app-settings', { keep: 'zustandFields', fields: DEVICE_SCOPED_SETTING_FIELDS }],
 ])
 

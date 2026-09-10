@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/features/chat/store/chatStore'
@@ -26,11 +26,51 @@ vi.mock('@/i18n/I18nProvider', async () => {
   return { useI18n: () => ({ locale: 'zh-CN', t }) }
 })
 
+/**
+ * framer-motion 换成直通 mock：`SidebarMorePanel` 用 `AnimatePresence` + `motion.div`
+ * 做进/退场动画，而「钉住布局」那组用例会在动画播放中途触发下一次状态变化（例如
+ * 面板刚打开就再点一次收起）。跟 `GroupList.test.tsx` 同一个理由：真实动画在
+ * `waitFor` 断言完成、测试清理卸载组件时可能还没播完，happy-dom 的
+ * `Animation.cancel()` 会抛一个没有人 catch 的 `AbortError`，污染整个测试进程，
+ * 与本批要验证的拖拽归约逻辑无关。用 `forwardRef` 直通（而不是普通函数组件）是
+ * 因为 `SidebarMorePanel` 把 `ref` 转给它的 `motion.div`，`Sidebar` 的"点面板外
+ * 收起"逻辑靠这个 ref 判断点击是否落在面板内——普通函数组件接 `ref` 会静默丢失
+ * 转发，还会让 React 报"Function components cannot be given refs"的警告。
+ */
+vi.mock('framer-motion', async () => {
+  const react = await import('react')
+  type MotionProps = Record<string, unknown> & { children?: unknown }
+  const stripMotionProps = ({
+    initial: _initial,
+    animate: _animate,
+    exit: _exit,
+    variants: _variants,
+    transition: _transition,
+    custom: _custom,
+    layout: _layout,
+    layoutId: _layoutId,
+    children,
+    ...rest
+  }: MotionProps) => ({ rest, children })
+  const passthrough = (tag: string) =>
+    react.forwardRef(function MockMotionComponent(props: MotionProps, ref: React.Ref<unknown>) {
+      const { rest, children } = stripMotionProps(props)
+      return react.createElement(tag, { ...rest, ref }, children as React.ReactNode)
+    })
+  return {
+    motion: new Proxy({} as Record<string, unknown>, {
+      get: (_target, tag: string) => passthrough(tag),
+    }),
+    AnimatePresence: ({ children }: MotionProps) => children,
+  }
+})
+
 const renderAt = (path: string, activeTab: 'chat' | 'contacts') =>
   render(<RouterProvider router={createMemoryRouter([{ path: '*', element: <Sidebar activeTab={activeTab} /> }], { initialEntries: [path] })} />)
 
 describe('Sidebar', () => {
   beforeEach(() => {
+    localStorage.clear()
     useChatStore.setState({ totalUnreadCount: 0 })
     useFriendsStore.setState({ pendingRequests: [] })
     useProfileStore.setState({ profile: makeProfile({ user_nickname: '爱丽丝', user_avatar_url: 'https://cdn.test/a.png' }) })
@@ -88,5 +128,39 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: '小程序' })).toHaveAttribute('href', '/app/miniapps')
     expect(screen.getByRole('link', { name: 'AI 助手' })).toHaveAttribute('href', '/app/ai-chat')
     expect(screen.getByRole('link', { name: '设置' })).toHaveAttribute('href', '/app/settings')
+  })
+})
+
+describe('Sidebar：钉住布局', () => {
+  it('localStorage 里钉住的工具出现在侧栏本体，「更多」面板只剩其余项并按存的顺序排', async () => {
+    localStorage.setItem('huanvae.sidebar-layout', '{"pinned":["files"],"more":["ai","meeting","bots","miniapps"]}')
+    renderAt('/app/chat', 'chat')
+    const aside = within(screen.getByTestId('sidebar'))
+    expect(aside.getByRole('link', { name: '我的文件' })).toHaveAttribute('href', '/app/files')
+    screen.getByRole('button', { name: '更多功能' }).click()
+    const panel = within(await screen.findByTestId('sidebar-more-panel'))
+    expect(panel.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/app/ai-chat', '/app/meeting', '/app/bots', '/app/miniapps'])
+    expect(panel.queryByRole('link', { name: '我的文件' })).toBeNull()
+  })
+
+  it('坏掉的布局值不影响渲染：回到默认（无钉住，五个都在面板里）', async () => {
+    localStorage.setItem('huanvae.sidebar-layout', '{"pinned":"files"}')
+    renderAt('/app/chat', 'chat')
+    expect(within(screen.getByTestId('sidebar')).queryByRole('link', { name: '我的文件' })).toBeNull()
+    screen.getByRole('button', { name: '更多功能' }).click()
+    expect(within(await screen.findByTestId('sidebar-more-panel')).getAllByRole('link')).toHaveLength(5)
+  })
+
+  it('再点「更多」或点面板外收起', async () => {
+    renderAt('/app/chat', 'chat')
+    const more = screen.getByRole('button', { name: '更多功能' })
+    more.click()
+    expect(await screen.findByTestId('sidebar-more-panel')).toBeInTheDocument()
+    more.click()
+    await waitFor(() => expect(screen.queryByTestId('sidebar-more-panel')).toBeNull())
+    more.click()
+    await screen.findByTestId('sidebar-more-panel')
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await waitFor(() => expect(screen.queryByTestId('sidebar-more-panel')).toBeNull())
   })
 })

@@ -67,6 +67,7 @@ describe('purgeAccountScopedStorage —— 默认清掉', () => {
     localStorage.setItem('huanvae-remember-user_id', 'alice')
     localStorage.setItem('sound_enabled', 'false')
     localStorage.setItem('sound_volume', '0.2')
+    localStorage.setItem('huanvae.sidebar-layout', '{"pinned":["files"],"more":[]}')
 
     purgeAccountScopedStorage()
 
@@ -84,6 +85,7 @@ describe('purgeAccountScopedStorage —— 默认清掉', () => {
     expect(localStorage.getItem('huanvae-remember-user_id')).toBe('alice')
     expect(localStorage.getItem('sound_enabled')).toBe('false')
     expect(localStorage.getItem('sound_volume')).toBe('0.2')
+    expect(localStorage.getItem('huanvae.sidebar-layout')).toBe('{"pinned":["files"],"more":[]}')
   })
 
   it('一次清盘里删掉多个键，不会因为下标前移而漏掉后面的', () => {
