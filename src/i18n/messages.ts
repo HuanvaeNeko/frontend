@@ -18,6 +18,13 @@ const zhCN = {
     files: '文件',
     webrtc: '音视频',
   },
+  shell: {
+    list: {
+      searchPlaceholder: '搜索会话', add: '添加', createGroup: '创建群聊', addFriend: '添加好友', joinGroup: '加入群',
+      pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', loading: '加载中...',
+      loadFailed: '加载失败', retry: '重试', empty: '还没有会话，先去添加好友或创建群聊', noMatch: '没有匹配的会话', groupTag: '[群聊]',
+    },
+  },
   layout: {
     mainMenu: '主菜单',
     accountAndSystem: '账户与系统',
@@ -540,6 +547,13 @@ const enUS = {
     groups: 'Groups',
     files: 'Files',
     webrtc: 'Audio/Video',
+  },
+  shell: {
+    list: {
+      searchPlaceholder: 'Search conversations', add: 'Add', createGroup: 'Create group', addFriend: 'Add friend', joinGroup: 'Join group',
+      pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', loading: 'Loading...',
+      loadFailed: 'Failed to load', retry: 'Retry', empty: 'No conversations yet — add a friend or create a group', noMatch: 'No matching conversations', groupTag: '[Group]',
+    },
   },
   layout: {
     mainMenu: 'Main Menu',
