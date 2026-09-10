@@ -1,0 +1,95 @@
+import { renderHook } from '@testing-library/react'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { useChatStore } from '@/features/chat/store/chatStore'
+import { useFriendsStore } from '@/features/chat/store/friendsStore'
+import { useGroupStore } from '@/features/chat/store/groupStore'
+import type { Friend } from '@/features/chat/api/friends'
+import type { MyGroup } from '@/features/chat/api/groups'
+import { usePinnedStore } from '@/features/chat/store/pinnedStore'
+import { sortConversations, useUnifiedConversations, type UnifiedConversation } from '../useUnifiedConversations'
+
+const friend = (id: string, extra: Partial<Friend> = {}): Friend => ({
+  friend_id: id, friend_nickname: `${id}-昵称`, friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z',
+  approve_reason: null, friend_remark: null, is_blacklisted: false, is_special_care: false, ...extra,
+})
+const group = (id: string, extra: Partial<MyGroup> = {}): MyGroup => ({
+  group_id: id, group_name: `群${id}`, group_avatar_url: null, role: 'member', unread_count: null,
+  last_message_content: null, last_message_time: null, ...extra,
+} as MyGroup)
+
+const conv = (id: string, extra: Partial<UnifiedConversation> = {}): UnifiedConversation => ({
+  id, kind: id.startsWith('f-') ? 'friend' : 'group', targetId: id.slice(2), name: id, avatarUrl: null,
+  preview: null, lastMessageTime: null, unreadCount: 0, pinned: false, ...extra,
+})
+
+describe('sortConversations（APP conversationSort：置顶优先 → 时间倒序 → id 稳定）', () => {
+  it('置顶在前，同组按最后消息时间倒序，无时间的排最后', () => {
+    const sorted = sortConversations([
+      conv('f-old', { lastMessageTime: '2026-09-01T00:00:00Z' }),
+      conv('g-pinned', { pinned: true, lastMessageTime: '2026-08-01T00:00:00Z' }),
+      conv('f-new', { lastMessageTime: '2026-09-10T00:00:00Z' }),
+      conv('f-none'),
+    ])
+    expect(sorted.map((c) => c.id)).toEqual(['g-pinned', 'f-new', 'f-old', 'f-none'])
+  })
+  it('时间相同按 id 稳定排序（不依赖输入顺序）', () => {
+    const t = '2026-09-10T00:00:00Z'
+    const a = sortConversations([conv('f-b', { lastMessageTime: t }), conv('f-a', { lastMessageTime: t })])
+    const b = sortConversations([conv('f-a', { lastMessageTime: t }), conv('f-b', { lastMessageTime: t })])
+    expect(a.map((c) => c.id)).toEqual(['f-a', 'f-b'])
+    expect(b.map((c) => c.id)).toEqual(['f-a', 'f-b'])
+  })
+})
+
+describe('useUnifiedConversations：friends × groups × unreadSummary × pinned', () => {
+  beforeEach(() => {
+    useFriendsStore.setState({ friends: [], isLoading: false })
+    useGroupStore.setState({ myGroups: [], isLoading: false })
+    useChatStore.setState({ unreadSummary: null })
+    usePinnedStore.getState().reset()
+  })
+
+  it('好友与群合并为一张表，预览/时间/未读来自 unreadSummary，名字用备注优先', () => {
+    useFriendsStore.setState({ friends: [friend('alice', { friend_remark: '小爱' })] })
+    useGroupStore.setState({ myGroups: [group('g1', { group_name: '读书会' })] })
+    useChatStore.setState({
+      unreadSummary: {
+        total_count: 5,
+        friend_unreads: [{ friend_id: 'alice', unread_count: 2, last_message_preview: '在吗', last_message_time: '2026-09-10T08:00:00Z' }],
+        group_unreads: [{ group_id: 'g1', unread_count: 3, last_message_preview: '张三: 明天见', last_message_time: '2026-09-10T09:00:00Z' }],
+      },
+    })
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.status).toBe('ready')
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['g-g1', 'f-alice'])
+    const alice = result.current.conversations[1]
+    expect(alice).toMatchObject({ kind: 'friend', targetId: 'alice', name: '小爱', preview: '在吗', unreadCount: 2, pinned: false })
+    expect(result.current.conversations[0]).toMatchObject({ kind: 'group', name: '读书会', preview: '张三: 明天见', unreadCount: 3 })
+  })
+
+  it('没有 unreadSummary 时也能列出（预览为 null、未读 0），群的最后消息回退到 myGroups 自带字段', () => {
+    useFriendsStore.setState({ friends: [friend('bob')] })
+    useGroupStore.setState({ myGroups: [group('g2', { last_message_content: '回退预览', last_message_time: '2026-09-09T00:00:00Z', unread_count: 4 })] })
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.conversations.find((c) => c.id === 'f-bob')).toMatchObject({ preview: null, unreadCount: 0, name: 'bob-昵称' })
+    expect(result.current.conversations.find((c) => c.id === 'g-g2')).toMatchObject({ preview: '回退预览', unreadCount: 4 })
+  })
+
+  it('置顶来自 pinnedStore 并影响排序', () => {
+    useFriendsStore.setState({ friends: [friend('a'), friend('b')] })
+    useChatStore.setState({ unreadSummary: { total_count: 0, friend_unreads: [
+      { friend_id: 'a', unread_count: 0, last_message_preview: null, last_message_time: '2026-09-10T00:00:00Z' },
+      { friend_id: 'b', unread_count: 0, last_message_preview: null, last_message_time: '2026-09-01T00:00:00Z' },
+    ], group_unreads: [] } })
+    usePinnedStore.getState().toggle('f-b')
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['f-b', 'f-a'])
+    expect(result.current.conversations[0].pinned).toBe(true)
+  })
+
+  it('两个 store 任一还在首轮加载时 status 为 loading', () => {
+    useFriendsStore.setState({ isLoading: true })
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.status).toBe('loading')
+  })
+})
