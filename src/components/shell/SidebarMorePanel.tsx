@@ -38,6 +38,7 @@ export const SidebarMorePanel = forwardRef<HTMLDivElement, SidebarMorePanelProps
       data-testid="sidebar-more-panel"
       role="dialog"
       aria-label={t('shell.nav.more')}
+      tabIndex={-1}
       style={{ top: position.top, left: position.left }}
       className="glass-surface fixed z-[10000] w-[210px] rounded-lg border border-[var(--glass-border)] p-2 shadow-[0_16px_48px_rgba(0,0,0,0.14)]"
       initial={{ opacity: 0, x: -8, scale: 0.95 }}

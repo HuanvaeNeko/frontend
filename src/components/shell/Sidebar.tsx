@@ -113,7 +113,7 @@ export function Sidebar({ activeTab }: SidebarProps) {
   }, [])
   const toggleMore = () => (showMore ? setShowMore(false) : openMore())
 
-  // 点面板外收起（拖拽中不收：拖出/拖回都需要面板在场）
+  // 点面板外收起（拖拽中不收：拖出/拖回都需要面板在场）；按 Escape 也关闭面板
   useEffect(() => {
     if (!showMore) return
     const onPointerDown = (event: PointerEvent) => {
@@ -122,8 +122,24 @@ export function Sidebar({ activeTab }: SidebarProps) {
       if (panelRef.current?.contains(target) || moreBtnRef.current?.contains(target)) return
       setShowMore(false)
     }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (activeKey !== null) return
+      setShowMore(false)
+      moreBtnRef.current?.focus()
+    }
     document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [showMore, activeKey])
+
+  // 面板打开时焦点移入面板（仅当通过按钮打开，不是从拖拽开始时打开）
+  useEffect(() => {
+    if (!showMore || activeKey !== null) return
+    panelRef.current?.focus()
   }, [showMore, activeKey])
 
   // ---- dnd-kit 编排（APP Sidebar.tsx 的标准多容器模式；归约逻辑在 sidebarLayout.ts） ----

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/features/chat/store/chatStore'
@@ -162,5 +162,21 @@ describe('Sidebar：钉住布局', () => {
     await screen.findByTestId('sidebar-more-panel')
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     await waitFor(() => expect(screen.queryByTestId('sidebar-more-panel')).toBeNull())
+  })
+
+  it('Esc 收起面板并把焦点还给「更多」按钮', async () => {
+    renderAt('/app/chat', 'chat')
+    const more = screen.getByRole('button', { name: '更多功能' })
+    more.click()
+    const panel = await screen.findByTestId('sidebar-more-panel')
+    expect(panel).toBeInTheDocument()
+    // 打开时焦点应该移进面板
+    expect(document.activeElement).toBe(panel)
+    // 按 Escape
+    fireEvent.keyDown(document, { key: 'Escape' })
+    // 面板应该关闭
+    await waitFor(() => expect(screen.queryByTestId('sidebar-more-panel')).toBeNull())
+    // 焦点应该回到「更多」按钮
+    expect(document.activeElement).toBe(more)
   })
 })
