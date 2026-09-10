@@ -34,6 +34,10 @@ export default [
       route('app/chat', 'routes/shell/chat.tsx', [
         route(':conversationId', 'routes/shell/chat.$conversationId.tsx'),
       ]),
+      route('app/contacts', 'routes/shell/contacts.tsx', [
+        route('friends/:userId', 'routes/shell/contacts.friends.$userId.tsx'),
+        route('groups/:groupId', 'routes/shell/contacts.groups.$groupId.tsx'),
+      ]),
     ]),
     // 过渡期：还没搬进壳的旧页面（第 11 步整段删除）
     layout('routes/legacy-layout.tsx', [

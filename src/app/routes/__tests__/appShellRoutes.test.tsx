@@ -20,6 +20,9 @@ describe('路由表：壳布局承载 /app/chat', () => {
     expect(flat).toContain('routes/app-shell.tsx@/')
     expect(flat).toContain('routes/shell/chat.tsx@/app/chat')
     expect(flat).toContain('routes/shell/chat.$conversationId.tsx@/app/chat/:conversationId')
+    expect(flat).toContain('routes/shell/contacts.tsx@/app/contacts')
+    expect(flat).toContain('routes/shell/contacts.friends.$userId.tsx@/app/contacts/friends/:userId')
+    expect(flat).toContain('routes/shell/contacts.groups.$groupId.tsx@/app/contacts/groups/:groupId')
     expect(flat.some((x) => x.startsWith('routes/chat.tsx@'))).toBe(false)
     // 正对照：旧页面这一步还在（legacy-layout 之下），证明 flatten 读到了整张表
     expect(flat).toContain('routes/friends.tsx@/app/friends')

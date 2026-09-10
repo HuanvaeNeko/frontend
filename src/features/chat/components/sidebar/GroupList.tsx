@@ -81,9 +81,10 @@ const emptyStateVariants: Variants = {
 interface GroupListProps {
   subTab: 'main' | 'invites' | 'join'
   searchQuery: string
+  initialCreateOpen?: boolean
 }
 
-export default function GroupList({ subTab, searchQuery }: GroupListProps) {
+export default function GroupList({ subTab, searchQuery, initialCreateOpen }: GroupListProps) {
   const { t } = useI18n()
   const { toast } = useToast()
   const {
@@ -112,7 +113,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
   }, [selectionError, clearSelectionError, t, toast])
 
   // 创建群聊状态
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(initialCreateOpen ?? false)
   const [groupName, setGroupName] = useState('')
   const [groupDescription, setGroupDescription] = useState('')
   // 建群时是否需要入群审核。批 3 之前这里是五档 `joinMode`，那套模型连同

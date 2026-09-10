@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet, useParams } from 'react-router'
 import { AppShell } from '@/components/shell/AppShell'
+import { ContactsList } from '@/components/shell/ContactsList'
 import { UnifiedList } from '@/components/shell/UnifiedList'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useUnifiedConversations } from '@/features/chat/hooks/useUnifiedConversations'
@@ -58,10 +59,9 @@ function ChatListColumn() {
       onTogglePin={togglePin}
       onMarkRead={(id) => { const p = parseConversationId(id); if (p) markRead(p.kind, p.kind === 'friend' ? p.userId : p.groupId) }}
       onRetry={() => { loadFriends().catch(console.error); loadMyGroups().catch(console.error) }}
-      // 第 6 步把三个入口换到 /app/contacts?add=…；过渡期先落到仍然存活的旧页面
-      onCreateGroup={() => router.push(ROUTES.app.chatGroups)}
-      onAddFriend={() => router.push(ROUTES.app.chatFriends)}
-      onJoinGroup={() => router.push(ROUTES.app.chatGroups)}
+      onCreateGroup={() => router.push(`${ROUTES.app.contacts}?tab=groups&add=create-group`)}
+      onAddFriend={() => router.push(`${ROUTES.app.contacts}?add=friend`)}
+      onJoinGroup={() => router.push(`${ROUTES.app.contacts}?tab=groups&add=join-group`)}
     />
   )
 }
@@ -75,7 +75,7 @@ export default function AppShellLayout() {
     if (pathname.startsWith('/app')) localStorage.setItem('last_visited_path', pathname)
   }, [pathname])
   return (
-    <AppShell activeTab={tab} list={<ChatListColumn />}>
+    <AppShell activeTab={tab} list={tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
       <Outlet />
     </AppShell>
   )
