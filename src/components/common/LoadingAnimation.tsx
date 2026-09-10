@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 export default function LoadingAnimation() {
   return (
     <div className="relative flex app-min-screen items-center justify-center overflow-hidden bg-background px-4">
-      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_20%_20%,hsl(var(--primary)/0.12),transparent_35%),radial-gradient(circle_at_80%_0%,hsl(186_90%_45%/0.14),transparent_40%),radial-gradient(circle_at_50%_100%,hsl(142_72%_40%/0.08),transparent_35%)]" />
+      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_20%_20%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_35%),radial-gradient(circle_at_80%_0%,color-mix(in_srgb,var(--primary)_14%,transparent),transparent_40%),radial-gradient(circle_at_50%_100%,color-mix(in_srgb,var(--status-success)_8%,transparent),transparent_35%)]" />
 
       <motion.div
         initial={{ opacity: 0, y: 16 }}

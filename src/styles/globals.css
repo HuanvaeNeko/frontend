@@ -1,122 +1,295 @@
-/**
- * ========================================
- * Huanvae Chat - 全局样式
- * ========================================
- *
- * Tailwind CSS v4 + shadcn/ui v2
- */
-
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================
-   shadcn/ui 主题变量 (极光中性主题)
+   设计 token —— 来源是 APP（huanwei520/Huanvae-Chat-App）的
+   src/styles/variables.css + theme/generator.ts 对默认预设的输出。
+   两套值（:root 浅色 / .dark 深色）都是生成器实际算出来的，不是手调。
+   下面 @theme 只做「别名」：shadcn 的 --color-* 指向这些 token，
+   59 个基础组件不改代码就换皮。第 2 期的主题编辑器只需改写这一组变量。
    ============================================ */
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* shadcn 语义色 → APP token */
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-surface);
+  --color-card-foreground: var(--text-primary);
+  --color-popover: var(--bg-primary);
+  --color-popover-foreground: var(--text-primary);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--text-on-color);
+  --color-secondary: var(--bg-tertiary);
+  --color-secondary-foreground: var(--text-secondary);
+  --color-muted: var(--bg-muted);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--primary-subtle);
+  --color-accent-foreground: var(--primary-text);
+  --color-destructive: var(--status-error);
+  --color-destructive-foreground: var(--text-on-color);
+  --color-border: var(--border-default);
+  --color-input: var(--border-default);
+  --color-ring: var(--border-focus);
+  --color-sidebar: var(--bg-secondary);
+  --color-sidebar-foreground: var(--text-primary);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-primary-foreground: var(--text-on-color);
+  --color-sidebar-accent: var(--primary-subtle);
+  --color-sidebar-accent-foreground: var(--primary-text);
+  --color-sidebar-border: var(--border-subtle);
+  --color-sidebar-ring: var(--border-focus);
+  /* APP 自己的名字也暴露给 Tailwind：bg-app-surface / text-app-light / … */
+  --color-app-surface: var(--bg-surface);
+  --color-app-surface-hover: var(--bg-surface-hover);
+  --color-app-tertiary: var(--bg-tertiary);
+  --color-app-light: var(--text-light);
+  --color-app-link: var(--text-link);
+  --color-app-accent: var(--accent);
+  --color-app-success: var(--status-success);
+  --color-app-warning: var(--status-warning);
+  --color-app-info: var(--status-info);
+  --color-unread: var(--unread-badge-bg);
+  --color-presence: var(--presence-online);
+  /* 圆角：APP 刻度 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 22px;
+  --radius-3xl: 28px;
+  /* 字号：APP 刻度 */
+  --text-app-xs: 11px;
+  --text-app-sm: 12px;
+  --text-app-base: 13px;
+  --text-app-md: 14px;
+  --text-app-lg: 15px;
+  --text-app-xl: 16px;
 }
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 220 24% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 220 24% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 24% 11%;
-  --primary: 193 86% 41%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 18% 95%;
-  --secondary-foreground: 220 20% 20%;
-  --muted: 210 18% 95%;
-  --muted-foreground: 215 13% 42%;
-  --accent: 194 90% 94%;
-  --accent-foreground: 193 86% 28%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 210 18% 88%;
-  --input: 210 18% 88%;
-  --ring: 193 86% 41%;
-  --radius: 0.8rem;
-  --chart-1: 193 86% 41%;
-  --chart-2: 162 70% 36%;
-  --chart-3: 220 70% 48%;
-  --chart-4: 32 89% 54%;
-  --chart-5: 352 82% 57%;
-  --sidebar: hsl(0 0% 98%);
-  --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: hsl(240 5.9% 10%);
-  --sidebar-primary-foreground: hsl(0 0% 98%);
-  --sidebar-accent: hsl(240 4.8% 95.9%);
-  --sidebar-accent-foreground: hsl(240 5.9% 10%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  /* ---- 主题色（生成器·浅色）---- */
+  --primary: #0956c6;
+  --primary-hover: #0043b2;
+  --primary-active: #002f9e;
+  --primary-subtle: rgba(140, 216, 255, 0.2);
+  --primary-text: #002f9e;
+  --accent: #6a32cc;
+  --accent-hover: #5a18b8;
+  --accent-active: #4b00a3;
+  --accent-subtle: rgba(224, 184, 255, 0.2);
+  --accent-text: #4b00a3;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6faff;
+  --bg-tertiary: #f0f4fa;
+  --bg-surface: rgba(255, 255, 255, 0.8);
+  --bg-surface-hover: rgba(255, 255, 255, 0.9);
+  --bg-muted: #e2e6ed;
+  --bg-inverse: #202328;
+  --text-primary: #1e3a5f;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+  --text-inverse: #ffffff;
+  --text-link: #0956c6;
+  --text-on-color: #ffffff;
+  --border-default: rgba(121, 196, 255, 0.3);
+  --border-subtle: rgba(121, 196, 255, 0.15);
+  --border-strong: rgba(97, 169, 255, 0.5);
+  --border-focus: rgba(66, 137, 254, 0.6);
+  --status-success: #22c55e;
+  --status-success-subtle: rgba(34, 197, 94, 0.15);
+  --status-warning: #f59e0b;
+  --status-warning-subtle: rgba(245, 158, 11, 0.15);
+  --status-error: #ef4444;
+  --status-error-subtle: rgba(239, 68, 68, 0.15);
+  --status-info: #3b82f6;
+  --status-info-subtle: rgba(59, 130, 246, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.25), 0 0 40px rgba(59, 130, 246, 0.15);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  /* ---- 色阶（生成器·浅色）---- */
+  --color-primary-1: #acfaff; --color-primary-2: #a6f3ff; --color-primary-3: #99e5ff; --color-primary-4: #8cd8ff;
+  --color-primary-5: #79c4ff; --color-primary-6: #61a9ff; --color-primary-7: #4289fe; --color-primary-8: #2970e2;
+  --color-primary-9: #0956c6; --color-primary-10: #0043b2; --color-primary-11: #002f9e; --color-primary-12: #00007a;
+  --color-accent-1: #ffdaff; --color-accent-2: #fad3ff; --color-accent-3: #edc6ff; --color-accent-4: #e0b8ff;
+  --color-accent-5: #cda4ff; --color-accent-6: #b48aff; --color-accent-7: #9669ff; --color-accent-8: #7f4ee8;
+  --color-accent-9: #6a32cc; --color-accent-10: #5a18b8; --color-accent-11: #4b00a3; --color-accent-12: #33007f;
+  --color-neutral-1: #f6faff; --color-neutral-2: #f0f4fa; --color-neutral-3: #e2e6ed; --color-neutral-4: #d5d9e0;
+  --color-neutral-5: #c2c6cc; --color-neutral-6: #a9adb3; --color-neutral-7: #8a8e94; --color-neutral-8: #72767c;
+  --color-neutral-9: #5c5f65; --color-neutral-10: #4b4f54; --color-neutral-11: #3b3f44; --color-neutral-12: #202328;
+  /* ---- 静态 token（APP variables.css 原样）---- */
+  --unread-badge-bg: #ff3b30;
+  --unread-badge-text: #ffffff;
+  --presence-online: #34d399;
+  --presence-dot-ring: #ffffff;
+  --role-owner-bg: rgba(234, 179, 8, 0.2);
+  --role-owner-text: #ca8a04;
+  --role-admin-bg: rgba(59, 130, 246, 0.2);
+  --role-admin-text: #2563eb;
+  --white-alpha-97: rgba(255, 255, 255, 0.97); --white-alpha-95: rgba(255, 255, 255, 0.95); --white-alpha-90: rgba(255, 255, 255, 0.9);
+  --white-alpha-85: rgba(255, 255, 255, 0.85); --white-alpha-80: rgba(255, 255, 255, 0.8); --white-alpha-75: rgba(255, 255, 255, 0.75);
+  --white-alpha-70: rgba(255, 255, 255, 0.7); --white-alpha-60: rgba(255, 255, 255, 0.6); --white-alpha-50: rgba(255, 255, 255, 0.5);
+  --white-alpha-45: rgba(255, 255, 255, 0.45); --white-alpha-40: rgba(255, 255, 255, 0.4); --white-alpha-35: rgba(255, 255, 255, 0.35);
+  --white-alpha-30: rgba(255, 255, 255, 0.3); --white-alpha-25: rgba(255, 255, 255, 0.25); --white-alpha-20: rgba(255, 255, 255, 0.2);
+  --white-alpha-15: rgba(255, 255, 255, 0.15); --white-alpha-10: rgba(255, 255, 255, 0.1);
+  --black-alpha-70: rgba(0, 0, 0, 0.7); --black-alpha-60: rgba(0, 0, 0, 0.6); --black-alpha-50: rgba(0, 0, 0, 0.5);
+  --black-alpha-30: rgba(0, 0, 0, 0.3); --black-alpha-10: rgba(0, 0, 0, 0.1); --black-alpha-5: rgba(0, 0, 0, 0.05);
+  --glass-white-90: rgba(255, 255, 255, 0.9); --glass-white-80: rgba(255, 255, 255, 0.8); --glass-white-70: rgba(255, 255, 255, 0.7);
+  --glass-white-60: rgba(255, 255, 255, 0.6); --glass-white-50: rgba(255, 255, 255, 0.5); --glass-white-45: rgba(255, 255, 255, 0.45);
+  --glass-white-40: rgba(255, 255, 255, 0.4); --glass-white-35: rgba(255, 255, 255, 0.35); --glass-white-30: rgba(255, 255, 255, 0.3);
+  --glass-white-25: rgba(255, 255, 255, 0.25); --glass-white-20: rgba(255, 255, 255, 0.2); --glass-white-15: rgba(255, 255, 255, 0.15);
+  --glass-white-10: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-border-light: rgba(255, 255, 255, 0.8);
+  --glass-border-subtle: rgba(255, 255, 255, 0.4);
+  --card-bg-start: rgba(255, 255, 255, 0.15);
+  --card-bg-end: rgba(255, 255, 255, 0.1);
+  --card-bg-hover-start: rgba(255, 255, 255, 0.25);
+  --card-bg-hover-end: rgba(255, 255, 255, 0.2);
+  --card-border: rgba(255, 255, 255, 0.3);
+  --gradient-glass: linear-gradient(135deg, var(--glass-white-35) 0%, var(--glass-white-20) 50%, var(--glass-white-30) 100%);
+  --gradient-glass-hover: linear-gradient(135deg, var(--glass-white-45) 0%, var(--glass-white-30) 50%, var(--glass-white-40) 100%);
+  --gradient-bg-page: linear-gradient(135deg, var(--color-primary-2) 0%, var(--color-neutral-1) 25%, var(--bg-primary) 50%, var(--color-neutral-1) 75%, var(--color-primary-2) 100%);
+  --blur-xs: blur(6px); --blur-sm: blur(10px); --blur-md: blur(12px); --blur-lg: blur(16px); --blur-xl: blur(24px);
+  --saturate-normal: saturate(150%); --saturate-high: saturate(180%);
+  --glass-backdrop: blur(20px) saturate(180%);
+  --transition-fast: 0.2s ease; --transition-normal: 0.3s ease;
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1); --transition-bounce: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --radius-full: 50%;
+  /* 兼容：shadcn 的 `rounded-lg` 等读 --radius；给它 APP 的 md */
+  --radius: 12px;
 }
 
 .dark {
-  --background: 220 28% 8%;
-  --foreground: 210 40% 98%;
-  --card: 220 26% 11%;
-  --card-foreground: 210 40% 98%;
-  --popover: 220 26% 11%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 190 88% 54%;
-  --primary-foreground: 220 28% 8%;
-  --secondary: 220 18% 16%;
-  --secondary-foreground: 210 40% 96%;
-  --muted: 220 18% 16%;
-  --muted-foreground: 214 20% 70%;
-  --accent: 190 56% 18%;
-  --accent-foreground: 189 90% 84%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 220 18% 20%;
-  --input: 220 18% 20%;
-  --ring: 190 88% 54%;
-  --chart-1: 190 88% 54%;
-  --chart-2: 162 70% 42%;
-  --chart-3: 215 80% 62%;
-  --chart-4: 34 90% 58%;
-  --chart-5: 350 78% 62%;
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  /* ---- 主题色（生成器·深色）---- */
+  --primary: #3c83f7;
+  --primary-hover: #2269db;
+  --primary-active: #0050c0;
+  --primary-subtle: rgba(60, 131, 247, 0.2);
+  --primary-text: #3c83f7;
+  --accent: #9162fd;
+  --accent-hover: #7a48e1;
+  --accent-active: #642ac5;
+  --accent-subtle: rgba(145, 98, 253, 0.2);
+  --accent-text: #9162fd;
+  --bg-primary: #06080c;
+  --bg-secondary: #0c0e13;
+  --bg-tertiary: #14171c;
+  --bg-surface: rgba(12, 14, 19, 0.9);
+  --bg-surface-hover: rgba(20, 23, 28, 0.9);
+  --bg-muted: #202328;
+  --bg-inverse: #d8dde3;
+  --text-primary: #f8fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
+  --text-inverse: #1e293b;
+  --text-link: #3c83f7;
+  --border-default: rgba(65, 68, 73, 0.4);
+  --border-subtle: rgba(47, 50, 55, 0.25);
+  --border-strong: rgba(86, 90, 95, 0.5);
+  --border-focus: rgba(0, 80, 192, 0.6);
+  --status-success: #4ade80;
+  --status-success-subtle: rgba(74, 222, 128, 0.2);
+  --status-warning: #fbbf24;
+  --status-warning-subtle: rgba(251, 191, 36, 0.2);
+  --status-error: #f87171;
+  --status-error-subtle: rgba(248, 113, 113, 0.2);
+  --status-info: #60a5fa;
+  --status-info-subtle: rgba(96, 165, 250, 0.2);
+  /* ---- 色阶（生成器·深色）---- */
+  --color-primary-1: #0b0054; --color-primary-2: #06005e; --color-primary-3: #00006a; --color-primary-4: #00007a;
+  --color-primary-5: #001d8e; --color-primary-6: #0036a5; --color-primary-7: #0050c0; --color-primary-8: #2269db;
+  --color-primary-9: #3c83f7; --color-primary-10: #549cff; --color-primary-11: #70baff; --color-primary-12: #90dbff;
+  --color-accent-1: #1d0058; --color-accent-2: #220062; --color-accent-3: #29006f; --color-accent-4: #33007f;
+  --color-accent-5: #400093; --color-accent-6: #5000aa; --color-accent-7: #642ac5; --color-accent-8: #7a48e1;
+  --color-accent-9: #9162fd; --color-accent-10: #a87dff; --color-accent-11: #c49aff; --color-accent-12: #e3bcff;
+  --color-neutral-1: #06080c; --color-neutral-2: #0c0e13; --color-neutral-3: #14171c; --color-neutral-4: #202328;
+  --color-neutral-5: #2f3237; --color-neutral-6: #414449; --color-neutral-7: #565a5f; --color-neutral-8: #6d7076;
+  --color-neutral-9: #84888e; --color-neutral-10: #9ca0a6; --color-neutral-11: #b8bcc3; --color-neutral-12: #d8dde3;
+  /* 玻璃面在深色下改用黑基（APP ThemeProvider 对 glass.baseColor 的处理：深色反相） */
+  --glass-white-90: rgba(20, 23, 28, 0.9); --glass-white-80: rgba(20, 23, 28, 0.8); --glass-white-70: rgba(20, 23, 28, 0.7);
+  --glass-white-60: rgba(20, 23, 28, 0.6); --glass-white-50: rgba(20, 23, 28, 0.5); --glass-white-45: rgba(20, 23, 28, 0.45);
+  --glass-white-40: rgba(20, 23, 28, 0.4); --glass-white-35: rgba(20, 23, 28, 0.35); --glass-white-30: rgba(20, 23, 28, 0.3);
+  --glass-white-25: rgba(20, 23, 28, 0.25); --glass-white-20: rgba(20, 23, 28, 0.2); --glass-white-15: rgba(20, 23, 28, 0.15);
+  --glass-white-10: rgba(20, 23, 28, 0.1);
+  --white-alpha-97: rgba(20, 23, 28, 0.97); --white-alpha-95: rgba(20, 23, 28, 0.95); --white-alpha-90: rgba(20, 23, 28, 0.9);
+  --white-alpha-85: rgba(20, 23, 28, 0.85); --white-alpha-80: rgba(20, 23, 28, 0.8); --white-alpha-75: rgba(20, 23, 28, 0.75);
+  --white-alpha-70: rgba(20, 23, 28, 0.7); --white-alpha-60: rgba(20, 23, 28, 0.6); --white-alpha-50: rgba(20, 23, 28, 0.5);
+  --white-alpha-45: rgba(20, 23, 28, 0.45); --white-alpha-40: rgba(20, 23, 28, 0.4); --white-alpha-35: rgba(20, 23, 28, 0.35);
+  --white-alpha-30: rgba(20, 23, 28, 0.3); --white-alpha-25: rgba(20, 23, 28, 0.25); --white-alpha-20: rgba(20, 23, 28, 0.2);
+  --white-alpha-15: rgba(20, 23, 28, 0.15); --white-alpha-10: rgba(20, 23, 28, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-light: rgba(255, 255, 255, 0.18);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --card-bg-start: rgba(255, 255, 255, 0.06);
+  --card-bg-end: rgba(255, 255, 255, 0.03);
+  --card-bg-hover-start: rgba(255, 255, 255, 0.1);
+  --card-bg-hover-end: rgba(255, 255, 255, 0.06);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --presence-dot-ring: #06080c;
+}
+
+/* ============================================
+   APP 组件类（styles/components/*.css 移植；只保留壳用得到的）
+   ============================================ */
+@utility glass-card {
+  position: relative;
+  background: var(--gradient-glass);
+  backdrop-filter: var(--blur-xl) var(--saturate-high);
+  -webkit-backdrop-filter: var(--blur-xl) var(--saturate-high);
+  border-radius: var(--radius-3xl);
+  border: 1.5px solid var(--glass-border);
+  box-shadow:
+    0 0 60px var(--glass-white-50),
+    0 0 40px rgba(147, 197, 253, 0.15),
+    0 8px 32px rgba(59, 130, 246, 0.1),
+    0 20px 60px rgba(0, 0, 0, 0.08),
+    inset 0 2px 2px var(--glass-white-80),
+    inset 2px 0 2px var(--glass-white-40),
+    inset 0 -1px 2px var(--glass-white-30);
+}
+/* 面板级玻璃面（侧栏 / 列表栏 / 弹层）：APP .chat-sidebar / .sidebar-more-panel 的底 */
+@utility glass-surface {
+  background: linear-gradient(180deg, var(--white-alpha-70) 0%, var(--white-alpha-50) 100%);
+  backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+}
+@utility glass-input {
+  width: 100%;
+  padding: 14px 18px;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, var(--glass-white-45) 0%, var(--glass-white-30) 100%);
+  backdrop-filter: var(--blur-md) var(--saturate-normal);
+  -webkit-backdrop-filter: var(--blur-md) var(--saturate-normal);
+  border: 1.5px solid var(--glass-white-70);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: border-color var(--transition-smooth), background var(--transition-smooth), box-shadow var(--transition-smooth);
+}
+@utility subtle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--primary-subtle);
+  color: var(--primary);
+  transition: all 0.15s ease;
+}
+@utility app-scrollbar {
+  &::-webkit-scrollbar { width: 6px; height: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+  &::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 }
 
 /* ============================================
@@ -143,10 +316,7 @@
     padding: 0;
     overflow: hidden;
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 8% 10%, hsl(var(--primary) / 0.12), transparent 30%),
-      radial-gradient(circle at 88% 0%, hsl(162 70% 42% / 0.1), transparent 35%),
-      radial-gradient(circle at 50% 100%, hsl(220 70% 55% / 0.08), transparent 40%);
+    background-image: var(--gradient-bg-page);
     background-attachment: fixed;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -259,7 +429,7 @@
     height: 0.375rem;
     width: 2.5rem;
     border-radius: 9999px;
-    background: hsl(var(--muted-foreground) / 0.3);
+    background: color-mix(in srgb, var(--text-muted) 30%, transparent);
   }
 }
 
@@ -304,12 +474,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--primary) / 0.34);
+  background: color-mix(in srgb, var(--primary) 34%, transparent);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--primary) / 0.52);
+  background: color-mix(in srgb, var(--primary) 52%, transparent);
 }
 
 /* ============================================
@@ -349,8 +519,8 @@
 }
 
 .rich-text-content code {
-  background: hsl(var(--primary) / 0.12);
-  color: hsl(var(--primary));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
   padding: 0.1rem 0.3rem;
   border-radius: 0.25rem;
   font-family: ui-monospace, SFMono-Regular, monospace;
@@ -358,7 +528,7 @@
 }
 
 .rich-text-content pre {
-  background: hsl(var(--muted) / 0.8);
+  background: color-mix(in srgb, var(--bg-muted) 80%, transparent);
   padding: 0.5rem;
   border-radius: 0.375rem;
   overflow-x: auto;
@@ -372,10 +542,10 @@
 }
 
 .rich-text-content blockquote {
-  border-left: 3px solid hsl(var(--primary) / 0.45);
+  border-left: 3px solid color-mix(in srgb, var(--primary) 45%, transparent);
   padding-left: 0.5rem;
   margin: 0.25rem 0;
-  color: hsl(var(--muted-foreground));
+  color: var(--text-muted);
 }
 
 .rich-text-content ul {
@@ -391,12 +561,12 @@
 }
 
 .rich-text-content a {
-  color: hsl(var(--primary));
+  color: var(--primary);
   text-decoration: underline;
 }
 
 .rich-text-content a:hover {
-  color: hsl(var(--primary) / 0.86);
+  color: color-mix(in srgb, var(--primary) 86%, transparent);
 }
 
 .rich-text-message {
@@ -405,13 +575,13 @@
 }
 
 .message-own .rich-text-content code {
-  background: hsl(var(--primary-foreground) / 0.2);
+  background: color-mix(in srgb, var(--text-on-color) 20%, transparent);
   color: white;
 }
 
 .message-own .rich-text-content blockquote {
-  border-left-color: hsl(var(--primary-foreground) / 0.5);
-  color: hsl(var(--primary-foreground) / 0.9);
+  border-left-color: color-mix(in srgb, var(--text-on-color) 50%, transparent);
+  color: color-mix(in srgb, var(--text-on-color) 90%, transparent);
 }
 
 .message-own .rich-text-content a {
@@ -419,7 +589,7 @@
 }
 
 .message-own .rich-text-content a:hover {
-  color: hsl(var(--primary-foreground) / 0.8);
+  color: color-mix(in srgb, var(--text-on-color) 80%, transparent);
 }
 
 /* ============================================
@@ -465,12 +635,12 @@
 }
 
 .message-own .chat-message-markdown code {
-  background: hsl(var(--primary-foreground) / 0.2) !important;
+  background: color-mix(in srgb, var(--text-on-color) 20%, transparent) !important;
   color: white !important;
 }
 
 .message-own .chat-message-markdown pre {
-  background: hsl(0 0% 0% / 0.2) !important;
+  background: color-mix(in srgb, var(--bg-muted) 20%, transparent) !important;
 }
 
 .message-own .chat-message-markdown pre code {
@@ -478,8 +648,8 @@
 }
 
 .message-own .chat-message-markdown blockquote {
-  border-left-color: hsl(var(--primary-foreground) / 0.5) !important;
-  color: hsl(var(--primary-foreground) / 0.9) !important;
+  border-left-color: color-mix(in srgb, var(--text-on-color) 50%, transparent) !important;
+  color: color-mix(in srgb, var(--text-on-color) 90%, transparent) !important;
   background: transparent !important;
 }
 
@@ -488,5 +658,5 @@
 }
 
 .message-own .chat-message-markdown a:hover {
-  color: hsl(var(--primary-foreground) / 0.8) !important;
+  color: color-mix(in srgb, var(--text-on-color) 80%, transparent) !important;
 }

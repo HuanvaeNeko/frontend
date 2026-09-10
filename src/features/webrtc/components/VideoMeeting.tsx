@@ -1305,8 +1305,8 @@ export default function VideoMeeting() {
 
       <style>{`
         @keyframes meeting-speaking {
-          0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.25); }
-          50% { box-shadow: 0 0 0 6px hsl(var(--primary) / 0); }
+          0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 25%, transparent); }
+          50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent); }
         }
       `}</style>
     </div>

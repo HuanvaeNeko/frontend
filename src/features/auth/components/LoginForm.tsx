@@ -91,7 +91,7 @@ export default function Login() {
 
   return (
     <div className="relative min-h-[100dvh] w-full overflow-y-auto bg-background/80">
-      <div className="fixed inset-0 pointer-events-none [background:radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_35%),radial-gradient(circle_at_100%_0%,hsl(162_70%_42%/0.12),transparent_30%)]" />
+      <div className="fixed inset-0 pointer-events-none [background:radial-gradient(circle_at_0%_0%,color-mix(in_srgb,var(--primary)_16%,transparent),transparent_35%),radial-gradient(circle_at_100%_0%,color-mix(in_srgb,var(--status-success)_12%,transparent),transparent_30%)]" />
       
       <div className="relative z-10 flex min-h-[100dvh] w-full flex-col items-center justify-center p-4 md:p-8">
         <div className="mx-auto grid w-full max-w-6xl gap-6 md:grid-cols-2">

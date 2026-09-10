@@ -324,15 +324,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       {/* 样式 */}
       <style>{`
         .markdown-editor {
-          background: hsl(var(--card));
-          border: 1px solid hsl(var(--border));
+          background: var(--bg-surface);
+          border: 1px solid var(--border-default);
           border-radius: 0.75rem;
           transition: all 0.2s;
         }
-        
+
         .markdown-editor:focus-within {
-          border-color: hsl(var(--ring));
-          box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15);
+          border-color: var(--border-focus);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-focus) 15%, transparent);
         }
       `}</style>
     </div>

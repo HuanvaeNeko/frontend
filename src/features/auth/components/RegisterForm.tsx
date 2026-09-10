@@ -122,7 +122,7 @@ export default function Register() {
 
   return (
     <div className="relative app-min-screen overflow-hidden bg-background/80">
-      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_35%),radial-gradient(circle_at_100%_0%,hsl(162_70%_42%/0.12),transparent_30%)]" />
+      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(circle_at_0%_0%,color-mix(in_srgb,var(--primary)_16%,transparent),transparent_35%),radial-gradient(circle_at_100%_0%,color-mix(in_srgb,var(--status-success)_12%,transparent),transparent_30%)]" />
       <div className="relative z-10 mx-auto grid app-min-screen w-full max-w-6xl gap-6 p-4 md:grid-cols-2 md:p-8">
         <div className="flex items-center justify-center">
           <Card className="w-full max-w-md border-border/80 bg-card ">
