@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { registerSessionReset } from '@/lib/sessionScope'
+import { registerSessionReset, sessionScopedLocalStorage } from '@/lib/sessionScope'
 
 /**
  * 置顶的会话 id（`f-<uid>` / `g-<gid>`）。**账号级**：普通 localStorage 命名空间，
@@ -25,7 +25,7 @@ export const usePinnedStore = create<PinnedState>()(
         set((s) => ({ pinned: s.pinned.includes(id) ? s.pinned.filter((x) => x !== id) : [...s.pinned, id] })),
       reset: () => set({ pinned: [] }),
     }),
-    { name: PINNED_STORAGE_KEY, storage: createJSONStorage(() => localStorage), partialize: (s) => ({ pinned: s.pinned }) },
+    { name: PINNED_STORAGE_KEY, storage: createJSONStorage(() => sessionScopedLocalStorage), partialize: (s) => ({ pinned: s.pinned }) },
   ),
 )
 
