@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { usePathname } from '@/lib/navigation'
 import { ROUTES } from '@/lib/routes'
+import { useHydrated } from '@/lib/useHydrated'
 
 export type ShellTab = 'chat' | 'contacts'
 
@@ -32,11 +33,16 @@ export function recallShellTab(): ShellTab {
 
 /**
  * 壳布局用：按当前路径算 tab，并把 chat / contacts 记进 sessionStorage（账号级，登出随 purge 清掉）。
- * SSR 读不到 sessionStorage，服务端一律按 chat 渲染；直接打开模态框 URL 且记忆是 contacts 时，水合后高亮会切一次。
+ * 服务端渲染与水合前的首次客户端渲染都一律按 chat 渲染（`useHydrated()` 门控 `recallShellTab()`）：
+ * `typeof window === 'undefined'` 从水合那一帧起就已经是 false，若直接拿它当门控，sessionStorage
+ * 记的是 contacts 时，服务端渲染 chat、客户端首帧却渲染 contacts——AppShell 按 tab 渲染结构不同的
+ * 列表栏子树（ContactsList vs ChatListColumn），是真正的 hydration mismatch，不只是高亮切换。
+ * 水合完成后的下一次渲染才切到记住的 tab。
  */
 export function useShellTab(): ShellTab | 'settings' {
   const pathname = usePathname()
-  const tab = shellTabOf(pathname, typeof window === 'undefined' ? 'chat' : recallShellTab())
+  const hydrated = useHydrated()
+  const tab = shellTabOf(pathname, hydrated ? recallShellTab() : 'chat')
   useEffect(() => {
     if (tab === 'chat' || tab === 'contacts') rememberShellTab(tab)
   }, [tab])

@@ -1,13 +1,9 @@
-import { useLocation } from 'react-router'
 import { EmptyContent } from '@/components/shell/EmptyContent'
+import { useRouteDialogClose } from '@/components/shell/RouteDialog'
 import ProfileModal from '@/features/profile/components/ProfileModal'
-import { useRouter } from '@/lib/navigation'
-import { ROUTES } from '@/lib/routes'
 
 export default function ProfileRoute() {
-  const router = useRouter()
-  const location = useLocation()
-  const close = () => (location.key === 'default' ? router.replace(ROUTES.app.chat) : router.back())
+  const close = useRouteDialogClose()
   return (
     <>
       <EmptyContent hint="chat" />
