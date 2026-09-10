@@ -291,6 +291,16 @@ export const useWSStore = create<WSState>((set, get) => {
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   // 用于跟踪当前活跃的 WebSocket 实例，防止旧实例的回调干扰新实例
   let activeWsId = 0
+  // I2（Task 10 评审）：给上重连之后问的那一声 restoreSession，200 时若 user
+  // 换了新引用会经 ChatPage 的 effect（依赖数组里有 user）重新触发 connectWS，
+  // 新连接一样连不上、一样放弃，于是"放弃 → restoreSession → 新引用 → connectWS
+  // → 放弃"会在没有任何退避的情况下无限循环。这里在"给上"这一侧本身掐一道：
+  // 同一个 give-up episode（从上一次真正连上，即 ws.onopen，到下一次连上之间）
+  // 只问一次；即使 episode 内又有外部调用方（ChatPage 的 effect 正是这样一个
+  // 调用方）重新调了 connect()、新连接又立刻失败，也不会再问第二次。
+  // 真正的引用稳定性修在 authStore.restoreSession 那一侧（AP(b)）——两处一起
+  // 才彻底断环，这里是外层兜底，不依赖对方也成立。
+  let hasAskedSessionSinceGiveUp = false
 
   const clearTimers = () => {
     if (pingInterval) {
@@ -316,7 +326,15 @@ export const useWSStore = create<WSState>((set, get) => {
         // 问一声 BFF「我还在登录吗」：`restoreSession` 的 401 分支会自己跑
         // `clearAuth()` + `ProtectedRoute` 的正常跳转，502 / 网络失败分支保持
         // 现状——不把"服务器暂时连不上"误判成"该登出了"。
-        void useAuthStore.getState().restoreSession()
+        //
+        // AP(a)：同一个 give-up episode 只问一次（见上方 `hasAskedSessionSinceGiveUp`
+        // 的注释）——没有这道挡板，`restoreSession` 200 时若换了新的 user 引用，
+        // 会经 `ChatPage` 的 effect 重新触发 `connectWS()`，新连接一样立刻放弃，
+        // 在没有任何退避的情况下反复问 BFF。
+        if (!hasAskedSessionSinceGiveUp) {
+          hasAskedSessionSinceGiveUp = true
+          void useAuthStore.getState().restoreSession()
+        }
       }
       return
     }
@@ -406,6 +424,9 @@ export const useWSStore = create<WSState>((set, get) => {
             return
           }
           console.log('✅ WebSocket 已连接')
+          // AP(a)：真正连上了，说明上一个 give-up episode（如果有的话）已经结束，
+          // 下一次给上重连要能重新问一次 restoreSession。
+          hasAskedSessionSinceGiveUp = false
           set({
             connected: true,
             connecting: false,

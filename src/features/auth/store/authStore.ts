@@ -23,6 +23,22 @@ import { beginSession, endSession, sessionScopedLocalStorage } from '@/lib/sessi
 const AUTH_PERSIST_VERSION = 2
 
 /**
+ * 从任意形状的落盘 / 迁移中间态里只挑出 `user`，其余字段一律不看。
+ * `migrateAuthPersist` 与下方 persist 配置的 `merge` 选项共用这一个函数：
+ * 前者处理"版本号变了、真的走 migrate"那条路，后者是不管 migrate 跑没跑都会
+ * 执行的最后一道闸——两条路径都不信任 `persisted` 里 `user` 之外的任何字段。
+ * avatar_url 的绝对化与 `login` / `restoreSession` 是同一条约定，见
+ * `toAbsoluteApiUrl` 的 JSDoc。形状不认识（没有可识别的 `user`）时返回
+ * `null`，不编造一个空对象——`null` 正是 `AuthState.user` 的"没有值"。
+ */
+function pickUser(persisted: unknown): User | null {
+  if (typeof persisted !== 'object' || persisted === null) return null
+  const user = (persisted as Record<string, unknown>).user as { avatar_url?: unknown } | null | undefined
+  if (!user || typeof user !== 'object') return null
+  return { ...user, avatar_url: toAbsoluteApiUrl(user.avatar_url as string | null | undefined) } as User
+}
+
+/**
  * 把落盘的旧值搬到当前格式：只做一件事——`user.avatar_url` 补基址。
  *
  * ## 为什么值得迁移（以及一条曾经写在这里的**错误**理由）
@@ -58,13 +74,27 @@ const AUTH_PERSIST_VERSION = 2
  * 形状不认识时（没有可识别的 `user`）不编造一个 —— 但下面这一步的 token 剔除
  * 不受这条限制，见下。
  *
- * ## token 字段是**无条件**剔除的，不是"不再读它们"
+ * ## user 之外的字段一律进不了返回值——从"剔除名单"改成"允许名单"
  *
- * 已部署用户的盘上此刻躺着一对真实可用的 `accessToken` / `refreshToken`
- * / `tokenExpiry`——JWT 留在 localStorage 里正是 BFF 会话层要消灭的东西，
- * 迁移必须真的把它删掉，而不是等它们自然过期。这一步不看 `user` 长什么样：
- * 哪怕落盘数据里根本没有 `user`（还没登录过就升级了客户端），三个 token 字段
- * 只要存在也照删。
+ * 这里曾经是一份剔除名单：显式解构掉 `accessToken` / `refreshToken` /
+ * `tokenExpiry` 三个字段，其余字段原样透传。Task 10 评审 C1 指出了这份名单的
+ * 结构性漏洞：`main` 上的旧 `partialize` 连 `isAuthenticated` 也落了盘，
+ * 迁移的剔除名单里没有它，于是它跟着"其余字段"原样透传了下去——已部署用户的
+ * v1 数据里 `isAuthenticated: true` 就这样从这个函数的返回值一路混进了
+ * zustand 默认 `merge`（`{...currentState, ...persistedState}`），第一次冷加载
+ * 直接判定"已登录"，`restoreSession()` 一次都不问，`ProtectedRoute` 直接渲染
+ * 受保护内容（评审实测：`fetch called times = 0`）。
+ *
+ * 剔除名单这种写法的病根是**开放式**的：下次往 `AuthState` 加一个新字段、
+ * 忘了同步这份名单，同一个故障原样复发。换成允许名单——只构造 `{ user }`，
+ * `user` 之外的任何字段（不只是这三个 token，`isAuthenticated` 或将来任何
+ * 新增字段）一律不进返回值——之后就不存在"忘了剔除"这回事：返回值的形状
+ * **就是** `partialize` 落盘的形状，两处永远同构，不需要人记得同步。
+ *
+ * 这不是唯一一道防线：下方 persist 配置的 `merge` 选项是**最后一道闸**，它不管
+ * `migrate` 跑没跑（没有 `version` 键、或 `version` 与当前版本相同都不会触发
+ * `migrate`，见下一段）——只从传进来的 `persisted` 里取 `user`，盘上关于
+ * `isAuthenticated` 或 token 的任何说法都不采信。两者共用下面这个 `pickUser`。
  *
  * ⚠️ **`persisted` 的实参形状：这里收到的是裸 `state`，不是 `{state, version}`。**
  * zustand 5.0.15 的 `persistImpl`（`node_modules/zustand/middleware.js`）在调
@@ -80,15 +110,29 @@ const AUTH_PERSIST_VERSION = 2
  */
 export function migrateAuthPersist(persisted: unknown): unknown {
   if (typeof persisted !== 'object' || persisted === null) return persisted
-  // 显式剔除，不是「不再读它们」：JWT 留在 localStorage 里正是这一批要消灭的东西。
-  // 已部署用户的盘上有一对真实可用的 token，迁移必须真的删掉它——这一步无条件
-  // 执行，不依赖下面 `user` 是否存在或长什么样。
-  const { accessToken: _a, refreshToken: _r, tokenExpiry: _t, ...rest } = persisted as Record<string, unknown>
+  // 允许名单，不是剔除名单：返回值的形状就是 partialize 落盘的形状 `{ user }`，
+  // user 之外的任何字段——三个 token、isAuthenticated、将来任何新增字段——
+  // 都不会进入返回值，不需要一份"记得删掉"的名单（见上方 JSDoc）。
+  return { user: pickUser(persisted) }
+}
 
-  const user = rest.user as { avatar_url?: unknown } | null | undefined
-  if (!user || typeof user !== 'object') return rest
+/** AR：并发的 `restoreSession()` 调用共享同一个正在进行的请求，见其 JSDoc。 */
+let restoreSessionInFlight: Promise<void> | null = null
 
-  return { ...rest, user: { ...user, avatar_url: toAbsoluteApiUrl(user.avatar_url as string | null | undefined) } }
+/**
+ * AP(b)：`restoreSession` 判断"新拿到的 user 是不是跟内存里那份一样"的逐字段
+ * 比较，值相同就保留旧的对象引用（见 `restoreSession` 的 JSDoc）。只比较
+ * `User` 声明的五个字段——`avatar_url` 由调用方先经 `toAbsoluteApiUrl` 绝对化
+ * 之后再传进来，两边都是绝对地址，直接 `===` 是有意义的。
+ */
+function isSameRestoredUser(a: User, b: User): boolean {
+  return (
+    a.user_id === b.user_id &&
+    a.nickname === b.nickname &&
+    a.email === b.email &&
+    a.avatar_url === b.avatar_url &&
+    a.signature === b.signature
+  )
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -167,41 +211,80 @@ export const useAuthStore = create<AuthStore>()(
        * 401 = 未登录。**502 / 网络失败 ≠ 未登录** —— 后端挂了不等于用户退出了，
        * 那时保持上一次状态、记一个可重试的错误，不清盘不跳登录。这是 P4b 那条
        * 「传输失败 ≠ 会话结束」在客户端侧的镜像。
+       *
+       * ## 单飞（AR）
+       *
+       * `ProtectedRoute` 挂载时调一次，`app/root.tsx` 的启动 effect 也调一次——
+       * 两者几乎同时执行，没有这一层会同时发出两个 `/api/session`、两次落地
+       * 互相覆盖对方的 `isRestoring` / `error`。`restoreSessionInFlight` 是
+       * 模块级变量：并发调用共享同一个正在进行的请求，`finally` 里清空，
+       * 使得**之后**的一次新调用（不是与前一次并发的那一批）能真正发起新请求。
+       *
+       * ## user 引用稳定（AP(b) / I2）
+       *
+       * 200 时若新拿到的 user 与内存里那份逐字段相等（见 `isSameRestoredUser`），
+       * 不换新对象、保留原引用。`ChatPage` 的 effect 依赖数组里有 `user`，
+       * 之前每次都换新引用，会在"WS 放弃重连 → restoreSession → 新引用 →
+       * effect 重跑 → 重新 connectWS → 再放弃"之间形成一个没有退避的热循环
+       * （评审 I2）；这里从源头掐掉引用变化本身。
        */
       restoreSession: async () => {
-        set({ isRestoring: true, error: null })
-        try {
-          const response = await fetch('/api/session', { credentials: 'same-origin' })
-
-          if (response.status === 401) {
-            get().clearAuth()
-            set({ isRestoring: false })
-            return
-          }
-
-          if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as { error?: string } | null
-            set({ isRestoring: false, error: body?.error ?? '无法确认登录状态，请稍后重试' })
-            return
-          }
-
-          const body = (await response.json()) as { data?: { user?: User } }
-          const user = body.data?.user
-          if (!user || typeof user.user_id !== 'string') {
-            set({ isRestoring: false, error: '会话响应形状不符合预期' })
-            return
-          }
-
-          set({
-            user: { ...user, avatar_url: toAbsoluteApiUrl(user.avatar_url) },
-            isAuthenticated: true,
-            isRestoring: false,
-            error: null,
-          })
-        } catch {
-          // 网络失败：同 502，保持状态
-          set({ isRestoring: false, error: '无法确认登录状态，请稍后重试' })
+        if (restoreSessionInFlight) {
+          await restoreSessionInFlight
+          return
         }
+
+        restoreSessionInFlight = (async () => {
+          set({ isRestoring: true, error: null })
+          try {
+            const response = await fetch('/api/session', { credentials: 'same-origin' })
+
+            if (response.status === 401) {
+              get().clearAuth()
+              set({ isRestoring: false })
+              return
+            }
+
+            if (!response.ok) {
+              const body = (await response.json().catch(() => null)) as { error?: string } | null
+              set({ isRestoring: false, error: body?.error ?? '无法确认登录状态，请稍后重试' })
+              return
+            }
+
+            // AQ / M2：2xx 但 body 解析失败（不是合法 JSON）时落进下面的
+            // `!user` 分支（"会话响应形状不符合预期"），不能让 `.json()` 的
+            // 异常穿透到外层 catch、被并进"网络失败"那句文案——"问到了但
+            // 形状不对"和"压根没问到"是两件事，用同一句话会让 ProtectedRoute
+            // 的重试按钮永远撞见同一个提示，用户分不清该不该换个网络。
+            const body = (await response.json().catch(() => null)) as { data?: { user?: User } } | null
+            const user = body?.data?.user
+            if (!user || typeof user.user_id !== 'string') {
+              set({ isRestoring: false, error: '会话响应形状不符合预期' })
+              return
+            }
+
+            const restored: User = { ...user, avatar_url: toAbsoluteApiUrl(user.avatar_url) }
+            const current = get().user
+            if (current && isSameRestoredUser(current, restored)) {
+              set({ isAuthenticated: true, isRestoring: false, error: null })
+              return
+            }
+
+            set({
+              user: restored,
+              isAuthenticated: true,
+              isRestoring: false,
+              error: null,
+            })
+          } catch {
+            // 网络失败：同 502，保持状态
+            set({ isRestoring: false, error: '无法确认登录状态，请稍后重试' })
+          }
+        })().finally(() => {
+          restoreSessionInFlight = null
+        })
+
+        return restoreSessionInFlight
       },
 
       /**
@@ -257,6 +340,15 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({ user: state.user }),
       version: AUTH_PERSIST_VERSION,
       migrate: migrateAuthPersist,
+      // C1（Task 10 评审）：盘上关于 isAuthenticated 或 token 的任何说法都不
+      // 可信——已部署用户的 v1 落盘数据里 isAuthenticated: true 摆在那儿，
+      // zustand 默认 merge 是 `{...currentState, ...persistedState}`，会把它
+      // 原样拷进内存，第一次冷加载直接判定"已登录"、一次 /api/session 都不问
+      // （评审实测 `fetch called times = 0`）。这里不管 `migrate` 跑没跑
+      // （没有 version 键、或 version 与当前版本相同都不会触发 migrate，见
+      // `migrateAuthPersist` 的 JSDoc），只从 `persisted` 里取 `user`——
+      // `pickUser` 是这两条路径共用的最后一道闸。
+      merge: (persisted, current) => ({ ...current, user: pickUser(persisted) }),
     }
   )
 )

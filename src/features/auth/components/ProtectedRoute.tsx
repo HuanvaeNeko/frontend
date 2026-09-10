@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useRouter } from '@/lib/navigation'
 import { useAuthStore } from '../store/authStore'
 import SimpleLoading from '@/components/common/SimpleLoading'
+import { Button } from '@/components/ui/button'
 import { DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'
 
 interface ProtectedRouteProps {
@@ -51,6 +52,14 @@ interface ProtectedRouteProps {
  * 非空——"问不到" 不等于 "问到了说没登录"。后端挂了不该把还在线的用户踢去
  * 登录页，这里靠 `!error` 这个条件把两者分开。
  *
+ * ## I3 / M2：502 / 网络失败不是无限转圈
+ *
+ * 不跳转不等于什么都不做——`error` 非空、且不在 restoring、也还没登录时，
+ * 渲染一个带错误文案和「重试」按钮的状态，替掉 `<SimpleLoading />`。按钮直接
+ * 调 `restoreSession()`：`isRestoring` 会重新变真、`error` 被清空，界面回到
+ * loading，成功或失败后再落回对应分支——不是一个独立的状态机，只是重新走一遍
+ * 挂载时那条路径。
+ *
  * `useRouter()` 的引用稳定性见 `lib/navigation.ts`（`be14018` 修的那个无限
  * 循环）——这里把 `router` 放进依赖数组是安全的，不需要绕开它。
  */
@@ -82,6 +91,17 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       router.replace(DEFAULT_UNAUTHENTICATED_ROUTE)
     }
   }, [isAuthenticated, isRestoring, error, router])
+
+  if (error && !isRestoring && !isAuthenticated) {
+    return (
+      <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
+        <div className="text-center space-y-4 px-4">
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button onClick={() => void restoreSession()}>重试</Button>
+        </div>
+      </div>
+    )
+  }
 
   if (!isAuthenticated) {
     return <SimpleLoading />

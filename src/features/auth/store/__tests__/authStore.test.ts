@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
-import { getApiBaseUrl } from '@/lib/apiConfig'
+import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
+import { beginSession } from '@/lib/sessionScope'
 import { migrateAuthPersist, useAuthStore } from '../authStore'
 
 /**
@@ -102,6 +103,24 @@ describe('authStore.login —— 打 BFF，store 里不留 token', () => {
 
     expect(useAuthStore.getState().user?.avatar_url).toBe(absolute)
   })
+
+  // I4（Task 10 评审）：Ruling AE-2 把整组「信封解包」用例删掉时，"形状不对就
+  // 报错"这条职责没有继承者——变异实测把 parse 换成
+  // `return { user: (user ?? {}) as User }`（删掉那个 throw），883 条全套
+  // 零红。这两条钉住它。
+  it('data 里没有 user 字段时拒绝，不静默造一个空 user', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: {} }))
+
+    await expect(useAuthStore.getState().login({ user_id: 'alice', password: 'p' })).rejects.toThrow()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('data.user 不是对象时拒绝', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: 'x' } }))
+
+    await expect(useAuthStore.getState().login({ user_id: 'alice', password: 'p' })).rejects.toThrow()
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
 })
 
 describe('authStore.restoreSession —— 启动时的唯一真值', () => {
@@ -143,6 +162,80 @@ describe('authStore.restoreSession —— 启动时的唯一真值', () => {
     await useAuthStore.getState().restoreSession()
 
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
+  })
+
+  // M1：avatar_url 的绝对化与 login 是同一条 toAbsoluteApiUrl，但此前一条
+  // 用例都没有——删掉 restoreSession 里那次 toAbsoluteApiUrl 调用不会红。
+  it('avatar_url 是相对路径时补成绝对地址', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { user: { user_id: 'carol', avatar_url: 'avatars/carol.png' } } }),
+    )
+
+    await useAuthStore.getState().restoreSession()
+
+    expect(useAuthStore.getState().user?.avatar_url).toBe(toAbsoluteApiUrl('avatars/carol.png'))
+  })
+
+  // AQ / M2：200 但 body 不是合法 JSON 此前会让 `response.json()` 抛出，被外层
+  // catch 并进"网络失败"那句文案——"问到了但形状不对"被误判成"压根没问到"。
+  it('200 但 body 解析失败：落进"会话响应形状不符合预期"，不是网络失败文案，且状态保持', async () => {
+    useAuthStore.setState({ user: { user_id: 'old' }, isAuthenticated: true })
+    fetchMock.mockResolvedValueOnce(
+      new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    await useAuthStore.getState().restoreSession()
+
+    expect(useAuthStore.getState().error).toBe('会话响应形状不符合预期')
+    // 正对照：这不是 401，状态跟 502 / 网络失败一样保持，不清空登录态。
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().user?.user_id).toBe('old')
+  })
+})
+
+describe('authStore.restoreSession —— 单飞与 user 引用稳定（AR / AP(b) / I2）', () => {
+  it('并发调用共享同一个请求：只发一次 fetch', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'erin' } } }))
+
+    const [p1, p2] = [useAuthStore.getState().restoreSession(), useAuthStore.getState().restoreSession()]
+    await Promise.all([p1, p2])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().user?.user_id).toBe('erin')
+  })
+
+  it('两次 restoreSession 拿到逐字段相同的 user：内存里是同一个对象引用', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { user: { user_id: 'dave', nickname: '戴夫' } } }),
+    )
+    await useAuthStore.getState().restoreSession()
+    const first = useAuthStore.getState().user
+
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { user: { user_id: 'dave', nickname: '戴夫' } } }),
+    )
+    await useAuthStore.getState().restoreSession()
+    const second = useAuthStore.getState().user
+
+    expect(second).toBe(first)
+  })
+
+  it('正对照：昵称变了就是新的对象引用（不是恒等于旧引用的假阳性）', async () => {
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { user: { user_id: 'dave', nickname: '戴夫' } } }),
+    )
+    await useAuthStore.getState().restoreSession()
+    const first = useAuthStore.getState().user
+
+    fetchMock.mockResolvedValueOnce(
+      ok({ success: true, code: 200, data: { user: { user_id: 'dave', nickname: '戴夫改名了' } } }),
+    )
+    await useAuthStore.getState().restoreSession()
+    const second = useAuthStore.getState().user
+
+    expect(second).not.toBe(first)
+    expect(second?.nickname).toBe('戴夫改名了')
   })
 })
 
@@ -234,18 +327,17 @@ describe('auth-storage 的 persist 迁移', () => {
     expect((migrated.user as { user_id: string }).user_id).toBe('alice')
   })
 
-  it('形状不认识时原样返回，不编造 state；但 token 字段的剔除是无条件的', () => {
+  it('形状不认识时原样返回，不编造 state；但返回值的形状永远只有 user 一个键', () => {
     // 迁移函数不是校验层：落盘数据坏了应该看得见，而不是被一个默认值盖住——
     // 这三条走的是非对象输入，函数第一行就短路返回，连 identity 都不变。
     expect(migrateAuthPersist(null)).toBeNull()
     expect(migrateAuthPersist('不是对象')).toBe('不是对象')
 
-    // 对象输入：没有可识别的 `user` 时不编造一个，但**仍然**会剔除三个 token
-    // 字段——那一步不依赖 user 长什么样，见 `migrateAuthPersist` 的实现。
-    // 用 `toEqual` 而不是 `toBe`：剔除字段必然产生一个新对象，identity 本来
-    // 就不该相等。
+    // 对象输入：没有可识别的 `user` 时不编造一个，但返回值仍然是 `{ user: null }`
+    // ——允许名单只认 `user`，`accessToken` 这类字段连同任何其它字段一律不进
+    // 返回值，不需要专门去剔除（见 `migrateAuthPersist` / `pickUser` 的实现）。
     const noUser = { accessToken: 'AT' }
-    expect(migrateAuthPersist(noUser)).toEqual({})
+    expect(migrateAuthPersist(noUser)).toEqual({ user: null })
 
     const userIsNull = { user: null }
     expect(migrateAuthPersist(userIsNull)).toEqual({ user: null })
@@ -283,6 +375,84 @@ describe('auth-storage 的 persist 迁移', () => {
     const state = useAuthStore.getState() as unknown as Record<string, unknown>
     expect('accessToken' in state).toBe(false)
     expect('refreshToken' in state).toBe(false)
+    // I1（Task 10 评审）：这条 fixture 明明白白写了 `isAuthenticated: true`
+    // （上面 :271 附近），此前的断言只看 avatar_url 与两个 `'…' in state`，
+    // 对这个字段闭眼——C1 的 bug 打上去之后 42/42 全绿，就是因为这里没盯着它。
+    // 正对照见下方 partialize 用例（isAuthenticated 不落盘）与 restoreSession
+    // 200 用例（确实有路径能让它变 true）。
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  // C1 / M4（Task 10 评审）：已部署用户的 v1 落盘数据里 `isAuthenticated: true`
+  // 摆在那儿——旧的剔除名单只删三个 token 字段，`isAuthenticated` 跟着 `rest`
+  // 原样透传，被 zustand 默认 merge 拷进内存，第一次冷加载直接判定"已登录"，
+  // 一次 `/api/session` 都不问（评审实测 `fetch called times = 0`）。
+  it('已部署用户的 v1 落盘数据（isAuthenticated: true）：rehydrate 之后内存与盘上都不信这个字段', async () => {
+    // beforeEach 的 clearAuth() 会把 sessionScope 的写入闸门关上（"死窗口"，
+    // 见 lib/sessionScope.ts 的 isWriteAllowed）——这是给其它用例一个干净的
+    // "已登出"基线，但真实的冷加载不在死窗口里（`inDeadWindow` 的初值就是
+    // false）。这里用 beginSession() 把闸门重新打开，让下面 rehydrate() 触发的
+    // 落盘重写真的能写进去，而不是被闸门丢弃、读回 null。beginSession 自己会
+    // purgeAccountScopedStorage 一次，但那发生在下面 setItem 写入 fixture 之前，
+    // 不会把 fixture 清掉。
+    beginSession()
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: {
+          accessToken: 'AT',
+          refreshToken: 'RT',
+          tokenExpiry: Date.now() + 3600_000,
+          isAuthenticated: true,
+          user: { user_id: 'alice', avatar_url: 'avatars/alice.png?t=1' },
+        },
+        version: 1,
+      }),
+    )
+
+    await useAuthStore.persist.rehydrate()
+
+    const state = useAuthStore.getState() as unknown as Record<string, unknown>
+    expect(state.isAuthenticated).toBe(false)
+    expect('accessToken' in state).toBe(false)
+    expect((state.user as { user_id: string }).user_id).toBe('alice')
+
+    // 迁移把 partialize 的形状（{ user }）重新落盘——存量用户的盘也被清干净了，
+    // 不只是这一次内存里干净。
+    const onDisk = localStorage.getItem('auth-storage') as string
+    expect(onDisk).not.toContain('AT')
+    expect(onDisk).not.toContain('RT')
+    expect(onDisk).not.toContain('accessToken')
+    expect(onDisk).not.toContain('isAuthenticated')
+  })
+
+  // M4：zustand 只在 `typeof version === 'number' && version !== options.version`
+  // 时才调 `migrate`（`node_modules/zustand/middleware.js`）——完全没有 `version`
+  // 键的落盘数据会绕过 `migrateAuthPersist`，真正兜底的是 persist 的 `merge`
+  // 选项（`authStore.ts` 里的 `pickUser`）。
+  it('没有 version 键的落盘数据：migrate 不会跑，merge 兜底，isAuthenticated 不进内存', async () => {
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: {
+          accessToken: 'AT',
+          refreshToken: 'RT',
+          tokenExpiry: Date.now() + 3600_000,
+          isAuthenticated: true,
+          user: { user_id: 'alice', avatar_url: 'avatars/alice.png?t=1' },
+        },
+        // 有意不写 version 键。
+      }),
+    )
+
+    await useAuthStore.persist.rehydrate()
+
+    const state = useAuthStore.getState() as unknown as Record<string, unknown>
+    expect(state.isAuthenticated).toBe(false)
+    expect('accessToken' in state).toBe(false)
+    expect('refreshToken' in state).toBe(false)
+    expect('tokenExpiry' in state).toBe(false)
+    expect((state.user as { user_id: string }).user_id).toBe('alice')
   })
 })
 

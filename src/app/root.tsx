@@ -14,6 +14,7 @@ import NotFoundView from '@/components/common/NotFoundView'
 import SoundProvider from '@/components/providers/SoundProvider'
 import GlobalThreeBackdrop from '@/components/three/GlobalThreeBackdrop'
 import { Toaster } from '@/components/ui/toaster'
+import { useAuthStore } from '@/features/auth/store/authStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
 import { I18nProvider } from '@/i18n/I18nProvider'
@@ -191,6 +192,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // AR：启动时问一次 BFF「我登录了吗」，不只是等 ProtectedRoute 挂载才问——
+  // 登录页（`LoginForm` 已登录时自动跳走）和落地页的 CTA（`HeroActions` /
+  // `DownloadCenter`）也读 `isAuthenticated`，如果只有 `/app/*` 才会触发
+  // restoreSession，这些不受 `ProtectedRoute` 保护的页面在整页加载后会一直
+  // 读到刷新前的默认值。这里只在客户端挂载后跑一次（`useEffect` 不参与 SSR），
+  // `App` 是根路由的元素、不随子路由切换重新挂载，因此只会真正触发一次；
+  // `restoreSession` 内部做了单飞，与 `ProtectedRoute` 挂载时各自调用一次
+  // 也只会真正发出一次 `/api/session`。
+  useEffect(() => {
+    void useAuthStore.getState().restoreSession()
+  }, [])
+
   return <Outlet />
 }
 

@@ -137,10 +137,17 @@ describe('A 登出、B 登录', () => {
 
     // 正对照：这些东西**确实**落了盘。没有这一段，下面的 toBeNull 可能只是
     // 因为它们从来没被写进去过。会话制下 auth-storage 只落 `user`（没有 token
-    // 可落了），断言换成检查 user_id 字符串本身。
+    // 可落了），断言换成解析 JSON 后检查 user_id 字符串本身——M5（Task 10
+    // 评审）：`toContain('alice')` 比原来的 `toContain('AT-alice')` 宽得多，
+    // 解析后断言精确字段才钉得住"确实是 alice 的 user_id"，而不是随便哪个
+    // 子串命中就算数；顺带钉住盘上不再有 accessToken 这个键。
     expect(localStorage.getItem('profile-storage')).toContain('Alice')
     expect(localStorage.getItem('api-config-storage')).toContain('sk-alice')
-    expect(localStorage.getItem('auth-storage')).toContain('alice')
+    const authOnDisk = JSON.parse(localStorage.getItem('auth-storage') as string) as {
+      state: Record<string, unknown>
+    }
+    expect((authOnDisk.state.user as { user_id: string }).user_id).toBe('alice')
+    expect('accessToken' in authOnDisk.state).toBe(false)
 
     // ---- 登出 ----
     await useAuthStore.getState().logout()
