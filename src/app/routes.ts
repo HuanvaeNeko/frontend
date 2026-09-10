@@ -38,6 +38,9 @@ export default [
         route('friends/:userId', 'routes/shell/contacts.friends.$userId.tsx'),
         route('groups/:groupId', 'routes/shell/contacts.groups.$groupId.tsx'),
       ]),
+      route('app/settings', 'routes/shell/settings.tsx', [
+        route(':section', 'routes/shell/settings.$section.tsx'),
+      ]),
     ]),
     // 过渡期：还没搬进壳的旧页面（第 11 步整段删除）
     layout('routes/legacy-layout.tsx', [
@@ -46,8 +49,6 @@ export default [
       route('app/files', 'routes/files.tsx'),
       route('app/webrtc', 'routes/webrtc.tsx'),
       route('app/ai-chat', 'routes/ai-chat.tsx'),
-      route('app/devices', 'routes/devices.tsx'),
-      route('app/settings', 'routes/settings.tsx'),
       route('app/profile', 'routes/profile.tsx'),
     ]),
     route('app/video-meeting', 'routes/video-meeting.tsx'),

@@ -15,7 +15,8 @@ import { useWSStore } from '@/store/wsStore'
 import { SIDEBAR_TOOLS, type SidebarTool } from './sidebarTools'
 
 interface SidebarProps {
-  activeTab: 'chat' | 'contacts'
+  /** 'settings' 时两个 tab 都不高亮——设置没有自己的 nav-btn，靠底部的 NavLink 按 URL 自己高亮 */
+  activeTab: 'chat' | 'contacts' | 'settings'
   /** 第 9 步：钉在侧栏上的工具；本任务恒空 */
   pinnedTools?: ReadonlyArray<SidebarTool>
 }

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 
 interface AppShellProps {
-  activeTab: 'chat' | 'contacts'
+  activeTab: 'chat' | 'contacts' | 'settings'
   list: ReactNode
   children: ReactNode
 }

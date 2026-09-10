@@ -21,7 +21,7 @@ interface Device {
   is_current: boolean
 }
 
-export default function Devices() {
+export default function Devices({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
   const { toast } = useToast()
   const { logout } = useAuthStore()
@@ -137,17 +137,19 @@ export default function Devices() {
 
   return (
     <div className="relative h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6">
+      <div className={embedded ? '' : 'mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 pb-8 md:p-6'}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">设备管理</h1>
-              <p className="text-sm text-muted-foreground">查看并移除已登录设备</p>
+          {!embedded && (
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="icon" onClick={() => router.push(ROUTES.app.chat)}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">设备管理</h1>
+                <p className="text-sm text-muted-foreground">查看并移除已登录设备</p>
+              </div>
             </div>
-          </div>
+          )}
           <Button variant="outline" onClick={loadDevices} disabled={loading} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新
           </Button>

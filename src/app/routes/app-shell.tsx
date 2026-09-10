@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, useParams } from 'react-router'
 import { AppShell } from '@/components/shell/AppShell'
 import { ContactsList } from '@/components/shell/ContactsList'
+import { SettingsSectionList } from '@/components/shell/settings/SettingsSectionList'
 import { UnifiedList } from '@/components/shell/UnifiedList'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useUnifiedConversations } from '@/features/chat/hooks/useUnifiedConversations'
@@ -15,7 +16,8 @@ import { usePathname, useRouter } from '@/lib/navigation'
 import { ROUTES, chatPath } from '@/lib/routes'
 import { useWSStore } from '@/store/wsStore'
 
-function shellTabOf(pathname: string): 'chat' | 'contacts' {
+function shellTabOf(pathname: string): 'chat' | 'contacts' | 'settings' {
+  if (pathname.startsWith(ROUTES.app.settings)) return 'settings'
   return pathname.startsWith(ROUTES.app.contacts) ? 'contacts' : 'chat'
 }
 
@@ -75,7 +77,7 @@ export default function AppShellLayout() {
     if (pathname.startsWith('/app')) localStorage.setItem('last_visited_path', pathname)
   }, [pathname])
   return (
-    <AppShell activeTab={tab} list={tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
+    <AppShell activeTab={tab} list={tab === 'settings' ? <SettingsSectionList /> : tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
       <Outlet />
     </AppShell>
   )
