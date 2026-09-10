@@ -234,7 +234,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 | 文件 | 改动 |
 |---|---|
-| `authStore.ts` | state 删 `accessToken / refreshToken / tokenExpiry`；`login/logout/register` 打同源 BFF；新增 `restoreSession()`（`GET /api/session`）；**删除** `refreshAccessToken`、`checkTokenExpiry`、`refreshInFlight`、`lastRotatedAt`、`clearCredentials`、`setTokens`；persist 只留 `user`（首帧秒开），`version` +1，迁移**主动删除**落盘的 token 字段 |
+| `authStore.ts` | state 删 `accessToken / refreshToken / tokenExpiry`；`login/logout/register` 打同源 BFF；新增 `restoreSession()`（`GET /api/session`）；**删除** `refreshAccessToken`、`checkTokenExpiry`、`refreshInFlight`、`lastRotatedAt`、`clearCredentials`、`setTokens`；persist 只留 `user`（首帧秒开），`version` +1，迁移**主动删除**落盘的 token 字段并只输出 `{ user }`；`merge` 从盘上**只取 `user`**——盘上无论写着什么 `isAuthenticated` / token 都不进内存（存量用户的 v1 数据带着 `isAuthenticated: true`，zustand 默认 merge 会把它灌回来，让第一次冷加载完全不问 `/api/session`）。`restoreSession` 在 200 且 `user` 字段等价时保留原引用，避免依赖 `user` 的 effect 无谓重跑 |
 | `authedFetch.ts` | 退化为 `fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...options.headers } })`：删 `Authorization`、预检刷新、401 刷新重试、`pinSession`；**保留**默认 `Content-Type: application/json`（旧 `getAuthHeaders` 的另一半——全仓没有任何调用点自带它，删掉会让所有 JSON 写请求变成 `text/plain`，BFF 原样透传不兜）；401 → 不在 business-401 表内则 `clearAuth` + 跳登录。`apiClient.ts` 四个动词方法各自保留 30 s 超时（`AbortController`，与调用方 `signal` 合并），BFF 侧不设超时由 Caddy 兜（§2） |
 | `wsStore.ts` | `new WebSocket('/ws')`（同源；协议由 `location.protocol` 推）；删「失败 3 次就刷 token」逻辑 |
 | `ProtectedRoute.tsx` | 门槛从 persist 水合改为 `restoreSession()` 的结果；localStorage 里的 `user` 只用于首帧渲染，不作授权依据 |
@@ -249,7 +249,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 **登录**：`POST /api/auth/login {user_id, password}` → 转上游（`device_info` = UA）→ 严格解析 → 建会话 → `Set-Cookie` → `{data:{user}}`。上游 401 原样透传，不设 cookie。客户端成功后照旧 `beginSession()` 清上一账号的落盘。
 
-**启动**：`ProtectedRoute` → `restoreSession()` → `GET /api/session` → `{user}` 或 401。**只有 401 意味着未登录**；502 / 网络失败（边缘或后端不可达）→ 保持上一次状态、显示可重试的错误，**不登出、不清盘** —— 后端挂了不等于用户退出了，这是 P4b 那条规则在客户端侧的镜像。
+**启动**：根布局挂载时调用一次 `restoreSession()`（模块级单飞：并发调用共享同一次请求，`ProtectedRoute` 自己的调用只是搭便车）→ `GET /api/session` → `{user}` 或 401。登录页 / 落地页读到的 `isAuthenticated` 因此也是真值，不再依赖落盘标志。**只有 401 意味着未登录**；502 / 网络失败（边缘或后端不可达）→ 保持上一次状态、`ProtectedRoute` 渲染带「重试」按钮的错误态（再调一次 `restoreSession()`），**不登出、不清盘** —— 后端挂了不等于用户退出了，这是 P4b 那条规则在客户端侧的镜像。
 
 **鉴权请求**：§4.4。
 
