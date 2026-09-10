@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { pumpUpstream } from '../proxy'
+import { pumpPassthrough, pumpUpstream } from '../proxy'
 import { closeSessionSockets, resetSessionSocketRegistry } from '../registry'
 
 /** 假上游：只记录被调用了什么，事件由测试手动触发 */
@@ -113,5 +113,54 @@ describe('pumpUpstream', () => {
     pumpUpstream('s1', 'AT', client)
     closeSessionSockets('s1')
     expect(client.closed).toEqual([[1000, 'session ended']])
+  })
+})
+
+describe('pumpPassthrough（WebRTC 信令透传，Task 12 评审 C1）', () => {
+  beforeEach(() => {
+    process.env.BFF_UPSTREAM_WS = 'ws://edge.test:8787'
+    resetSessionSocketRegistry()
+    FakeUpstream.last = null
+    vi.stubGlobal('WebSocket', FakeUpstream)
+  })
+
+  // %2F 是特意选的守卫：pathWithQuery 必须逐字拼接，不能经过 encodeURI 之类的
+  // URL 序列化——那会把已经编码过的字符再编码一遍（%2F → %252F），静默改写
+  // 信令 URL。同一条断言也钉住"别复用 pumpUpstream 的 /ws?token= 拼法"：
+  // 复用的话这里会变成 ws://edge.test:8787/ws?token=WS-T，而不是原样的路径。
+  it('URL 是 upstreamWs() 与 pathWithQuery 的逐字拼接', () => {
+    const client = fakeClient()
+    pumpPassthrough('/ws/webrtc/rooms/r1?token=WS-T&x=a%2Fb', client)
+    expect(upstream().url).toBe('ws://edge.test:8787/ws/webrtc/rooms/r1?token=WS-T&x=a%2Fb')
+  })
+
+  it('帧双向转发（复用 pumpUpstream 同一条管道实现）', () => {
+    const client = fakeClient()
+    const pump = pumpPassthrough('/ws/webrtc/rooms/r1?token=WS-T', client)
+    pump.forward('first')
+    expect(upstream().sent).toEqual([])
+    upstream().onopen?.()
+    expect(upstream().sent).toEqual(['first'])
+    upstream().onmessage?.({ data: 'reply' })
+    expect(client.sent).toEqual(['reply'])
+  })
+
+  it('上游关闭码经 relayCloseCode 映射后下发给浏览器侧', () => {
+    const client = fakeClient()
+    pumpPassthrough('/ws/webrtc/rooms/r1?token=WS-T', client)
+    upstream().onopen?.()
+    upstream().onclose?.({ code: 1006, reason: '' })
+    expect(client.closed).toEqual([[1011, '']])
+  })
+
+  // 负对照：不进会话登记表——closeSessionSockets 对透传连接完全无效。
+  // 正对照见上面 pumpUpstream 的"登出关掉浏览器侧连接"：同样调 closeSessionSockets
+  // 却真的关掉了连接，证明这里的"关不掉"不是断言写错，是 pumpPassthrough 确实
+  // 没有调用 registerSessionSocket。
+  it('不登记进会话登记表：closeSessionSockets 对透传连接不起作用', () => {
+    const client = fakeClient()
+    pumpPassthrough('/ws/webrtc/rooms/r1?token=WS-T', client)
+    closeSessionSockets('anything')
+    expect(client.closed).toEqual([])
   })
 })

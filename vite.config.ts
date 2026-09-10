@@ -137,6 +137,13 @@ export default defineConfig(({ command, mode }) => {
         // 开发是 `react-router dev` 起的 Vite server —— 帧的收发两边都由平台做，
         // 我们只共享「cookie → token」这一段。这是诚实的不对称，不是隐藏的分叉。
         //
+        // ⚠️ 两个键都必须是精确匹配（`^…$` / `^…`，Vite 按 RegExp 解析以 `^`
+        // 开头的键），不能沿用 Vite 默认的前缀匹配：旧版本这里只有一条前缀键
+        // `'/ws'`，`/ws/webrtc/rooms/x`（WebRTC 信令，见 server/index.ts 的
+        // 第二条升级分支）会被它一起接住，下面 proxyReqWs 钩子再把 proxyReq.path
+        // 整个改写成 `/ws?token=<聊天会话的 access_token>`——信令 socket 静默
+        // 连到了聊天端点，还带错一套 token（Task 12 评审 C1）。
+        //
         // ⚠️ proxyReqWs 是**同步**回调，读不了异步打开的 session store，
         // 所以这里自己用 node:sqlite 同步查一次。语句从 server/session/sql.ts 取，
         // 与 store 共用同一份字符串，避免两处各写一遍 SELECT 然后分叉。
@@ -144,7 +151,7 @@ export default defineConfig(({ command, mode }) => {
         // 同步也意味着**这里不能刷新 token**：连接时若 access token 已过期，
         // 上游会在握手时回 401，客户端现有的重连退避接管；而 ChatPage 挂载时的
         // loadProfile() 总会先经 /api/* 把它刷新。开发环境可以接受这个限制。
-        '/ws': {
+        '^/ws$': {
           target: env.BFF_UPSTREAM_WS || 'ws://127.0.0.1:8787',
           ws: true,
           changeOrigin: true,
@@ -175,6 +182,15 @@ export default defineConfig(({ command, mode }) => {
               }
             })
           },
+        },
+        // WebRTC 信令透传（server/index.ts 的第二条升级分支，spec §4.6）：不查
+        // 会话、不注入 token，path+query 原样接上游，所以**不设 configure**——
+        // 加一个钩子就多一次「顺手改写 path」的诱惑，这条路径的正确行为恰恰是
+        // 什么都不做。
+        '^/ws/webrtc/': {
+          target: env.BFF_UPSTREAM_WS || 'ws://127.0.0.1:8787',
+          ws: true,
+          changeOrigin: true,
         },
       },
     },

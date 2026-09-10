@@ -90,11 +90,20 @@ describe('messagesApi.getMessages', () => {
     // （"cannot be parsed as a URL"），所以这里显式给 location.origin 当 base；
     // 比较仍然落在 pathname 上，MESSAGES_BASE 本身就是根相对路径，不带 origin。
     const url = new URL(String(fetchMock.mock.calls[0][0]), location.origin)
+    // 真正的"同源"控制：如果请求 URL 本身是绝对地址（另一个 origin），
+    // `new URL(绝对地址, location.origin)` 会忽略第二个参数、直接用那个绝对
+    // 地址自己的 origin——这里才会红。上面 MESSAGES_BASE 参与的两条断言不行，
+    // 它是跟请求 URL 同一个 getApiBaseUrl() 拼出来的，基址不管改成什么两边
+    // 都会一起变，恒绿（Task 12 评审 I1）。
+    expect(url.origin).toBe(location.origin)
     expect(url.pathname).toBe(MESSAGES_BASE)
     expect(url.searchParams.get('friend_id')).toBe('user456')
     expect(url.searchParams.get('limit')).toBe('50')
     // 首屏不带游标：带上 before_time 会把最新一页跳过去。
     expect(url.searchParams.get('before_time')).toBeNull()
+    // 字面量而非 getApiBaseUrl() 拼出来的期望值：这里写死当前基址（空串）
+    // 实际产出的根相对路径，独立于 MESSAGES_BASE 的定义方式。
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/messages?friend_id=user456&limit=50')
   })
 
   /**

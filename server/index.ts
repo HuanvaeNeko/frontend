@@ -11,7 +11,7 @@ import type { ServerBuild } from 'react-router'
 // 没人在服务端调用到才没出过问题；改成从这个零依赖的小模块导入，从结构上
 // 消除这个隐患。
 import { filterSensitiveData } from '../src/config/filterSensitiveData'
-import { type UpstreamPump, pumpUpstream, resolveWsToken } from './ws/proxy'
+import { type UpstreamPump, pumpPassthrough, pumpUpstream, resolveWsToken } from './ws/proxy'
 
 // vite.config.ts 把 react-dom 打进了 build/server/index.js（noExternal），
 // 那段代码在运行时读 process.env.NODE_ENV 来决定用生产版还是开发版实现。
@@ -93,20 +93,43 @@ function withSecurityHeaders(res: Response): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
 }
 
-const server = Bun.serve<{ sessionId: string; token: string; pump?: UpstreamPump }>({
+// WS 升级时挂在 ws.data 上的状态：'session' 是聊天（走会话/token/登记表），
+// 'passthrough' 是 WebRTC 信令透传（见 pumpPassthrough 的文档注释）。两者共用
+// 的只有 pump 这个洞——open 按 kind 分别灌进去，message/close 只认 pump。
+type WsData =
+  | { kind: 'session'; sessionId: string; token: string; pump?: UpstreamPump }
+  | { kind: 'passthrough'; pathWithQuery: string; pump?: UpstreamPump }
+
+const server = Bun.serve<WsData>({
   port: PORT,
   async fetch(request) {
     const url = new URL(request.url)
 
     // WS 升级：cookie → 会话 → token，然后把连接交给下面的 websocket 处理器。
     // 必须在 handler(request) 之前 —— RR 的 request handler 不认识升级请求。
-    if (url.pathname === '/ws' && request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+    const upgrade = request.headers.get('upgrade')?.toLowerCase()
+
+    if (url.pathname === '/ws' && upgrade === 'websocket') {
       const auth = await resolveWsToken(request)
       // 失败时返回普通 HTTP 响应：升级还没发生，这是唯一能表达失败的方式。
       // 浏览器侧看到 close 1006，现有重连退避接管。
       if (!auth.ok) return withSecurityHeaders(auth.response)
 
-      const upgraded = server.upgrade(request, { data: { sessionId: auth.sessionId, token: auth.token } })
+      const upgraded = server.upgrade(request, {
+        data: { kind: 'session', sessionId: auth.sessionId, token: auth.token },
+      })
+      if (upgraded) return undefined
+      return withSecurityHeaders(new Response('升级失败', { status: 400 }))
+    }
+
+    // /ws/webrtc/rooms/* 是 WS 透传（spec §4.6）：视频会议信令连的是这条同源路径
+    // （见 src/features/webrtc/api/webrtc.ts 的 createSignalingConnection），但它
+    // 不查会话、不注入 BFF 的鉴权 token——信令自己认 joinRoom 返回的 ws_token。
+    // 必须精确匹配前缀，不能落进上面 '/ws' 那一条（那是聊天专用、会注入错的 token）。
+    if (url.pathname.startsWith('/ws/webrtc/rooms/') && upgrade === 'websocket') {
+      const upgraded = server.upgrade(request, {
+        data: { kind: 'passthrough', pathWithQuery: url.pathname + url.search },
+      })
       if (upgraded) return undefined
       return withSecurityHeaders(new Response('升级失败', { status: 400 }))
     }
@@ -176,13 +199,17 @@ const server = Bun.serve<{ sessionId: string; token: string; pump?: UpstreamPump
   },
   websocket: {
     open(ws) {
-      const { sessionId, token } = ws.data
       // 管道存回 ws.data：Bun 的 ServerWebSocket 没有别的地方挂状态
-      ws.data.pump = pumpUpstream(sessionId, token, ws)
-      // token 只在上面这一行构造上游 URL 时用一次；用完立刻清掉，不让它在连接
-      // 整个生命周期里一直挂在 ws.data 上（最容易被日后一行 console.log(ws.data)
-      // 或 Sentry 顺手带走的地方）
-      ws.data.token = ''
+      const data = ws.data
+      if (data.kind === 'session') {
+        data.pump = pumpUpstream(data.sessionId, data.token, ws)
+        // token 只在上面这一行构造上游 URL 时用一次；用完立刻清掉，不让它在连接
+        // 整个生命周期里一直挂在 ws.data 上（最容易被日后一行 console.log(ws.data)
+        // 或 Sentry 顺手带走的地方）
+        data.token = ''
+      } else {
+        data.pump = pumpPassthrough(data.pathWithQuery, ws)
+      }
     },
     message(ws, message) {
       ws.data.pump?.forward(message as string | ArrayBufferLike)

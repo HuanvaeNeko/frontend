@@ -86,7 +86,10 @@ describe('friendsApi.getFriendsList', () => {
     expect(result[0].friend_id).toBe('u1')
     expect(result[0].friend_nickname).toBe('张三')
     expect(result[0].is_special_care).toBe(false)
-    expect(fetchMock.mock.calls[0][0]).toBe(FRIENDS_BASE)
+    // 字面量而非 getApiBaseUrl() 拼出来的期望值：FRIENDS_BASE 与请求 URL 用
+    // 同一个基址拼成，基址改成什么都会一起变、恒绿（Task 12 评审 I1）；这里
+    // 写死当前基址（空串）实际产出的根相对路径，独立于 FRIENDS_BASE 的定义方式。
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/friends')
   })
 
   it('data 不是数组时抛错，而不是安静地返回空数组', async () => {

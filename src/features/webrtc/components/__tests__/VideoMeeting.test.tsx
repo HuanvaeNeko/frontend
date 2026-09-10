@@ -3,7 +3,6 @@ import { render, waitFor } from '@testing-library/react'
 import { MotionGlobalConfig } from 'framer-motion'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { webrtcApi } from '../../api/webrtc'
 import VideoMeeting from '../VideoMeeting'
 
@@ -90,14 +89,15 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
     )
   })
 
-  it('store 里的地址是 toAbsoluteApiUrl 真实产出的那种形状，join payload 仍然是相对路径', async () => {
-    // 「切换服务器」已经删除（Task 12），基址永远同源，不再有"基址被指到本地反代"
-    // 这种可配置场景——但结论没变：这个 origin 对房间里的其它参与者没有意义
-    // （开发环境是 localhost，生产环境也只是这台浏览器打开应用的地址，不是后端），
-    // 后端的契约写的是相对路径（WebRTC房间.md:154）。这里不手写字符串，走真实的
-    // toAbsoluteApiUrl，顺带验证它与本组件的假设一致。
+  it('落盘地址来自另一个 origin，join payload 仍然被削成相对路径', async () => {
+    // 落盘的绝对地址不一定是用当前 origin 拼出来的——旧版本、旧部署、开发者
+    // 当年把基址指到过本地反代，都会把这种形状的值写进 localStorage（Task 12
+    // 评审 I2）。这条钉的正是 `toApiRelativePath` JSDoc 说的核心风险：拿当前
+    // origin 做前缀匹配的实现会把它原样发给信令服务器，再由后端转给房间里
+    // 每一个人。手写字面量而不是走 toAbsoluteApiUrl：后者现在只会产出同源地址
+    // （基址已归零），测不出"异源"这一档。
     useAuthStore.setState({
-      user: { user_id: 'alice', avatar_url: toAbsoluteApiUrl('avatars/alice.png?t=1') },
+      user: { user_id: 'alice', avatar_url: 'http://127.0.0.1:8787/avatars/alice.png?t=1' },
     })
 
     renderMeeting()
@@ -105,7 +105,8 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
     await waitFor(() => expect(joinRoom).toHaveBeenCalled())
     const payload = joinRoom.mock.calls[0]?.[1] as { avatar_url?: string }
     expect(payload.avatar_url).toBe('avatars/alice.png?t=1')
-    expect(payload.avatar_url).not.toContain(location.origin)
+    // 负对照：不是同源地址被削短了斜杠，是另一个 origin 被整段砍掉。
+    expect(payload.avatar_url).not.toContain('127.0.0.1')
   })
 
   it('已部署用户落盘的相对路径原样发出（迁移跑之前的那一批）', async () => {

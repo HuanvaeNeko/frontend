@@ -66,20 +66,17 @@ function relayCloseCode(code: number): number {
 }
 
 /**
- * 开上游连接并接成双向管道。
- *
- * token 只出现在**这一处** —— 上游 URL 的查询串里，服务端内部。浏览器从头到尾
- * 看不到它。（后端只支持 `?token=` 这一种 WS 鉴权方式，全部文档里没有任何
- * cookie 支持，所以这个查询串在服务端侧无法避免；能做到的是让它不出现在
- * 浏览器、不出现在浏览器历史、不出现在前端日志里。）
+ * 双向管道的公共实现：开上游连接、排队补发、双向转发、关闭码映射。
+ * `pumpUpstream`（聊天，登记会话）与 `pumpPassthrough`（WebRTC 信令透传，
+ * 不登记）共用这一份，唯一区别是要不要碰会话登记表——`sessionId` 为
+ * `undefined` 时全程跳过 `registerSessionSocket` / `unregisterSessionSocket`。
  */
-export function pumpUpstream(sessionId: string, token: string, client: ClientSocket): UpstreamPump {
-  const url = `${upstreamWs()}/ws?token=${encodeURIComponent(token)}`
+function createPump(url: string, client: ClientSocket, sessionId: string | undefined): UpstreamPump {
   const upstream = new WebSocket(url)
   const queue: (string | ArrayBufferView | ArrayBufferLike)[] = []
   let open = false
 
-  registerSessionSocket(sessionId, client)
+  if (sessionId !== undefined) registerSessionSocket(sessionId, client)
 
   upstream.onopen = () => {
     open = true
@@ -93,7 +90,7 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
   }
 
   upstream.onclose = (event: CloseEvent) => {
-    unregisterSessionSocket(sessionId, client)
+    if (sessionId !== undefined) unregisterSessionSocket(sessionId, client)
     // 用上游的 code 关浏览器侧：access token 到期导致的关闭要如实传下去，
     // 客户端的重连才会在新一次升级里触发刷新。
     try {
@@ -104,7 +101,7 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
   }
 
   upstream.onerror = () => {
-    unregisterSessionSocket(sessionId, client)
+    if (sessionId !== undefined) unregisterSessionSocket(sessionId, client)
     try {
       client.close(1011, 'upstream error')
     } catch {
@@ -118,7 +115,7 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
       else queue.push(data)
     },
     close(code, reason) {
-      unregisterSessionSocket(sessionId, client)
+      if (sessionId !== undefined) unregisterSessionSocket(sessionId, client)
       try {
         upstream.close(code, reason)
       } catch {
@@ -126,4 +123,35 @@ export function pumpUpstream(sessionId: string, token: string, client: ClientSoc
       }
     },
   }
+}
+
+/**
+ * 开上游连接并接成双向管道（聊天，`/ws`）。
+ *
+ * token 只出现在**这一处** —— 上游 URL 的查询串里，服务端内部。浏览器从头到尾
+ * 看不到它。（后端只支持 `?token=` 这一种 WS 鉴权方式，全部文档里没有任何
+ * cookie 支持，所以这个查询串在服务端侧无法避免；能做到的是让它不出现在
+ * 浏览器、不出现在浏览器历史、不出现在前端日志里。）
+ */
+export function pumpUpstream(sessionId: string, token: string, client: ClientSocket): UpstreamPump {
+  const url = `${upstreamWs()}/ws?token=${encodeURIComponent(token)}`
+  return createPump(url, client, sessionId)
+}
+
+/**
+ * WebRTC 信令的 WS 透传（`/ws/webrtc/rooms/*`）：不查会话、不注入 token、
+ * 不进会话登记表，`path+query` 原样接上游——与 §4.5 的 HTTP 透传（`passthrough.$.ts`）
+ * 同一哲学，spec §4.6 有名字。
+ *
+ * 信令端点自己认 `joinRoom` 返回的 `ws_token`（或分享链接里的 `?token=`）；
+ * 参与者可能根本没有登录态，套「cookie → 会话 → token」那一套鉴权代理在这里
+ * 既做不到也不该做。BFF 出现在这条路径上纯粹是因为浏览器直连不了后端
+ * （`api.huanvae.cn` 被 ICP 拦，no-SNI 直连撞上需要客户端证书的 mTLS 边缘）——
+ * 它在这里只是一根线，不是鉴权关卡，所以 `pathWithQuery` 必须逐字拼接，
+ * 不能经过 `encodeURI` 之类的 URL 序列化（那会把已经编码过的查询参数
+ * 二次编码，例如 `%2F` 变成 `%252F`，静默改写信令 URL）。
+ */
+export function pumpPassthrough(pathWithQuery: string, client: ClientSocket): UpstreamPump {
+  const url = `${upstreamWs()}${pathWithQuery}`
+  return createPump(url, client, undefined)
 }
