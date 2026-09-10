@@ -184,7 +184,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 
 - 距 `access_expires_at` 不足 60 s 才动手，否则直接返回现有 token。
 - **不在 SQLite 事务里跨网络调用。** 流程：读会话 → 打上游 `POST /api/auth/refresh` → `updateTokens(id, 读到的 expires_at, next)` 做 CAS → 返回 `false` 说明别的请求已先刷新，重读并使用其结果。
-- 进程内再叠一层每会话单飞 `Map<sessionId, Promise>`：生产单进程下它就是唯一的并发入口；CAS 是开发环境（Vite 进程与 SSR 模块可能各持一份模块实例）的兜底。
+- 进程内再叠一层每会话单飞 `Map<sessionId, Promise>`——但它**不是**唯一的并发入口，生产也不是：`server/index.ts` 直接跑源码（供 `/ws` 升级），资源路由则打进 `build/server/index.js`，两边各持一份 `refresh.ts` / `session/index.ts` 模块实例，即两张单飞表、两条 SQLite 连接（WAL + `busy_timeout` 撑得住）。**CAS 才是真正的正确性保证**，单飞只是同一实例内的省流。凡是必须跨两份实例共享的状态（WS 登记表）都挂在 `globalThis` 上，而不是模块级变量——这是终审实测出来的分裂，不是推测。
 - 上游响应解析沿用 `f3d7230` 确立的规则：`access_token` 与 `expires_in` 必有；`refresh_token` 缺席 → 沿用旧的，给了但不是非空字符串 → 形状错误。
 - 上游 401 → `store.delete(id)`，抛 `SessionDead`。
 - 上游 5xx / 网络失败 → 抛 `UpstreamUnavailable`，**会话保留**（传输失败 ≠ 会话结束，P4b 的规则，现在只写在这一处）。
@@ -242,7 +242,7 @@ cookie：`hv_session=<id>; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`（30
 | `ProtectedRoute.tsx` | 门槛从 persist 水合改为 `restoreSession()` 的结果；localStorage 里的 `user` 只用于首帧渲染，不作授权依据 |
 | `sessionScope.ts` | **保留**登出清盘与 store 世代号（内存里的跨账号仍是真问题）；删 token 相关 reset 与 `auth-storage` 闸门特例 |
 | `apiConfig.ts` | `getApiBaseUrl()` → `''`；`rewriteCanonicalApiOrigin` 落到同源；相关测试已习惯跟 `getApiBaseUrl()` 走 |
-| `SettingsPage`「切换服务器」 | 移除；`huanvae.api-base-url` 设备键退役（迁移时删除） |
+| `SettingsPage`「切换服务器」 | 移除；`huanvae.api-base-url` 设备键退役——不再有任何写入方，但**保留**在设备级反向名单里作为样例键、不主动删除存量磁盘值（无害，且 sessionScope 的测试拿它当设备级键的代表） |
 | `DevicesPage` 撤销当前设备 | 改为调 `authStore.logout()`（只清本地 state 的话 cookie 还在，刷新就又登回去） |
 | `src/features/auth/api/auth.ts` | 删掉 `authApi.logout`——`getAuthApiUrl()` 变同源后它会构成第二条登出路径，且做不到删会话 / 清 cookie / 关 WS。`getDevices` / `revokeDevice` 保留，经 `/api/*` 代理正常工作 |
 | `.env*` / `Dockerfile` / compose | 删 `VITE_API_URL` / `VITE_WS_URL`；新增 §3.3 四个服务端变量 |
