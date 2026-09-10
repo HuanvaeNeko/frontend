@@ -37,12 +37,17 @@ export default defineConfig(({ command, mode }) => {
   // （src/app/routes/api.*.ts）跑在 react-router dev 里，读的是 process.env
   // （server/upstream.ts、server/session/index.ts、server/session/cookie.ts）。
   // 不做这一步，开发者写在 .env / .env.development.local 里的值永远到不了
-  // 它们，BFF 直接抛「缺少环境变量」。??= ：已经在 shell / CI 里显式导出的值
-  // 优先，这里只补文件里有、进程环境里还没有的那部分。
-  process.env.BFF_UPSTREAM_HTTP ??= env.BFF_UPSTREAM_HTTP
-  process.env.BFF_UPSTREAM_WS ??= env.BFF_UPSTREAM_WS
-  process.env.SESSION_DB_PATH ??= env.SESSION_DB_PATH
-  process.env.SESSION_COOKIE_SECURE ??= env.SESSION_COOKIE_SECURE
+  // 它们，BFF 直接抛「缺少环境变量」。
+  //
+  // 不能用 ??=：它的短路只看左值，右值是 undefined 时照样赋值——而 Node 的
+  // process.env setter 会把 undefined 强制转成字符串 "undefined"，反而骗过
+  // server/upstream.ts、server/session/index.ts 的「缺少环境变量」守卫（字符串
+  // "undefined" 是真值），dev 会在仓库根目录静默开一个名叫 undefined 的 SQLite
+  // 会话库（已实测复现）。所以右值也要判一次，只在 env[key] 是非空字符串时才
+  // 赋值；左值非 undefined（shell / CI 已显式导出）时不覆盖，方向不变。
+  for (const key of ['BFF_UPSTREAM_HTTP', 'BFF_UPSTREAM_WS', 'SESSION_DB_PATH', 'SESSION_COOKIE_SECURE'] as const) {
+    if (process.env[key] === undefined && env[key]) process.env[key] = env[key]
+  }
 
   return {
     // 不要再加 @vitejs/plugin-react：reactRouter() 内部已经装好了 React Fast Refresh，

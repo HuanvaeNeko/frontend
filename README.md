@@ -142,33 +142,32 @@ bun run start
 
 ### API 地址配置
 
-统一使用生产 API 地址，配置在 `src/lib/apiConfig.ts`:
+请求统一走**同源**路径，由 BFF（`server/index.ts`）代理到真实后端——浏览器不知道后端 host 的存在。配置在 `src/lib/apiConfig.ts`:
 
 ```typescript
-export const getApiBaseUrl = (): string => {
-  // 如果设置了环境变量，优先使用
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
-  }
-  return 'https://api.huanvae.cn'
-}
+export const getApiBaseUrl = (): string => ''
 ```
+
+上游地址是服务端的事，由 `BFF_UPSTREAM_HTTP` / `BFF_UPSTREAM_WS` 两个运行时环境变量决定（见下）。
 
 ### 环境变量
 
+BFF 运行时变量（容器 `environment`，纯运行时读取，不是构建期内联；生产值见 `docker-compose.yml`）：
+
 ```bash
-# .env
-VITE_API_URL=https://api.huanvae.cn
-VITE_WS_URL=wss://api.huanvae.cn
+BFF_UPSTREAM_HTTP=http://edge:8787
+BFF_UPSTREAM_WS=ws://edge:8787
+SESSION_DB_PATH=/data/sessions.sqlite
+SESSION_COOKIE_SECURE=true
 ```
 
-> `VITE_*` 在构建时被内联进产物：改这些值必须 `bun run build` 重新构建（生产环境即重建 Docker 镜像），重启容器不会生效。
+> 这四个变量改值只需要 `docker compose up -d` 重启容器即可生效，不需要重新构建镜像；与之相对，`VITE_SENTRY_DSN` / `VITE_APP_VERSION` 会在构建时被内联进产物，改这两个必须 `bun run build` 重新构建（生产环境即 `docker compose up -d --build` 重建镜像），重启容器不会生效。完整变量表、`edge` sidecar 与 `secrets/` 证书说明见[部署指南](./docs/DEPLOY.md)。
 
 ## 🚀 部署
 
 ### Docker Compose（VPS，推荐）
 
-生产环境跑在自建 VPS 上：`app`（Bun 生产服务）+ `cloudflared`（Cloudflare Tunnel）两个容器，不对公网开放 80/443，全部流量经隧道进出。
+生产环境跑在自建 VPS 上：`app`（Bun 生产服务）+ `cloudflared`（Cloudflare Tunnel）+ `edge`（出网到后端的 Caddy sidecar）三个容器，不对公网开放 80/443，全部流量经隧道进出。
 
 ```bash
 docker compose up -d --build

@@ -18,7 +18,7 @@ bun run start   # 起生产服务（server/index.ts，默认监听 :3000）
 docker compose up -d --build
 ```
 
-`docker-compose.yml` 定义了两个服务：`app`（Bun 生产服务）和 `cloudflared`（Cloudflare Tunnel 客户端）。
+`docker-compose.yml` 定义了三个服务：`app`（Bun 生产服务）、`cloudflared`（Cloudflare Tunnel 客户端）、`edge`（出网到 Huanvae 后端的 Caddy sidecar，见下面「BFF / edge」小节）。
 
 ## ☁️ 部署拓扑：VPS + Cloudflare Tunnel
 
@@ -37,17 +37,36 @@ docker compose up -d --build
 
 | 变量名 | 说明 | 消费方 | 示例值 |
 |--------|------|--------|--------|
-| `VITE_API_URL` | 后端 API 地址 | 仅客户端（构建期内联） | `https://api.huanvae.cn` |
-| `VITE_WS_URL` | WebSocket 地址 | 仅客户端（构建期内联） | `wss://api.huanvae.cn` |
+| `BFF_UPSTREAM_HTTP` | 上游（`edge` sidecar）HTTP 地址，BFF 转发 REST 请求的目标 | 仅服务端（运行时 `process.env`） | `http://edge:8787` |
+| `BFF_UPSTREAM_WS` | 上游 WS 地址，BFF 注入 token 后代理升级的目标 | 仅服务端（运行时） | `ws://edge:8787` |
+| `SESSION_DB_PATH` | 会话 SQLite 库路径，落在 `sessions` 卷里 | 仅服务端（运行时） | `/data/sessions.sqlite` |
+| `SESSION_COOKIE_SECURE` | 会话 cookie 是否加 `Secure` 属性 | 仅服务端（运行时） | `"true"` |
 | `VITE_SENTRY_DSN` | Sentry DSN（留空则禁用上报） | **双重**：客户端（构建期内联）+ `server/index.ts`（运行时 `process.env` 读取，服务端 Sentry 初始化） | |
 | `VITE_APP_VERSION` | 版本号，用于 Sentry release 标签和版本徽标 | **双重**：客户端（构建期内联）+ `server/index.ts`（运行时 `process.env` 读取，服务端 Sentry release 标签） | `1.0.1` |
 | `CF_TUNNEL_TOKEN` | Cloudflare Tunnel token（Zero Trust 控制台的隧道详情页获取） | 仅 `cloudflared` 容器（运行时） | |
 
+> **`BFF_UPSTREAM_HTTP` / `BFF_UPSTREAM_WS` / `SESSION_DB_PATH` / `SESSION_COOKIE_SECURE` 是纯运行时变量，不是构建期变量。** `server/upstream.ts`、`server/session/index.ts` 在处理请求时读 `process.env`，不经过 Vite 的构建期内联。改这几个值只需要 `docker compose up -d`（读取新的 `environment` 并重建容器），**不需要** `--build` 重新构建镜像——这与下面 `VITE_*` 的规则正相反，两者混淆会导致改了配置却诧异"没生效"（其实重建的是不该重建的镜像），或者"重启了却没生效"（其实这几个变量该走的是重启，不是 VITE_* 那条重建规则）。四个变量的生产值见 `docker-compose.yml` 的 `app.environment`；`edge` 服务见下面的「BFF / edge」小节。
+>
 > **`VITE_*` 在构建时被 Vite 内联进产物，不是运行时读取。** 它们通过 `docker-compose.yml` 的 `build.args` 传给 `Dockerfile`，改这些值必须 `docker compose up -d --build` 重新构建镜像，单纯重启容器不会生效。镜像因此是环境相关的，不能"一个镜像部署到多环境"。
 >
 > 与此并存的是 `src/lib/apiConfig.ts` 里纯运行时的 `localStorage` 覆盖机制（用于临时切换后端），不受这条限制影响。
 >
 > **`VITE_SENTRY_DSN` 和 `VITE_APP_VERSION` 是例外，两边都要配置。** 上表"消费方"一栏标了双重的这两个变量，`server/index.ts` 会在容器启动时用 `process.env.VITE_SENTRY_DSN` / `process.env.VITE_APP_VERSION` 做服务端 Sentry 初始化——这是纯运行时读取，和 Vite 构建期内联是两条独立的路径。因此 `docker-compose.yml` 里 `app` 服务必须**同时**在 `build.args`（供客户端构建）和 `environment`（供服务端运行时）声明它们；只配置其中一边，另一边会静默失效——服务端只配 `build.args` 的话，容器正常启动、健康检查照常通过，但 `Sentry.init({ dsn: '' })` 永远拿到空字符串，服务端报错永远不会上报，且不会有任何报错或日志提示这一点。
+
+## 🔀 BFF / edge：出网到 Huanvae 后端
+
+浏览器不再直连 `api.huanvae.cn`——该域名已从客户端产物里移除（见上表），也确实连不通：它在阿里云被 ICP 备案拦截。出网分两跳：
+
+```
+app（Bun BFF）──明文 HTTP/WS，docker 网络内──> edge（Caddy sidecar）──mTLS，无 huanvae.cn SNI──> Huanvae 后端边缘
+```
+
+- **`app`** 只知道 `BFF_UPSTREAM_HTTP=http://edge:8787` / `BFF_UPSTREAM_WS=ws://edge:8787`——docker 网络内部地址，不出容器，也不出现在任何客户端产物里。
+- **`edge`** 服务（`docker-compose.yml`）是 `caddy:2-alpine`，配置在 `edge/Caddyfile`：反代到 Huanvae 后端边缘 IP，带客户端证书（mTLS）且刻意不带 `huanvae.cn` 的 SNI/Host（拦截正是按 SNI 触发的，细节见该文件顶部注释）。它只在 docker 网络内 `expose: ["8787"]`，不对宿主机发布端口。
+- **`secrets/huanvae-ca.pem`、`secrets/app-client.cert.pem`、`secrets/app-client.key.pem`** 由 owner 手动放到 VPS 上（`chmod 600`），**永不提交到仓库**——这是公开仓库，私钥不能进版本控制，agent 不经手这把私钥。`docker-compose.yml` 把整个 `./secrets` 目录只读挂载进 `edge` 容器。
+- **`sessions` 卷**：`SESSION_DB_PATH=/data/sessions.sqlite` 落在具名卷 `sessions`（挂载到 `app` 容器的 `/data`），随容器重建而保留，不随 `docker compose down`（不带 `-v`）丢失。
+
+本地开发想连这条链路：`cp docker-compose.override.yml.example docker-compose.override.yml && docker compose up -d edge` 把 `edge` 发布到 `127.0.0.1:8787`，再在 `.env.development.local` 里设 `BFF_UPSTREAM_HTTP=http://127.0.0.1:8787` / `BFF_UPSTREAM_WS=ws://127.0.0.1:8787`（`vite.config.ts` 会把它们接进 `react-router dev` 的 `process.env`，见该文件注释）。
 
 ## 🔒 VPS 防火墙
 
@@ -70,11 +89,11 @@ curl -s http://<host>/healthz   # 期望返回 "ok"，状态码 200
 
 ## 🐛 常见问题
 
-### 1. 改了 `VITE_API_URL` 之类的构建时变量，重启容器不生效
+### 1. 改了 `VITE_SENTRY_DSN` / `VITE_APP_VERSION` 之类的构建时变量，重启容器不生效
 
 **原因**：`VITE_*` 在 `bun run build` 时被内联进 JS 产物，运行时读不到新值。
 
-**解决**：`docker compose up -d --build` 重新构建镜像（不能只 `restart`）。
+**解决**：`docker compose up -d --build` 重新构建镜像（不能只 `restart`）。反过来，`BFF_UPSTREAM_HTTP` / `BFF_UPSTREAM_WS` / `SESSION_DB_PATH` / `SESSION_COOKIE_SECURE` 这四个是纯运行时变量，改值只需要 `docker compose up -d` 重启容器，不必 `--build`。
 
 ### 2. 尾斜杠 URL（如 `/app/chat/`）跳转异常或出现循环
 
@@ -96,11 +115,12 @@ curl -s http://<host>/healthz   # 期望返回 "ok"，状态码 200
 
 ### 5. API 请求失败
 
-**原因**：CORS 配置或环境变量问题。
+**原因**：BFF 环境变量配置问题，或 `edge` 出网链路故障（见「BFF / edge」小节）。
 
 **解决**：
-- 确认后端配置了正确的 CORS 策略
-- 检查 `VITE_API_URL` / `VITE_WS_URL` 是否指向正确的后端地址
+- 浏览器发出的请求都是同源的（打到 `app` 自己），不会有 CORS 问题——如果看到 CORS 报错，说明请求没有经过 BFF，走错了路径
+- 检查 `app` 容器的 `BFF_UPSTREAM_HTTP` / `BFF_UPSTREAM_WS` 是否指向正确的 `edge` 地址
+- 检查 `edge` 容器日志（`docker compose logs edge`）和 `secrets/` 下三个证书文件是否就位、权限是否正确（`600`）
 
 ## 📚 相关资源
 
@@ -117,4 +137,4 @@ curl -s http://<host>/healthz   # 期望返回 "ok"，状态码 200
 
 ---
 
-**更新时间**: 2026-09-05
+**更新时间**: 2026-09-10

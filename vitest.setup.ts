@@ -2,9 +2,9 @@ import { afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 
-// Vitest（经由 Vite 的 loadEnv）会加载仓库根目录的 .env，所以 import.meta.env.VITE_API_URL
-// 在测试里跟开发者本机配置的值一致，不是固定的 https://api.huanvae.cn。断言里不要硬编码某个
-// 宿主/域名——用 getApiBaseUrl()（`@/lib/apiConfig`）或只断言路径部分，否则换一份 .env 就假红。
+// getApiBaseUrl()（`@/lib/apiConfig`）现在无条件返回同源空串 ''：BFF 会话层之后，
+// 浏览器不再知道任何后端 host，上游由服务端的 BFF_UPSTREAM_* 决定（见 vite.config.ts）。
+// 断言里因此也不要硬编码某个协议/主机——用 getApiBaseUrl() 或只断言路径部分。
 
 // @testing-library/react 只在检测到全局 afterEach 时才会自动注册卸载清理；
 // 本项目的 vitest.config.ts 未开启 test.globals，afterEach 在测试文件里

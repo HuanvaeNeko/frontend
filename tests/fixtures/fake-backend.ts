@@ -93,7 +93,7 @@ const server = Bun.serve<{ token: string }>({
       ws.send(JSON.stringify({ type: 'hello', from: 'fake-backend' }))
     },
     message(ws, message) {
-      ws.send(message as string)
+      ws.send(message)
     },
   },
 })

@@ -12,7 +12,7 @@ import { defineConfig, devices } from '@playwright/test'
 // `testIgnore` 排除它，避免同一份用例在错误的服务器上重复运行、产生误报。
 //
 // dev（3000）和生产（同样默认 3000，见 server/index.ts 的 PORT 常量）不能
-// 共用端口同时跑，所以生产服务专门用 PORT=3100 起，production project 的
+// 共用端口同时跑，所以生产服务专门用 PORT=39471（下面的 PRODUCTION_PORT）起，production project 的
 // baseURL 跟着指过去。webServer 一旦用数组形式，Playwright 不会再从任何一条
 // 的 port/url 自动推导全局 baseURL（见官方文档），顶层 use.baseURL 保留给
 // chromium/mobile 用，production project 自己覆盖一份。
@@ -86,7 +86,7 @@ export default defineConfig({
       // dev 现在也要跑真实的 BFF 资源路由：src/app/routes/api.*.ts 是 RR 路由，
       // `react-router dev` 会执行它们，和生产走的是同一份代码，读的是
       // process.env（vite.config.ts 的 loadEnv 只喂 import.meta.env，见那里的
-      // 补丁）。不给这三个变量，chat.spec.ts / device-matrix.spec.js 这些跑在
+      // 补丁）。不给这四个变量，chat.spec.ts / device-matrix.spec.js 这些跑在
       // chromium/mobile 项目（即这条 dev server）上的用例一调 BFF 路由就会撞见
       // 「缺少环境变量」——它们现在都是真实登录换 cookie，不再是 page.route()
       // 在浏览器侧整个伪造 /api/session。SESSION_DB_PATH 单独用一个文件名，

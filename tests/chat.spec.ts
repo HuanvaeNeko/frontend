@@ -8,30 +8,17 @@ test.describe('Chat Functionality', () => {
     // page.request 与这个测试的 page 共享同一个浏览器 context 的 cookie jar，
     // 真实登录一次之后，page 后续的导航会带上 hv_session —— 这个 dev webServer
     // 现在也接了真实的假后端（见 playwright.config.ts 的 BFF_UPSTREAM_*），所以
-    // 这是一次真实的 cookie 换 session 而不是伪造。/api/session 不拦截，让
-    // ProtectedRoute 真的问一遍 BFF；下面 /api/profile|friends|groups/... 的
-    // page.route 拦截仍然保留——它们在浏览器侧生效，早于请求真正发给 BFF，
-    // 目的是控制这几个用例断言的具体数据形状（Alice/Bob 等），与鉴权机制无关。
-    await page.request.post('/api/auth/login', { data: { user_id: 'e2e', password: 'correct-horse' } })
-
-    // Default mocks for profile to avoid auth redirect
-    await page.route('**/api/profile', async (route) => {
-      await route.fulfill({ 
-        status: 200, 
-        body: JSON.stringify({ 
-          data: {
-            user_id: 'test_user', 
-            user_nickname: 'Test User',
-            user_email: 'test@example.com',
-            user_avatar_url: '',
-            user_signature: 'Hello World',
-            admin: 'false',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          } 
-        }) 
-      })
-    })
+    // 这是一次真实的 cookie 换 session 而不是伪造。/api/session、/api/profile
+    // 都不拦截：前者让 ProtectedRoute 真的问一遍 BFF，后者假后端本来就回一份
+    // 形状完整、能通过 src/features/profile/api/profile.ts 解析器的资料（E2E
+    // 用户）——不再需要浏览器侧另外 mock 一份。下面 /api/friends|groups/... 的
+    // page.route 拦截仍然保留，目的是控制这几个用例断言的具体数据形状
+    // （Alice/Bob 等），与鉴权机制无关。
+    const login = await page.request.post('/api/auth/login', { data: { user_id: 'e2e', password: 'correct-horse' } })
+    // 登录失败时下面 waitForResponse 的 30s 超时和 playwright.config.ts 文档化的
+    // 那条 Vite dev 并发 flake 完全同形（页面停在「加载中...」）——这一句把两种
+    // 原因永久分开，成本一行。
+    expect(login.ok(), 'e2e 登录失败').toBeTruthy()
   })
 
   test('should load chat page and display friends list', async ({ page }, testInfo) => {

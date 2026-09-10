@@ -131,9 +131,10 @@ for (const device of matrix) {
             // 的 page 共享同一个 cookie jar，登录一次即可让随后的 page.goto
             // 带上 hv_session。每个测试都是全新 context，不需要在非鉴权分支
             // 显式清 cookie / localStorage。
-            await context.request.post(`${BASE_URL}/api/auth/login`, {
+            const login = await context.request.post(`${BASE_URL}/api/auth/login`, {
               data: { user_id: 'e2e', password: 'correct-horse' },
             })
+            expect(login.ok(), 'e2e 登录失败：下面这些受保护页面会静默变成登录页，四条断言照样全绿').toBeTruthy()
           }
 
           const cacheKey = `${device.name}-${orientation}-${pageCase.name}-${Date.now()}`
