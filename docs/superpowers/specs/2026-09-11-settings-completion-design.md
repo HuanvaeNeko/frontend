@@ -42,7 +42,7 @@
 
 `SETTINGS_SECTIONS` 变为 `['appearance', 'notifications', 'account', 'apps', 'ai', 'about'] as const`；`SETTINGS_SECTION_META` 加 `{ key: 'apps', labelKey: 'shell.settings.apps', icon: AppWindow }`。
 
-未登录访问 `/app/oauth/authorize?…`：`ProtectedRoute` 目前 `replace` 到 `/app/login` 不带回跳；本页自己在渲染前判断，跳 `/app/login?next=<encodeURIComponent(当前完整路径含 query)>`（`LoginForm` 已支持 `next`），登录后回到本页继续。
+未登录访问 `/app/oauth/authorize?…`：`ProtectedRoute` 的未登录跳转改为带 `next`（`/app/login?next=<encodeURIComponent(当前完整路径含 query)>`，`LoginForm` 已支持 `next`），对所有受保护页生效；登录后回到本页继续。
 
 ## 4. 主题编辑器
 
@@ -56,12 +56,17 @@ interface CustomColors { primary: string; accent?: string; glass?: GlassConfig }
 interface ThemeConfig { preset: ThemePreset; customColors: CustomColors }   // 没有 mode：明暗留在 settingsStore.theme
 ```
 
-默认值（APP `presets.ts`）：`primary '#3b82f6'`、`accent '#8b5cf6'`、`glass { baseColor '#ffffff', opacity 0.8, blur 16, saturation 180, borderOpacity 0.3 }`；`opacityLevels` 默认为各 level 同名数值（97、95、…、10）。取值范围照 APP：`blur 4–40`、`saturation 100–250`、`borderOpacity 0.1–0.6`、每个 level `0–100`。
+默认值（APP `presets.ts`）：`primary '#3b82f6'`、`accent '#8b5cf6'`、`glass { baseColor '#ffffff', opacity 0.8, blur 16, saturation 180, borderOpacity 0.6 }`；`opacityLevels` 默认为各 level 同名数值（97、95、…、10）。取值范围：`blur 4–40`、`saturation 100–250`、`borderOpacity 0.1–0.8`、每个 level `0–100`。
+
+**与 APP 的三处有意差异**（计划阶段用 spike 对照 `globals.css` 后定下，理由都是 §1 的完成判定「默认预设输出逐键等于上期静态 CSS」）：
+1. `borderOpacity` 默认 0.6（APP 0.3）：上期 `--glass-border` 取的是 APP `variables.css` 的 `rgba(255,255,255,0.6)`；深色一律 `rgba(255, 255, 255, round(borderOpacity/5, 2))`（默认 0.12），边框恒用白色。
+2. `--blur-*` 用函数形式且比例按 Web 静态值反推：xs = round(blur×0.375)、sm = round(blur×0.625)、md = round(blur×0.75)、lg = blur、xl = round(blur×1.5)、`--glass-backdrop` 用 round(blur×1.25)；`--saturate-normal` = round(saturation×5/6)、`--saturate-high` = saturation。
+3. 深色模式下 `baseColor === '#ffffff'` 视为「跟随模式」，玻璃底色改用 `neutralScale[3]`（默认 `rgb(20, 23, 28)`，与 `.dark` 里的 `--white-alpha-*` 一致）；用户改过底色则两种模式都用它。alpha 文本用 `String(level / 100)`（`0.9` 不是 `0.90`）。
 
 ### 4.2 生成器（移植 APP `theme/generator.ts` + `theme/utils.ts`）
 
 - 引入 `culori`（OKLCH），版本与 APP 同款 `^4.0.2`（+ `@types/culori`）。
-- `generateThemeData({ preset, customColors, isDark }): ThemeData`——输出与 `globals.css` **同名**的整组变量：`--primary/-hover/-active/-subtle/-text`、`--accent-*`、`--bg-*`、`--text-*`、`--border-*`、`--status-*`、`--shadow-*`、`--color-primary-1..12 / -accent-1..12 / -neutral-1..12`、`--white-alpha-10..97`、`--glass-*`、`--blur-*`。
+- `generateThemeData({ preset, customColors, isDark }): ThemeData`——输出与 `globals.css` **同名**的整组变量（恰好 115 个）：`--primary/-hover/-active/-subtle/-text`、`--accent-*`、`--bg-*`、`--text-*`、`--border-*`、`--status-*`、`--shadow-*`（40）、`--color-primary-1..12 / -accent-1..12 / -neutral-1..12`（36）、`--white-alpha-10..97`（17）、`--glass-white-10..90`（13，= APP 的 `--glass-N`）、`--glass-border`、`--glass-backdrop`、`--blur-xs..xl`（5）、`--saturate-normal/high`。`--glass-border-light/-subtle`、`--card-*`、`--text-on-color` 等静态 token 不由生成器输出。
 - **对照用例**：用默认预设 + 浅色 / 深色跑生成器，输出必须逐键等于 `globals.css` 里 `:root` / `.dark` 的值（上期就是用这个生成器产出的静态 CSS）。这条用例既是移植正确性的证据，也是「默认预设不写内联变量」这个优化的前提。
 - `toCssVariables(themeData): Record<string, string>`（`--name → value`）。
 
@@ -71,7 +76,7 @@ interface ThemeConfig { preset: ThemePreset; customColors: CustomColors }   // �
 - 动作：`setPreset`、`setPrimaryColor`、`setAccentColor`、`setGlassConfig(partial)`、`setOpacityLevel(key, value)`、`reset()`；每次改动同步重算 `snapshot`。
 - `ThemeProvider`（挂在 `root.tsx` 的 `SettingsSync` 旁）：订阅 `themeStore` 与 `settingsStore.theme`；`preset === 'default'` → 清掉 `:root` 上所有本模块写过的内联变量（记录写过的键名），页面回到静态 CSS；`custom` → 按当前明暗把 `snapshot.light / dark` 逐键 `style.setProperty`。跨标签页：监听 `storage` 事件 key `huanvae.theme`，`setState` 后重应用（APP `ThemeProvider.tsx:221-245` 同款）。
 - 防闪：`root.tsx` 的内联脚本在现有明暗逻辑之后追加——读 `huanvae.theme`，若 `state.config.preset === 'custom'` 且有 `snapshot`，按 `isDark` 把对应那份 `Object.entries` 逐条 `setProperty`。脚本只做赋值不做计算，`culori` 不进内联脚本。
-- 编辑器在 `AppearanceSection` 内展开：模式三选一（不动）→ 预设（默认 / 自定义，卡片带三色预览）→ 自定义色（`react-colorful` `HexColorPicker` × 2，仅 custom 时显示）→ 毛玻璃（底色 + 3 滑块）→ 高级透明度（6 组 17 滑块，默认折叠，组名与 APP 一致：弹窗层 / 主背景层 / 卡片层 / 面板层 / 辅助层 / 遮罩层）→ 重置。滑块 50ms 防抖写 store（APP 同款）。所有文案走 `shell.settings.theme.*`。
+- 编辑器在 `AppearanceSection` 内展开：模式三选一（不动）→ 预设（默认 / 自定义，卡片带三色预览）→ 自定义色（`react-colorful` `HexColorPicker` × 2，仅 custom 时显示）→ 毛玻璃（底色 + 3 滑块）→ 高级透明度（6 组 17 滑块，默认折叠，组名与 APP 一致：弹窗层 / 主背景层 / 卡片层 / 面板层 / 辅助层 / 遮罩层）→ 重置。滑块 50ms 防抖写 store（APP 同款）。所有文案走 `shell.settings.themeEditor.*`（`shell.settings.theme` 已经是外观分区那一行的字符串标题，不能改成对象）。
 - 引入 `react-colorful ^5.7.0`（APP 同款，无依赖，约 3KB）。
 
 ## 5. 黑名单
@@ -110,7 +115,7 @@ listClients / createClient / deleteClient(clientId) / resetClientSecret(clientId
 ### 6.4 托管授权页 `/app/oauth/authorize`
 
 1. 解析 query；`client_id` 或 `redirect_uri` 缺失 → 错误页「无效的授权请求」（不跳转）。
-2. 未登录 → `replace('/app/login?next=' + encodeURIComponent(location.pathname + location.search))`。
+2. 未登录 → 由 `ProtectedRoute` 带 `next` 跳登录页（§3）；本页不自行判断。
 3. 已登录：先 `authorize(req)`（不带 `consent`）。
    - `kind: 'code'`（内部客户端或已授权的外部客户端）→ 直接跳。
    - `kind: 'consent'` → 展示 `app_name` / logo / scope 列表 + 「允许」「拒绝」；允许 → `authorize({ ...req, consent: true })` → 跳；拒绝 → 跳 `redirect_uri` 加 `error=access_denied`（+ `state`）。
@@ -158,7 +163,7 @@ listClients / createClient / deleteClient(clientId) / resetClientSecret(clientId
 
 ## 11. 测试
 
-- 生成器：默认预设浅 / 深两套输出与 `globals.css` 逐键相等（从 CSS 文本解析出变量表做期望，不是从生成器自己拼）；自定义主色改变后 `--primary` 系列变化而 `--neutral-*` 不变（正对照）；透明度 level 改动只影响对应 `--white-alpha-N`。
+- 生成器：默认预设浅 / 深两套输出与 `globals.css` 逐键相等（从 CSS 文本解析出变量表做期望，不是从生成器自己拼）；自定义主色改变后 `--primary` 系列变化而 `--accent-*` / `--color-accent-*` 一个都不变（正对照；中性色阶取主色色相，改主色时它本来就会变，所以对照物是强调色不是中性色）；透明度 level 改动只影响对应的 `--white-alpha-N` 与 `--glass-white-N`。
 - `ThemeProvider`：默认预设不写内联变量（`document.documentElement.style.length === 0` 的正对照）；切到 custom 写入 / 切回 default 清除；`storage` 事件触发重应用。
 - 黑名单：解析器严格（缺 `user_id` 抛 `ApiShapeError`）；store 动作成功后 `friends[].is_blacklisted` 翻转（正对照：失败不翻转）；面板两步确认（第一次点不调 API）。
 - OAuth：解析器严格；授权页三条路径（内部客户端直接跳、外部客户端同意后跳、拒绝带 `error=access_denied`）+ 缺参数不跳 + 未登录带 `next` 去登录；跳转目标来自后端回传（变异：改用 query 的 `redirect_uri` 必红）；`SecretDisplay` 只在「我已保存」后关闭。
@@ -173,7 +178,7 @@ listClients / createClient / deleteClient(clientId) / resetClientSecret(clientId
 - `HTMLAudioElement` 首次播放受浏览器自动播放策略限制：用户已与页面交互（登录、点击）后才会响；试听按钮本身是交互，无此问题。
 - IndexedDB 在隐私模式可能不可用：`soundLibrary` 全部 `try/catch`，失败时选择器隐藏上传按钮并提示。
 - 授权页的拒绝分支使用 query 里的 `redirect_uri`（后端没有回传）——限定 http(s) 绝对地址或站内相对路径，已在 §6.4 写明。
-- `/app/oauth/authorize` 在 `protected-layout` 之下：`ProtectedRoute` 的未登录跳转不带 `next`，本页在它之前用 `useAuthStore` 自行判断并带 `next` 跳转（顺序：本页效果先于 `ProtectedRoute` 的 `replace`？——**实现时验证**，若 `ProtectedRoute` 抢先，改为把 `next` 支持加进 `ProtectedRoute`（对所有受保护页都有益）。
+- `/app/oauth/authorize` 在 `protected-layout` 之下：**已定**——把 `next` 支持直接加进 `ProtectedRoute`（未登录 `replace('/app/login?next=<encodeURIComponent(pathname+search)>')`，落在默认页 `/app/chat` 时不带），对所有受保护页生效；授权页自己不做未登录判断（§3 第二段据此更新）。
 
 ## 13. 与后续期的接口
 
