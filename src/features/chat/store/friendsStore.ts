@@ -63,7 +63,7 @@ const silentRedirectToLogin = () => {
  * 处理 API 错误，认证错误静默重定向。
  *
  * 返回 `null` 表示「已经跳登录页、不必再写 `store.error`」。
- * **它不表示成功**：七个调用点在这之后**一律 `throw error`**。
+ * **它不表示成功**：每个调用点在这之后**一律 `throw error`**。
  *
  * 原来 `null` 分支是 `set({isLoading:false}); return`，promise 因此 resolve，
  * 于是 `FriendList.handleApprove` 里 `await approveFriendRequest(...)` 后面
@@ -74,12 +74,19 @@ const silentRedirectToLogin = () => {
  *
  * ## 钉住它的是哪些用例
  *
- * `store/__tests__/friendsStore.test.ts` 的两个 `it.each`：七个 action ×
- * 两条分支（认证 401 → 仍 reject；403 → 写 `store.error` 且仍 reject）。
+ * `store/__tests__/friendsStore.test.ts` 的两个 `it.each(ACTIONS)`：每个 action ×
+ * 两条分支（认证 401 → 仍 reject；403 → 可见错误且仍 reject——是否顺带写共享的
+ * `store.error` 由每项自己的 `writesSharedError` 决定，见 `ACTIONS` 上的注释：
+ * 黑名单三个 action 各自维护自己的错误 UI，不写这个共享字段，避免污染主聊天
+ * 列表/联系人栏的整栏错误态）。
  * **表驱动是必要的，不是风格**：上一版只钉了 4 个点，把
  * `approveFriendRequest`（也就是上面这段话举的例子本身）换回退化写法，
- * 那 4 条用例全绿（审阅者在完整套件上复现的是 508 条全绿）。
- * 现在这 14 个点逐个实测过：任一处退化，对应 action 那条用例必红。
+ * 那 4 条用例全绿（审阅者在完整套件上复现的是 508 条全绿）。当时（`ACTIONS`
+ * 还只有七个旧 action 时）这 14 个点逐个实测过：任一处退化，对应 action
+ * 那条用例必红——这是那一轮覆盖的范围，不是对当前 action 总数的断言。
+ * 后来加入的 `loadBlacklist`/`addBlacklist`/`removeBlacklist` 沿用同一张矩阵，
+ * 各自在 `ACTIONS` 里有对应行，其中 `addBlacklist` 已单独做过变异校验
+ * （改一处代码、跑对应用例、确认变红、再改回）。
  *
  * 注意上面那个例子的**组件那一半没有被钉**：`FriendList.test.tsx` 用
  * `vi.mock` 把整个 friendsStore 换成了假对象，其 `approveFriendRequest`
@@ -92,7 +99,7 @@ const silentRedirectToLogin = () => {
  * 它的认证分支带一个**写入之外的副作用**：`silentRedirectToLogin()` →
  * `clearAuth()` → 反向名单清盘。上一场会话的 401 落在当前这场会话里时，
  * 被清掉的是**刚登录的那个人**（连同他的 `aiApiKey`）。世代号挡得住 `set()`，
- * 挡不住这一条，所以七个 catch 各自在调本函数之前先 `if (!stillMine()) throw error`。
+ * 挡不住这一条，所以每个 catch 各自在调本函数之前先 `if (!stillMine()) throw error`。
  */
 const handleApiError = (error: unknown, defaultMessage: string): string | null => {
   if (error instanceof Error && isAuthError(error)) {
@@ -128,11 +135,16 @@ const handleApiError = (error: unknown, defaultMessage: string): string | null =
  *   `set({isLoading:false})` 会把 B 自己正在转的圈提前关掉。
  *
  * 钉住它的用例：`store/__tests__/friendsStore.test.ts` 的「跨会话边界」三组
- * `it.each`（七个 action × 落地成功 / 七个 action × 落地失败 / 四个复合 action
- * 的五次内层重载各一条），外加同一个 describe 末尾那条正对照
+ * `it.each`（`CROSS_ACTIONS` 里每个 action × 落地成功 / 每个 action × 落地失败 /
+ * 四个复合 action 的五次内层重载各一条），外加同一个 describe 末尾那条正对照
  * 「同一场会话里落地的 401 照旧清盘并跳登录页」——没有它，
  * 那句 `expect(replaceSpy).not.toHaveBeenCalled()` 可能只是 spy 没接上。
- * 十九处守卫逐个删过一遍，每一处都有用例变红。
+ * 当时（`CROSS_ACTIONS` 还只有七个旧 action 时）十九处守卫逐个删过一遍，每一处
+ * 都有用例变红——这是那一轮覆盖的范围，不是对当前守卫总数的断言。后来加入的
+ * `loadBlacklist`/`addBlacklist`/`removeBlacklist` 沿用同一套守卫写法，各自在
+ * `ACTIONS`/`CROSS_ACTIONS` 里有对应行；`addBlacklist` 的「成功分支不翻
+ * `is_blacklisted`」与「catch 里 `handleApiError` 先于 `stillMine`」两处已单独
+ * 做过变异校验，其余守卫未逐条重新审计。
  */
 export const useFriendsStore = create<FriendsState>((set, get) => ({
   friends: [],
@@ -285,8 +297,12 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ blacklist, blacklistLoaded: true })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '获取黑名单失败')
-      if (errorMessage !== null) set({ error: errorMessage })
+      // 不写共享的 `error`：那是整栏会话列表 / 好友 tab 的错误开关（app-shell.tsx、
+      // ContactsList.tsx），黑名单面板与 ProfileView 各自维护并展示自己的错误 UI，
+      // 根本不读这个字段——写了只是纯粹外溢，会让设置页一次网络抖动污染整个聊天列表。
+      // `handleApiError` 仍然要调：认证失败时它会 `clearAuth()` 并跳登录页，这个副作用
+      // 必须保留，只是不再消费它返回的文案。
+      handleApiError(error, '获取黑名单失败')
       throw error
     }
   },
@@ -310,8 +326,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '拉黑失败')
-      if (errorMessage !== null) set({ error: errorMessage })
+      // 不写共享的 `error`，理由同 loadBlacklist 上方注释。
+      handleApiError(error, '拉黑失败')
       throw error
     }
   },
@@ -328,8 +344,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '取消拉黑失败')
-      if (errorMessage !== null) set({ error: errorMessage })
+      // 不写共享的 `error`，理由同 loadBlacklist 上方注释。
+      handleApiError(error, '取消拉黑失败')
       throw error
     }
   },

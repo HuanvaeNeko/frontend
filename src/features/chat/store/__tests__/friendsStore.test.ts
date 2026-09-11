@@ -54,60 +54,72 @@ const ACTIONS = [
     endpoint: 'GET /api/friends',
     stub: (error: Error) => vi.spyOn(friendsApi, 'getFriendsList').mockRejectedValue(error),
     run: () => useFriendsStore.getState().loadFriends(),
+    writesSharedError: true,
   },
   {
     action: 'loadPendingRequests',
     endpoint: 'GET /api/friends/requests/pending',
     stub: (error: Error) => vi.spyOn(friendsApi, 'getPendingRequests').mockRejectedValue(error),
     run: () => useFriendsStore.getState().loadPendingRequests(),
+    writesSharedError: true,
   },
   {
     action: 'loadSentRequests',
     endpoint: 'GET /api/friends/requests/sent',
     stub: (error: Error) => vi.spyOn(friendsApi, 'getSentRequests').mockRejectedValue(error),
     run: () => useFriendsStore.getState().loadSentRequests(),
+    writesSharedError: true,
   },
   {
     action: 'sendFriendRequest',
     endpoint: 'POST /api/friends/requests',
     stub: (error: Error) => vi.spyOn(friendsApi, 'sendFriendRequest').mockRejectedValue(error),
     run: () => useFriendsStore.getState().sendFriendRequest('u2'),
+    writesSharedError: true,
   },
   {
     action: 'approveFriendRequest',
     endpoint: 'POST /api/friends/requests/approve',
     stub: (error: Error) => vi.spyOn(friendsApi, 'approveFriendRequest').mockRejectedValue(error),
     run: () => useFriendsStore.getState().approveFriendRequest('u2'),
+    writesSharedError: true,
   },
   {
     action: 'rejectFriendRequest',
     endpoint: 'POST /api/friends/requests/reject',
     stub: (error: Error) => vi.spyOn(friendsApi, 'rejectFriendRequest').mockRejectedValue(error),
     run: () => useFriendsStore.getState().rejectFriendRequest('u2'),
+    writesSharedError: true,
   },
   {
     action: 'removeFriend',
     endpoint: 'POST /api/friends/remove',
     stub: (error: Error) => vi.spyOn(friendsApi, 'removeFriend').mockRejectedValue(error),
     run: () => useFriendsStore.getState().removeFriend('u2'),
+    writesSharedError: true,
   },
   {
     action: 'loadBlacklist',
     endpoint: 'GET /api/friends/blacklist',
     stub: (error: Error) => vi.spyOn(friendsApi, 'getBlacklist').mockRejectedValue(error),
     run: () => useFriendsStore.getState().loadBlacklist(),
+    // 黑名单面板/ProfileView 各自维护自己的错误 UI，不读 store.error；写了就是对
+    // 整栏会话列表 / 好友 tab（两处都拿 friendsStore.error 当整栏错误开关）的纯外溢。
+    writesSharedError: false,
   },
   {
     action: 'addBlacklist',
     endpoint: 'POST /api/friends/blacklist',
     stub: (error: Error) => vi.spyOn(friendsApi, 'addBlacklist').mockRejectedValue(error),
     run: () => useFriendsStore.getState().addBlacklist('u2'),
+    writesSharedError: false,
   },
   {
     action: 'removeBlacklist',
     endpoint: 'DELETE /api/friends/blacklist/{target_user_id}',
     stub: (error: Error) => vi.spyOn(friendsApi, 'removeBlacklist').mockRejectedValue(error),
     run: () => useFriendsStore.getState().removeBlacklist('u2'),
+    writesSharedError: false,
   },
 ] as const
 
@@ -152,12 +164,18 @@ describe('friendsStore 的认证分支（handleApiError 返回 null）', () => {
 })
 
 describe('friendsStore 的非认证失败（handleApiError 返回文案）', () => {
-  it.each(ACTIONS)('$action：403 是可见错误，不静默登出', async ({ endpoint, stub, run }) => {
+  /**
+   * 正对照：`writesSharedError` 同时证明两件事——七个旧 action 照旧把文案写进
+   * 共享的 `store.error`（整栏会话列表 / 好友 tab 的错误开关），三个黑名单 action
+   * 不再写它（各自的面板已经有自己的错误 UI，写共享字段只是纯外溢：设置页一次
+   * 网络抖动会让整个聊天列表变成错误态）。两条分支都断言到，任一边退化都会红。
+   */
+  it.each(ACTIONS)('$action：403 是可见错误，不静默登出', async ({ endpoint, stub, run, writesSharedError }) => {
     stub(permissionDenied(endpoint))
 
     await expect(run()).rejects.toThrow('权限不足')
 
-    expect(useFriendsStore.getState().error).toBe('权限不足')
+    expect(useFriendsStore.getState().error).toBe(writesSharedError ? '权限不足' : null)
     expect(useFriendsStore.getState().isLoading).toBe(false)
     expect(loggedIn()).toBe(true)
     expect(replaceSpy).not.toHaveBeenCalled()
@@ -523,6 +541,14 @@ describe('friendsStore 黑名单：成功后翻转 friends[].is_blacklisted 并�
     expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(false)
     expect(useFriendsStore.getState().blacklist).toEqual([])
   })
+  it('addBlacklist 对同一个人连调两次：blacklist 不重复入队，is_blacklisted 仍是 true', async () => {
+    useFriendsStore.setState({ friends: [FRIEND] })
+    vi.spyOn(friendsApi, 'addBlacklist').mockResolvedValue(undefined)
+    await useFriendsStore.getState().addBlacklist('u2')
+    await useFriendsStore.getState().addBlacklist('u2')
+    expect(useFriendsStore.getState().blacklist).toHaveLength(1)
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(true)
+  })
   it('removeBlacklist 成功：翻回 false 并从 blacklist 移除；不是好友的人只动列表', async () => {
     useFriendsStore.setState({ friends: [{ ...FRIEND, is_blacklisted: true }], blacklist: [{ user_id: 'u2', user_nickname: '李四', user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }, { user_id: 'u9', user_nickname: null, user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }] })
     vi.spyOn(friendsApi, 'removeBlacklist').mockResolvedValue(undefined)
@@ -532,6 +558,14 @@ describe('friendsStore 黑名单：成功后翻转 friends[].is_blacklisted 并�
     await useFriendsStore.getState().removeBlacklist('u9')
     expect(useFriendsStore.getState().blacklist).toEqual([])
     expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(false)
+  })
+  it('removeBlacklist 失败：不翻转、列表不变、reject（正对照，对称于 addBlacklist 失败）', async () => {
+    const entry = { user_id: 'u2', user_nickname: '李四', user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }
+    useFriendsStore.setState({ friends: [{ ...FRIEND, is_blacklisted: true }], blacklist: [entry] })
+    vi.spyOn(friendsApi, 'removeBlacklist').mockRejectedValue(permissionDenied('DELETE /api/friends/blacklist/{target_user_id}'))
+    await expect(useFriendsStore.getState().removeBlacklist('u2')).rejects.toThrow('权限不足')
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(true)
+    expect(useFriendsStore.getState().blacklist).toEqual([entry])
   })
   it('登出归零：blacklist 与 blacklistLoaded 随 registerPristineStoreReset 回到初值', async () => {
     useFriendsStore.setState({ blacklist: [{ user_id: 'u2', user_nickname: null, user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }], blacklistLoaded: true })
