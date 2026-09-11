@@ -1,5 +1,8 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
+import { resolveSoundSrc } from '@/features/settings/sounds/soundLibrary'
+
 /**
  * Web Audio API 音效系统
  * 提供全局音效管理，支持各种交互反馈音效
@@ -104,6 +107,8 @@ class SoundManager {
   private volume: number = 0.5  // 主音量 0-1
   private lastTypeTime: number = 0
   private typeThrottle: number = 50  // 打字音效节流 ms
+  /** 收到消息 / 通知时用哪个提示音（soundLibrary 的 id）；'classic' = 合成音 */
+  private notificationSound: string = 'water'
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -196,6 +201,40 @@ class SoundManager {
     }
   }
 
+  setNotificationSound(id: string): void {
+    this.notificationSound = id
+  }
+
+  /** 用 HTMLAudioElement 播文件；音量 = 主音量；成功 resolve true，任何失败 false（调用方回退合成音） */
+  playFile(src: string, onDone?: () => void): Promise<boolean> {
+    if (typeof window === 'undefined' || typeof Audio === 'undefined') return Promise.resolve(false)
+    return new Promise((resolve) => {
+      try {
+        const audio = new Audio(src)
+        audio.volume = this.volume
+        let finished = false
+        const done = () => { if (!finished) { finished = true; onDone?.() } }
+        audio.addEventListener('ended', done)
+        audio.addEventListener('error', () => { done(); resolve(false) })
+        audio.play().then(() => resolve(true)).catch(() => { done(); resolve(false) })
+      } catch {
+        onDone?.()
+        resolve(false)
+      }
+    })
+  }
+
+  /** 消息 / 通知：选中音是文件就播文件，失败或选 classic 回退到对应的合成音 */
+  async playSelected(fallback: 'message' | 'notification'): Promise<void> {
+    if (!this.enabled) return
+    if (this.notificationSound === 'classic') { this.play(fallback); return }
+    let resolved: { src: string; revoke: () => void } | null = null
+    try { resolved = await resolveSoundSrc(this.notificationSound) } catch { resolved = null }
+    if (!resolved) { this.play(fallback); return }
+    const ok = await this.playFile(resolved.src, resolved.revoke)
+    if (!ok) this.play(fallback)
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
     if (typeof window !== 'undefined') {
@@ -244,12 +283,14 @@ export const playButton = () => getSoundManager().play('button')
 export const playToggle = () => getSoundManager().play('toggle')
 export const playSuccess = () => getSoundManager().play('success')
 export const playError = () => getSoundManager().play('error')
-export const playNotification = () => getSoundManager().play('notification')
-export const playMessage = () => getSoundManager().play('message')
+export const playNotification = () => { void getSoundManager().playSelected('notification') }
+export const playMessage = () => { void getSoundManager().playSelected('message') }
 export const playSend = () => getSoundManager().play('send')
 export const playPop = () => getSoundManager().play('pop')
 export const playSlide = () => getSoundManager().play('slide')
 export const playType = () => getSoundManager().play('type')
+export const setNotificationSound = (id: string) => getSoundManager().setNotificationSound(id)
+export const playFile = (src: string) => getSoundManager().playFile(src)
 
 export const setSoundEnabled = (enabled: boolean) => getSoundManager().setEnabled(enabled)
 export const setSoundVolume = (volume: number) => getSoundManager().setVolume(volume)
@@ -258,8 +299,6 @@ export const getSoundVolume = () => getSoundManager().getVolume()
 export const warmupSound = () => getSoundManager().warmup()
 
 // React Hook
-import { useState, useCallback, useEffect } from 'react'
-
 export function useSound() {
   const [enabled, setEnabled] = useState(true)
   const [volume, setVolume] = useState(0.5)

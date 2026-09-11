@@ -163,7 +163,7 @@ type DeviceScopedRule =
  * `app-settings`（`useSettingsStore`）里**属于这台设备**的字段。
  *
  * 判据是"换一个人用这台电脑，这个值继续生效是不是对的"：
- * 主题、语言、12/24 小时制、动效、通知、音量、粒子背景——都是这台机器上
+ * 主题、语言、12/24 小时制、动效、通知、音量、提示音、粒子背景——都是这台机器上
  * 这块屏幕的偏好，跟谁登录无关，清掉只会让下一个人重新配一遍。`theme` 还有一层：
  * 它被 `root.tsx` 的预水合内联脚本在 React 挂载前读，清掉会让每次登出后的
  * 首屏闪一次浅色。
@@ -185,6 +185,7 @@ export const DEVICE_SCOPED_SETTING_FIELDS = [
   'notificationsEnabled',
   'soundEnabled',
   'soundVolume',
+  'notificationSound',
   'particleBackground',
 ] as const
 

@@ -28,7 +28,9 @@ interface SettingsState {
   notificationsEnabled: boolean
   soundEnabled: boolean
   soundVolume: number
-  
+  /** 收到消息 / 通知时播放的提示音 id（soundLibrary 的 SoundOption.id）；设备级 */
+  notificationSound: string
+
   // 3D 效果
   particleBackground: boolean
   
@@ -52,6 +54,7 @@ const defaultSettings: Omit<SettingsState, 'setSetting' | 'resetSettings'> = {
   notificationsEnabled: true,
   soundEnabled: true,
   soundVolume: 0.5,
+  notificationSound: 'water',
   particleBackground: true,
 }
 

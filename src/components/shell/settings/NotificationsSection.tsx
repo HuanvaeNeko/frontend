@@ -3,6 +3,7 @@ import { Switch } from '@/components/ui/switch'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { useI18n } from '@/i18n/I18nProvider'
 import { SettingsGroup, SettingsRow, SettingsSection } from './SettingsSection'
+import { SoundSelector } from './SoundSelector'
 
 export function NotificationsSection() {
   const { t } = useI18n()
@@ -20,6 +21,7 @@ export function NotificationsSection() {
         <SettingsRow title={t('shell.settings.volume')} htmlFor="set-volume"
           right={<input id="set-volume" type="range" min={0} max={100} aria-label={t('shell.settings.volume')} value={Math.round(soundVolume * 100)} onChange={(e) => setSetting('soundVolume', Number(e.target.value) / 100)} />} />
       </SettingsGroup>
+      <SoundSelector />
     </SettingsSection>
   )
 }

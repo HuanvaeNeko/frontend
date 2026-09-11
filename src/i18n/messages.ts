@@ -39,6 +39,12 @@ const zhCN = {
         reset: '恢复默认主题',
       },
       blacklist: { title: '黑名单', hint: '被拉黑的用户与你互相收不到对方发送的消息；好友关系仍保留。可随时取消拉黑。', empty: '没有拉黑任何人', remove: '取消拉黑', confirm: '确认', cancel: '取消', blockedAt: '拉黑于 {date}', removeFailed: '取消拉黑失败' },
+      sounds: {
+        title: '提示音', hint: '收到消息或通知时播放；选中即试听', water: '水滴（内置）', classic: '经典（合成音）', custom: '自定义',
+        preview: '试听', stop: '停止', del: '删除', confirm: '确认', cancel: '取消', upload: '上传自定义提示音', uploading: '上传中…',
+        errType: '只支持 MP3（audio/mpeg）', errSize: '文件不能超过 2 MB', errUnavailable: '当前浏览器无法保存自定义提示音（隐私模式？）',
+        loadFailed: '提示音列表加载失败', deleteFailed: '删除失败',
+      },
     },
     oauth: {
       scopes: { profile: '基本资料', email: '邮箱', friends: '好友数', groups: '群数' },
@@ -609,6 +615,12 @@ const enUS = {
         reset: 'Reset theme',
       },
       blacklist: { title: 'Blocked users', hint: 'Blocked users and you cannot receive each other’s messages; the friendship is kept. You can unblock at any time.', empty: 'No blocked users', remove: 'Unblock', confirm: 'Confirm', cancel: 'Cancel', blockedAt: 'Blocked on {date}', removeFailed: 'Failed to unblock' },
+      sounds: {
+        title: 'Notification sound', hint: 'Played on new messages and notifications; selecting previews it', water: 'Water drop (built-in)', classic: 'Classic (synthesized)', custom: 'Custom',
+        preview: 'Preview', stop: 'Stop', del: 'Delete', confirm: 'Confirm', cancel: 'Cancel', upload: 'Upload custom sound', uploading: 'Uploading…',
+        errType: 'Only MP3 (audio/mpeg) is supported', errSize: 'File must be 2 MB or smaller', errUnavailable: 'This browser cannot store custom sounds (private mode?)',
+        loadFailed: 'Failed to load sounds', deleteFailed: 'Failed to delete',
+      },
     },
     oauth: {
       scopes: { profile: 'Profile', email: 'Email', friends: 'Friend count', groups: 'Group count' },

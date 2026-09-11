@@ -17,7 +17,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { ThemeProvider } from '@/features/theme/ThemeProvider'
-import { setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
+import { setNotificationSound, setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
 import { I18nProvider } from '@/i18n/I18nProvider'
 import { dynamic } from '@/lib/dynamic'
 import globalsHref from '@/styles/globals.css?url'
@@ -88,6 +88,7 @@ function SettingsSync() {
   const language = useSettingsStore((s) => s.language)
   const soundEnabled = useSettingsStore((s) => s.soundEnabled)
   const soundVolume = useSettingsStore((s) => s.soundVolume)
+  const notificationSound = useSettingsStore((s) => s.notificationSound)
   const animationsEnabled = useSettingsStore((s) => s.animationsEnabled)
 
   useEffect(() => {
@@ -126,6 +127,10 @@ function SettingsSync() {
   useEffect(() => {
     setSoundVolume(soundVolume)
   }, [soundVolume])
+
+  useEffect(() => {
+    setNotificationSound(notificationSound)
+  }, [notificationSound])
 
   useEffect(() => {
     const root = document.documentElement
