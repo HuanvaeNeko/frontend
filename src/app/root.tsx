@@ -82,8 +82,15 @@ export const meta: MetaFunction = () => [
   { name: 'twitter:image', content: `${APP_URL}/logo.svg` },
 ]
 
-/** 同步设置到 DOM（原 providers.tsx 的 SettingsSync，逻辑逐行保持不变）。 */
-function SettingsSync() {
+/**
+ * 同步设置到 DOM（原 providers.tsx 的 SettingsSync，逻辑逐行保持不变）。
+ *
+ * 导出仅为了给 `__tests__/settingsSync.test.tsx` 提供一个可以单独 render 的入口——
+ * `Layout` 里还挂着 `I18nProvider` / `SoundProvider` / `ScrollRestoration` /
+ * `Scripts` 等一整套要么需要真实 Router 数据上下文、要么与本测试无关的外壳，
+ * 单独导出这一个组件不改变它自己的任何行为。
+ */
+export function SettingsSync() {
   const theme = useSettingsStore((s) => s.theme)
   const language = useSettingsStore((s) => s.language)
   const soundEnabled = useSettingsStore((s) => s.soundEnabled)

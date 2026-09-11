@@ -126,7 +126,10 @@ export async function resolveSoundSrc(id: string): Promise<{ src: string; revoke
   try {
     const row = (await request(db.transaction(STORE, 'readonly').objectStore(STORE).get(id))) as CustomSoundRecord | undefined
     if (!row) return null
-    const url = URL.createObjectURL(new Blob([row.bytes], { type: row.type }))
+    // 写死 audio/mpeg，不读 row.type：row 来自 IndexedDB，是本仓「IndexedDB 内容被当
+    // 可信数据用」的唯一命中点——写入侧 saveCustom 已经校验过 audio/mpeg，写死等于把
+    // 那次校验的结论变成这里的编译期事实，不用再信一遍存储层回读的字符串。
+    const url = URL.createObjectURL(new Blob([row.bytes], { type: 'audio/mpeg' }))
     return { src: url, revoke: () => URL.revokeObjectURL(url) }
   } finally {
     db.close()

@@ -17,6 +17,32 @@ import { useI18n } from '@/i18n/I18nProvider'
 
 const REMEMBER_USER_KEY = 'huanvae-remember-user_id'
 
+/**
+ * 终审 C1：登录成功后的 `next` 回跳，只认「解析后同源」，不是字符串前缀猜测。
+ *
+ * 旧实现是 `nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE`——
+ * 这是本期 Task 6 被判 Critical 的旧版 `isValidRedirectUri` 的逐字同款：只看字符串是不是
+ * `/` 开头，既不排除 `//evil.example/phish` 这种协议相对地址，也不挡 `/\t/evil.example/phish`
+ * 这种控制字符走私（`new URL()` 解析时会把字符串中间的 tab/LF/CR 直接吃掉，等价于协议相对
+ * 地址）。而且这条路径真的会跳出站外：`router.push`/`router.replace` 最终走到
+ * `history.push`/`history.replace`，跨源 `pushState`/`replaceState` 会抛 `SecurityError`，
+ * react-router 在 `history.js` 里用整页 `window.location.assign(url)` 兜底——不是被
+ * React Router 吞掉的死路径。
+ *
+ * 不能直接复用 `@/features/oauth/lib/redirectUri` 的 `isValidRedirectUri`：它的绝对
+ * http(s) 分支是刻意放行站外的（OAuth 外部客户端回调），这里是站内登录回跳，语义完全
+ * 不同——把它整个搬过来会把"放行站外"也一起带进来，等于没修。
+ */
+function safeNext(value: string | null): string | null {
+  if (!value) return null
+  try {
+    const url = new URL(value, location.origin)
+    return url.origin === location.origin ? `${url.pathname}${url.search}${url.hash}` : null
+  } catch {
+    return null
+  }
+}
+
 export default function Login() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -53,7 +79,7 @@ export default function Login() {
     if (!hasHydrated) return
     if (!isAuthenticated) return
 
-    let target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+    let target = safeNext(nextPath) ?? DEFAULT_AUTHENTICATED_ROUTE
     // Prevent redirecting to deleted home page
     if (target.includes('/app/home')) {
       target = DEFAULT_AUTHENTICATED_ROUTE
@@ -73,7 +99,7 @@ export default function Login() {
       else localStorage.removeItem(REMEMBER_USER_KEY)
       playSuccess()
       
-      let target = nextPath && nextPath.startsWith('/') ? nextPath : DEFAULT_AUTHENTICATED_ROUTE
+      let target = safeNext(nextPath) ?? DEFAULT_AUTHENTICATED_ROUTE
       // Prevent redirecting to deleted home page
       if (target.includes('/app/home')) {
         target = DEFAULT_AUTHENTICATED_ROUTE
