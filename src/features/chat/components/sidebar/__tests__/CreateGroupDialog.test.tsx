@@ -53,6 +53,16 @@ describe('CreateGroupDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建' }))
     await waitFor(() => expect(createGroup).toHaveBeenCalledWith('读书会', '每周一本', false))
   })
+  it('只有两档，五档里被取消的那三档不再出现', () => {
+    render(<CreateGroupDialog open onClose={() => {}} />)
+    const select = screen.getByLabelText('入群审核') as HTMLSelectElement
+    expect(Array.from(select.options).map(o => o.value)).toEqual(['required', 'open'])
+    // 五档模型（invite_only / admin_invite_only / closed）连同 `joinMode` 一起被
+    // migration 043 删掉了（doc:64-75）。真字典里已经没有 joinMode 系的 key，
+    // t() 遇到不存在的 key 会回显 key 本身——用这个特征确认它们没有借某个
+    // 残留调用重新出现在 DOM 里。
+    expect(screen.queryByText(/joinMode/)).toBeNull()
+  })
   it('失败：destructive toast，不关闭', async () => {
     createGroup.mockRejectedValueOnce(new Error('群名重复'))
     const onClose = vi.fn()
@@ -68,5 +78,12 @@ describe('CreateGroupDialog', () => {
     render(<CreateGroupDialog open onClose={onClose} />)
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+    // 遮罩层（CreateGroupDialog.tsx 里带 onClick={onClose} 的那个 motion.div）
+    // 经 createPortal 直接挂到 document.body，不在 render() 返回的 container
+    // 下面，也没有 role/testid，只能靠它独有的 className 片段取到。
+    const overlay = document.querySelector('[class*="bg-foreground/45"]') as HTMLElement
+    expect(overlay).toBeTruthy()
+    fireEvent.click(overlay)
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 })
