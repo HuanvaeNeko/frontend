@@ -50,6 +50,22 @@ describe('/app/oauth/authorize', () => {
     mount(`${BASE}&code_challenge=xyz&code_challenge_method=S256`)
     await waitFor(() => expect(authorize).toHaveBeenCalledWith({ client_id: 'c1', redirect_uri: 'https://query.example/cb', scope: 'profile email', state: 's1', code_challenge: 'xyz', code_challenge_method: 'S256' }))
   })
+  // 修复第 2 轮 Important：PKCE 成对校验是两个独立子条款——「给了 method 必须也给 challenge」
+  // 和「method 只认 S256」。旧测试只覆盖了“只给 challenge 不给 method”和“两个都给且为 S256”，
+  // 对这两条镜像/独立分支零覆盖：把成对校验改成单向判断、或者整段删掉 method 白名单校验，
+  // 之前的用例都测不出来（审阅者实测过，两组变异 7/7 全绿）。下面两条分别单独钉住它们。
+  it('只给 code_challenge_method 不给 code_challenge：错误页（PKCE 成对校验的镜像方向）', () => {
+    const authorize = vi.spyOn(oauthApi, 'authorize')
+    mount(`${BASE}&code_challenge_method=S256`)
+    expect(screen.getByText('无效的授权请求')).toBeInTheDocument()
+    expect(authorize).not.toHaveBeenCalled()
+  })
+  it('code_challenge_method 不是 S256（如 plain）：错误页', () => {
+    const authorize = vi.spyOn(oauthApi, 'authorize')
+    mount(`${BASE}&code_challenge=xyz&code_challenge_method=plain`)
+    expect(screen.getByText('无效的授权请求')).toBeInTheDocument()
+    expect(authorize).not.toHaveBeenCalled()
+  })
   it('内部客户端：首次请求就拿到 code，跳到**后端回传**的 redirect_uri（不是 query 里的）', async () => {
     vi.spyOn(oauthApi, 'authorize').mockResolvedValue({ kind: 'code', code: 'abc', state: 's1', redirect_uri: 'https://backend.example/cb' })
     mount(BASE)
@@ -83,6 +99,14 @@ describe('/app/oauth/authorize', () => {
     expect(assign).toHaveBeenCalledWith('https://query.example/cb?error=access_denied&state=s1')
     assign.mockClear()
     mount('?client_id=c1&redirect_uri=query.example%2Fcb')
+    fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
+    expect(assign).not.toHaveBeenCalled()
+    expect(screen.getByText('已拒绝授权')).toBeInTheDocument()
+    expect(screen.getByText('回调地址不合法，未跳转')).toBeInTheDocument()
+  })
+  it('「拒绝」：redirect_uri 用 tab 走私成协议相对地址（%2F%09%2Fevil.example%2Fcb）时不跳转，只显示已拒绝 + 回调地址不合法（修复第 2 轮 Critical 回归用例）', async () => {
+    vi.spyOn(oauthApi, 'authorize').mockResolvedValue({ kind: 'consent', app_name: 'Ext App', app_logo_url: null, scopes: ['profile'] })
+    mount('?client_id=c1&redirect_uri=%2F%09%2Fevil.example%2Fcb')
     fireEvent.click(await screen.findByRole('button', { name: '拒绝' }))
     expect(assign).not.toHaveBeenCalled()
     expect(screen.getByText('已拒绝授权')).toBeInTheDocument()

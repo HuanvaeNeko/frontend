@@ -49,7 +49,7 @@ export function AuthorizePage() {
   const [phase, setPhase] = useState<Phase>(req ? { kind: 'loading' } : { kind: 'invalid' })
 
   // useCallback：两者都在下面的 useEffect 里被引用，必须是稳定引用才能诚实地把它们
-  // 列进依赖数组——否则要么漏列（exhaustive-deps 警告，本仓禁止用 biome-ignore 压掉），
+  // 列进依赖数组——否则要么漏列（exhaustive-deps 警告，本仓禁止使用 lint 抑制注释压掉），
   // 要么列了但每次渲染 effect 都重新触发（这两个函数字面量本来每次渲染都是新的）。
   const finish = useCallback((code: string, state: string | null, redirectUri: string) => {
     setPhase({ kind: 'redirecting' })
@@ -82,12 +82,25 @@ export function AuthorizePage() {
   }
   const deny = () => {
     if (!req) return
+    // 纵深防御（修复第 2 轮 Critical）：拒绝分支没有后端回传，从头到尾没有服务端确认过，
+    // isValidRedirectUri 是跳转前唯一一道闸——不该只信它一次布尔判断就跳。这里跳转前用
+    // 独立于 isValidRedirectUri 内部实现的解析结果再核验一遍：原串以 `/` 开头、意图是站内
+    // 路径的，解析后必须真的同源；否则（意图是绝对地址）只能再确认协议是 http(s)——具体
+    // host 是否在注册白名单里，前端在这条没有后端回传的路径上天生查不到，只能交给后端在
+    // 别的入口把关。哪怕 isValidRedirectUri 未来出现新的绕过方式，这里的独立复核也能兜底。
     if (isValidRedirectUri(req.redirect_uri)) {
-      setPhase({ kind: 'denied', redirected: true })
-      browserNav.assign(appendQuery(req.redirect_uri, { error: 'access_denied', state: req.state ?? null }))
-    } else {
-      setPhase({ kind: 'denied', redirected: false })
+      const resolved = new URL(req.redirect_uri, location.origin)
+      const expectSameOrigin = req.redirect_uri.trim().startsWith('/')
+      const safe = expectSameOrigin
+        ? resolved.origin === location.origin
+        : resolved.protocol === 'http:' || resolved.protocol === 'https:'
+      if (safe) {
+        setPhase({ kind: 'denied', redirected: true })
+        browserNav.assign(appendQuery(req.redirect_uri, { error: 'access_denied', state: req.state ?? null }))
+        return
+      }
     }
+    setPhase({ kind: 'denied', redirected: false })
   }
 
   return (
