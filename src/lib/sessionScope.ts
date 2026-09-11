@@ -249,6 +249,13 @@ const DEVICE_SCOPED_KEYS: ReadonlyMap<string, DeviceScopedRule> = new Map<string
    */
   ['huanvae.sidebar-layout', { keep: 'whole' }],
 
+  /**
+   * 主题配置与快照（`features/theme/store.ts`）。这台屏幕的配色偏好，不含账号数据，
+   * 与 APP 的 `huanvae-theme` 同义按设备保存（spec §9）；`root.tsx` 的防闪脚本在
+   * React 挂载前读它，清掉会让登出后的首屏先闪一次默认配色。
+   */
+  ['huanvae.theme', { keep: 'whole' }],
+
   ['app-settings', { keep: 'zustandFields', fields: DEVICE_SCOPED_SETTING_FIELDS }],
 ])
 

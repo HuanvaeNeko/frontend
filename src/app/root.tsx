@@ -16,10 +16,12 @@ import GlobalThreeBackdrop from '@/components/three/GlobalThreeBackdrop'
 import { Toaster } from '@/components/ui/toaster'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
+import { ThemeProvider } from '@/features/theme/ThemeProvider'
 import { setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
 import { I18nProvider } from '@/i18n/I18nProvider'
 import { dynamic } from '@/lib/dynamic'
 import globalsHref from '@/styles/globals.css?url'
+import { themeInitScript } from './themeInitScript'
 
 const APP_NAME = 'Huanvae Chat'
 const APP_DEFAULT_TITLE = 'Huanvae Chat - AI聊天、群聊与视频会议'
@@ -30,21 +32,6 @@ const UpdatePrompt = dynamic(async () => {
   const mod = await import('@/components/common/UpdatePrompt')
   return { default: mod.UpdatePrompt }
 })
-
-const themeInitScript = `
-(() => {
-  try {
-    const raw = localStorage.getItem('app-settings')
-    const parsed = raw ? JSON.parse(raw) : null
-    const state = parsed?.state || {}
-    const theme = state.theme || 'light'
-    const root = document.documentElement
-    const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    root.classList.toggle('dark', isDark)
-    root.style.colorScheme = isDark ? 'dark' : 'light'
-  } catch {}
-})();
-`
 
 export const links: LinksFunction = () => [
   { rel: 'stylesheet', href: globalsHref },
@@ -179,6 +166,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <SoundProvider>
             <GlobalThreeBackdrop />
             <SettingsSync />
+            <ThemeProvider />
             <div className="relative z-10 h-full">{children}</div>
             <Toaster />
             <UpdatePrompt autoUpdateDelay={3000} />
