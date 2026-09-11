@@ -24,6 +24,29 @@ export function scopeLabelKey(scope: string): string {
 /** 可为空串或 null 的字符串字段：不用 str()（它拒绝空串） */
 const looseStr = (r: Record<string, unknown>, key: string): string => (typeof r[key] === 'string' ? (r[key] as string) : '')
 const nullableUrl = (r: Record<string, unknown>, key: string): string | null => (typeof r[key] === 'string' && r[key] !== '' ? (r[key] as string) : null)
+
+/**
+ * `app_logo_url` 的同源门禁，`parseOAuthClient` / `parseOAuthGrant` / `parseAuthorizeResult`
+ * 三个解析器共用——抽成一个函数是为了让"三处同源校验逻辑一致"是编译期事实，不是三份
+ * 手写表达式凑巧长得一样的巧合（修复第 2 轮：复审发现原先三行 `logo ? resolveSameOriginUrl(logo)
+ * : null` 是各自独立的表达式，`parseAuthorizeResult` 的 consent 分支因此完全没有用例覆盖到）。
+ *
+ * 同源门禁本身是刻意的隐私取舍，不是照抄小程序 icon_url 规则的副作用（修复第 1 轮 Important #2）：
+ * 这份列表和 authorize 同意页都是用户判断"这是不是我以为的那个应用"的地方，`<img src>` 一旦
+ * 指向第三方，就是每次打开这个页面都把用户的 IP / UA / 访问时间发给那个第三方——而 logo 是
+ * 应用注册者自填的字段，完全可以是一枚跟踪像素。backend-docs `oauth/OAuth授权服务器API.md`
+ * 自己的示例就是站外地址（`https://example.com/logo.png`），文档还写明只有「内部小程序」
+ * 客户端的 app_logo_url 由审批流自动取小程序同源 icon_url 填充——外部客户端的 logo 按契约
+ * 设计本来就是站外地址，所以这里**预期**会有相当比例的已授权应用退化成首字母头像，这不是 bug。
+ * APP 端用 `services/secureProxy` 的 `resolveDisplayUrl` 走同源代理显示站外 logo；Web 这一期
+ * 没有那层代理，在代理落地之前不加载站外图片是更保守、也更省事的选择。要放行站外 logo，
+ * 正确做法是补一层同源图片代理，不是放宽这里的同源校验。
+ */
+function sameOriginLogo(r: Record<string, unknown>): string | null {
+  const logo = nullableUrl(r, 'app_logo_url')
+  return logo ? resolveSameOriginUrl(logo) : null
+}
+
 /**
  * 字符串数组字段。`arr()` 只保证「是数组」，元素类型必须逐个再查一遍——
  * 本文件其余字段（`client_id` / `is_active` / `created_at`...）都是一错就让整行抛，
@@ -42,7 +65,6 @@ const stringArray = (r: Record<string, unknown>, key: string, prefix: string): s
 
 export function parseOAuthClient(input: unknown): OAuthClient {
   const r = asRecord(input, 'GET /api/oauth/clients 的一项')
-  const logo = nullableUrl(r, 'app_logo_url')
   return {
     client_id: str(r, 'client_id'),
     client_type: str(r, 'client_type'),
@@ -52,18 +74,8 @@ export function parseOAuthClient(input: unknown): OAuthClient {
     // 原样通过。本任务没有把它渲染成 <a href> 或喂给 window.open，先不动；哪个任务要用它
     // 做可点击链接，必须先在那里过一遍协议校验，不能假设这里已经挡过（修复第 1 轮 Important #2）。
     app_homepage_url: nullableUrl(r, 'app_homepage_url'),
-    // 同源门禁是刻意的隐私取舍，不是照抄小程序 icon_url 规则的副作用（修复第 1 轮 Important #2）：
-    // 这份列表和后续的 authorize 同意页都是用户判断"这是不是我以为的那个应用"的地方，
-    // <img src> 一旦指向第三方，就是每次打开这个页面都把用户的 IP / UA / 访问时间发给
-    // 那个第三方——而 logo 是应用注册者自填的字段，完全可以是一枚跟踪像素。
-    // backend-docs `oauth/OAuth授权服务器API.md` 自己的示例就是站外地址
-    // （`https://example.com/logo.png`），文档还写明只有「内部小程序」客户端的
-    // app_logo_url 由审批流自动取小程序同源 icon_url 填充——外部客户端的 logo 按契约
-    // 设计本来就是站外地址，所以这里**预期**会有相当比例的已授权应用退化成首字母头像，
-    // 这不是 bug。APP 端用 `services/secureProxy` 的 `resolveDisplayUrl` 走同源代理
-    // 显示站外 logo；Web 这一期没有那层代理，在代理落地之前不加载站外图片是更保守、
-    // 也更省事的选择。要放行站外 logo，正确做法是补一层同源图片代理，不是放宽这里的同源校验。
-    app_logo_url: logo ? resolveSameOriginUrl(logo) : null,
+    // 同源门禁，理由见 sameOriginLogo 上方注释
+    app_logo_url: sameOriginLogo(r),
     redirect_uris: stringArray(r, 'redirect_uris', ''),
     allowed_scopes: stringArray(r, 'allowed_scopes', ''),
     is_active: bool(r, 'is_active'),
@@ -73,15 +85,12 @@ export function parseOAuthClient(input: unknown): OAuthClient {
 
 export function parseOAuthGrant(input: unknown): OAuthGrant {
   const r = asRecord(input, 'GET /api/oauth/grants 的一项')
-  const logo = nullableUrl(r, 'app_logo_url')
   return {
     id: str(r, 'id'),
     client_id: str(r, 'client_id'),
     app_name: str(r, 'app_name'),
-    // 同源门禁是刻意的隐私取舍，理由见 parseOAuthClient 同名字段上方的完整注释：外部客户端
-    // 的 logo 按契约设计就是站外地址，这里预期会有相当比例落到 null（首字母头像是可接受的降级），
-    // 在没有同源图片代理之前不放行站外图片。
-    app_logo_url: logo ? resolveSameOriginUrl(logo) : null,
+    // 同源门禁，理由见 sameOriginLogo 上方注释
+    app_logo_url: sameOriginLogo(r),
     scope: looseStr(r, 'scope'),
     created_at: str(r, 'created_at'),
   }
@@ -95,10 +104,9 @@ function parseCreateClientResponse(input: unknown): CreateClientResponse {
 export function parseAuthorizeResult(input: unknown): AuthorizeResult {
   const r = asRecord(input, 'POST /api/oauth/authorize 的 data')
   if (r.consent_required === true) {
-    const logo = nullableUrl(r, 'app_logo_url')
-    // 同源门禁，理由同 parseOAuthClient：同意页正是用户核对"这是不是我以为的那个应用"的
-    // 最后一道关口，更不该在这里悄悄放行一枚指向第三方的跟踪像素。
-    return { kind: 'consent', app_name: str(r, 'app_name'), app_logo_url: logo ? resolveSameOriginUrl(logo) : null, scopes: stringArray(r, 'scopes', '') }
+    // 同源门禁，理由见 sameOriginLogo 上方注释——同意页正是用户核对"这是不是我以为的那个应用"
+    // 的最后一道关口，更不该在这里悄悄放行一枚指向第三方的跟踪像素。
+    return { kind: 'consent', app_name: str(r, 'app_name'), app_logo_url: sameOriginLogo(r), scopes: stringArray(r, 'scopes', '') }
   }
   return { kind: 'code', code: str(r, 'code'), state: typeof r.state === 'string' ? r.state : null, redirect_uri: str(r, 'redirect_uri') }
 }

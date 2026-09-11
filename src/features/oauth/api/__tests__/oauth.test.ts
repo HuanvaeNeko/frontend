@@ -53,6 +53,13 @@ describe('解析器', () => {
     expect(parseAuthorizeResult({ code: 'abc', state: 's1', redirect_uri: '/apps/x/cb' })).toEqual({ kind: 'code', code: 'abc', state: 's1', redirect_uri: '/apps/x/cb' })
     expect(() => parseAuthorizeResult({ code: 'abc', state: null })).toThrow(/redirect_uri/)
   })
+  // 修复第 2 轮：复审指出 parseOAuthClient / parseOAuthGrant / parseAuthorizeResult 的
+  // app_logo_url 此前是三行各自独立的表达式，"逻辑一致"只是巧合——consent 分支完全没有
+  // 用例覆盖过。现在三者共用 sameOriginLogo，这条补上此前缺失的覆盖。
+  it('parseAuthorizeResult：consent 分支站外 logo → null 同样是刻意的隐私取舍，不是 bug（同 parseOAuthClient / parseOAuthGrant）；正对照：同源相对路径正常解析', () => {
+    expect(parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: 'https://example.com/logo.png', scopes: ['profile'] })).toEqual({ kind: 'consent', app_name: 'X', app_logo_url: null, scopes: ['profile'] })
+    expect(parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: 'avatars/x.png', scopes: ['profile'] })).toEqual({ kind: 'consent', app_name: 'X', app_logo_url: `${location.origin}/avatars/x.png`, scopes: ['profile'] })
+  })
   it('parseAuthorizeResult：consent 分支 scopes 数组内元素类型不对 → 抛；正对照：全是字符串照常通过', () => {
     expect(() => parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: null, scopes: ['profile', 42] })).toThrow(/scopes/)
     expect(parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: null, scopes: ['profile'] })).toEqual({ kind: 'consent', app_name: 'X', app_logo_url: null, scopes: ['profile'] })
