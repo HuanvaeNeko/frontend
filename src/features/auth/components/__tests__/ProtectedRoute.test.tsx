@@ -135,4 +135,31 @@ describe('ProtectedRoute —— 挂载时问一次 GET /api/session', () => {
     expect(await screen.findByText('受保护的内容')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('401 落在 /app/oauth/authorize?client_id=c1：跳登录页并带 next（完整路径含 query，已编码）', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 401, error: '会话已失效' }, 401))
+    const router = createMemoryRouter(
+      [
+        { path: '/app/oauth/authorize', element: <ProtectedRoute><div>授权页</div></ProtectedRoute> },
+        { path: '/app/login', element: <div>登录页</div> },
+      ],
+      { initialEntries: ['/app/oauth/authorize?client_id=c1&redirect_uri=%2Fapps%2Fx%2Fcb'] },
+    )
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
+    expect(router.state.location.search).toBe('?next=%2Fapp%2Foauth%2Fauthorize%3Fclient_id%3Dc1%26redirect_uri%3D%252Fapps%252Fx%252Fcb')
+  })
+  it('正对照：401 落在默认页 /app/chat 时不带 next', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 401, error: '会话已失效' }, 401))
+    const router = createMemoryRouter(
+      [
+        { path: '/app/chat', element: <ProtectedRoute><div>聊天</div></ProtectedRoute> },
+        { path: '/app/login', element: <div>登录页</div> },
+      ],
+      { initialEntries: ['/app/chat'] },
+    )
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
+    expect(router.state.location.search).toBe('')
+  })
 })

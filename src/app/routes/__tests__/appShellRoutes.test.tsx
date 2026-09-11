@@ -32,6 +32,20 @@ describe('路由表：壳布局承载 /app/chat', () => {
     expect(flat.some((x) => x.startsWith('routes/settings.tsx@'))).toBe(false)
     // 正对照：video-meeting.tsx 这一步还在（app-shell 之外、protected-layout 之下的同级路由），证明 flatten 读到了整张表
     expect(flat).toContain('routes/video-meeting.tsx@/app/video-meeting')
+    // oauth-authorize.tsx 与 video-meeting.tsx 同层：protected-layout 之下、app-shell 之外，全屏不进壳
+    expect(flat).toContain('routes/oauth-authorize.tsx@/app/oauth/authorize')
+    // 正对照：flatten 对壳内路由给的是 routes/shell/*.tsx@…，所以它不该出现在 app-shell 之下
+    expect(flat).not.toContain('routes/app-shell.tsx@/app/oauth/authorize')
+    expect(flat.filter((x) => x.endsWith('@/app/oauth/authorize'))).toEqual(['routes/oauth-authorize.tsx@/app/oauth/authorize'])
+    // flatten() 会抹平 layout 嵌套——layout() 节点不贡献路径段，把 oauth-authorize 那一行
+    // 误挪进 app-shell 的 children 数组后，上面三条 flat 断言的字符串完全不变、照样全绿
+    // （已实测）。上面三条只能防「漏注册」，防不了「注册到了错误的层级」，这里直接读原始
+    // 路由树校验挂载位置，才是这句用例标题「不在 app-shell 之下」真正测到的地方。
+    const protectedLayout = (routes as unknown as RouteEntry[]).find((e) => e.file === 'routes/protected-layout.tsx')
+    const protectedChildren = protectedLayout?.children ?? []
+    expect(protectedChildren.some((c) => c.file === 'routes/oauth-authorize.tsx' && c.path === 'app/oauth/authorize')).toBe(true)
+    const appShell = protectedChildren.find((c) => c.file === 'routes/app-shell.tsx')
+    expect(appShell?.children?.some((c) => c.file === 'routes/oauth-authorize.tsx')).toBe(false)
   })
 
   it('带 URL 的模态框 + AI 助手挂在 app-shell 之下，旧的 routes/files.tsx、routes/ai-chat.tsx、routes/profile.tsx 不再注册', () => {

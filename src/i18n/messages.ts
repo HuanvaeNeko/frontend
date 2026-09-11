@@ -42,6 +42,12 @@ const zhCN = {
     },
     oauth: {
       scopes: { profile: '基本资料', email: '邮箱', friends: '好友数', groups: '群数' },
+      scopeDesc: { profile: '昵称和头像', email: '注册邮箱', friends: '好友数量', groups: '群数量' },
+      authorize: {
+        title: '授权请求', invalid: '无效的授权请求', invalidHint: '缺少 client_id 或 redirect_uri，或 PKCE 参数不完整', loading: '正在核对应用信息…',
+        consentTitle: '{name} 请求访问你的账户', scopesTitle: '将获得以下权限', allow: '允许', deny: '拒绝',
+        denied: '已拒绝授权', deniedNoRedirect: '回调地址不合法，未跳转', redirecting: '授权成功，正在跳转…', failed: '授权失败', backToChat: '返回聊天',
+      },
       // scope 列表 / 回调地址列表共用的顿号分隔符——en-US 不能沿用中文全角标点，见 listSeparator 用法。
       listSeparator: '、',
       grantsTitle: '已授权应用', grantsHint: '以下应用已获得访问你账户数据的权限，可随时取消授权。', grantsEmpty: '还没有授权任何应用',
@@ -606,6 +612,12 @@ const enUS = {
     },
     oauth: {
       scopes: { profile: 'Profile', email: 'Email', friends: 'Friend count', groups: 'Group count' },
+      scopeDesc: { profile: 'Nickname and avatar', email: 'Registered email', friends: 'Number of friends', groups: 'Number of groups' },
+      authorize: {
+        title: 'Authorization request', invalid: 'Invalid authorization request', invalidHint: 'client_id or redirect_uri is missing, or the PKCE parameters are incomplete', loading: 'Checking the app…',
+        consentTitle: '{name} wants to access your account', scopesTitle: 'It will be able to read', allow: 'Allow', deny: 'Deny',
+        denied: 'Authorization denied', deniedNoRedirect: 'The redirect URI is invalid; not redirecting', redirecting: 'Authorized, redirecting…', failed: 'Authorization failed', backToChat: 'Back to chat',
+      },
       listSeparator: ', ',
       grantsTitle: 'Authorized apps', grantsHint: 'These apps can access your account data. You can revoke access at any time.', grantsEmpty: 'No authorized apps yet',
       revoke: 'Revoke', confirm: 'Confirm', cancel: 'Cancel', revokeFailed: 'Failed to revoke',

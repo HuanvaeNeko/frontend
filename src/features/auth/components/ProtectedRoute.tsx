@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router'
 import { useRouter } from '@/lib/navigation'
 import { useAuthStore } from '../store/authStore'
 import SimpleLoading from '@/components/common/SimpleLoading'
 import { Button } from '@/components/ui/button'
-import { DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'
+import { DEFAULT_AUTHENTICATED_ROUTE, DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -65,6 +66,7 @@ interface ProtectedRouteProps {
  */
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const router = useRouter()
+  const location = useLocation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isRestoring = useAuthStore((state) => state.isRestoring)
   const error = useAuthStore((state) => state.error)
@@ -88,9 +90,15 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (hasBeenRestoringRef.current && !isRestoring && !isAuthenticated && !error) {
-      router.replace(DEFAULT_UNAUTHENTICATED_ROUTE)
+      // 登录后回到原来要去的页面（spec §3 / §6.4：授权页链接会被未登录用户点开）。
+      // 默认页本身不带 next——LoginForm 没有 next 时本来就去 DEFAULT_AUTHENTICATED_ROUTE。
+      const current = `${location.pathname}${location.search}`
+      const target = current === DEFAULT_AUTHENTICATED_ROUTE
+        ? DEFAULT_UNAUTHENTICATED_ROUTE
+        : `${DEFAULT_UNAUTHENTICATED_ROUTE}?next=${encodeURIComponent(current)}`
+      router.replace(target)
     }
-  }, [isAuthenticated, isRestoring, error, router])
+  }, [isAuthenticated, isRestoring, error, router, location.pathname, location.search])
 
   if (error && !isRestoring && !isAuthenticated) {
     return (

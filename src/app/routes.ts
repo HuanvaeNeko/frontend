@@ -44,6 +44,7 @@ export default [
       route('app/ai-chat', 'routes/shell/ai-chat.tsx'),
     ]),
     route('app/video-meeting', 'routes/video-meeting.tsx'),
+    route('app/oauth/authorize', 'routes/oauth-authorize.tsx'),
   ]),
   // 旧 URL 重定向（spec §3）。同一模块注册五次必须各给 id（同 passthrough 的理由）
   route('app/friends', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-friends' }),

@@ -17,6 +17,7 @@ export const ROUTES = {
     miniapps: '/app/miniapps',
     aiChat: '/app/ai-chat',
     videoMeeting: '/app/video-meeting',
+    oauthAuthorize: '/app/oauth/authorize',
   },
 } as const
 

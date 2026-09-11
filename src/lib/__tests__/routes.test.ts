@@ -31,8 +31,8 @@ describe('壳的路由表（spec §3）', () => {
     expect(LEGACY_REDIRECTS.length).toBe(5)
   })
 
-  it('旧键已删：ROUTES.app 只剩壳的十个键（字面量，不从 ROUTES 自己拼）', () => {
-    expect(Object.keys(ROUTES.app).sort()).toEqual(['aiChat', 'bots', 'chat', 'contacts', 'files', 'meeting', 'miniapps', 'profile', 'settings', 'videoMeeting'])
+  it('旧键已删：ROUTES.app 只剩壳的十一个键（字面量，不从 ROUTES 自己拼）', () => {
+    expect(Object.keys(ROUTES.app).sort()).toEqual(['aiChat', 'bots', 'chat', 'contacts', 'files', 'meeting', 'miniapps', 'oauthAuthorize', 'profile', 'settings', 'videoMeeting'])
     expect('legacy' in ROUTES).toBe(false)
   })
 })
