@@ -22,6 +22,12 @@ export function SoundSelector() {
   const [uploading, setUploading] = useState(false)
   const audioRef = useRef<{ el: HTMLAudioElement; revoke: () => void } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // preview() 的"这次调用还是不是最新一次"令牌：每次新的 preview() 调用、以及组件
+  // 卸载，都会递增它。resolveSoundSrc 的 await 之后重新核对一次，不相等就说明这次
+  // 解析已经过期——要么被更晚的一次 preview() 顶掉，要么组件已经卸载——此时只
+  // revoke 掉这次解析出来的资源，不再构造 Audio、不再碰任何 state（见 preview()
+  // 与下面挂载 effect 的清理）。
+  const previewTokenRef = useRef(0)
 
   // useCallback 钉住引用（依赖为空数组）：既让下面 effect 的清理函数能在定义前引用它，
   // 又能把它安全地放进依赖数组满足 useExhaustiveDependencies，不必用抑制注释。
@@ -34,17 +40,37 @@ export function SoundSelector() {
     setPlayingId(null)
   }, [])
 
+  // 同样用 useCallback 钉住，只依赖 t：locale 不换时引用不变，effect 依赖数组
+  // 因此不会在每次渲染都触发（真的切换语言时会多拉一次列表，读操作本身幂等，无害）。
+  // 非 SoundLibraryError 的情形统一回退到 loadFailed 的译文——不能直接吐 e.message，
+  // 那可能是浏览器原生 DOMException 的英文文案，也可能是 soundLibrary.ts 内部兜底
+  // 用的硬编码中文（比如 request() 找不到 req.error 时的 'IndexedDB 请求失败'），
+  // 两者都不受这个组件的 i18n 控制，en-US 界面下会原样露出来。
+  const libraryMessage = useCallback((e: unknown): string => {
+    if (e instanceof SoundLibraryError) return t(`${NS}.${e.code === 'type' ? 'errType' : e.code === 'size' ? 'errSize' : 'errUnavailable'}`)
+    return t(`${NS}.loadFailed`)
+  }, [t])
+
   useEffect(() => {
     let alive = true
-    listCustom().then((list) => { if (alive) setCustom(list) }).catch((e: unknown) => { if (alive) { setCustom([]); setError(e instanceof Error ? e.message : String(e)) } })
-    // 挂载拉一次；stop 引用稳定，不会因为列进依赖数组而二次触发。
-    return () => { alive = false; stop() }
-  }, [stop])
+    listCustom().then((list) => { if (alive) setCustom(list) }).catch((e: unknown) => { if (alive) { setCustom([]); setError(libraryMessage(e)) } })
+    // 挂载拉一次；stop / libraryMessage 引用稳定，不会因为列进依赖数组而二次触发。
+    return () => { alive = false; previewTokenRef.current += 1; stop() }
+  }, [stop, libraryMessage])
 
   const preview = async (id: string) => {
     stop()
+    previewTokenRef.current += 1
+    const token = previewTokenRef.current
     if (id === 'classic') { playSound('message'); return }
     const resolved = await resolveSoundSrc(id).catch(() => null)
+    if (previewTokenRef.current !== token) {
+      // 这次解析已经过期（被更晚一次 preview() 顶掉，或者组件已经卸载）：只把
+      // 刚解析出来的资源（如果有）revoke 掉，不构造 Audio、不碰 audioRef/state
+      // ——那些属于"当前"那次调用，不是这次。
+      resolved?.revoke()
+      return
+    }
     if (!resolved) return
     const el = new Audio(resolved.src)
     el.volume = volume
@@ -58,11 +84,6 @@ export function SoundSelector() {
   const select = (id: string) => {
     setSetting('notificationSound', id)
     void preview(id)
-  }
-
-  const libraryMessage = (e: unknown): string => {
-    if (e instanceof SoundLibraryError) return t(`${NS}.${e.code === 'type' ? 'errType' : e.code === 'size' ? 'errSize' : 'errUnavailable'}`)
-    return e instanceof Error ? e.message : String(e)
   }
 
   const upload = async (file: File | undefined) => {
@@ -95,6 +116,14 @@ export function SoundSelector() {
   }
 
   const label = (s: SoundOption) => (s.kind === 'builtin' ? t(`${NS}.${s.id}`) : s.name)
+  // 已知缺口（本轮裁定不实现）：如果这台设备之前在 IndexedDB 可用时存过并选中过某个
+  // custom-* 提示音，之后 IndexedDB 单独变得不可用（例如切到隐私模式——同一设备、
+  // 同一账号，且必须是"先存后失效"这个顺序，触发条件很窄），选中的 id 不会出现在
+  // 下面的 options 里（isIndexedDbAvailable() 为 false 时 listCustom() 直接返回空
+  // 数组），于是没有任何一个 radio 会被选中。播放侧是安全的：resolveSoundSrc(id)
+  // 对不可用的库也返回 null，playSelected 会回退到合成音，用户依然听得到提示音，
+  // 只是选择器界面上看不出选中了谁。最小修法：在 options 里为"被选中但不在列表里
+  // 的 custom-*"插入一个禁用态占位项。
   const options = [...BUILTIN_SOUNDS, ...(custom ?? [])]
 
   return (

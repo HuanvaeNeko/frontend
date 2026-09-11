@@ -83,16 +83,29 @@ export async function saveCustom(file: File): Promise<SoundOption> {
   if (!isIndexedDbAvailable()) throw new SoundLibraryError('unavailable', '当前浏览器无法保存自定义提示音')
   if (file.type !== 'audio/mpeg') throw new SoundLibraryError('type', '只支持 MP3（audio/mpeg）')
   if (file.size > MAX_CUSTOM_SOUND_BYTES) throw new SoundLibraryError('size', '文件不能超过 2 MB')
-  const existing = await readAll()
-  const name = uniqueName(file.name.replace(/\.mp3$/i, '') || 'sound', new Set(existing.map((r) => r.name)))
-  const record: CustomSoundRecord = { id: `custom-${crypto.randomUUID()}`, name, type: file.type, bytes: await file.arrayBuffer(), createdAt: new Date().toISOString(), seq: existing.length + 1 }
+  // bytes 必须在开事务之前 await 完：事务里除了同一事务下 IDBRequest 的 promise，
+  // 不能再 await 别的东西（比如这个），否则事务会在这次 await 让出的间隙里自动提交关闭。
+  const bytes = await file.arrayBuffer()
+  const baseName = file.name.replace(/\.mp3$/i, '') || 'sound'
   const db = await openDb()
   try {
-    await request(db.transaction(STORE, 'readwrite').objectStore(STORE).put(record))
+    // 「读现有名字 + 算唯一名 + 写入」必须挤在同一个 readwrite 事务里，不能像
+    // 以前那样先开一个事务读（readAll()）、再另开一个事务写——两次开事务之间
+    // 有一段没有事务保护的窗口，两个标签页（或同一页面里并发的两次 saveCustom）
+    // 都可能在这个窗口内读到"还没有同名"，于是都算出同一个名字（实测复现：
+    // Promise.all 两次同名上传，会都叫 'Ding'）。IndexedDB 的 readwrite 事务对
+    // 同一个 store 在同源的多个连接（含不同标签页）之间是严格串行化的——
+    // 把读和写挤进同一个事务，就是借用这条串行化保证把窗口关掉：后开始的那个
+    // 事务，它的 getAll() 必然发生在前一个事务 put() 提交之后。
+    const store = db.transaction(STORE, 'readwrite').objectStore(STORE)
+    const existing = (await request(store.getAll())) as CustomSoundRecord[]
+    const name = uniqueName(baseName, new Set(existing.map((r) => r.name)))
+    const record: CustomSoundRecord = { id: `custom-${crypto.randomUUID()}`, name, type: file.type, bytes, createdAt: new Date().toISOString(), seq: existing.length + 1 }
+    await request(store.put(record))
+    return toOption(record)
   } finally {
     db.close()
   }
-  return toOption(record)
 }
 
 export async function deleteCustom(id: string): Promise<void> {

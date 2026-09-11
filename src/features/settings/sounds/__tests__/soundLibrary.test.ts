@@ -35,6 +35,11 @@ describe('soundLibrary', () => {
     expect(third.name).toBe('Ding (3)')
     expect((await listCustom()).map((s) => s.name)).toEqual(['Ding', 'Ding (2)', 'Ding (3)'])
   })
+  it('真并发：Promise.all 两次同名 saveCustom 不会撞名（读现有名字、算唯一名、写入必须挤在同一个 readwrite 事务里，否则两个标签页各自的读事务都会读到"还没有重名"）', async () => {
+    const [a, b] = await Promise.all([saveCustom(mp3('Ding.mp3')), saveCustom(mp3('Ding.mp3'))])
+    expect([a.name, b.name].sort()).toEqual(['Ding', 'Ding (2)'])
+    expect((await listCustom()).map((s) => s.name).sort()).toEqual(['Ding', 'Ding (2)'])
+  })
   it('只收 audio/mpeg：其它类型抛 code=type；超过 2 MB 抛 code=size；都不入库', async () => {
     await expect(saveCustom(mp3('a.wav', 10, 'audio/wav'))).rejects.toMatchObject({ code: 'type' })
     await expect(saveCustom(mp3('big.mp3', MAX_CUSTOM_SOUND_BYTES + 1))).rejects.toMatchObject({ code: 'size' })
