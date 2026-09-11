@@ -14,9 +14,10 @@ describe('壳的路由表（spec §3）', () => {
     expect(ROUTES.app.meeting).toBe('/app/meeting')
   })
 
-  it('设置分区只有五个，且能做类型守卫', () => {
-    expect([...SETTINGS_SECTIONS]).toEqual(['appearance', 'notifications', 'account', 'ai', 'about'])
+  it('设置分区只有六个，且能做类型守卫', () => {
+    expect([...SETTINGS_SECTIONS]).toEqual(['appearance', 'notifications', 'account', 'apps', 'ai', 'about'])
     expect(isSettingsSection('account')).toBe(true)
+    expect(isSettingsSection('apps')).toBe(true)
     expect(isSettingsSection('devices')).toBe(false)
   })
 

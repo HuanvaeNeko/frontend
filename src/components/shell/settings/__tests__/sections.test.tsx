@@ -24,7 +24,7 @@ vi.mock('@/i18n/I18nProvider', async () => {
 })
 
 describe('设置分区注册表', () => {
-  it('五个分区与 SETTINGS_SECTIONS 同序，每个都有组件', () => {
+  it('六个分区与 SETTINGS_SECTIONS 同序，每个都有组件', () => {
     expect(SETTINGS_SECTION_META.map((m) => m.key)).toEqual([...SETTINGS_SECTIONS])
     for (const key of SETTINGS_SECTIONS) expect(typeof SECTION_COMPONENTS[key]).toBe('function')
   })
@@ -34,6 +34,7 @@ describe('设置分区注册表', () => {
     expect(screen.getByRole('link', { name: '外观' })).toHaveAttribute('href', '/app/settings/appearance')
     expect(screen.getByRole('link', { name: '账户与安全' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: '外观' })).not.toHaveAttribute('aria-current')
-    expect(screen.getAllByRole('link')).toHaveLength(5)
+    expect(screen.getByRole('link', { name: '授权与应用' })).toHaveAttribute('href', '/app/settings/apps')
+    expect(screen.getAllByRole('link')).toHaveLength(6)
   })
 })

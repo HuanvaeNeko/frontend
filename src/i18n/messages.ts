@@ -29,7 +29,7 @@ const zhCN = {
     empty: { title: '欢迎使用 Huanvae Chat', chat: '选择一个会话开始聊天', contacts: '选择一个联系人查看资料' },
     contacts: { friends: '好友', groups: '群', requests: '申请', search: '搜索联系人', noFriends: '还没有好友', noGroups: '还没有加入任何群', noMatch: '没有匹配的联系人', closePanel: '收起', message: '发消息', removeFriend: '删除好友', confirmRemove: '确定删除这位好友？', removeFailed: '删除好友失败', notFriend: '不是你的好友', loadFailed: '资料加载失败', signature: '签名', region: '地区', memberSince: '成为好友', memberCount: '{n} 人', block: '拉黑', unblock: '取消拉黑', confirmBlock: '拉黑后你们互相收不到对方的消息，好友关系保留。确定拉黑？', blockFailed: '操作失败' },
     settings: {
-      title: '设置', appearance: '外观', notifications: '通知与提醒', account: '账户与安全', ai: 'AI 配置', about: '关于', theme: '主题', themeLight: '浅色', themeDark: '深色', themeAuto: '跟随系统', language: '语言', animations: '界面动画', particles: '粒子背景', notify: '桌面通知', sound: '提示音', volume: '音量', privacy: '隐私', devices: '登录设备', logout: '退出登录', version: '版本', downloads: '下载客户端',
+      title: '设置', appearance: '外观', notifications: '通知与提醒', account: '账户与安全', apps: '授权与应用', ai: 'AI 配置', about: '关于', theme: '主题', themeLight: '浅色', themeDark: '深色', themeAuto: '跟随系统', language: '语言', animations: '界面动画', particles: '粒子背景', notify: '桌面通知', sound: '提示音', volume: '音量', privacy: '隐私', devices: '登录设备', logout: '退出登录', version: '版本', downloads: '下载客户端',
       themeEditor: {
         presetTitle: '主题配色', presetDefault: '默认', presetDefaultDesc: '应用默认配色方案', presetCustom: '自定义', presetCustomDesc: '自定义您的专属配色',
         colorsTitle: '自定义颜色', primary: '主色', accent: '强调色', done: '完成', hexInput: '十六进制颜色',
@@ -39,6 +39,12 @@ const zhCN = {
         reset: '恢复默认主题',
       },
       blacklist: { title: '黑名单', hint: '被拉黑的用户与你互相收不到对方发送的消息；好友关系仍保留。可随时取消拉黑。', empty: '没有拉黑任何人', remove: '取消拉黑', confirm: '确认', cancel: '取消', blockedAt: '拉黑于 {date}', removeFailed: '取消拉黑失败' },
+    },
+    oauth: {
+      scopes: { profile: '基本资料', email: '邮箱', friends: '好友数', groups: '群数' },
+      grantsTitle: '已授权应用', grantsHint: '以下应用已获得访问你账户数据的权限，可随时取消授权。', grantsEmpty: '还没有授权任何应用',
+      revoke: '取消授权', confirm: '确认', cancel: '取消', revokeFailed: '取消授权失败',
+      grantedJustNow: '刚刚授权', grantedHoursAgo: '{n} 小时前授权', grantedDaysAgo: '{n} 天前授权',
     },
     modals: { files: '我的文件', upload: '上传', meeting: '视频会议', bots: '机器人', botsEmpty: '还没有机器人', miniapps: '小程序', miniappsEmpty: '还没有小程序', open: '打开', active: '运行中', inactive: '已停用' },
   },
@@ -576,7 +582,7 @@ const enUS = {
     empty: { title: 'Welcome to Huanvae Chat', chat: 'Pick a conversation to start chatting', contacts: 'Pick a contact to see their profile' },
     contacts: { friends: 'Friends', groups: 'Groups', requests: 'Requests', search: 'Search contacts', noFriends: 'No friends yet', noGroups: 'No groups yet', noMatch: 'No matching contacts', closePanel: 'Close', message: 'Message', removeFriend: 'Remove friend', confirmRemove: 'Remove this friend?', removeFailed: 'Failed to remove friend', notFriend: 'Not your friend', loadFailed: 'Failed to load profile', signature: 'Signature', region: 'Region', memberSince: 'Friends since', memberCount: '{n} members', block: 'Block', unblock: 'Unblock', confirmBlock: 'Blocked users cannot message each other; friendship is kept. Block this user?', blockFailed: 'Action failed' },
     settings: {
-      title: 'Settings', appearance: 'Appearance', notifications: 'Notifications', account: 'Account & security', ai: 'AI', about: 'About', theme: 'Theme', themeLight: 'Light', themeDark: 'Dark', themeAuto: 'System', language: 'Language', animations: 'Animations', particles: 'Particle background', notify: 'Desktop notifications', sound: 'Sounds', volume: 'Volume', privacy: 'Privacy', devices: 'Devices', logout: 'Log out', version: 'Version', downloads: 'Download the app',
+      title: 'Settings', appearance: 'Appearance', notifications: 'Notifications', account: 'Account & security', apps: 'Apps & access', ai: 'AI', about: 'About', theme: 'Theme', themeLight: 'Light', themeDark: 'Dark', themeAuto: 'System', language: 'Language', animations: 'Animations', particles: 'Particle background', notify: 'Desktop notifications', sound: 'Sounds', volume: 'Volume', privacy: 'Privacy', devices: 'Devices', logout: 'Log out', version: 'Version', downloads: 'Download the app',
       themeEditor: {
         presetTitle: 'Color scheme', presetDefault: 'Default', presetDefaultDesc: 'The app’s default palette', presetCustom: 'Custom', presetCustomDesc: 'Pick your own colors',
         colorsTitle: 'Custom colors', primary: 'Primary', accent: 'Accent', done: 'Done', hexInput: 'Hex color',
@@ -586,6 +592,12 @@ const enUS = {
         reset: 'Reset theme',
       },
       blacklist: { title: 'Blocked users', hint: 'Blocked users and you cannot receive each other’s messages; the friendship is kept. You can unblock at any time.', empty: 'No blocked users', remove: 'Unblock', confirm: 'Confirm', cancel: 'Cancel', blockedAt: 'Blocked on {date}', removeFailed: 'Failed to unblock' },
+    },
+    oauth: {
+      scopes: { profile: 'Profile', email: 'Email', friends: 'Friend count', groups: 'Group count' },
+      grantsTitle: 'Authorized apps', grantsHint: 'These apps can access your account data. You can revoke access at any time.', grantsEmpty: 'No authorized apps yet',
+      revoke: 'Revoke', confirm: 'Confirm', cancel: 'Cancel', revokeFailed: 'Failed to revoke',
+      grantedJustNow: 'Authorized just now', grantedHoursAgo: 'Authorized {n} hours ago', grantedDaysAgo: 'Authorized {n} days ago',
     },
     modals: { files: 'My files', upload: 'Upload', meeting: 'Meetings', bots: 'Bots', botsEmpty: 'No bots yet', miniapps: 'Mini apps', miniappsEmpty: 'No mini apps yet', open: 'Open', active: 'Active', inactive: 'Inactive' },
   },
