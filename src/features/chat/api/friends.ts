@@ -1,6 +1,7 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { assertEnvelopeOk, readEnvelopeList } from '@/lib/apiEnvelope'
+import { assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
+import { arrayOf, asRecord, nullableStr, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
 
 const FRIENDS_BASE_URL = `${getApiBaseUrl()}/api/friends`
@@ -82,6 +83,28 @@ export interface SentRequest {
  * `<AvatarFallback>` 那条分支，调用点就不必各自再判一次空串。
  */
 const absoluteAvatar = (path: string | null): string | null => toAbsoluteApiUrl(path) ?? null
+
+/**
+ * `GET /api/friends/blacklist` 的一条（后端 `BlacklistedUserDto`，
+ * `backend-docs/friends/好友添加删除.md:180-198`）：四个字段恒出现，可空字段是 `null`。
+ */
+export interface BlacklistedUser {
+  user_id: string
+  user_nickname: string | null
+  /** 出口处已补成绝对地址（文档写明是相对路径） */
+  user_avatar_url: string | null
+  created_at: string
+}
+
+export function parseBlacklistedUser(input: unknown): BlacklistedUser {
+  const r = asRecord(input, 'GET /api/friends/blacklist 的一项')
+  return {
+    user_id: str(r, 'user_id'),
+    user_nickname: nullableStr(r, 'user_nickname'),
+    user_avatar_url: absoluteAvatar(nullableStr(r, 'user_avatar_url')),
+    created_at: str(r, 'created_at'),
+  }
+}
 
 // ============================================
 // API 方法
@@ -282,5 +305,30 @@ export const friendsApi = {
       endpoint: 'POST /api/friends/remove',
       fallbackMessage: '删除好友失败',
     })
+  },
+
+  /** GET /api/friends/blacklist */
+  getBlacklist: async (): Promise<BlacklistedUser[]> => {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist`, { method: 'GET' })
+    return readEnvelope<BlacklistedUser[]>(response, {
+      endpoint: 'GET /api/friends/blacklist',
+      fallbackMessage: '获取黑名单失败',
+      parse: arrayOf(parseBlacklistedUser),
+    })
+  },
+
+  /** POST /api/friends/blacklist，body `{ target_user_id }`；拉黑方取自会话，不在 body 里 */
+  addBlacklist: async (targetUserId: string): Promise<void> => {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist`, {
+      method: 'POST',
+      body: JSON.stringify({ target_user_id: targetUserId }),
+    })
+    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/blacklist', fallbackMessage: '拉黑失败' })
+  },
+
+  /** DELETE /api/friends/blacklist/{target_user_id} */
+  removeBlacklist: async (targetUserId: string): Promise<void> => {
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist/${encodeURIComponent(targetUserId)}`, { method: 'DELETE' })
+    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/friends/blacklist/{target_user_id}', fallbackMessage: '取消拉黑失败' })
   },
 }

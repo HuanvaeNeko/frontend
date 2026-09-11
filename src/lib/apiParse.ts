@@ -23,6 +23,8 @@
  * `tsc --noEmit` 照样通过。类型是文档，强制来自这里抛出的 Error 和覆盖它的测试。
  */
 
+import type { Parser } from './apiEnvelope'
+
 /** 排除 `null` 与数组的对象判定。 */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -97,4 +99,18 @@ export function arr(payload: Record<string, unknown>, key: string, prefix = ''):
     throw new Error(`${prefix}${key} 应为数组，实际是 ${describe(value)}`)
   }
   return value
+}
+
+/**
+ * `data` 本身就是数组：校验它是数组，再逐行喂给 `row`——挂在 `readEnvelope` 的 `parse`
+ * 档上，行级校验抛出的错误会被 `validatePayload` 接住、转成可上报的 `ApiShapeError`。
+ * （从 `features/miniapps/api/miniapps.ts` 的私有版本提升而来，供好友黑名单 / OAuth 复用。）
+ */
+export function arrayOf<T>(row: (input: unknown) => T): Parser<T[]> {
+  return {
+    parse(input: unknown) {
+      if (!Array.isArray(input)) throw new Error(`data 应为数组，实际是 ${describe(input)}`)
+      return input.map(row)
+    },
+  }
 }

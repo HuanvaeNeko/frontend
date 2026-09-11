@@ -20,6 +20,8 @@ export interface UnifiedConversation {
   lastMessageTime: string | null
   unreadCount: number
   pinned: boolean
+  /** 好友被拉黑：列表只标灰不分组（契约 :117） */
+  blacklisted: boolean
 }
 
 function toEpoch(time: string | null): number {
@@ -64,6 +66,7 @@ export function useUnifiedConversations(): { conversations: UnifiedConversation[
         lastMessageTime: u?.last_message_time ?? null,
         unreadCount: u?.unread_count ?? 0,
         pinned: pinned.includes(id),
+        blacklisted: f.is_blacklisted,
       })
     }
     for (const g of groups) {
@@ -78,6 +81,7 @@ export function useUnifiedConversations(): { conversations: UnifiedConversation[
         lastMessageTime: u?.last_message_time ?? g.last_message_time ?? null,
         unreadCount: u?.unread_count ?? g.unread_count ?? 0,
         pinned: pinned.includes(id),
+        blacklisted: false,
       })
     }
     return sortConversations(list)

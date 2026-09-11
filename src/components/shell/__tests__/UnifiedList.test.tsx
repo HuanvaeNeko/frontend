@@ -29,7 +29,7 @@ vi.mock('@/i18n/I18nProvider', async () => {
 
 const conv = (id: string, extra: Partial<UnifiedConversation> = {}): UnifiedConversation => ({
   id, kind: id.startsWith('f-') ? 'friend' : 'group', targetId: id.slice(2), name: id, avatarUrl: null,
-  preview: null, lastMessageTime: null, unreadCount: 0, pinned: false, ...extra,
+  preview: null, lastMessageTime: null, unreadCount: 0, pinned: false, blacklisted: false, ...extra,
 })
 
 const noop = () => {}
@@ -126,5 +126,11 @@ describe('UnifiedList', () => {
     await userEvent.click(screen.getByRole('button', { name: '添加' }))
     await userEvent.click(await screen.findByText('加入群'))
     expect(onJoinGroup).toHaveBeenCalledTimes(1)
+  })
+
+  it('被拉黑的好友：名字标灰划线；正常好友没有（正对照）', () => {
+    render(<UnifiedList {...base} conversations={[conv('f-bad', { blacklisted: true }), conv('f-ok')]} />)
+    expect(screen.getByTestId('conversation-f-bad').querySelector('span[title="f-bad"]')).toHaveClass('line-through')
+    expect(screen.getByTestId('conversation-f-ok').querySelector('span[title="f-ok"]')).not.toHaveClass('line-through')
   })
 })

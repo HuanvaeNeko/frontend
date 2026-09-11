@@ -25,7 +25,7 @@ export function contactsAddFrom(params: URLSearchParams): ContactsAdd | null {
   return a === 'friend' || a === 'join-group' || a === 'create-group' ? a : null
 }
 
-function ContactRow({ testId, to, name, subtitle, avatarUrl, selected }: { testId: string; to: string; name: string; subtitle: string; avatarUrl: string | null; selected: boolean }) {
+function ContactRow({ testId, to, name, subtitle, avatarUrl, selected, muted }: { testId: string; to: string; name: string; subtitle: string; avatarUrl: string | null; selected: boolean; muted?: boolean }) {
   return (
     <NavLink
       to={to}
@@ -41,7 +41,7 @@ function ContactRow({ testId, to, name, subtitle, avatarUrl, selected }: { testI
         <AvatarFallback className="rounded-[10px] text-app-light">{name.slice(0, 1).toUpperCase()}</AvatarFallback>
       </Avatar>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-semibold text-foreground">{name}</span>
+        <span className={cn('block truncate text-[14px] font-semibold', muted ? 'text-muted-foreground line-through' : 'text-foreground')}>{name}</span>
         <span className="block truncate text-[12px] text-muted-foreground">{subtitle}</span>
       </span>
     </NavLink>
@@ -113,7 +113,7 @@ export function ContactsList() {
           friends.length === 0 ? <ListEmpty message={t('shell.contacts.noFriends')} /> : shownFriends.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :
           shownFriends.map((f) => (
             <ContactRow key={f.friend_id} testId={`contact-f-${f.friend_id}`} to={contactFriendPath(f.friend_id)} name={friendDisplayName(f)} subtitle={`@${f.friend_id}`}
-              avatarUrl={f.friend_avatar_url ? (toAbsoluteApiUrl(f.friend_avatar_url) ?? null) : null} selected={userId === f.friend_id} />
+              avatarUrl={f.friend_avatar_url ? (toAbsoluteApiUrl(f.friend_avatar_url) ?? null) : null} selected={userId === f.friend_id} muted={f.is_blacklisted} />
           )))}
         {tab === 'groups' && ((groupsLoading || !groupsHasLoaded) ? <ListLoading /> : groupsError ? <ListError error={groupsError} onRetry={() => { loadMyGroups().catch(console.error) }} /> :
           groups.length === 0 ? <ListEmpty message={t('shell.contacts.noGroups')} /> : shownGroups.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :

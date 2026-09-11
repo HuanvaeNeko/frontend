@@ -91,6 +91,24 @@ const ACTIONS = [
     stub: (error: Error) => vi.spyOn(friendsApi, 'removeFriend').mockRejectedValue(error),
     run: () => useFriendsStore.getState().removeFriend('u2'),
   },
+  {
+    action: 'loadBlacklist',
+    endpoint: 'GET /api/friends/blacklist',
+    stub: (error: Error) => vi.spyOn(friendsApi, 'getBlacklist').mockRejectedValue(error),
+    run: () => useFriendsStore.getState().loadBlacklist(),
+  },
+  {
+    action: 'addBlacklist',
+    endpoint: 'POST /api/friends/blacklist',
+    stub: (error: Error) => vi.spyOn(friendsApi, 'addBlacklist').mockRejectedValue(error),
+    run: () => useFriendsStore.getState().addBlacklist('u2'),
+  },
+  {
+    action: 'removeBlacklist',
+    endpoint: 'DELETE /api/friends/blacklist/{target_user_id}',
+    stub: (error: Error) => vi.spyOn(friendsApi, 'removeBlacklist').mockRejectedValue(error),
+    run: () => useFriendsStore.getState().removeBlacklist('u2'),
+  },
 ] as const
 
 beforeEach(() => {
@@ -98,7 +116,7 @@ beforeEach(() => {
   replaceSpy.mockClear()
   // 会话制下 fetchWithAuth 不再读 token——同源 cookie 自动带上。
   useAuthStore.setState({ isAuthenticated: true, user: { user_id: 'me' } })
-  useFriendsStore.setState({ friends: [], pendingRequests: [], sentRequests: [], isLoading: false, error: null })
+  useFriendsStore.setState({ friends: [], pendingRequests: [], sentRequests: [], isLoading: false, error: null, blacklist: [], blacklistLoaded: false })
   vi.spyOn(window.location, 'replace').mockImplementation(replaceSpy)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -203,6 +221,7 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     sent_to_nickname: 'Dave',
     sent_to_avatar_url: null,
   }
+  const ALICE_BLACKLISTED = { user_id: 'evil', user_nickname: 'A 拉黑的人', user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }
 
   /** `create()` 刚返回时的状态，也就是 `registerPristineStoreReset` 的重置目标。 */
   const PRISTINE = {
@@ -212,6 +231,8 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     onlineStatus: new Map<string, boolean>(),
     isLoading: false,
     error: null,
+    blacklist: [],
+    blacklistLoaded: false,
   }
 
   const snapshot = () => {
@@ -223,6 +244,8 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
       onlineStatus: state.onlineStatus,
       isLoading: state.isLoading,
       error: state.error,
+      blacklist: state.blacklist,
+      blacklistLoaded: state.blacklistLoaded,
     }
   }
 
@@ -245,6 +268,7 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     vi.spyOn(friendsApi, 'getFriendsList').mockResolvedValue([ALICE_FRIEND])
     vi.spyOn(friendsApi, 'getPendingRequests').mockResolvedValue([ALICE_PENDING])
     vi.spyOn(friendsApi, 'getSentRequests').mockResolvedValue([ALICE_SENT])
+    vi.spyOn(friendsApi, 'getBlacklist').mockResolvedValue([ALICE_BLACKLISTED])
   }
 
   /** A 登出 → B 登录。世代号跨过两个边界，闸门在 B 这一侧重新开着。 */
@@ -273,6 +297,9 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     { action: 'approveFriendRequest', defer: 'approveFriendRequest', landed: undefined },
     { action: 'rejectFriendRequest', defer: 'rejectFriendRequest', landed: undefined },
     { action: 'removeFriend', defer: 'removeFriend', landed: undefined },
+    { action: 'loadBlacklist', defer: 'getBlacklist', landed: [ALICE_BLACKLISTED] },
+    { action: 'addBlacklist', defer: 'addBlacklist', landed: undefined },
+    { action: 'removeBlacklist', defer: 'removeBlacklist', landed: undefined },
   ] as const
 
   const runOf = (action: (typeof CROSS_ACTIONS)[number]['action']): Promise<void> => {
@@ -292,6 +319,12 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
         return store.rejectFriendRequest('u2')
       case 'removeFriend':
         return store.removeFriend('u2')
+      case 'loadBlacklist':
+        return store.loadBlacklist()
+      case 'addBlacklist':
+        return store.addBlacklist('u2')
+      case 'removeBlacklist':
+        return store.removeBlacklist('u2')
     }
   }
 
@@ -456,5 +489,54 @@ describe('friendsStore.hasLoaded：区分"没加载过"与"加载过，结果确
     await expect(useFriendsStore.getState().loadFriends()).rejects.toThrow('权限不足')
 
     expect(useFriendsStore.getState().hasLoaded).toBe(true)
+  })
+})
+
+describe('friendsStore 黑名单：成功后翻转 friends[].is_blacklisted 并同步 blacklist 列表', () => {
+  const FRIEND = { friend_id: 'u2', friend_nickname: '李四', friend_avatar_url: 'https://cdn.test/u2.png', add_time: '2026-01-01T00:00:00Z', approve_reason: null, friend_remark: '小四', is_blacklisted: false, is_special_care: false }
+
+  it('loadBlacklist 写 blacklist 与 blacklistLoaded，不碰 isLoading', async () => {
+    vi.spyOn(friendsApi, 'getBlacklist').mockResolvedValue([{ user_id: 'u9', user_nickname: null, user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }])
+    await useFriendsStore.getState().loadBlacklist()
+    expect(useFriendsStore.getState().blacklist.map((u) => u.user_id)).toEqual(['u9'])
+    expect(useFriendsStore.getState().blacklistLoaded).toBe(true)
+    expect(useFriendsStore.getState().isLoading).toBe(false)
+  })
+  it('addBlacklist 成功：is_blacklisted 翻成 true，用备注名与头像本地补一条，不重拉', async () => {
+    useFriendsStore.setState({ friends: [FRIEND] })
+    const add = vi.spyOn(friendsApi, 'addBlacklist').mockResolvedValue(undefined)
+    const get = vi.spyOn(friendsApi, 'getBlacklist')
+    await useFriendsStore.getState().addBlacklist('u2')
+    expect(add).toHaveBeenCalledWith('u2')
+    expect(get).not.toHaveBeenCalled()
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(true)
+    const entry = useFriendsStore.getState().blacklist[0]
+    expect(entry.user_id).toBe('u2')
+    expect(entry.user_nickname).toBe('小四')
+    expect(entry.user_avatar_url).toBe('https://cdn.test/u2.png')
+    expect(Number.isNaN(new Date(entry.created_at).getTime())).toBe(false)
+  })
+  it('addBlacklist 失败：不翻转、列表不变、reject（正对照）', async () => {
+    useFriendsStore.setState({ friends: [FRIEND] })
+    vi.spyOn(friendsApi, 'addBlacklist').mockRejectedValue(permissionDenied('POST /api/friends/blacklist'))
+    await expect(useFriendsStore.getState().addBlacklist('u2')).rejects.toThrow('权限不足')
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(false)
+    expect(useFriendsStore.getState().blacklist).toEqual([])
+  })
+  it('removeBlacklist 成功：翻回 false 并从 blacklist 移除；不是好友的人只动列表', async () => {
+    useFriendsStore.setState({ friends: [{ ...FRIEND, is_blacklisted: true }], blacklist: [{ user_id: 'u2', user_nickname: '李四', user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }, { user_id: 'u9', user_nickname: null, user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }] })
+    vi.spyOn(friendsApi, 'removeBlacklist').mockResolvedValue(undefined)
+    await useFriendsStore.getState().removeBlacklist('u2')
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(false)
+    expect(useFriendsStore.getState().blacklist.map((u) => u.user_id)).toEqual(['u9'])
+    await useFriendsStore.getState().removeBlacklist('u9')
+    expect(useFriendsStore.getState().blacklist).toEqual([])
+    expect(useFriendsStore.getState().friends[0].is_blacklisted).toBe(false)
+  })
+  it('登出归零：blacklist 与 blacklistLoaded 随 registerPristineStoreReset 回到初值', async () => {
+    useFriendsStore.setState({ blacklist: [{ user_id: 'u2', user_nickname: null, user_avatar_url: null, created_at: '2026-01-01T00:00:00Z' }], blacklistLoaded: true })
+    useAuthStore.getState().clearAuth()
+    expect(useFriendsStore.getState().blacklist).toEqual([])
+    expect(useFriendsStore.getState().blacklistLoaded).toBe(false)
   })
 })

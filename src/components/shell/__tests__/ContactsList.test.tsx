@@ -80,13 +80,16 @@ describe('ContactsList', () => {
     useGroupStore.setState({ myGroups: [{ group_id: 'g1', group_name: '读书会', group_avatar_url: null, role: 'member', unread_count: null, last_message_content: null, last_message_time: null }] as never, isLoading: false, hasLoaded: true, error: null })
   })
 
-  it('默认好友 tab：每个好友一行，名字备注优先，链接到 /app/contacts/friends/:id，当前项 data-selected', () => {
+  it('默认好友 tab：每个好友一行，名字备注优先，链接到 /app/contacts/friends/:id，当前项 data-selected；被拉黑的好友标灰划线', () => {
+    useFriendsStore.setState({ friends: [friend('alice', '爱丽丝', '小爱'), { ...friend('bob', '鲍勃'), is_blacklisted: true }] })
     renderAt('/app/contacts/friends/alice')
     expect(screen.getByRole('link', { name: /小爱/ })).toHaveAttribute('href', '/app/contacts/friends/alice')
     expect(screen.getByRole('link', { name: /鲍勃/ })).toHaveAttribute('href', '/app/contacts/friends/bob')
     expect(screen.getByTestId('contact-f-alice')).toHaveAttribute('data-selected', 'true')
     expect(screen.getByTestId('contact-f-bob')).toHaveAttribute('data-selected', 'false')
     expect(screen.queryByTestId('friend-list')).toBeNull()   // 没有 add 参数不渲染旧面板
+    expect(screen.getByTestId('contact-f-bob').querySelector('.line-through')).not.toBeNull()
+    expect(screen.getByTestId('contact-f-alice').querySelector('.line-through')).toBeNull()
   })
 
   it('?tab=groups：群行链接到 /app/contacts/groups/:id；?tab=requests：申请面板复用旧组件', () => {

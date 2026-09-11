@@ -1,7 +1,7 @@
 import { fetchWithAuth } from '@/api/authedFetch'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
-import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
-import { asRecord, describe, str } from '@/lib/apiParse'
+import { readEnvelope } from '@/lib/apiEnvelope'
+import { arrayOf, asRecord, str } from '@/lib/apiParse'
 
 /** `GET /api/miniapps/my` 一条 */
 export interface MiniAppSummary {
@@ -47,18 +47,6 @@ export function parseMiniAppSummary(input: unknown): MiniAppSummary {
     icon_url: typeof r.icon_url === 'string' && r.icon_url !== '' ? resolveSameOriginUrl(r.icon_url) : null,
     access_url: str(r, 'access_url'),
     status: str(r, 'status'),
-  }
-}
-
-/** `data` 本身就是数组：校验它是数组，再逐行喂给 `row`——挂在 `readEnvelope` 的 `parse`
- * 档上，行级校验（`row` 内部的 `str()` 等）抛出的错误因此也会被 `validatePayload` 接住、
- * 转成可上报的 `ApiShapeError`，不再是绕开 `[api-shape]` 上报的裸 `Error`（终审 finding #7）。 */
-function arrayOf<T>(row: (input: unknown) => T): Parser<T[]> {
-  return {
-    parse(input: unknown) {
-      if (!Array.isArray(input)) throw new Error(`data 应为数组，实际是 ${describe(input)}`)
-      return input.map(row)
-    },
   }
 }
 

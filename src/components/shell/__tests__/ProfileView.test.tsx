@@ -39,7 +39,7 @@ describe('ProfileView', () => {
     // 下面「删除好友」用例再各自 `mockReturnValueOnce` 接管返回值。
     window.confirm = vi.fn()
     vi.spyOn(profileApi, 'getPublicProfile').mockResolvedValue(PUBLIC)
-    useFriendsStore.setState({ friends: [{ friend_id: 'alice', friend_nickname: '爱丽丝', friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z', approve_reason: null, friend_remark: '小爱', is_blacklisted: false, is_special_care: false }], removeFriend: vi.fn(async () => {}) })
+    useFriendsStore.setState({ friends: [{ friend_id: 'alice', friend_nickname: '爱丽丝', friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z', approve_reason: null, friend_remark: '小爱', is_blacklisted: false, is_special_care: false }], removeFriend: vi.fn(async () => {}), addBlacklist: vi.fn(async () => {}), removeBlacklist: vi.fn(async () => {}) })
   })
   afterEach(() => vi.restoreAllMocks())
 
@@ -83,5 +83,33 @@ describe('ProfileView', () => {
     expect(await screen.findByText(/资料加载失败/)).toBeInTheDocument()
     expect(screen.getByText('小爱')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发消息' })).toBeInTheDocument()
+  })
+
+  it('拉黑：确认后调 addBlacklist(userId)；取消不调', async () => {
+    renderView()
+    await screen.findByText('早睡早起')
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(false)
+    screen.getByRole('button', { name: '拉黑' }).click()
+    expect(useFriendsStore.getState().addBlacklist).not.toHaveBeenCalled()
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    screen.getByRole('button', { name: '拉黑' }).click()
+    await waitFor(() => expect(useFriendsStore.getState().addBlacklist).toHaveBeenCalledWith('alice'))
+  })
+  it('已拉黑的好友显示「取消拉黑」，点击直接调 removeBlacklist（不弹确认）', async () => {
+    useFriendsStore.setState({ friends: [{ ...useFriendsStore.getState().friends[0], is_blacklisted: true }] })
+    renderView()
+    await screen.findByText('早睡早起')
+    expect(screen.queryByRole('button', { name: '拉黑' })).toBeNull()
+    screen.getByRole('button', { name: '取消拉黑' }).click()
+    await waitFor(() => expect(useFriendsStore.getState().removeBlacklist).toHaveBeenCalledWith('alice'))
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+  it('拉黑失败：显示错误行', async () => {
+    useFriendsStore.setState({ addBlacklist: vi.fn(async () => { throw new Error('boom') }) })
+    renderView()
+    await screen.findByText('早睡早起')
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    screen.getByRole('button', { name: '拉黑' }).click()
+    expect(await screen.findByText(/操作失败/)).toHaveTextContent('boom')
   })
 })

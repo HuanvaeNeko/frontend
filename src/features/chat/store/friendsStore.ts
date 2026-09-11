@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { friendsApi, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
+import { friendsApi, type BlacklistedUser, type Friend, type PendingRequest, type SentRequest } from '../api/friends'
+import { friendDisplayName } from '../lib/friendName'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
@@ -25,6 +26,9 @@ interface FriendsState {
    */
   hasLoaded: boolean
   error: string | null
+  /** 已拉黑的人（账号级，登出归零）；`blacklistLoaded` 区分"没拉过"与"拉过是空" */
+  blacklist: BlacklistedUser[]
+  blacklistLoaded: boolean
 
   // Actions
   loadFriends: () => Promise<void>
@@ -37,6 +41,10 @@ interface FriendsState {
   setOnlineStatus: (userId: string, isOnline: boolean) => void
   isOnline: (userId: string) => boolean
   clearError: () => void
+  loadBlacklist: () => Promise<void>
+  /** 成功后翻转 friends[].is_blacklisted 并本地补一条，不重拉（spec §5） */
+  addBlacklist: (userId: string) => Promise<void>
+  removeBlacklist: (userId: string) => Promise<void>
 }
 
 /**
@@ -95,7 +103,7 @@ const handleApiError = (error: unknown, defaultMessage: string): string | null =
 }
 
 /**
- * ## 七个 action 开头那句 `const stillMine = pinSession()`
+ * ## 十个 action 开头那句 `const stillMine = pinSession()`
  *
  * 都是「异步取数 → 回来 `set(...)`」的形状，而登出**不取消**飞在半空的请求。
  * 没有这道闸时，A 的 `getPendingRequests` 在 B 登录之后落地，
@@ -134,6 +142,8 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   isLoading: false,
   hasLoaded: false,
   error: null,
+  blacklist: [],
+  blacklistLoaded: false,
 
   loadFriends: async () => {
     const stillMine = pinSession()
@@ -263,6 +273,63 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       if (!stillMine()) throw error
       const errorMessage = handleApiError(error, '删除好友失败')
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
+      throw error
+    }
+  },
+
+  loadBlacklist: async () => {
+    const stillMine = pinSession()
+    try {
+      const blacklist = await friendsApi.getBlacklist()
+      if (!stillMine()) return
+      set({ blacklist, blacklistLoaded: true })
+    } catch (error) {
+      if (!stillMine()) throw error
+      const errorMessage = handleApiError(error, '获取黑名单失败')
+      if (errorMessage !== null) set({ error: errorMessage })
+      throw error
+    }
+  },
+
+  addBlacklist: async (userId: string) => {
+    const stillMine = pinSession()
+    try {
+      await friendsApi.addBlacklist(userId)
+      if (!stillMine()) return
+      const { friends, blacklist } = get()
+      const friend = friends.find((f) => f.friend_id === userId)
+      const entry: BlacklistedUser = {
+        user_id: userId,
+        user_nickname: friend ? friendDisplayName(friend) : null,
+        user_avatar_url: friend?.friend_avatar_url ?? null,
+        created_at: new Date().toISOString(),
+      }
+      set({
+        friends: friends.map((f) => (f.friend_id === userId ? { ...f, is_blacklisted: true } : f)),
+        blacklist: blacklist.some((u) => u.user_id === userId) ? blacklist : [entry, ...blacklist],
+      })
+    } catch (error) {
+      if (!stillMine()) throw error
+      const errorMessage = handleApiError(error, '拉黑失败')
+      if (errorMessage !== null) set({ error: errorMessage })
+      throw error
+    }
+  },
+
+  removeBlacklist: async (userId: string) => {
+    const stillMine = pinSession()
+    try {
+      await friendsApi.removeBlacklist(userId)
+      if (!stillMine()) return
+      const { friends, blacklist } = get()
+      set({
+        friends: friends.map((f) => (f.friend_id === userId ? { ...f, is_blacklisted: false } : f)),
+        blacklist: blacklist.filter((u) => u.user_id !== userId),
+      })
+    } catch (error) {
+      if (!stillMine()) throw error
+      const errorMessage = handleApiError(error, '取消拉黑失败')
+      if (errorMessage !== null) set({ error: errorMessage })
       throw error
     }
   },

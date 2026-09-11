@@ -49,7 +49,7 @@ export function ConversationCard({ conversation: c, selected, onSelect, onToggle
             <div className="mb-1 flex items-center justify-between">
               <span className="flex min-w-0 flex-1 items-center gap-1 text-[14px] font-semibold text-foreground">
                 {c.kind === 'group' && <span className="shrink-0 text-[10px] font-medium text-[var(--color-primary-5)]">{t('shell.list.groupTag')}</span>}
-                <span className="block min-w-0 flex-1 truncate" title={c.name}>{c.name}</span>
+                <span className={cn('block min-w-0 flex-1 truncate', c.blacklisted && 'text-muted-foreground line-through')} title={c.name}>{c.name}</span>
               </span>
               {time && <span className="shrink-0 select-none text-[11px] text-app-light">{time}</span>}
             </div>

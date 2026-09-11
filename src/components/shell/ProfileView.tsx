@@ -1,4 +1,4 @@
-import { MessageCircle, UserMinus } from 'lucide-react'
+import { Ban, MessageCircle, UserMinus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -16,10 +16,14 @@ export function ProfileView({ userId }: { userId: string }) {
   const router = useRouter()
   const friend = useFriendsStore((s) => s.friends.find((f) => f.friend_id === userId))
   const removeFriend = useFriendsStore((s) => s.removeFriend)
+  const addBlacklist = useFriendsStore((s) => s.addBlacklist)
+  const removeBlacklist = useFriendsStore((s) => s.removeBlacklist)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
+  const [blocking, setBlocking] = useState(false)
+  const [blockError, setBlockError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -48,6 +52,21 @@ export function ProfileView({ userId }: { userId: string }) {
     }
   }
 
+  const handleBlockToggle = async () => {
+    if (!friend) return
+    if (!friend.is_blacklisted && !window.confirm(t('shell.contacts.confirmBlock'))) return
+    setBlockError(null)
+    setBlocking(true)
+    try {
+      if (friend.is_blacklisted) await removeBlacklist(userId)
+      else await addBlacklist(userId)
+    } catch (e: unknown) {
+      setBlockError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBlocking(false)
+    }
+  }
+
   return (
     <div className="app-scrollbar h-full overflow-y-auto p-6">
       <div className="glass-card mx-auto max-w-[520px] p-8">
@@ -72,8 +91,10 @@ export function ProfileView({ userId }: { userId: string }) {
           <>
             <div className="mt-8 flex gap-3">
               <NavLink to={chatPath(friendConversationId(userId))} className="subtle-btn"><MessageCircle className="h-4 w-4" />{t('shell.contacts.message')}</NavLink>
+              <button type="button" onClick={handleBlockToggle} disabled={blocking} className="subtle-btn"><Ban className="h-4 w-4" />{friend.is_blacklisted ? t('shell.contacts.unblock') : t('shell.contacts.block')}</button>
               <button type="button" onClick={handleRemove} disabled={removing} className="subtle-btn !bg-[var(--status-error-subtle)] !text-destructive"><UserMinus className="h-4 w-4" />{t('shell.contacts.removeFriend')}</button>
             </div>
+            {blockError && <p className="mt-3 text-[13px] text-destructive" role="alert">{t('shell.contacts.blockFailed')}: {blockError}</p>}
             {removeError && <p className="mt-3 text-[13px] text-destructive" role="alert">{t('shell.contacts.removeFailed')}: {removeError}</p>}
           </>
         )}

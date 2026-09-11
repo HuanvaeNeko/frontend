@@ -19,7 +19,7 @@ const group = (id: string, extra: Partial<MyGroup> = {}): MyGroup => ({
 
 const conv = (id: string, extra: Partial<UnifiedConversation> = {}): UnifiedConversation => ({
   id, kind: id.startsWith('f-') ? 'friend' : 'group', targetId: id.slice(2), name: id, avatarUrl: null,
-  preview: null, lastMessageTime: null, unreadCount: 0, pinned: false, ...extra,
+  preview: null, lastMessageTime: null, unreadCount: 0, pinned: false, blacklisted: false, ...extra,
 })
 
 describe('sortConversations（APP conversationSort：置顶优先 → 时间倒序 → id 稳定）', () => {
@@ -117,5 +117,13 @@ describe('useUnifiedConversations：friends × groups × unreadSummary × pinned
     useGroupStore.setState({ hasLoaded: true })
     const { result: ready } = renderHook(() => useUnifiedConversations())
     expect(ready.current.status).toBe('ready')
+  })
+
+  it('好友 is_blacklisted 映射成 blacklisted（群恒 false）', () => {
+    useFriendsStore.setState({ friends: [friend('u1', { is_blacklisted: true }), friend('u2')], hasLoaded: true })
+    useGroupStore.setState({ myGroups: [group('g1')], hasLoaded: true })
+    const { result } = renderHook(() => useUnifiedConversations())
+    const byId = Object.fromEntries(result.current.conversations.map((c) => [c.id, c.blacklisted]))
+    expect(byId).toEqual({ 'f-u1': true, 'f-u2': false, 'g-g1': false })
   })
 })

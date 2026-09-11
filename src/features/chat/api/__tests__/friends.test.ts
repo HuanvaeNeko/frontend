@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
-import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
+import { ApiShapeError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { friendsApi } from '../friends'
 
@@ -250,5 +250,44 @@ describe('写入侧的请求体（读取侧改名不能带偏写入侧）', () =
     fetchMock.mockResolvedValueOnce(ok({ success: false, code: 400, message: '该申请已被处理' }))
 
     await expect(friendsApi.approveFriendRequest('u2')).rejects.toThrow('该申请已被处理')
+  })
+})
+
+describe('friendsApi 黑名单三接口（backend-docs friends/好友添加删除.md :150-200）', () => {
+  const BLACKLISTED = { user_id: 'u2', user_nickname: '李四', user_avatar_url: 'avatars/u2.png', created_at: '2026-09-01T00:00:00Z' }
+
+  it('getBlacklist：GET /api/friends/blacklist，头像相对路径补成绝对地址，null 保持 null', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: [BLACKLISTED, { ...BLACKLISTED, user_id: 'u3', user_nickname: null, user_avatar_url: null }] }))
+    const rows = await friendsApi.getBlacklist()
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`${FRIENDS_BASE}/blacklist`)
+    expect(rows).toEqual([
+      { user_id: 'u2', user_nickname: '李四', user_avatar_url: `${location.origin}/avatars/u2.png`, created_at: '2026-09-01T00:00:00Z' },
+      { user_id: 'u3', user_nickname: null, user_avatar_url: null, created_at: '2026-09-01T00:00:00Z' },
+    ])
+  })
+  it('getBlacklist：缺 user_id 抛 ApiShapeError；data 不是数组也抛', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: [{ ...BLACKLISTED, user_id: undefined }] }))
+    await expect(friendsApi.getBlacklist()).rejects.toBeInstanceOf(ApiShapeError)
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { items: [] } }))
+    await expect(friendsApi.getBlacklist()).rejects.toThrow(/应为数组/)
+  })
+  it('addBlacklist：POST body 只有 { target_user_id }；无 data 的 ok 信封不抛', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, message: '已拉黑' }))
+    await expect(friendsApi.addBlacklist('u2')).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(`${FRIENDS_BASE}/blacklist`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ target_user_id: 'u2' })
+  })
+  it('removeBlacklist：DELETE /api/friends/blacklist/{id}，id 经 encodeURIComponent', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, message: '已取消拉黑' }))
+    await friendsApi.removeBlacklist('u 2/x')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(`${FRIENDS_BASE}/blacklist/u%202%2Fx`)
+    expect(init.method).toBe('DELETE')
+  })
+  it('拉黑 HTTP 200 但 success:false 透出后端文案', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 400, error: '不能拉黑自己' }))
+    await expect(friendsApi.addBlacklist('me')).rejects.toThrow(/不能拉黑自己/)
   })
 })
