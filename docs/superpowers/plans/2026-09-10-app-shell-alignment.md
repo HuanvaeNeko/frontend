@@ -5018,3 +5018,18 @@ EOF
 - **偏离 spec 的裁决**（执行时记账本）：设置多一个 `ai` 分区（Task 2/7）；`DevicesPage` 以 `embedded` 模式保留而不是删除（Task 7/11）；手机端有选中项时底部条让位（Task 10）；`ChatWindow` 在 <768 隐藏自身头部，通话/群信息按钮手机上暂不可达（Task 10，第 7 期补）；离开会议回 `/app/meeting`（Task 11）。
 - **占位扫描**：Task 11 的 `tests/chat.spec.ts` 里三处 `…` 是"逐字复制原文件对应段落"的指令（数据 fixture 与登录段），不是待填内容。
 - **类型一致性**：`Sidebar({ activeTab })` 的联合类型在 Task 7 扩成三值、Task 9 去掉 `pinnedTools`；`AppShell` 同步；`ShellTab` 定义在 Task 8 的 `shellTab.ts`，Task 10 消费；`SIDEBAR_TOOLS_BY_KEY` 在 Task 9 定义、Task 9/10 消费；`ListLoading / ListError / ListEmpty` 的 props 与 Task 4 一致；`legacyRedirectTarget` 与 Task 2 一致。
+
+## 上线记录
+
+**2026-09-11 上线，写实测数字，不写「通过」。**
+
+- **执行**：subagent-driven，11 个任务各 1 轮修复后评审通过；整分支终审（opus）9 条 Important 一次修复波（`c38578a`）全部解决，复审无新问题。计划原文被评审推翻并裁决改写的地方：`pinnedStore` 改走 `sessionScopedLocalStorage`；`friendsStore/groupStore` 加 `hasLoaded`（深链冷启动原逻辑立刻 replace 回列表）；侧栏与底部条的 tab 从 `NavLink` 改 `Link`、`aria-current` 由 `activeTab` 决定；`useShellTab` 用 `useHydrated` 门控；`ChatHeader` 隐藏断点 `md → lg`；音量滑块按 0..1 写入；主题三选一改原生 radio（仓内不再有 `biome-ignore`）；圆角有精确 token 别名必须用别名。
+- **门禁（最终版本 `c38578a`）**：`tsc` 0 错；lint 158 warnings / 22 infos（基线 163 / 22）；vitest **79 文件 / 1037 用例**全绿（起点 48 / 912）；`bun --bun run build` 通过；e2e **200 passed（chromium 81 / mobile 81 / production 38）**，5.9 分钟。e2e 首跑 6 败——沙箱浏览器 `navigator.language=en-US` 渲染英文，`chat.spec.ts` 改成双语正则后全绿。
+- **合入**：origin/main 与 origin/dev 从 `be4b40f` 快进到 `c38578a`（24 个提交，131 文件，+10127 / −3181）；分支线性，未做合并提交。
+- **部署**：alice `git -C huanvae-frontend pull --ff-only`（`fb5fc7b → c38578a`），`docker compose --project-directory huanvae-frontend build app`（host 网络 override 仍在，`bun install` / `bun run build` 均正常），`up -d app` 后 `huanvae-frontend-app-1` 2 分钟内 `healthy`，edge 容器未动。
+- **线上 curl（从 Mac）**：
+  1. `GET /app/friends` → **302** `location: /app/contacts`；`GET /app/devices` → **302** `location: /app/settings/account`
+  2. `GET /app/chat` → **200**；`GET /app/contacts` → **200**
+  3. 线上 CSS `assets/globals-Bt0cW5UI.css` 含 `--primary:#0956c6`（浅）/ `--primary:#3c83f7`（深）/ `--bg-primary:#06080c`（深）——APP token 已生效
+  4. `/app/login` 页面里 `api.huanvae.cn` 出现次数 **0**
+- **未做 / 遗留**：owner 浏览器验证（登录后三栏、拖拽钉住、折叠）待 owner；spec §8 的「开源许可」与「修改密码进账户分区」计划未纳入，排第 2 期；28 条延后 Minor 与 12 条裁决在 `.superpowers/sdd/2026-09-10-app-shell-alignment/progress.md`（git 忽略，看完可删）；`?add=create-group` 已改成只弹建群对话框，第 2 期抽 `CreateGroupDialog`；群会话经 URL 进入未复刻成员 / 公告加载，第 3 期开群信息 UI 前必须补；本机主检出的 `main` 仍在旧位置，需 `git pull`。
