@@ -20,6 +20,7 @@ const pages = [
   // (see src/lib/routes.ts and the "deleted home page" guards in LoginForm.tsx /
   // src/app/app/page.tsx). The route now 404s, so this case can never pass.
   { name: 'Chat', path: '/app/chat', requiresAuth: true },
+  { name: 'Contacts', path: '/app/contacts', requiresAuth: true },
   { name: 'VideoMeeting', path: '/app/video-meeting?room=matrix&pwd=123', requiresAuth: true },
   { name: 'Settings', path: '/app/settings', requiresAuth: true },
 ]

@@ -7,12 +7,10 @@ import { ROUTES } from '../src/lib/routes'
 // 列表来满足，两边一旦有一个改了忘了改另一个，测试就会静默失真。直接 import
 // 让"字节级一致"这件事在结构上不可能出错。
 //
-// ROUTES.legacy.groupChat（/app/group-chat）刻意不在下面任何列表里：它从未
-// 出现在 src/app/routes.ts 的路由配置里，访问它会命中 root.tsx 的 404
-// ErrorBoundary，不是"可达路由"。同理 '~offline' 页面反过来——它在
-// src/app/routes.ts 里注册、也确实可达，但从未被收进 ROUTES 常量表（没有任何
-// 代码用编程式导航跳去离线页，只有 Service Worker fallback 会触发），所以
-// 这一个 URL 没有锚点常量可对齐，只能像 spec 草稿那样直接写字面量。
+// '~offline' 页面反过来：它在 src/app/routes.ts 里注册、也确实可达，但从未
+// 被收进 ROUTES 常量表（没有任何代码用编程式导航跳去离线页，只有 Service
+// Worker fallback 会触发），所以这一个 URL 没有锚点常量可对齐，只能像 spec
+// 草稿那样直接写字面量。
 const OFFLINE_ROUTE = '/~offline'
 
 // 无需登录即可访问的页面。ROUTES.webAppRoot（/app）本身不做鉴权判断——
@@ -22,19 +20,9 @@ const PUBLIC_ROUTES = [ROUTES.root, ROUTES.downloads, OFFLINE_ROUTE, ROUTES.webA
 
 const AUTH_ROUTES = [ROUTES.auth.login, ROUTES.auth.register]
 
-// ROUTES.app.chatFriends 和 ROUTES.app.friends 是同一个字符串 '/app/friends'
-// （常量表里的历史重复别名），只收一次，否则会对同一个 URL 重复起两条同名测试。
 const PROTECTED_ROUTES = [
-  ROUTES.app.chat,
-  ROUTES.app.friends,
-  ROUTES.app.chatGroups,
-  ROUTES.app.chatFiles,
-  ROUTES.app.chatWebrtc,
-  ROUTES.app.aiChat,
-  ROUTES.app.videoMeeting,
-  ROUTES.app.devices,
-  ROUTES.app.settings,
-  ROUTES.app.profile,
+  ROUTES.app.chat, ROUTES.app.contacts, ROUTES.app.settings, ROUTES.app.profile, ROUTES.app.files,
+  ROUTES.app.meeting, ROUTES.app.bots, ROUTES.app.miniapps, ROUTES.app.aiChat, ROUTES.app.videoMeeting,
 ]
 
 test.describe('路由可达性', () => {
@@ -42,6 +30,22 @@ test.describe('路由可达性', () => {
     test(`${path} 返回 200`, async ({ request }) => {
       const res = await request.get(path)
       expect(res.status()).toBe(200)
+    })
+  }
+})
+
+test.describe('旧 URL 重定向（spec §3）', () => {
+  for (const [from, to] of [
+    ['/app/friends', '/app/contacts'],
+    ['/app/groups', '/app/contacts'],
+    ['/app/webrtc', '/app/meeting'],
+    ['/app/devices', '/app/settings/account'],
+    ['/app/group-chat', '/app/chat'],
+  ] as const) {
+    test(`${from} → 302 ${to}`, async ({ request }) => {
+      const res = await request.get(from, { maxRedirects: 0 })
+      expect(res.status()).toBe(302)
+      expect(res.headers().location).toBe(to)
     })
   }
 })

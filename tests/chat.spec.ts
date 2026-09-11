@@ -2,6 +2,51 @@ import { test, expect } from '@playwright/test'
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000'
 
+// 新壳（spec §3/§5）：/app/chat 的列表栏是统一会话列表，一个好友一张卡片；点击 → /app/chat/f-<id>。
+// 桌面（chromium）三栏；mobile 项目（Pixel 7，412px）是底部条 + 二选一（spec §3 折叠）。
+const mockListEndpoints = async (page: import('@playwright/test').Page, friends: unknown[], groups: unknown[]) => {
+  await page.route('**/api/friends', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 200, data: friends }) }))
+  await page.route('**/api/friends/requests/pending', (route) => route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) }))
+  await page.route('**/api/friends/requests/sent', (route) => route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) }))
+  await page.route('**/api/groups/my', (route) => route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: groups }) }))
+  await page.route('**/api/groups/invites/my', (route) => route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) }))
+}
+
+const ALICE_BOB = [
+  {
+    friend_id: 'friend_1',
+    friend_nickname: 'Alice',
+    friend_avatar_url: null,
+    add_time: new Date().toISOString(),
+    approve_reason: null,
+    friend_remark: null,
+    is_blacklisted: false,
+    is_special_care: false,
+  },
+  {
+    friend_id: 'friend_2',
+    friend_nickname: 'Bob',
+    friend_avatar_url: null,
+    add_time: new Date().toISOString(),
+    approve_reason: null,
+    friend_remark: null,
+    is_blacklisted: false,
+    is_special_care: false,
+  },
+]
+const TEST_GROUP = [
+  {
+    group_id: 'g1',
+    group_name: 'Test Group',
+    group_description: 'desc',
+    creator_id: 'u1',
+    role: 'owner',
+    unread_count: 0,
+    last_message_content: 'hello',
+    last_message_time: new Date().toISOString()
+  }
+]
+
 test.describe('Chat Functionality', () => {
   test.beforeEach(async ({ page }) => {
     // 会话现在是 httpOnly cookie，不是 localStorage 里的假 token（BFF 会话层）。
@@ -21,121 +66,41 @@ test.describe('Chat Functionality', () => {
     expect(login.ok(), 'e2e 登录失败').toBeTruthy()
   })
 
-  test('should load chat page and display friends list', async ({ page }, testInfo) => {
-    // Mock friends API.
-    // Envelope shape per backend-docs/friends/好友添加删除.md:57 & :99-118:
-    // `{success, code, data}` where `data` IS the FriendDto[] array (no `friends`
-    // wrapper key). Field names are `friend_id`/`friend_nickname`/`friend_avatar_url`
-    // — the old `user_id`/`nickname`/`avatar_url`/`signature` shape has zero overlap
-    // with the real DTO and throws ApiShapeError against the migrated client
-    // (src/features/chat/api/friends.ts). The display name resolves via
-    // `friend_remark ?? friend_nickname ?? friend_id` (FriendList.tsx:66), so with
-    // `friend_remark: null` here, "Alice"/"Bob" render from `friend_nickname` —
-    // genuinely proving the row renders from the field the app actually reads.
-    await page.route('**/api/friends', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          code: 200,
-          data: [
-            {
-              friend_id: 'friend_1',
-              friend_nickname: 'Alice',
-              friend_avatar_url: null,
-              add_time: new Date().toISOString(),
-              approve_reason: null,
-              friend_remark: null,
-              is_blacklisted: false,
-              is_special_care: false,
-            },
-            {
-              friend_id: 'friend_2',
-              friend_nickname: 'Bob',
-              friend_avatar_url: null,
-              add_time: new Date().toISOString(),
-              approve_reason: null,
-              friend_remark: null,
-              is_blacklisted: false,
-              is_special_care: false,
-            },
-          ],
-        }),
-      })
-    })
-
-    // Mock other chat APIs to avoid errors.
-    // Same envelope as /api/friends (backend-docs/friends/好友添加删除.md:79-85, :59-65):
-    // `data` is PendingRequestDto[] / SentRequestDto[] directly, no `requests` wrapper.
-    await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    // groups.ts migrated to the envelope client in batch 2 (getMyGroups uses
-    // readEnvelopeList with no `field`: `data` itself is the MyGroup[] array —
-    // backend-docs/groups/群聊管理.md:113-129: `{success, code, data: MyGroup[]}`).
-    // This fixture already matches that shape; nothing to change here.
-    await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-
-    // Navigate to chat page and wait for friends API
-    const friendsPromise = page.waitForResponse(resp => resp.url().includes('/api/friends') && resp.status() === 200);
+  test('统一会话列表：好友成卡片，点击进入 /app/chat/f-<id>', async ({ page }, testInfo) => {
+    await mockListEndpoints(page, ALICE_BOB, [])
+    const friendsPromise = page.waitForResponse((r) => r.url().includes('/api/friends') && r.status() === 200)
     await page.goto(`${BASE_URL}/app/chat`)
-    await friendsPromise;
+    await friendsPromise
+    await expect(page).toHaveURL(/\/app\/chat$/)
 
-    // Verify we are on the chat page
-    await expect(page).toHaveURL(/\/app\/chat/)
+    const list = page.getByTestId('list-column')
+    await expect(list.getByText('Alice')).toBeVisible()
+    await expect(list.getByText('Bob')).toBeVisible()
 
-    // Verify "Friends" tab is active by default or clickable.
-    // NOTE: the compact in-page tab switcher (data-testid="tab-friends") is rendered
-    // with Tailwind's `md:hidden` in ChatPage.tsx (src/features/chat/components/ChatPage.tsx),
-    // so it only exists in the mobile (<768px) layout — desktop uses the icon-rail nav
-    // (links to /app/friends, /app/groups, ...) instead. Only assert it on "mobile".
-    if (testInfo.project.name === 'mobile') {
-      const friendsTab = page.getByTestId('tab-friends')
-      // Depending on your UI, checking visibility might be enough
-      await expect(friendsTab).toBeVisible()
+    const isMobile = testInfo.project.name === 'mobile'
+    // 这个 webServer 的浏览器 context 没有固定 locale（playwright.config.ts 没设 use.locale），
+    // I18nProvider 的 language='auto' 落到 navigator.language——实测这个沙箱里就是 en-US，
+    // 界面渲染的是英文文案。跟原 chat.spec.ts 同一个理由、同一个写法：中英文都认。
+    if (!isMobile) await expect(page.getByText(/选择一个会话开始聊天|Pick a conversation to start chatting/)).toBeVisible()
+
+    await list.getByText('Alice').click()
+    await expect(page).toHaveURL(/\/app\/chat\/f-friend_1$/)
+
+    if (isMobile) {
+      // 折叠：列表让位给内容，顶部返回条带会话名，返回回到列表
+      await expect(page.getByTestId('list-column')).toHaveCount(0)
+      await expect(page.getByTestId('fold-back-bar')).toContainText('Alice')
+      await page.getByRole('link', { name: /返回列表|Back to list/ }).click()
+      await expect(page).toHaveURL(/\/app\/chat$/)
+      await expect(page.getByTestId('list-column').getByText('Alice')).toBeVisible()
+    } else {
+      await expect(page.getByText(/选择一个会话开始聊天|Pick a conversation to start chatting/)).not.toBeVisible()
+      // 聊天窗口头部出现 Alice（列表卡片里也有一个，取可见的第二处：内容区）
+      await expect(page.getByTestId('content-column').getByText('Alice').first()).toBeVisible()
     }
-
-    // Verify header title is "好友" or "Friends"
-    await expect(page.locator('h1')).toHaveText(/好友|Friends/)
-
-    // Verify friend list items are rendered
-    await expect(page.getByText('Alice')).toBeVisible()
-    await expect(page.getByText('Bob')).toBeVisible()
-
-    // NOTE: the "select a conversation" placeholder lives in ChatPage.tsx's desktop
-    // detail pane, which carries `hidden md:flex` unconditionally — so on mobile it
-    // never renders at all (a selected conversation opens as a full-screen overlay
-    // instead). Only assert the placeholder on the desktop ("chromium") project.
-    if (testInfo.project.name !== 'mobile') {
-      // Verify "Select a conversation" placeholder is shown
-      // Text might vary based on locale, check for key part or icon
-      await expect(page.getByText(/选择一个会话|Select a conversation/)).toBeVisible()
-    }
-
-    // Click on Alice
-    await page.getByText('Alice').click()
-
-    if (testInfo.project.name !== 'mobile') {
-      // Verify chat window opens (Placeholder should disappear, Alice's name should appear in header)
-      await expect(page.getByText(/选择一个会话|Select a conversation/)).not.toBeVisible()
-    }
-
-    // Check for chat header with Alice's name.
-    // NOTE: "Alice" also appears in DOM nodes that are CSS-hidden at this viewport
-    // (the sidebar list item on mobile once isDetailView hides it, and duplicate
-    // desktop/mobile header markup ChatPage.tsx renders for both breakpoints at
-    // once). Filter to the visible match instead of assuming DOM order/`.first()`
-    // lands on it, since which copy is visible flips between the two projects.
-    await expect(page.getByText('Alice').locator('visible=true').first()).toBeVisible()
   })
 
-  test('should handle empty friends list', async ({ page }) => {
+  test('空列表：后端真的回了空数组，界面给空态而不是解析失败', async ({ page }) => {
     // Genuine empty-list success response — `{success:true, code:200, data:[]}`
     // (backend-docs/friends/好友添加删除.md:57,99-105) — NOT a throwing mock that
     // happens to leave the store's initial `[]` on screen. Those are indistinguishable
@@ -158,101 +123,31 @@ test.describe('Chat Functionality', () => {
         shapeErrors.push(msg.text())
       }
     })
-
-    await page.route('**/api/friends', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, code: 200, data: [] }),
-      })
-    })
-
-    // Mock other APIs
-    await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-
-    const friendsPromise = page.waitForResponse(resp => resp.url().includes('/api/friends') && resp.status() === 200);
+    await mockListEndpoints(page, [], [])
+    const friendsPromise = page.waitForResponse((r) => r.url().includes('/api/friends') && r.status() === 200)
     await page.goto(`${BASE_URL}/app/chat`)
-    await friendsPromise;
-
-    // Verify empty state message
-    await expect(page.getByText(/暂无好友|No friends/)).toBeVisible()
-
-    // Verify it is empty because the backend said so, not because parsing failed
-    // and the UI can't tell the difference.
+    await friendsPromise
+    await expect(page.getByText(/还没有会话|No conversations yet/)).toBeVisible()
     expect(shapeErrors).toEqual([])
   })
 
-  test('should switch between tabs', async ({ page }, testInfo) => {
-    // The in-page tab switcher this test drives (data-testid="tab-groups"/"tab-files")
-    // is rendered with Tailwind's `md:hidden` in ChatPage.tsx (src/features/chat/components/ChatPage.tsx),
-    // so it only exists in the mobile (<768px) layout — desktop switches sections by
-    // navigating to /app/groups, /app/files via the icon-rail nav instead, which is a
-    // different interaction this test does not exercise. Scope to "mobile" only.
-    test.skip(testInfo.project.name !== 'mobile', 'in-page tab switcher (data-testid=tab-*) is md:hidden in ChatPage.tsx — mobile-only UI')
-
-    // Mock APIs. Envelope shape per backend-docs/friends/好友添加删除.md:57
-    // (friends/pending/sent) and backend-docs/groups/群聊管理.md:113-129 (groups/my).
-    await page.route('**/api/friends', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/friends/requests/pending', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/friends/requests/sent', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ success: true, code: 200, data: [] }) })
-    })
-    await page.route('**/api/groups/my', async (route) => {
-      await route.fulfill({
-        status: 200,
-        body: JSON.stringify({
-          success: true,
-          code: 200,
-          data: [
-            {
-              group_id: 'g1',
-              group_name: 'Test Group',
-              group_description: 'desc',
-              creator_id: 'u1',
-              role: 'owner',
-              unread_count: 0,
-              last_message_content: 'hello',
-              last_message_time: new Date().toISOString()
-            }
-          ]
-        })
-      })
-    })
-    await page.route('**/api/groups/invites/my', async (route) => {
-      await route.fulfill({ status: 200, body: JSON.stringify({ invites: [] }) })
-    })
-
-    const friendsPromise = page.waitForResponse(resp => resp.url().includes('/api/friends') && resp.status() === 200);
-    const groupsPromise = page.waitForResponse(resp => resp.url().includes('/api/groups/my') && resp.status() === 200);
+  test('联系人栏的群 tab 与「更多」里的我的文件模态框', async ({ page }, testInfo) => {
+    await mockListEndpoints(page, [], TEST_GROUP)
+    const groupsPromise = page.waitForResponse((r) => r.url().includes('/api/groups/my') && r.status() === 200)
     await page.goto(`${BASE_URL}/app/chat`)
-    await Promise.all([friendsPromise, groupsPromise]);
+    await groupsPromise
 
-    // Click on Groups tab
-    await page.getByTestId('tab-groups').click()
-    
-    // Wait for groups to load (if triggered on click or if already loaded)
-    // Since we mocked it and ChatPage loads it on mount, it should be there.
-    
-    // Verify Groups list is loaded (mocked group 'Test Group')
-    await expect(page.getByText('Test Group')).toBeVisible()
-    
-    // Click on Files tab
-    await page.getByTestId('tab-files').click()
-    
-    // Verify Files view (check for text "暂无文件" or "My Files" header)
-    // The sub-tab header says "My Files" or "我的文件"
-    await expect(page.getByText(/我的文件|My Files/)).toBeVisible()
+    const isMobile = testInfo.project.name === 'mobile'
+    const nav = page.getByTestId(isMobile ? 'mobile-tab-bar' : 'sidebar')
+    await nav.getByRole('link', { name: /联系人|Contacts/ }).click()
+    await expect(page).toHaveURL(/\/app\/contacts$/)
+    await page.getByRole('button', { name: /^群$|^Groups$/ }).click()
+    await expect(page.getByTestId('list-column').getByText('Test Group')).toBeVisible()
+
+    await nav.getByRole('button', { name: /更多功能|More/ }).click()
+    await page.getByRole('link', { name: /我的文件|My files/ }).click()
+    await expect(page).toHaveURL(/\/app\/files$/)
+    // 按可访问名取：桌面上侧栏「更多」面板也是 role=dialog（aria-label 更多功能），退场动画期间会短暂并存
+    await expect(page.getByRole('dialog', { name: /我的文件|My files/ })).toBeVisible()
   })
 })
