@@ -102,8 +102,8 @@ function ClientCard({ client, onDelete, onResetSecret, busy }: { client: OAuthCl
         <code className="rounded-sm bg-[var(--bg-tertiary)] px-1.5 font-mono text-foreground">{client.client_id}</code>
         <button type="button" className="subtle-btn" onClick={() => void copyText(client.client_id, toast, t)}>{t(`${NS}.copy`)}</button>
       </div>
-      <div className="text-[12px] text-muted-foreground">{t(`${NS}.scopes`)}: {client.allowed_scopes.map((s) => t(scopeLabelKey(s))).join('、')}</div>
-      <div className="break-all text-[12px] text-muted-foreground">{t(`${NS}.redirectUris`)}: {client.redirect_uris.join('，')}</div>
+      <div className="text-[12px] text-muted-foreground">{t(`${NS}.scopes`)}: {client.allowed_scopes.map((s) => t(scopeLabelKey(s))).join(t('shell.oauth.listSeparator'))}</div>
+      <div className="break-all text-[12px] text-muted-foreground">{t(`${NS}.redirectUris`)}: {client.redirect_uris.join(t('shell.oauth.listSeparator'))}</div>
       {external && (
         <div className="flex flex-wrap gap-1">
           {confirmReset ? (

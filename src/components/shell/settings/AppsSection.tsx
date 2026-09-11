@@ -23,7 +23,7 @@ function GrantCard({ grant, onRevoke, revoking }: { grant: OAuthGrant; onRevoke:
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[14px] text-foreground">{grant.app_name}</div>
-        <div className="truncate text-[12px] text-muted-foreground">{grant.scope.split(/\s+/).filter(Boolean).map((s) => t(scopeLabelKey(s))).join('、')}</div>
+        <div className="truncate text-[12px] text-muted-foreground">{grant.scope.split(/\s+/).filter(Boolean).map((s) => t(scopeLabelKey(s))).join(t('shell.oauth.listSeparator'))}</div>
         <div className="text-[11px] text-app-light">{t(ago.key, { n: ago.n })}</div>
       </div>
       {confirm ? (

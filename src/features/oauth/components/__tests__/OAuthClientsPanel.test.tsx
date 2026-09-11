@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { oauthApi } from '../../api/oauth'
 import { OAuthClientsPanel } from '../OAuthClientsPanel'
@@ -42,10 +42,13 @@ describe('OAuthClientsPanel', () => {
     expect(screen.getByText('已停用')).toBeInTheDocument()
     expect(screen.getByText('c-ext')).toBeInTheDocument()
     // INTERNAL 在上面用 `{ ...EXTERNAL, ... }` 派生，没有覆盖 allowed_scopes / redirect_uris——
-    // 两张卡片因此渲染出逐字相同的「权限」「回调地址」行，getByText 对这两处必然是「多个匹配」，
-    // 与本用例要检查的「格式对不对」无关，用 getAllByText 取第一个即可，断言的字面量不变。
-    expect(screen.getAllByText(/基本资料、邮箱/)[0]).toBeInTheDocument()
-    expect(screen.getAllByText(/https:\/\/example\.com\/cb/)[0]).toBeInTheDocument()
+    // 两张卡片因此渲染出逐字相同的「权限」「回调地址」行，getByText 对这两处必然是「多个匹配」。
+    // 用 within() 限定到 EXTERNAL（Ext App）这一张卡片的 <li> 子树里查，而不是取任意一个匹配——
+    // 断言的字面量不变，但不再依赖"EXTERNAL 恰好排在前面"这个隐式前提。
+    const extCard = screen.getByText('Ext App').closest('li')
+    if (!extCard) throw new Error('Ext App 所在的 <li> 没找到')
+    expect(within(extCard).getByText(/基本资料、邮箱/)).toBeInTheDocument()
+    expect(within(extCard).getByText(/https:\/\/example\.com\/cb/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '重置密钥' })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(1)
   })
@@ -104,6 +107,21 @@ describe('OAuthClientsPanel', () => {
     expect(screen.getByRole('button', { name: '创建' })).toBeDisabled()
     expect(form).toHaveTextContent('回调地址必须是 http(s) 绝对地址或以 / 开头的站内路径')
     fireEvent.change(screen.getAllByLabelText('回调地址')[0], { target: { value: 'https://new.example/cb' } })
+    // 到这里 name 与唯一一条回调都已合法：先确认按钮变回可用，作为下面两条独立探针的正对照基线。
+    expect(screen.getByRole('button', { name: '创建' })).not.toBeDisabled()
+    // 探针 1「名称必填」：回调保持合法，只清空名称——此时 filled.length > 0 与 !invalid 都成立，
+    // 唯一可能拦住按钮的是 appName.trim() !== ''。删掉那个条件这一句必须变红。
+    fireEvent.change(screen.getByLabelText('应用名称'), { target: { value: '' } })
+    expect(screen.getByRole('button', { name: '创建' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('应用名称'), { target: { value: 'New App' } })
+    expect(screen.getByRole('button', { name: '创建' })).not.toBeDisabled()
+    // 探针 2「至少一条合法回调」：名称保持合法，把唯一一条回调清空——filled 变成空数组，
+    // invalid 对空数组恒为 false（不构成拦截），唯一可能拦住按钮的是 filled.length > 0。
+    // 删掉那个条件这一句必须变红。
+    fireEvent.change(screen.getAllByLabelText('回调地址')[0], { target: { value: '' } })
+    expect(screen.getByRole('button', { name: '创建' })).toBeDisabled()
+    fireEvent.change(screen.getAllByLabelText('回调地址')[0], { target: { value: 'https://new.example/cb' } })
+    expect(screen.getByRole('button', { name: '创建' })).not.toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '添加回调地址' }))
     fireEvent.change(screen.getAllByLabelText('回调地址')[1], { target: { value: '/apps/x/cb' } })
     fireEvent.click(screen.getByLabelText('邮箱'))
@@ -114,9 +132,20 @@ describe('OAuthClientsPanel', () => {
     expect(secret).toHaveTextContent('c-new')
     expect(oauthApi.listClients).toHaveBeenCalledTimes(2)
   })
-  it('空列表：空态 + 提示；加载失败可重试', async () => {
+  it('空列表：空态 + 提示', async () => {
     vi.spyOn(oauthApi, 'listClients').mockResolvedValueOnce([])
     render(<OAuthClientsPanel />)
     expect(await screen.findByText('还没有 OAuth 客户端')).toBeInTheDocument()
+    expect(screen.getByText('点击「新建客户端」注册一个外部应用')).toBeInTheDocument()
+  })
+  it('加载失败可重试', async () => {
+    const spy = vi.spyOn(oauthApi, 'listClients').mockRejectedValueOnce(new Error('网络断了')).mockResolvedValueOnce([EXTERNAL])
+    render(<OAuthClientsPanel />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('网络断了')
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+    // 先确认错误行真的消失（钉住 load() 里的 setError(null)），再确认列表真的换成了新数据。
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(await screen.findByText('Ext App')).toBeInTheDocument()
   })
 })

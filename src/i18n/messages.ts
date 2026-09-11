@@ -42,6 +42,8 @@ const zhCN = {
     },
     oauth: {
       scopes: { profile: '基本资料', email: '邮箱', friends: '好友数', groups: '群数' },
+      // scope 列表 / 回调地址列表共用的顿号分隔符——en-US 不能沿用中文全角标点，见 listSeparator 用法。
+      listSeparator: '、',
       grantsTitle: '已授权应用', grantsHint: '以下应用已获得访问你账户数据的权限，可随时取消授权。', grantsEmpty: '还没有授权任何应用',
       revoke: '取消授权', confirm: '确认', cancel: '取消', revokeFailed: '取消授权失败',
       grantedJustNow: '刚刚授权', grantedHoursAgo: '{n} 小时前授权', grantedDaysAgo: '{n} 天前授权',
@@ -604,6 +606,7 @@ const enUS = {
     },
     oauth: {
       scopes: { profile: 'Profile', email: 'Email', friends: 'Friend count', groups: 'Group count' },
+      listSeparator: ', ',
       grantsTitle: 'Authorized apps', grantsHint: 'These apps can access your account data. You can revoke access at any time.', grantsEmpty: 'No authorized apps yet',
       revoke: 'Revoke', confirm: 'Confirm', cancel: 'Cancel', revokeFailed: 'Failed to revoke',
       grantedJustNow: 'Authorized just now', grantedHoursAgo: 'Authorized {n} hours ago', grantedDaysAgo: 'Authorized {n} days ago',
