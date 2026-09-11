@@ -42,8 +42,10 @@ export function sortConversations(list: UnifiedConversation[]): UnifiedConversat
 export function useUnifiedConversations(): { conversations: UnifiedConversation[]; status: 'loading' | 'ready' } {
   const friends = useFriendsStore((s) => s.friends)
   const friendsLoading = useFriendsStore((s) => s.isLoading)
+  const friendsHasLoaded = useFriendsStore((s) => s.hasLoaded)
   const groups = useGroupStore((s) => s.myGroups)
   const groupsLoading = useGroupStore((s) => s.isLoading)
+  const groupsHasLoaded = useGroupStore((s) => s.hasLoaded)
   const summary = useChatStore((s) => s.unreadSummary)
   const pinned = usePinnedStore((s) => s.pinned)
 
@@ -81,5 +83,9 @@ export function useUnifiedConversations(): { conversations: UnifiedConversation[
     return sortConversations(list)
   }, [friends, groups, summary, pinned])
 
-  return { conversations, status: friendsLoading || groupsLoading ? 'loading' : 'ready' }
+  // `hasLoaded` 区分"从没问过后端"与"问过了，结果就是没有"（friendsStore/groupStore
+  // 的注释）：冷启动首帧两个 store 都是 isLoading:false / 空数组，只看 isLoading
+  // 会把这一帧误判成 ready+空，列表先闪一下"还没有会话"再变成真内容（终审 finding #2）。
+  const status = !friendsHasLoaded || !groupsHasLoaded || friendsLoading || groupsLoading ? 'loading' : 'ready'
+  return { conversations, status }
 }

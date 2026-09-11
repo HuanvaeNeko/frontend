@@ -44,18 +44,29 @@ function ChatListColumn() {
   const { conversations, status } = useUnifiedConversations()
   const friendsError = useFriendsStore((s) => s.error)
   const loadFriends = useFriendsStore((s) => s.loadFriends)
+  const groupsError = useGroupStore((s) => s.error)
   const loadMyGroups = useGroupStore((s) => s.loadMyGroups)
   const togglePin = usePinnedStore((s) => s.toggle)
   const markRead = useChatStore((s) => s.markRead)
   return (
     <UnifiedList
       conversations={conversations}
-      status={friendsError ? 'error' : status}
-      error={friendsError ?? undefined}
+      status={friendsError || groupsError ? 'error' : status}
+      error={friendsError ?? groupsError ?? undefined}
       selectedId={conversationId ?? null}
       onSelect={(id) => router.push(chatPath(id))}
       onTogglePin={togglePin}
-      onMarkRead={(id) => { const p = parseConversationId(id); if (p) markRead(p.kind, p.kind === 'friend' ? p.userId : p.groupId) }}
+      onMarkRead={(id) => {
+        const p = parseConversationId(id)
+        if (!p) return
+        const targetId = p.kind === 'friend' ? p.userId : p.groupId
+        // 先发 WS `mark_read`（后端真值），再清本地未读摘要——只清本地的话，
+        // 下一次 `unread_summary` 推送或刷新会把角标打回来（终审 finding #1）。
+        // 不在这里用 `useRealtimeMessages()`：那个 hook 自己会注册一整套 WS
+        // 消息处理器，壳内再挂一次就是双重注册。
+        useWSStore.getState().sendMarkRead(p.kind, targetId)
+        markRead(p.kind, targetId)
+      }}
       onRetry={() => { loadFriends().catch(console.error); loadMyGroups().catch(console.error) }}
       onCreateGroup={() => router.push(`${ROUTES.app.contacts}?tab=groups&add=create-group`)}
       onAddFriend={() => router.push(`${ROUTES.app.contacts}?add=friend`)}

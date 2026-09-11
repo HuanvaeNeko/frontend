@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiShapeError } from '@/lib/apiEnvelope'
 import { botsApi } from '../bots'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -16,9 +17,9 @@ describe('botsApi.listMyBots', () => {
     expect(bots).toEqual([{ bot_user_id: 'bot_1', username: 'helper', nickname: '小助手', description: '帮忙', is_active: true, created_at: '2026-09-01T00:00:00Z' }])
   })
 
-  it('缺必需字段（bot_user_id）抛错，不静默吞成 undefined', async () => {
+  it('缺必需字段（bot_user_id）抛 ApiShapeError，不静默吞成 undefined，也不绕开 [api-shape] 上报（终审 finding #7）', async () => {
     fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: [{ ...BOT, bot_user_id: undefined }] }))
-    await expect(botsApi.listMyBots()).rejects.toThrow()
+    await expect(botsApi.listMyBots()).rejects.toBeInstanceOf(ApiShapeError)
   })
 
   it('HTTP 200 但 success:false 透出后端文案', async () => {

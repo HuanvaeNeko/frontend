@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
@@ -11,7 +11,9 @@ vi.mock('@/features/chat/components/sidebar/FriendList', () => ({
   default: (p: { subTab: string }) => <div data-testid="friend-list" data-subtab={p.subTab} />,
 }))
 vi.mock('@/features/chat/components/sidebar/GroupList', () => ({
-  default: (p: { subTab: string; initialCreateOpen?: boolean }) => <div data-testid="group-list" data-subtab={p.subTab} data-create={String(!!p.initialCreateOpen)} />,
+  default: (p: { subTab: string; initialCreateOpen?: boolean; dialogOnly?: boolean }) => (
+    <div data-testid="group-list" data-subtab={p.subTab} data-create={String(!!p.initialCreateOpen)} data-dialog-only={String(!!p.dialogOnly)} />
+  ),
 }))
 
 /**
@@ -74,8 +76,8 @@ const friend = (id: string, nickname: string, remark: string | null = null) => (
 
 describe('ContactsList', () => {
   beforeEach(() => {
-    useFriendsStore.setState({ friends: [friend('alice', '爱丽丝', '小爱'), friend('bob', '鲍勃')], isLoading: false, error: null })
-    useGroupStore.setState({ myGroups: [{ group_id: 'g1', group_name: '读书会', group_avatar_url: null, role: 'member', unread_count: null, last_message_content: null, last_message_time: null }] as never, isLoading: false })
+    useFriendsStore.setState({ friends: [friend('alice', '爱丽丝', '小爱'), friend('bob', '鲍勃')], isLoading: false, hasLoaded: true, error: null })
+    useGroupStore.setState({ myGroups: [{ group_id: 'g1', group_name: '读书会', group_avatar_url: null, role: 'member', unread_count: null, last_message_content: null, last_message_time: null }] as never, isLoading: false, hasLoaded: true, error: null })
   })
 
   it('默认好友 tab：每个好友一行，名字备注优先，链接到 /app/contacts/friends/:id，当前项 data-selected', () => {
@@ -102,8 +104,14 @@ describe('ContactsList', () => {
     expect(screen.getByTestId('friend-list')).toHaveAttribute('data-subtab', 'new')
     renderAt('/app/contacts?tab=groups&add=join-group')
     expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-subtab', 'join')
+    // 正对照：join-group 面板不传 dialogOnly——证明下面 create-group 的 data-dialog-only
+    // 不是这个 mock 组件恒真的默认值。
+    expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-dialog-only', 'false')
     renderAt('/app/contacts?tab=groups&add=create-group')
     expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-create', 'true')
+    // create-group 面板只该是一个创建群表单：dialogOnly 传 true，GroupList 才会跳过
+    // 整份主列表（否则点一行会写 selectedConversation 却不改 URL，终审 finding #4）。
+    expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-dialog-only', 'true')
   })
 
   it('搜索框按名字过滤；无匹配给提示', () => {
@@ -113,5 +121,33 @@ describe('ContactsList', () => {
     expect(screen.queryByRole('link', { name: /小爱/ })).toBeNull()
     fireEvent.change(screen.getByPlaceholderText('搜索联系人'), { target: { value: 'zzz' } })
     expect(screen.getByText('没有匹配的联系人')).toBeInTheDocument()
+  })
+
+  it('friendsStore 还没问完后端（hasLoaded:false）时显示加载中，不是"还没有好友"（终审 finding #2）', () => {
+    useFriendsStore.setState({ hasLoaded: false })
+    renderAt('/app/contacts')
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.queryByText('还没有好友')).toBeNull()
+    expect(screen.queryByRole('link', { name: /小爱/ })).toBeNull()
+  })
+
+  it('群加载失败显示错误与重试（正对照：error 为 null 时显示群行）（终审 finding #3）', () => {
+    const loadMyGroups = vi.fn()
+    useGroupStore.setState({ error: '网络断了', loadMyGroups })
+    renderAt('/app/contacts?tab=groups')
+    expect(screen.getByRole('alert')).toHaveTextContent('网络断了')
+    expect(screen.queryByRole('link', { name: /读书会/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(loadMyGroups).toHaveBeenCalledTimes(1)
+    // 手动 cleanup：下面的正对照复用同一个 tab（?tab=groups），如果不卸载，
+    // 这一次报错态的 alert 节点会一直留在 DOM 里，把下面"没有 alert"的断言污染成假阳性。
+    cleanup()
+
+    // 正对照：同一个 tab，只把 error 改回 null——显示群行而不是报错，
+    // 证明刚才的错误态确实由 groupStore.error 驱动，不是恒渲染。
+    useGroupStore.setState({ error: null })
+    renderAt('/app/contacts?tab=groups')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('link', { name: /读书会/ })).toBeInTheDocument()
   })
 })

@@ -18,7 +18,7 @@ interface ConversationCardProps {
 export function ConversationCard({ conversation: c, selected, onSelect, onTogglePin, onMarkRead }: ConversationCardProps) {
   const { t } = useI18n()
   const unread = formatUnreadCount(c.unreadCount)
-  const time = c.lastMessageTime ? formatMessageTime(c.lastMessageTime) : ''
+  const time = c.lastMessageTime ? formatMessageTime(c.lastMessageTime, undefined, { yesterday: t('shell.list.yesterday'), weekdays: t('shell.list.weekdays').split(',') }) : ''
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -57,7 +57,7 @@ export function ConversationCard({ conversation: c, selected, onSelect, onToggle
               <span className="min-w-0 flex-1 select-none truncate text-[12px] text-muted-foreground" title={c.preview ?? undefined}>
                 {c.preview ?? t('shell.list.noMessage')}
               </span>
-              {c.pinned && <span className="inline-flex shrink-0 text-muted-foreground" title="已置顶"><Pin className="h-3.5 w-3.5" /></span>}
+              {c.pinned && <span className="inline-flex shrink-0 text-muted-foreground" title={t('shell.list.pinned')}><Pin className="h-3.5 w-3.5" /></span>}
               {unread && (
                 <span className="ml-2 flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-[9px] bg-unread px-1.5 text-[10px] font-semibold text-[var(--unread-badge-text)]">
                   {unread}

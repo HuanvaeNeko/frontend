@@ -58,10 +58,14 @@ export function ContactsList() {
   const [query, setQuery] = useState('')
   const friends = useFriendsStore((s) => s.friends)
   const friendsLoading = useFriendsStore((s) => s.isLoading)
+  const friendsHasLoaded = useFriendsStore((s) => s.hasLoaded)
   const friendsError = useFriendsStore((s) => s.error)
   const loadFriends = useFriendsStore((s) => s.loadFriends)
   const groups = useGroupStore((s) => s.myGroups)
   const groupsLoading = useGroupStore((s) => s.isLoading)
+  const groupsHasLoaded = useGroupStore((s) => s.hasLoaded)
+  const groupsError = useGroupStore((s) => s.error)
+  const loadMyGroups = useGroupStore((s) => s.loadMyGroups)
 
   const q = query.trim().toLowerCase()
   const shownFriends = useMemo(() => friends.filter((f) => !q || friendDisplayName(f).toLowerCase().includes(q) || f.friend_id.toLowerCase().includes(q)), [friends, q])
@@ -84,7 +88,11 @@ export function ContactsList() {
       </div>
       {add === 'friend' && <FriendList subTab="new" searchQuery="" />}
       {add === 'join-group' && <GroupList subTab="join" searchQuery="" />}
-      {add === 'create-group' && <GroupList subTab="main" searchQuery="" initialCreateOpen />}
+      {/* dialogOnly：这个面板只该是一个「创建群」表单。不传的话 GroupList 会渲染整份
+          主列表，点一行只改 chatStore.selectedConversation 不改 URL——死点击，而且
+          useRealtimeMessages 的 shouldAddToChat 会把这个群的新消息在用户并不在聊天
+          路由时也路由进 chatStore.messages（终审 finding #4）。 */}
+      {add === 'create-group' && <GroupList subTab="main" searchQuery="" initialCreateOpen dialogOnly />}
     </div>
   )
 
@@ -101,16 +109,16 @@ export function ContactsList() {
       </div>
       <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto py-2 pl-2 pr-0.5 [scrollbar-gutter:stable]">
         {addPanel}
-        {tab === 'friends' && (friendsLoading ? <ListLoading /> : friendsError ? <ListError error={friendsError} onRetry={() => { loadFriends().catch(console.error) }} /> :
+        {tab === 'friends' && ((friendsLoading || !friendsHasLoaded) ? <ListLoading /> : friendsError ? <ListError error={friendsError} onRetry={() => { loadFriends().catch(console.error) }} /> :
           friends.length === 0 ? <ListEmpty message={t('shell.contacts.noFriends')} /> : shownFriends.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :
           shownFriends.map((f) => (
             <ContactRow key={f.friend_id} testId={`contact-f-${f.friend_id}`} to={contactFriendPath(f.friend_id)} name={friendDisplayName(f)} subtitle={`@${f.friend_id}`}
               avatarUrl={f.friend_avatar_url ? (toAbsoluteApiUrl(f.friend_avatar_url) ?? null) : null} selected={userId === f.friend_id} />
           )))}
-        {tab === 'groups' && (groupsLoading ? <ListLoading /> :
+        {tab === 'groups' && ((groupsLoading || !groupsHasLoaded) ? <ListLoading /> : groupsError ? <ListError error={groupsError} onRetry={() => { loadMyGroups().catch(console.error) }} /> :
           groups.length === 0 ? <ListEmpty message={t('shell.contacts.noGroups')} /> : shownGroups.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :
           shownGroups.map((g) => (
-            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? `${g.member_count} 人` : g.group_id}
+            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? t('shell.contacts.memberCount', { n: g.member_count }) : g.group_id}
               avatarUrl={g.group_avatar_url ? (toAbsoluteApiUrl(g.group_avatar_url) ?? null) : null} selected={groupId === g.group_id} />
           )))}
         {tab === 'requests' && (

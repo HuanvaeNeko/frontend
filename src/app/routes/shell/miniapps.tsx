@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { EmptyContent } from '@/components/shell/EmptyContent'
 import { ListEmpty, ListError, ListLoading } from '@/components/shell/ListStates'
 import { RouteDialog } from '@/components/shell/RouteDialog'
-import { miniappsApi, type MiniAppSummary } from '@/features/miniapps/api/miniapps'
+import { miniappsApi, resolveSameOriginUrl, type MiniAppSummary } from '@/features/miniapps/api/miniapps'
 import { useI18n } from '@/i18n/I18nProvider'
-import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 
 export default function MiniappsRoute() {
   const { t } = useI18n()
@@ -22,20 +21,27 @@ export default function MiniappsRoute() {
       <RouteDialog title={t('shell.modals.miniapps')}>
         {error ? <ListError error={error} onRetry={load} /> : apps === null ? <ListLoading /> : apps.length === 0 ? <ListEmpty message={t('shell.modals.miniappsEmpty')} /> : (
           <ul className="divide-y divide-[var(--border-subtle)]">
-            {apps.map((app) => (
-              <li key={app.miniapp_id} className="flex items-center gap-3 py-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--bg-tertiary)] text-[13px] font-semibold text-muted-foreground">
-                  {app.icon_url ? <img src={app.icon_url} alt="" className="h-full w-full object-cover" /> : app.display_name[0]?.toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-semibold text-foreground">{app.display_name}</div>
-                  <div className="truncate text-[12px] text-muted-foreground">{app.description}</div>
-                </div>
-                <button type="button" className="subtle-btn" onClick={() => window.open(toAbsoluteApiUrl(app.access_url) ?? app.access_url, '_blank', 'noopener')}>
-                  {t('shell.modals.open')}
-                </button>
-              </li>
-            ))}
+            {apps.map((app) => {
+              // access_url 未经校验时可以是任意 scheme/站外地址（后端数据驱动的
+              // window.open 目标）：只有同源 http(s) 才渲染「打开」按钮（终审 finding #6）。
+              const href = resolveSameOriginUrl(app.access_url)
+              return (
+                <li key={app.miniapp_id} className="flex items-center gap-3 py-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--bg-tertiary)] text-[13px] font-semibold text-muted-foreground">
+                    {app.icon_url ? <img src={app.icon_url} alt="" className="h-full w-full object-cover" /> : app.display_name[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[14px] font-semibold text-foreground">{app.display_name}</div>
+                    <div className="truncate text-[12px] text-muted-foreground">{app.description}</div>
+                  </div>
+                  {href && (
+                    <button type="button" className="subtle-btn" onClick={() => window.open(href, '_blank', 'noopener')}>
+                      {t('shell.modals.open')}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </RouteDialog>

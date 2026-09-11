@@ -43,8 +43,10 @@ describe('sortConversations（APP conversationSort：置顶优先 → 时间倒�
 
 describe('useUnifiedConversations：friends × groups × unreadSummary × pinned', () => {
   beforeEach(() => {
-    useFriendsStore.setState({ friends: [], isLoading: false })
-    useGroupStore.setState({ myGroups: [], isLoading: false })
+    // hasLoaded:true——本文件大多数用例关心的是"合并/排序对不对"，不是冷启动的
+    // loading 态；那一档单独在下面 describe 里用正对照钉住（finding #2）。
+    useFriendsStore.setState({ friends: [], isLoading: false, hasLoaded: true })
+    useGroupStore.setState({ myGroups: [], isLoading: false, hasLoaded: true })
     useChatStore.setState({ unreadSummary: null })
     usePinnedStore.getState().reset()
   })
@@ -91,5 +93,29 @@ describe('useUnifiedConversations：friends × groups × unreadSummary × pinned
     useFriendsStore.setState({ isLoading: true })
     const { result } = renderHook(() => useUnifiedConversations())
     expect(result.current.status).toBe('loading')
+  })
+
+  it('群 store 还在首轮加载（friends 早已问完）时 status 也是 loading', () => {
+    // 与上一条对称：只让 groupStore.isLoading 为真，friendsStore 保持 beforeEach
+    // 里已经问完的状态——证明 loading 不是只看 friendsStore 一侧。
+    useGroupStore.setState({ isLoading: true })
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.status).toBe('loading')
+  })
+
+  it('从没问过后端（hasLoaded:false）时 status 为 loading，即使 isLoading 已经是 false（终审 finding #2）', () => {
+    // 冷启动首帧：两个 store 都是 isLoading:false / hasLoaded:false / 空数组——
+    // AppShellLayout 的挂载 effect 要等首轮渲染跑完才会触发 loadFriends()/loadMyGroups()，
+    // 那一帧如果只看 isLoading 会被判成 ready+空，列表闪一下"还没有会话"。
+    useFriendsStore.setState({ friends: [], isLoading: false, hasLoaded: false })
+    useGroupStore.setState({ myGroups: [], isLoading: false, hasLoaded: false })
+    const { result } = renderHook(() => useUnifiedConversations())
+    expect(result.current.status).toBe('loading')
+    // 正对照：同一份数据，两个 store 都置 hasLoaded:true 后立刻变 ready——
+    // 证明刚才的 loading 确实是 hasLoaded 决定的，不是数据本身或别的条件。
+    useFriendsStore.setState({ hasLoaded: true })
+    useGroupStore.setState({ hasLoaded: true })
+    const { result: ready } = renderHook(() => useUnifiedConversations())
+    expect(ready.current.status).toBe('ready')
   })
 })

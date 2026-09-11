@@ -82,9 +82,16 @@ interface GroupListProps {
   subTab: 'main' | 'invites' | 'join'
   searchQuery: string
   initialCreateOpen?: boolean
+  /**
+   * 只在 `subTab === 'main'` 时生效：为 `true` 时只渲染创建群对话框（仍由
+   * `initialCreateOpen` 打开），不渲染列表/搜索/行。供 `ContactsList` 的
+   * `?add=create-group` 面板用——那个面板语义上只是一个「创建群」表单；渲染整份
+   * 主列表会让点击行写 `chatStore.selectedConversation` 却不改 URL（终审 finding #4）。
+   */
+  dialogOnly?: boolean
 }
 
-export default function GroupList({ subTab, searchQuery, initialCreateOpen }: GroupListProps) {
+export default function GroupList({ subTab, searchQuery, initialCreateOpen, dialogOnly }: GroupListProps) {
   const { t } = useI18n()
   const { toast } = useToast()
   const {
@@ -521,6 +528,7 @@ export default function GroupList({ subTab, searchQuery, initialCreateOpen }: Gr
   if (subTab === 'main') {
     return (
       <div className="flex flex-col h-full">
+        {!dialogOnly && (
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
           {/* 创建群聊按钮 (List Header) */}
           <motion.div 
@@ -590,6 +598,7 @@ export default function GroupList({ subTab, searchQuery, initialCreateOpen }: Gr
             </AnimatePresence>
           )}
         </div>
+        )}
 
         {/* 创建群聊对话框 - 使用 Portal 渲染到 body */}
         {typeof document !== 'undefined' && createPortal(

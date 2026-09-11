@@ -75,6 +75,16 @@ describe('AppShell 的折叠', () => {
     expect(screen.getByRole('link', { name: '返回列表' })).toHaveAttribute('href', '/app/contacts')
   })
 
+  it('手机：模态框路由（/app/files）+ 记住的 tab 时，高亮与 aria-current 一致（底部条 Link 而非 NavLink 驱动，终审 finding #9）', () => {
+    stubViewport(390)
+    // /app/files 跟 chat/contacts 的路径都不匹配：如果 aria-current 是 NavLink 自己
+    // 按 URL 算的，两个 tab 此刻都不会有 aria-current；这里断言"有且仅有 activeTab
+    // 指向的那个"，证明驱动它的是 activeTab 这个 prop，不是 URL 匹配。
+    renderAt('/app/files', 'contacts')
+    expect(screen.getByRole('link', { name: '联系人' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '消息' })).not.toHaveAttribute('aria-current')
+  })
+
   it('手机「更多」列出五个工具 + 个人资料 + 设置', async () => {
     stubViewport(390)
     renderAt('/app/chat')
