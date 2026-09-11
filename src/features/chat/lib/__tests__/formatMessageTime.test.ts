@@ -30,4 +30,16 @@ describe('formatMessageTime（APP utils/time.ts 规则）', () => {
     expect(formatMessageTime(at(2026, 9, 9, 9, 30), NOW)).toBe('昨天 09:30')
     expect(formatMessageTime(at(2026, 9, 7, 8, 0), NOW)).toBe('周一 08:00')
   })
+  it('零点边界：现在 00:01，昨天 23:59 是「昨天」，今天 00:00 是「00:00」', () => {
+    const now = new Date(2026, 8, 10, 0, 1)
+    expect(formatMessageTime(at(2026, 9, 9, 23, 59), now)).toBe('昨天 23:59')
+    expect(formatMessageTime(at(2026, 9, 10, 0, 0), now)).toBe('00:00')
+  })
+  it('七天边界：6 天前是「周X」，整 7 天前是「M/D」', () => {
+    expect(formatMessageTime(at(2026, 9, 4, 8, 0), NOW)).toBe('周五 08:00')
+    expect(formatMessageTime(at(2026, 9, 3, 8, 0), NOW)).toBe('9/3 08:00')
+  })
+  it('未来时间（客户端时钟落后）按今天显示 HH:mm，不显示负天数', () => {
+    expect(formatMessageTime(at(2026, 9, 11, 9, 0), NOW)).toBe('09:00')
+  })
 })

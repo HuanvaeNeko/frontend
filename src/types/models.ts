@@ -17,25 +17,6 @@ export interface UserProfile {
 }
 
 /**
- * Friend Information（`GET /api/friends` 的 `FriendDto`）
- *
- * 字段以 `backend-docs/friends/好友添加删除.md:107-118` 为准；可空字段后端序列化为
- * `null`（无 `skip_serializing_if`），故写 `| null` 而非可选属性。
- * 权威定义在 `src/features/chat/api/friends.ts`——这里是历史遗留的第二份拷贝
- * （全仓无引用），同步更新只是不想再留一份会误导人的旧字段名。
- */
-export interface Friend {
-  friend_id: string
-  friend_nickname: string | null
-  friend_avatar_url: string | null
-  add_time: string
-  approve_reason: string | null
-  friend_remark: string | null
-  is_blacklisted: boolean
-  is_special_care: boolean
-}
-
-/**
  * Pending Friend Request（`GET /api/friends/requests/pending` 的 `PendingRequestDto`）
  */
 export interface PendingRequest {

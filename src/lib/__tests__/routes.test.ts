@@ -7,6 +7,7 @@ import {
 describe('壳的路由表（spec §3）', () => {
   it('路径助手拼出的是字面量 URL', () => {
     expect(chatPath('f-alice')).toBe('/app/chat/f-alice')
+    expect(chatPath('f-a b/c')).toBe('/app/chat/f-a%20b%2Fc')
     expect(contactFriendPath('alice')).toBe('/app/contacts/friends/alice')
     expect(contactGroupPath('g1')).toBe('/app/contacts/groups/g1')
     expect(settingsPath('account')).toBe('/app/settings/account')

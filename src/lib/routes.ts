@@ -28,7 +28,7 @@ export function isSettingsSection(value: string): value is SettingsSection {
   return (SETTINGS_SECTIONS as readonly string[]).includes(value)
 }
 
-export const chatPath = (conversationId: string): string => `${ROUTES.app.chat}/${conversationId}`
+export const chatPath = (conversationId: string): string => `${ROUTES.app.chat}/${encodeURIComponent(conversationId)}`
 export const contactFriendPath = (userId: string): string => `${ROUTES.app.contacts}/friends/${encodeURIComponent(userId)}`
 export const contactGroupPath = (groupId: string): string => `${ROUTES.app.contacts}/groups/${encodeURIComponent(groupId)}`
 export const settingsPath = (section: SettingsSection): string => `${ROUTES.app.settings}/${section}`

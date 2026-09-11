@@ -150,4 +150,37 @@ test.describe('Chat Functionality', () => {
     // 按可访问名取：桌面上侧栏「更多」面板也是 role=dialog（aria-label 更多功能），退场动画期间会短暂并存
     await expect(page.getByRole('dialog', { name: /我的文件|My files/ })).toBeVisible()
   })
+
+  test('设置六个分区可达；授权页缺参数显示错误页而不跳转', async ({ page }, testInfo) => {
+    await mockListEndpoints(page, [], [])
+    await page.route('**/api/oauth/grants', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 200, data: [] }) }))
+    await page.route('**/api/friends/blacklist', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 200, data: [] }) }))
+    await page.goto(`${BASE_URL}/app/settings/appearance`)
+    await expect(page).toHaveURL(/\/app\/settings\/appearance$/)
+    const isMobile = testInfo.project.name === 'mobile'
+    // 折叠视口下分区列表在 /app/settings 索引页；桌面在列表栏。逐个分区点过去，内容区出现分区标题。
+    // 内容文案核对自 src/i18n/messages.ts：notifications 的英文侧 `sounds.title`
+    // ('Notification sound') 在组件树里实际没有任何调用点渲染（只有 `hint`/`water`/
+    // `classic` 等子键被消费），真正渲染在屏幕上的是 `shell.settings.sound`
+    // （单数，通知开关那一行的标题）—— zh '提示音' / en 'Sounds'；ai 分区标题取自
+    // `AiSection.tsx` 用的 `settings.aiConfig`（不是 `shell.settings.ai`，那个 key
+    // 只是侧栏链接名）—— zh 'AI 配置' / en 'AI Config'。
+    const sections: Array<[string, RegExp, RegExp]> = [
+      ['appearance', /^外观$|^Appearance$/, /主题配色|Color scheme/],
+      ['notifications', /通知与提醒|Notifications/, /提示音|Sounds/],
+      ['account', /账户与安全|Account & security/, /黑名单|Blocked users/],
+      ['apps', /授权与应用|Apps & access/, /已授权应用|Authorized apps/],
+      ['ai', /^AI 配置$|^AI$/, /AI 配置|AI Config/],
+      ['about', /^关于$|^About$/, /版本|Version/],
+    ]
+    for (const [key, linkName, contentText] of sections) {
+      if (isMobile) await page.goto(`${BASE_URL}/app/settings`)
+      await page.getByRole('link', { name: linkName }).first().click()
+      await expect(page).toHaveURL(new RegExp(`/app/settings/${key}$`))
+      await expect(page.getByTestId('content-column').getByText(contentText).first()).toBeVisible()
+    }
+    await page.goto(`${BASE_URL}/app/oauth/authorize?redirect_uri=%2Fapps%2Fx%2Fcb`)
+    await expect(page.getByText(/无效的授权请求|Invalid authorization request/)).toBeVisible()
+    await expect(page).toHaveURL(/\/app\/oauth\/authorize\?redirect_uri=/)
+  })
 })

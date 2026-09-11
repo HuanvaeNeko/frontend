@@ -11,8 +11,13 @@ vi.mock('@/features/chat/components/sidebar/FriendList', () => ({
   default: (p: { subTab: string }) => <div data-testid="friend-list" data-subtab={p.subTab} />,
 }))
 vi.mock('@/features/chat/components/sidebar/GroupList', () => ({
-  default: (p: { subTab: string; initialCreateOpen?: boolean; dialogOnly?: boolean }) => (
-    <div data-testid="group-list" data-subtab={p.subTab} data-create={String(!!p.initialCreateOpen)} data-dialog-only={String(!!p.dialogOnly)} />
+  default: (p: { subTab: string }) => <div data-testid="group-list" data-subtab={p.subTab} />,
+}))
+// 建群（?add=create-group）只渲染这一个对话框（终审 finding #4），不再是 GroupList
+// 的一个 dialogOnly 变体——单独探针，断言 open 与 onClose 是否接到 closeAdd。
+vi.mock('@/features/chat/components/sidebar/CreateGroupDialog', () => ({
+  CreateGroupDialog: (p: { open: boolean; onClose: () => void }) => (
+    <div data-testid="create-group-dialog" data-open={String(p.open)}><button type="button" onClick={p.onClose}>close-dialog</button></div>
   ),
 }))
 
@@ -50,24 +55,32 @@ vi.mock('@/i18n/I18nProvider', async () => {
  * 从不渲染（`ContactsList` 不含 `<Outlet/>`），只用来让 RR 把这段 URL 匹配出
  * `userId`/`groupId`。
  */
-const renderAt = (url: string) =>
-  render(
-    <RouterProvider
-      router={createMemoryRouter(
-        [
-          {
-            path: '/app/contacts',
-            element: <ContactsList />,
-            children: [
-              { path: 'friends/:userId', element: <div /> },
-              { path: 'groups/:groupId', element: <div /> },
-            ],
-          },
+// testRouter 暴露给下面 create-group 那条用例：关闭对话框要断言 URL 的 `add`
+// 参数被清掉，和 `ProfileView.test.tsx` 的 `testRouter` 同一个写法。
+//
+// 先 cleanup() 再挂载：`renderAt` 在不少用例里被同一个 `it` 调用两三次
+// （模拟连续导航），不先卸载上一棵树的话，DOM 里会叠加多份 mock 探针——
+// 下面 create-group 那条要断言「group-list 探针不出现」，如果 join-group
+// 那次遗留的探针还在，断言会假阳性地失败。其余沿用 `.at(-1)`/`getAllByTestId`
+// 写法的用例对是否清空并不敏感，加这一行不影响它们。
+let testRouter: ReturnType<typeof createMemoryRouter> | null = null
+const renderAt = (url: string) => {
+  cleanup()
+  testRouter = createMemoryRouter(
+    [
+      {
+        path: '/app/contacts',
+        element: <ContactsList />,
+        children: [
+          { path: 'friends/:userId', element: <div /> },
+          { path: 'groups/:groupId', element: <div /> },
         ],
-        { initialEntries: [url] },
-      )}
-    />,
+      },
+    ],
+    { initialEntries: [url] },
   )
+  return render(<RouterProvider router={testRouter} />)
+}
 
 const friend = (id: string, nickname: string, remark: string | null = null) => ({
   friend_id: id, friend_nickname: nickname, friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z',
@@ -107,14 +120,12 @@ describe('ContactsList', () => {
     expect(screen.getByTestId('friend-list')).toHaveAttribute('data-subtab', 'new')
     renderAt('/app/contacts?tab=groups&add=join-group')
     expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-subtab', 'join')
-    // 正对照：join-group 面板不传 dialogOnly——证明下面 create-group 的 data-dialog-only
-    // 不是这个 mock 组件恒真的默认值。
-    expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-dialog-only', 'false')
     renderAt('/app/contacts?tab=groups&add=create-group')
-    expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-create', 'true')
-    // create-group 面板只该是一个创建群表单：dialogOnly 传 true，GroupList 才会跳过
-    // 整份主列表（否则点一行会写 selectedConversation 却不改 URL，终审 finding #4）。
-    expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-dialog-only', 'true')
+    expect(screen.getByTestId('create-group-dialog')).toHaveAttribute('data-open', 'true')
+    // 只渲染对话框：主列表探针不出现（正对照：上面 join-group 那次 group-list 是出现的）
+    expect(screen.queryByTestId('group-list')).toBeNull()
+    fireEvent.click(screen.getByText('close-dialog'))
+    expect(testRouter?.state.location.search).toBe('?tab=groups')
   })
 
   it('搜索框按名字过滤；无匹配给提示', () => {

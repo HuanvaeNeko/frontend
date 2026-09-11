@@ -270,50 +270,13 @@ describe('GroupList selectionError → toast 消费（groupStore.selectGroup 失
 })
 
 
-describe('GroupList 建群对话框：join_mode 五档 → join_approval_required 布尔', () => {
-  /** 打开建群对话框并填好群名。 */
-  const openCreateDialog = async () => {
+describe('GroupList 建群入口', () => {
+  it('点「创建群聊」打开对话框（表单标题出现），再点取消关闭', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
     fireEvent.click(await screen.findByText('chat.groupList.createGroup'))
-    const nameInput = await screen.findByPlaceholderText('chat.groupList.enterGroupNamePlaceholder')
-    fireEvent.change(nameInput, { target: { value: '我的群聊' } })
-    return nameInput
-  }
-
-  it('只有两档，五档里被取消的那三档不再出现', async () => {
-    render(<GroupList subTab="main" searchQuery="" />)
-    await openCreateDialog()
-
-    const select = screen.getByLabelText('chat.groupList.joinApprovalLabel') as HTMLSelectElement
-    expect(Array.from(select.options).map(o => o.value)).toEqual(['required', 'open'])
-    // 五档模型的三个 i18n key 已随类型一起删除（doc:64-75：invite_only /
-    // admin_invite_only / closed 无替代）。
-    expect(screen.queryByText('chat.groupList.joinModeInviteOnlyDesc')).not.toBeInTheDocument()
-    expect(screen.queryByText('chat.groupList.joinModeLabel')).not.toBeInTheDocument()
-  })
-
-  it('默认值是「需要审核」——与后端不传该字段时的默认一致（doc:60）', async () => {
-    render(<GroupList subTab="main" searchQuery="" />)
-    await openCreateDialog()
-
-    expect(screen.getByLabelText('chat.groupList.joinApprovalLabel')).toHaveValue('required')
-
-    fireEvent.click(screen.getByText('chat.groupList.create'))
-
-    await waitFor(() => expect(groupStoreState.createGroup).toHaveBeenCalledTimes(1))
-    expect(groupStoreState.createGroup).toHaveBeenCalledWith('我的群聊', undefined, true)
-  })
-
-  it('选「无需审核」时第三个实参是 false（不是字符串 "open"）', async () => {
-    render(<GroupList subTab="main" searchQuery="" />)
-    await openCreateDialog()
-
-    fireEvent.change(screen.getByLabelText('chat.groupList.joinApprovalLabel'), {
-      target: { value: 'open' },
-    })
-    fireEvent.click(screen.getByText('chat.groupList.create'))
-
-    await waitFor(() => expect(groupStoreState.createGroup).toHaveBeenCalledTimes(1))
-    expect(groupStoreState.createGroup).toHaveBeenCalledWith('我的群聊', undefined, false)
+    expect(await screen.findByRole('heading', { name: 'chat.groupList.createGroup' })).toBeInTheDocument()
+    fireEvent.click(screen.getByText('chat.groupList.cancel'))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'chat.groupList.createGroup' })).toBeNull())
   })
 })
 

@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { NavLink, useParams, useSearchParams } from 'react-router'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { CreateGroupDialog } from '@/features/chat/components/sidebar/CreateGroupDialog'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import { friendDisplayName } from '@/features/chat/lib/friendName'
@@ -81,18 +82,16 @@ export function ContactsList() {
     </button>
   )
 
-  const addPanel = add && (
+  const addPanel = add === 'create-group' ? (
+    // 建群只是一个对话框（终审 finding #4）：不渲染 GroupList 主列表，关闭即清 add 参数
+    <CreateGroupDialog open onClose={closeAdd} />
+  ) : add && (
     <div className="mb-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
       <div className="mb-1 flex justify-end">
         <button type="button" aria-label={t('shell.contacts.closePanel')} onClick={closeAdd} className="rounded-md p-1 text-muted-foreground hover:bg-[var(--primary-subtle)]"><X className="h-4 w-4" /></button>
       </div>
       {add === 'friend' && <FriendList subTab="new" searchQuery="" />}
       {add === 'join-group' && <GroupList subTab="join" searchQuery="" />}
-      {/* dialogOnly：这个面板只该是一个「创建群」表单。不传的话 GroupList 会渲染整份
-          主列表，点一行只改 chatStore.selectedConversation 不改 URL——死点击，而且
-          useRealtimeMessages 的 shouldAddToChat 会把这个群的新消息在用户并不在聊天
-          路由时也路由进 chatStore.messages（终审 finding #4）。 */}
-      {add === 'create-group' && <GroupList subTab="main" searchQuery="" initialCreateOpen dialogOnly />}
     </div>
   )
 
