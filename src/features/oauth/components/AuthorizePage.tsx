@@ -82,12 +82,23 @@ export function AuthorizePage() {
   }
   const deny = () => {
     if (!req) return
-    // 纵深防御（修复第 2 轮 Critical）：拒绝分支没有后端回传，从头到尾没有服务端确认过，
-    // isValidRedirectUri 是跳转前唯一一道闸——不该只信它一次布尔判断就跳。这里跳转前用
-    // 独立于 isValidRedirectUri 内部实现的解析结果再核验一遍：原串以 `/` 开头、意图是站内
-    // 路径的，解析后必须真的同源；否则（意图是绝对地址）只能再确认协议是 http(s)——具体
-    // host 是否在注册白名单里，前端在这条没有后端回传的路径上天生查不到，只能交给后端在
-    // 别的入口把关。哪怕 isValidRedirectUri 未来出现新的绕过方式，这里的独立复核也能兜底。
+    // 拒绝分支是全流程里唯一没有服务端背书的跳转：kind:'code' 用的是后端回传的
+    // redirect_uri（后端已按注册白名单验过），这里用的却是 query 里的原始值——从头到尾
+    // 没有任何一次服务端确认过它。它敢跳，依据是后端在返回 consent_required 之前已经把
+    // 这个 redirect_uri 对该 client_id 的注册白名单校验过了（RFC 6749 §4.1.2.1 要求
+    // 如此，Task 4 也见过「redirect_uri 未注册」的 400 契约）——下面这两层本地检查只是
+    // 第二道防线，不是主防线。如果将来确认后端在 consent 阶段不做这层校验，这里不足以
+    // 兜底：任何人都能拿一个已注册的 client_id 配任意站外 redirect_uri 走到同意页，
+    // 再靠「拒绝」把用户送走。届时正确的修法是把这个分支改成「不跳转、只显示已拒绝」，
+    // 不是继续在 isValidRedirectUri 里加字符黑名单（controller 已裁决：绝对 http(s)
+    // 一律放行是刻意的既有政策，见 redirectUri.ts 的函数注释，这里不能顺手收紧）。
+    //
+    // 纵深防御：不该只信 isValidRedirectUri 一次布尔判断就跳，这里跳转前用独立于它内部
+    // 实现的解析结果再核验一遍：原串以 `/` 开头、意图是站内路径的，解析后必须真的同源；
+    // 否则（意图是绝对地址）只能再确认协议是 http(s)。isValidRedirectUri 内部的
+    // hasControlChars 与 origin 比对对控制字符走私这一族是互相冗余的（两层单独留一层都
+    // 挡得住），真正独立兜底、不能删的是这里——两层都失守时只有这段二次核验能拦住实际跳转
+    // （变异校验记录见 2026-09-11-settings-completion/task-6-report.md「修复第 1 轮」）。
     if (isValidRedirectUri(req.redirect_uri)) {
       const resolved = new URL(req.redirect_uri, location.origin)
       const expectSameOrigin = req.redirect_uri.trim().startsWith('/')

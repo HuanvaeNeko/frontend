@@ -25,8 +25,26 @@ function hasControlChars(value: string): boolean {
  *
  * 站内路径分支不再用字符串前缀猜测（旧版 `!value.startsWith('//')`），改成真正解析后比对
  * origin——只有这样才能同时挡住协议相对地址（`//evil.example/cb`）和上面这种控制字符走私。
- * 绝对地址分支保持只认协议、不管 host：这里没有后端的注册白名单可查，OAuth 外部客户端的
- * 回调本来就是站外地址，收紧这一条会把合法的外部回调也一起拒了。
+ * `hasControlChars` 与这里的 origin 比对，对「控制字符走私出协议相对地址」这一族攻击是
+ * 互相冗余的（实测过：单独留哪一层都能挡住 `/\t/evil.example/cb` 这类输入，删掉其中一层
+ * 也测不红——见 2026-09-11-settings-completion/task-6-report.md「修复第 1 轮」的变异校验
+ * 记录）。真正独立兜底、不能删的是 `AuthorizePage.tsx` 的 `deny()` 里那层二次核验：两层
+ * 都在这里失守时，只有它能拦住实际跳转。
+ *
+ * 绝对地址分支保持只认协议、不管 host，这是刻意的、控制器已裁决维持的政策——不要后来有人
+ * 「顺手」收紧成同源检查。OAuth 外部客户端的回调按契约设计就是站外绝对地址（backend-docs
+ * 的注册示例就是 `https://example.com/callback`），收紧这一条等于把外部客户端整个废掉；
+ * `https:/\evil` 经 WHATWG 解析等价于 `https://evil/`，和 `https://example.com/cb` 属于
+ * 同一类合法绝对地址，不是需要额外堵的绕过。
+ *
+ * 这条政策的安全性依赖一个本文件无法验证的后端行为：`AuthorizePage.tsx` 的拒绝分支敢用
+ * query 里的 `redirect_uri` 跳转，前提是后端在返回 `consent_required` 之前已经把这个
+ * `redirect_uri` 对该 `client_id` 的注册白名单校验过了（RFC 6749 §4.1.2.1 要求如此，
+ * Task 4 也见过「redirect_uri 未注册」的 400 契约）——这里的形状检查只是第二道防线，不是
+ * 主防线。如果将来确认后端在 consent 阶段不做这层校验，本地检查不足以兜底：任何人都能拿
+ * 一个已注册的 `client_id` 配任意站外 `redirect_uri` 走到同意页，再靠「拒绝」把用户送走，
+ * 那时控制字符只是众多写法之一，收紧字符集根本不解决问题。届时正确的修法是把拒绝分支改成
+ * 「不跳转、只显示已拒绝」，而不是继续在这里加字符黑名单。
  */
 export function isValidRedirectUri(raw: string): boolean {
   if (hasControlChars(raw)) return false
