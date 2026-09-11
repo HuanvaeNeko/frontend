@@ -25,7 +25,8 @@ afterEach(() => { vi.useRealTimers() })
 describe('ThemeEditor', () => {
   it('默认预设：只显示预设卡片与毛玻璃，不显示自定义颜色；点「自定义」卡片切预设并展开取色器', () => {
     render(<ThemeEditor />)
-    expect(screen.getByRole('radio', { name: /默认/ })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: /默认/ })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /自定义/ })).not.toBeChecked()
     expect(screen.queryByText('自定义颜色')).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: /自定义/ }))
     expect(useThemeStore.getState().config.preset).toBe('custom')

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPACITY_LEVELS } from '../presets'
 import { DEFAULT_THEME_CONFIG, THEME_STORAGE_KEY, isThemeConfig, useThemeStore } from '../store'
 
@@ -65,5 +65,59 @@ describe('isThemeConfig', () => {
     expect(isThemeConfig({ preset: 'rainbow', customColors: { primary: '#000000' } })).toBe(false)
     expect(isThemeConfig({ preset: 'custom' })).toBe(false)
     expect(isThemeConfig(null)).toBe(false)
+  })
+})
+
+/**
+ * `merge()` 的水合路径：钉住「恢复时只信 config，快照本地重算，不信任落盘里的 snapshot」。
+ *
+ * 必须真正触发 `persist` 的同步水合（zustand 5 在 `create()` 内部就同步调一次 `hydrate()`，
+ * 见 `sessionScope.ts` 顶部注释），而不能复用本文件顶部已经 hydrate 过的单例——那个单例
+ * 早在文件加载时就 `create()` 过了，此后再 `setItem` 不会让它重新水合。所以这里用
+ * `vi.resetModules()` 清空模块缓存，在动态 `import('../store')` *之前* 把构造好的落盘内容
+ * 写进 `localStorage`，让新的模块实例在它自己的 `create()` 里读到这份数据。
+ * 顶层 `beforeEach` 已经 `localStorage.clear()` 过一次，这里不用再清。
+ */
+describe('themeStore：merge() 的水合路径', () => {
+  it('落盘 config 是 default 但 snapshot 残留：水合后必须清成 null，不信任残留快照', async () => {
+    localStorage.setItem(
+      'huanvae.theme',
+      JSON.stringify({
+        state: {
+          config: { preset: 'default', customColors: { primary: '#3b82f6' } },
+          snapshot: { light: { '--primary': '#deadbe' }, dark: { '--primary': '#deadbe' } },
+        },
+        version: 0,
+      }),
+    )
+    vi.resetModules()
+    const fresh = await import('../store')
+    expect(fresh.useThemeStore.getState().snapshot).toBeNull()
+    expect(fresh.useThemeStore.getState().config.preset).toBe('default')
+  })
+
+  it('落盘 config 是 custom：水合后快照用本地生成器重算，不是落盘里的值（正对照）', async () => {
+    localStorage.setItem(
+      'huanvae.theme',
+      JSON.stringify({
+        state: {
+          config: { preset: 'custom', customColors: { primary: '#e11d48' } },
+          snapshot: { light: { '--primary': '#deadbe' }, dark: {} },
+        },
+        version: 0,
+      }),
+    )
+    vi.resetModules()
+    const fresh = await import('../store')
+    expect(fresh.useThemeStore.getState().snapshot?.light['--primary']).toBe('#bc002c')
+    expect(fresh.useThemeStore.getState().snapshot?.light['--primary']).not.toBe('#deadbe')
+  })
+
+  it('落盘 config 形状损坏：水合后回落默认配置与 null 快照', async () => {
+    localStorage.setItem('huanvae.theme', JSON.stringify({ state: { config: { preset: 'rainbow' } }, version: 0 }))
+    vi.resetModules()
+    const fresh = await import('../store')
+    expect(fresh.useThemeStore.getState().config).toEqual(fresh.DEFAULT_THEME_CONFIG)
+    expect(fresh.useThemeStore.getState().snapshot).toBeNull()
   })
 })

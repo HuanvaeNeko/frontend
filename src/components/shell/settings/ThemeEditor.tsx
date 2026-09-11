@@ -88,8 +88,10 @@ export function ThemeEditor() {
                 className={cn('flex cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left', active ? 'border-primary bg-[var(--primary-subtle)]' : 'border-[var(--border-subtle)]')}>
                 {/* 原生 radio 而不是 `role="radio"` 的 button：后者触发 biome useSemanticElements
                     警告（有语义元素可用时不该借 role 伪装），与 AppearanceSection.tsx 的明暗三选一
-                    同一个写法。aria-checked 与 checked 重复是有意的——测试对 aria-checked 做字面断言。 */}
-                <input type="radio" name="theme-preset" className="sr-only" aria-label={name} aria-checked={active} checked={active} onChange={() => setPreset(p.key)} />
+                    同一个写法。选中态只由 `checked` 表达——WAI-ARIA 不建议在已有原生语义的
+                    元素上叠加同义的 `aria-checked`，测试也改用 `toBeChecked()` 断言状态而不是
+                    抠字面 DOM 属性。 */}
+                <input type="radio" name="theme-preset" className="sr-only" aria-label={name} checked={active} onChange={() => setPreset(p.key)} />
                 <span className="flex gap-1">{p.previewColors.map((c) => <span key={c} className="h-5 w-5 rounded-full" style={{ backgroundColor: c }} />)}</span>
                 <span className="flex items-center justify-between text-[13px] text-foreground">{name}{active && <Check className="h-4 w-4 text-primary" />}</span>
                 <span className="text-[11px] text-muted-foreground">{t(`${NS}.${p.key === 'default' ? 'presetDefaultDesc' : 'presetCustomDesc'}`)}</span>
