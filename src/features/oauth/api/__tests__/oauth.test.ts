@@ -22,16 +22,40 @@ describe('解析器', () => {
     expect(() => parseOAuthClient({ ...CLIENT, redirect_uris: 'x' })).toThrow(/redirect_uris/)
     expect(() => parseOAuthClient({ ...CLIENT, is_active: 'yes' })).toThrow(/is_active/)
   })
+  // 修复第 1 轮 Important #1：redirect_uris / allowed_scopes 之前是「是数组」就放行，数组内脏元素
+  // 被 filter 悄悄丢掉——这是没人测过的组合（已有用例只测过"整个字段不是数组"）。现在元素类型
+  // 不对必须抛，且不能连带把合法输入也一起挡掉（正对照）。
+  it('parseOAuthClient：redirect_uris / allowed_scopes 数组内元素类型不对 → 抛（不再静默 filter 丢弃）；正对照：全是字符串照常通过', () => {
+    expect(() => parseOAuthClient({ ...CLIENT, redirect_uris: [null, 42] })).toThrow(/redirect_uris/)
+    expect(() => parseOAuthClient({ ...CLIENT, allowed_scopes: ['profile', 42] })).toThrow(/allowed_scopes/)
+    expect(parseOAuthClient(CLIENT).redirect_uris).toEqual(['https://example.com/cb'])
+    expect(parseOAuthClient(CLIENT).allowed_scopes).toEqual(['profile', 'email'])
+  })
+  // 修复第 1 轮 Important #2：同源门禁是刻意的隐私取舍，不是"抄小程序规则的副作用"——
+  // backend-docs oauth/OAuth授权服务器API.md 自己的示例就是这个站外地址，外部客户端的 logo
+  // 按契约设计本来就是站外的，这里落空退化成首字母头像是预期行为，不是 bug。
+  it('parseOAuthClient：站外 logo → null 是刻意的隐私取舍（契约文档 app_logo_url 示例本身就是站外地址），不是 bug；正对照：同源相对路径正常解析', () => {
+    expect(parseOAuthClient({ ...CLIENT, app_logo_url: 'https://example.com/logo.png' }).app_logo_url).toBeNull()
+    expect(parseOAuthClient({ ...CLIENT, app_logo_url: 'avatars/x.png' }).app_logo_url).toBe(`${location.origin}/avatars/x.png`)
+  })
   it('parseOAuthGrant：六个字段；缺 id 抛；站外 logo → null（与 client 同款同源校验）', () => {
     expect(parseOAuthGrant(GRANT)).toEqual(GRANT)
     expect(() => parseOAuthGrant({ ...GRANT, id: undefined })).toThrow(/id/)
     expect(parseOAuthGrant({ ...GRANT, app_logo_url: 'https://evil.example/x.png' }).app_logo_url).toBeNull()
+  })
+  it('parseOAuthGrant：站外 logo → null 同样是刻意的隐私取舍，不是 bug（同 parseOAuthClient）；正对照：同源相对路径正常解析', () => {
+    expect(parseOAuthGrant({ ...GRANT, app_logo_url: 'https://example.com/logo.png' }).app_logo_url).toBeNull()
+    expect(parseOAuthGrant({ ...GRANT, app_logo_url: 'avatars/x.png' }).app_logo_url).toBe(`${location.origin}/avatars/x.png`)
   })
   it('parseAuthorizeResult：consent_required → kind consent；否则 kind code（state 可为 null）', () => {
     expect(parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: null, scopes: ['profile'] })).toEqual({ kind: 'consent', app_name: 'X', app_logo_url: null, scopes: ['profile'] })
     expect(parseAuthorizeResult({ code: 'abc', state: null, redirect_uri: 'https://example.com/cb' })).toEqual({ kind: 'code', code: 'abc', state: null, redirect_uri: 'https://example.com/cb' })
     expect(parseAuthorizeResult({ code: 'abc', state: 's1', redirect_uri: '/apps/x/cb' })).toEqual({ kind: 'code', code: 'abc', state: 's1', redirect_uri: '/apps/x/cb' })
     expect(() => parseAuthorizeResult({ code: 'abc', state: null })).toThrow(/redirect_uri/)
+  })
+  it('parseAuthorizeResult：consent 分支 scopes 数组内元素类型不对 → 抛；正对照：全是字符串照常通过', () => {
+    expect(() => parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: null, scopes: ['profile', 42] })).toThrow(/scopes/)
+    expect(parseAuthorizeResult({ consent_required: true, app_name: 'X', app_logo_url: null, scopes: ['profile'] })).toEqual({ kind: 'consent', app_name: 'X', app_logo_url: null, scopes: ['profile'] })
   })
   it('scopeLabelKey：四个已知 scope 映射到 shell.oauth.scopes.*，未知 scope 原样返回', () => {
     expect(scopeLabelKey('profile')).toBe('shell.oauth.scopes.profile')
@@ -41,6 +65,12 @@ describe('解析器', () => {
 })
 
 describe('oauthApi 请求形状', () => {
+  // 修复第 1 轮 Important #1：确认 stringArray 抛出的是能被 readEnvelope 的 validatePayload
+  // 接住、转成 ApiShapeError 并走 [api-shape] 上报链路的错误，而不是一个逃逸出去的裸 Error。
+  it('listClients：行内数组元素类型不对时抛 ApiShapeError（strict 解析经 readEnvelope 接住）', async () => {
+    fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: [{ ...CLIENT, redirect_uris: ['https://example.com/cb', 42] }] }))
+    await expect(oauthApi.listClients()).rejects.toBeInstanceOf(ApiShapeError)
+  })
   it('listGrants：GET /api/oauth/grants，data 数组', async () => {
     fetchMock.mockResolvedValueOnce(json({ success: true, code: 200, data: [GRANT] }))
     expect(await oauthApi.listGrants()).toEqual([GRANT])
