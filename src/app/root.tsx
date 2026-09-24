@@ -11,6 +11,7 @@ import {
 } from 'react-router'
 import type { LinksFunction, MetaFunction } from 'react-router'
 import NotFoundView from '@/components/common/NotFoundView'
+import ServiceWorkerUpdater from '@/components/common/ServiceWorkerUpdater'
 import SoundProvider from '@/components/providers/SoundProvider'
 import GlobalThreeBackdrop from '@/components/three/GlobalThreeBackdrop'
 import { Toaster } from '@/components/ui/toaster'
@@ -19,7 +20,6 @@ import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { ThemeProvider } from '@/features/theme/ThemeProvider'
 import { setNotificationSound, setSoundEnabled, setSoundVolume } from '@/hooks/useSound'
 import { I18nProvider } from '@/i18n/I18nProvider'
-import { dynamic } from '@/lib/dynamic'
 import globalsHref from '@/styles/globals.css?url'
 import { themeInitScript } from './themeInitScript'
 
@@ -27,11 +27,6 @@ const APP_NAME = 'Huanvae Chat'
 const APP_DEFAULT_TITLE = 'Huanvae Chat - AI聊天、群聊与视频会议'
 const APP_DESCRIPTION = '智能通讯平台 - AI聊天、群组协作、视频会议，支持实时消息、文件共享、视频通话'
 const APP_URL = 'https://huanvae.cn'
-
-const UpdatePrompt = dynamic(async () => {
-  const mod = await import('@/components/common/UpdatePrompt')
-  return { default: mod.UpdatePrompt }
-})
 
 export const links: LinksFunction = () => [
   { rel: 'stylesheet', href: globalsHref },
@@ -181,7 +176,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <ThemeProvider />
             <div className="relative z-10 h-full">{children}</div>
             <Toaster />
-            <UpdatePrompt autoUpdateDelay={3000} />
+            <ServiceWorkerUpdater />
           </SoundProvider>
         </I18nProvider>
         <ScrollRestoration />

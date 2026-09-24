@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildAvatarUploadPayload, isUploadSessionExpired, storageApi } from '@/api/storage'
+import { hasUploadsInFlight } from '@/lib/uploadsInFlight'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
@@ -761,6 +762,53 @@ describe('storageApi.uploadAvatar（三档共用层）', () => {
     expect((error as Error).message).not.toBe('文件太大，最大 10MB，当前: 10.00 MB')
     // 一个字节都没往外发（客户端这道闸的全部价值就是省掉这次往返）。
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * 部署后的静默更新（`ServiceWorkerUpdater`）靠它判断「现在整页刷新会不会打断一次上传」。
+ * 每条都同时断言「进行中为真」和「结束后为假」：只加不减、或根本不加，都会有一边红。
+ */
+describe('hasUploadsInFlight（静默更新的刷新闸）', () => {
+  const file = () => new File(['hello'], 'a.jpg', { type: 'image/jpeg' })
+  const pngFile = () => new File(['x'], 'me.png', { type: 'image/png' })
+
+  beforeEach(() => {
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new ArrayBuffer(32))
+  })
+
+  it('uploadFile 进行中为真，成功结束后归零', async () => {
+    let release: (value: Response) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { release = resolve }))
+
+    expect(hasUploadsInFlight()).toBe(false)
+    const upload = storageApi.uploadFile(file(), 'user_image', 'user_files')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(hasUploadsInFlight()).toBe(true)
+
+    release(envelope(INSTANT_DATA))
+    await upload
+    expect(hasUploadsInFlight()).toBe(false)
+  })
+
+  it('uploadFile 失败也归零——否则一次失败的上传会让静默更新永远等下去', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 400, message: '文件大小超过限制' }, 400))
+
+    await expect(storageApi.uploadFile(file(), 'user_image', 'user_files')).rejects.toThrow('文件大小超过限制')
+    expect(hasUploadsInFlight()).toBe(false)
+  })
+
+  it('uploadAvatar 进行中为真，结束后归零', async () => {
+    let release: (value: Response) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { release = resolve }))
+
+    const upload = storageApi.uploadAvatar(pngFile(), { avatar_target: 'user_avatar' }).catch((e: unknown) => e)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(hasUploadsInFlight()).toBe(true)
+
+    release(ok({ success: false, code: 400, message: '文件大小超过限制' }, 400))
+    await upload
+    expect(hasUploadsInFlight()).toBe(false)
   })
 })
 

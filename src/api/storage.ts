@@ -1,5 +1,6 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ApiError, type Parser, readEnvelope } from '@/lib/apiEnvelope'
+import { trackUpload } from '@/lib/uploadsInFlight'
 import {
   asRecord,
   bool,
@@ -958,55 +959,57 @@ export const storageApi = {
       currentChunk: number
       totalChunks: number
     }) => void
-  ): Promise<{ fileUrl: string; isInstant: boolean; messageUuid?: string }> => {
-    console.log('🔄 开始上传流程:', file.name)
-    
-    // 1. 计算文件哈希
-    console.log('🔢 计算文件哈希...')
-    const fileHash = await calculateFileHash(file)
-    
-    // 2. 请求上传
-    const uploadInfo = await storageApi.requestUpload({
-      file_type: fileType,
-      storage_location: storageLocation,
-      related_id: relatedId,
-      filename: file.name,
-      file_size: file.size,
-      content_type: file.type,
-      file_hash: fileHash,
-      force_upload: false,
-    })
-    
-    // 3. 检查秒传
-    //
-    // 旧写法是 `uploadInfo.existing_file_url!`：秒传分支拿不到 URL 时返回
-    // undefined 而不是报错，ChatWindow 那边 `fileUrl.split('/')` 才崩。
-    // 现在 instant_upload 是可辨识联合的判别式，这个分支里 existing_file_url
-    // 由类型保证是非空字符串（且已在解包处补成绝对地址），`!` 没有存在的余地。
-    if (uploadInfo.instant_upload) {
-      console.log('⚡ 秒传成功!')
-      return {
-        fileUrl: uploadInfo.existing_file_url,
-        isInstant: true,
-        messageUuid: uploadInfo.message_uuid,
-      }
-    }
+  ): Promise<{ fileUrl: string; isInstant: boolean; messageUuid?: string }> =>
+    // 登记为进行中：静默更新据此推迟整页刷新，见 @/lib/uploadsInFlight
+    trackUpload(async () => {
+      console.log('🔄 开始上传流程:', file.name)
 
-    // 4. 分片上传
-    console.log(`📤 开始分片上传: ${uploadInfo.total_chunks} 个分片`)
-    await storageApi.uploadWithMultipart(file, uploadInfo, onProgress)
-    
-    // 5. 确认上传完成
-    console.log('✅ 确认上传...')
-    const confirmResult = await storageApi.confirmUpload(uploadInfo.file_key)
-    
-    console.log('✅ 上传成功!')
+      // 1. 计算文件哈希
+      console.log('🔢 计算文件哈希...')
+      const fileHash = await calculateFileHash(file)
+
+      // 2. 请求上传
+      const uploadInfo = await storageApi.requestUpload({
+        file_type: fileType,
+        storage_location: storageLocation,
+        related_id: relatedId,
+        filename: file.name,
+        file_size: file.size,
+        content_type: file.type,
+        file_hash: fileHash,
+        force_upload: false,
+      })
+
+      // 3. 检查秒传
+      //
+      // 旧写法是 `uploadInfo.existing_file_url!`：秒传分支拿不到 URL 时返回
+      // undefined 而不是报错，ChatWindow 那边 `fileUrl.split('/')` 才崩。
+      // 现在 instant_upload 是可辨识联合的判别式，这个分支里 existing_file_url
+      // 由类型保证是非空字符串（且已在解包处补成绝对地址），`!` 没有存在的余地。
+      if (uploadInfo.instant_upload) {
+        console.log('⚡ 秒传成功!')
+        return {
+          fileUrl: uploadInfo.existing_file_url,
+          isInstant: true,
+          messageUuid: uploadInfo.message_uuid,
+        }
+      }
+
+      // 4. 分片上传
+      console.log(`📤 开始分片上传: ${uploadInfo.total_chunks} 个分片`)
+      await storageApi.uploadWithMultipart(file, uploadInfo, onProgress)
+
+      // 5. 确认上传完成
+      console.log('✅ 确认上传...')
+      const confirmResult = await storageApi.confirmUpload(uploadInfo.file_key)
+
+      console.log('✅ 上传成功!')
       return {
-      fileUrl: confirmResult.file_url,
+        fileUrl: confirmResult.file_url,
         isInstant: false,
-      messageUuid: confirmResult.message_uuid,
-    }
-  },
+        messageUuid: confirmResult.message_uuid,
+      }
+    }),
 
   /**
    * 头像上传的完整四步链路（用户头像 / 资料背景图 / 群头像三档共用）。
@@ -1053,7 +1056,7 @@ export const storageApi = {
 
     // 「查表 → 落表」之间没有任何 await：await 之前的代码是同步执行的，
     // 所以这一段不可能被另一次调用插进来。
-    const task = runAvatarUpload(file, target, onProgress).finally(() => {
+    const task = trackUpload(() => runAvatarUpload(file, target, onProgress)).finally(() => {
       avatarUploadsInFlight.delete(key)
     })
     avatarUploadsInFlight.set(key, task)

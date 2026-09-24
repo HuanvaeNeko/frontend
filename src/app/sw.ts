@@ -25,9 +25,9 @@ declare const self: ServiceWorkerGlobalScope
 // - `version.json`：不是 404 风险，是"必须绕过缓存"——src/lib/version.ts
 //   用 `fetch('/version.json', { cache: 'no-store' })` 读取实时构建版本号；
 //   若被 SW precache 命中，会让这次请求永远拿到安装当时的旧版本号。保留。
-// - `manifest.json`：与 version.json 同理，本次重新调研新增。
-//   UpdatePrompt.tsx 两处 `fetch('/manifest.json', { cache: 'no-store' })`
-//   同样是用它做"是否有新版本"的实时判断，必须绕开 precache。
+// - `manifest.json`：PWA 清单，浏览器安装/更新 PWA 时要读到最新的那份，不能被
+//   precache 钉在安装时的版本上。（曾经的 UpdatePrompt.tsx 还拿它读版本号，
+//   已随静默更新改造删除，见 ServiceWorkerUpdater.tsx。）
 //
 // 注 1：当前 vite-plugin-pwa 的 injectManifest.globPatterns 用的是官方默认值
 // `**/*.{js,wasm,css,html}`（未在 vite.config.ts 里覆盖，与 spike 验证过的
@@ -64,6 +64,12 @@ function shouldSkipPrecache(entry: PrecacheEntry | string): boolean {
 // 漏改这一步不会有任何构建错误或运行时报错——self.__WB_MANIFEST 会被
 // 静默替换成空数组，SW 正常安装/激活，但生产环境 precache 会是 0 个文件。
 const precacheEntries = (self.__WB_MANIFEST ?? []).filter((e) => !shouldSkipPrecache(e))
+
+// 本 SW 所属的构建：React Router 路由清单 `assets/manifest-<version>.js` 文件名里的
+// version，与页面上 window.__reactRouterManifest.version 是同一个值。GET_VERSION 回的
+// 就是它，页面拿来判断「这个新 SW 和我是不是同一次构建」（见 ServiceWorkerUpdater.tsx）。
+const BUILD_VERSION: string | null =
+  precacheEntries.map((e) => /(?:^|\/)assets\/manifest-([\w-]+)\.js$/.exec(getPath(e))?.[1]).find(Boolean) ?? null
 
 precacheAndRoute(precacheEntries)
 
@@ -338,7 +344,7 @@ self.addEventListener('message', (event) => {
 
     case 'GET_VERSION':
       event.ports[0]?.postMessage({
-        version: 'workbox',
+        version: BUILD_VERSION,
       })
       break
 
