@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
@@ -17,13 +17,10 @@ import {
   File,
   ExternalLink
 } from 'lucide-react'
-import { Document, Page, pdfjs } from 'react-pdf'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
 import { Markdown } from './markdown'
 
-// 配置 PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+// pdf.js 只在预览 PDF 时才需要，见 file-preview-pdf.tsx 顶部注释
+const PdfPreview = lazy(() => import('./file-preview-pdf'))
 
 export interface PreviewFile {
   url: string
@@ -89,6 +86,13 @@ function formatSize(bytes?: number): string {
   }
   return `${size.toFixed(1)} ${units[unitIndex]}`
 }
+
+const pdfLoading = (
+  <div className="p-8 flex items-center gap-3">
+    <Loader2 className="w-5 h-5 animate-spin" />
+    加载 PDF...
+  </div>
+)
 
 export function FilePreview({ file, files = [], onClose, onDownload }: FilePreviewProps) {
   const [scale, setScale] = useState(1)
@@ -360,27 +364,19 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
               {/* PDF 预览 */}
               {previewType === 'pdf' && (
                 <div className="bg-white rounded-lg overflow-hidden shadow-2xl">
-                  <Document
-                    file={currentFile.url}
-                    onLoadSuccess={({ numPages }) => {
-                      setNumPages(numPages)
-                      setLoading(false)
-                    }}
-                    onLoadError={() => setError('PDF 加载失败')}
-                    loading={
-                      <div className="p-8 flex items-center gap-3">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        加载 PDF...
-                      </div>
-                    }
-                  >
-                    <Page
-                      pageNumber={currentPage}
+                  <Suspense fallback={pdfLoading}>
+                    <PdfPreview
+                      url={currentFile.url}
+                      page={currentPage}
                       scale={scale}
-                      renderTextLayer
-                      renderAnnotationLayer
+                      loading={pdfLoading}
+                      onLoadSuccess={(pages) => {
+                        setNumPages(pages)
+                        setLoading(false)
+                      }}
+                      onLoadError={() => setError('PDF 加载失败')}
                     />
-                  </Document>
+                  </Suspense>
                 </div>
               )}
 
