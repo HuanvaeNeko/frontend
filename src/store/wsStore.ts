@@ -463,16 +463,14 @@ export const useWSStore = create<WSState>((set, get) => {
             if (handlers) {
               handlers.forEach(handler => {
                 try {
-                  // 根据消息类型传递不同的数据
-                  // 对于有 data 属性的消息，传递 data
-                  // 对于没有 data 属性的消息，传递除 type 外的所有字段
-                  let payload: unknown
-                  if ('data' in message) {
-                    payload = message.data
-                  } else {
-                    const { type: _type, ...rest } = message
-                    payload = rest
-                  }
+                  // 载荷 = 帧里除 type 外的字段；只有 data 一个键的帧（typing）交 data 本身。
+                  // 不能「有 data 就只交 data」：system_notification 是
+                  // {type, notification_type, data}（backend-docs groups/群聊管理.md「通知格式」），
+                  // 只交 data 会丢掉 notification_type——处理器恒走 default，好友申请、群邀请、
+                  // 被移出、解散……全部静默失效。
+                  const { type: _type, ...rest } = message as { type: string } & Record<string, unknown>
+                  const keys = Object.keys(rest)
+                  const payload: unknown = keys.length === 1 && keys[0] === 'data' ? rest.data : rest
                   handler(payload)
                 } catch (error) {
                   console.error(`消息处理器错误 (${message.type}):`, error)

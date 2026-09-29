@@ -212,7 +212,7 @@ test.describe('假后端世界：alice 走遍每个壳路由', () => {
     })
   }
 
-  test('私聊图片经 /friends-file/ 透传真能解码（下面群图片那条 test.fail 的对照组）', async ({ page }) => {
+  test('私聊图片经 /friends-file/ 透传真能解码（群图片那条的对照组）', async ({ page }) => {
     await login(page, 'alice')
     const imageRequest = page.waitForRequest((r) => new URL(r.url()).pathname.startsWith('/friends-file/'))
     await page.goto('/app/chat/f-dave')
@@ -303,17 +303,14 @@ test.describe('实时链路（WebSocket）', () => {
 })
 
 /**
- * 已知前端缺陷：用 `test.fail()` 钉住「现在确实是坏的」。哪天修好了，这几条会以「意外通过」变红，
- * 提醒把 `test.fail()` 拿掉、改成正常用例。
- *
- * `test.fail()` 故意放在测试体中途：它只把**调用之后**的失败算作预期。前面的前置条件（登录、种子、
- * WS 帧确实到了浏览器、预签名确实拿到了、图片确实被请求了）都是普通断言，坏了就以真失败变红——
- * 否则任何原因的失败都会被当成「缺陷还在」吞掉，修好了也永远不会「意外通过」。
+ * 这三条最初用 `test.fail()` 钉住「当时确实是坏的」前端缺陷，修好后（2026-09-29 审计分支）
+ * 拿掉 `test.fail()` 转为回归用例。前置条件（WS 帧确实到了浏览器、预签名确实拿到了、图片确实
+ * 被请求了）仍是普通断言：挂在前置条件上说明是环境或种子的问题，挂在最后一条上才是缺陷复发。
  */
-test.describe('已知前端缺陷（test.fail 记录，修好后会以意外通过变红）', () => {
-  test('直接打开会话列表时，好友卡片应显示最后一条消息与未读数（connected 帧没人接）', async ({ page }) => {
-    // src/features/chat/hooks/useRealtimeMessages.ts 只由 ChatWindow 挂载（ChatWindow.tsx:34），
-    // 停在 /app/chat 时没有任何 connected 处理器，未读摘要被 wsStore 丢弃（wsStore.ts:462-463）。
+test.describe('审计修复的回归（原 test.fail 记录的已知缺陷）', () => {
+  test('直接打开会话列表时，好友卡片显示最后一条消息与未读数（connected 帧有人接）', async ({ page }) => {
+    // 曾经：useRealtimeMessages 只由 ChatWindow 挂载，停在 /app/chat 时没有 connected 处理器，
+    // 未读摘要被 wsStore 丢弃。现在由壳层 RealtimeBridge 挂载一次。
     const frames = wsFrames(page)
     await login(page, 'alice')
     await page.goto('/app/chat')
@@ -325,13 +322,12 @@ test.describe('已知前端缺陷（test.fail 记录，修好后会以意外通�
         timeout: 15_000,
       })
       .toBe(true)
-    test.fail()
     await expect(list(page).getByTestId('conversation-f-bob')).toContainText('晚上一起吃饭吗？🍜', { timeout: 8_000 })
   })
 
-  test('群聊里的图片应能加载（/group-file/ 不在 BFF 透传前缀里）', async ({ page }) => {
-    // server/index.ts:81、src/lib/bffPrefixes.ts:11、src/app/routes.ts:15-18 的透传前缀都只有
-    // avatars / user-file / friends-file / apps，群文件桶的预签名地址 group-file/… 落到 RR 应用 404。
+  test('群聊里的图片能加载（BFF 透传 /group-file/*）', async ({ page }) => {
+    // 曾经：透传前缀只有 avatars / user-file / friends-file / apps，群文件桶的预签名地址
+    // group-file/… 落到 RR 应用 404。
     await login(page, 'alice')
     const presign = page.waitForResponse(
       (r) => r.request().method() === 'POST' && /^\/api\/storage\/file\/[^/]+\/presigned_url$/.test(new URL(r.url()).pathname),
@@ -343,15 +339,12 @@ test.describe('已知前端缺陷（test.fail 记录，修好后会以意外通�
     expect(res.status()).toBe(200)
     expect(await res.text()).toContain('group-file/')
     await imageRequest
-    test.fail()
     await expect.poll(() => anyImageDecoded(page), { timeout: 8_000 }).toBe(true)
   })
 
-  test('聊天窗口开着时收到好友申请，联系人角标应从 1 变 2（system_notification 被错误解包）', async ({ page, request }) => {
-    // 停在聊天窗口里，WS 处理器是挂着的（ChatWindow 挂载 useRealtimeMessages）——排除「没人接」那条原因。
-    // wsStore.ts:470-471 对带 data 键的帧只把 message.data 交给处理器，
-    // useRealtimeMessages.ts:143-145 却读 data.notification_type —— 恒为 undefined，走 default 分支，
-    // loadPendingRequests 从不被调用。
+  test('聊天窗口开着时收到好友申请，联系人角标从 1 变 2（system_notification 正确解包）', async ({ page, request }) => {
+    // 曾经：wsStore 对带 data 键的帧只把 message.data 交给处理器，处理器读 data.notification_type
+    // 恒为 undefined、走 default 分支，loadPendingRequests 从不被调用。
     const frames = wsFrames(page)
     await login(page, 'alice')
     await page.goto('/app/chat/f-bob')
@@ -367,7 +360,6 @@ test.describe('已知前端缺陷（test.fail 记录，修好后会以意外通�
         timeout: 10_000,
       })
       .toBe(true)
-    test.fail()
     await expect(page.getByTestId('badge-contacts')).toHaveText('2', { timeout: 8_000 })
   })
 })

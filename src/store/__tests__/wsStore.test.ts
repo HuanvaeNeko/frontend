@@ -104,3 +104,36 @@ it('同一个 give-up episode 只问一次：两次连续放弃（中间没有�
 
   expect(restoreSession).toHaveBeenCalledTimes(1)
 })
+
+/**
+ * 处理器拿到的载荷。system_notification 的帧是 `{type, notification_type, data}`
+ * （backend-docs groups/群聊管理.md「通知格式」），原分发规则「帧里有 data 就只交 data」
+ * 把 notification_type 丢了：处理器 switch 恒走 default，好友申请、群邀请、被移出、解散……
+ * 全部静默失效。只有 data 一个键的帧（typing）仍然交 data 本身。
+ */
+function deliver(frame: unknown) {
+  const ws = useWSStore.getState().ws as unknown as { onmessage?: (event: { data: string }) => void }
+  ws.onmessage?.({ data: JSON.stringify(frame) })
+}
+
+it('system_notification：notification_type 与 data 一起交给处理器', () => {
+  const handler = vi.fn()
+  const unsubscribe = useWSStore.getState().registerHandler('system_notification', handler)
+  useWSStore.getState().connect()
+
+  deliver({ type: 'system_notification', notification_type: 'friend_request', data: { from_nickname: '朱迪', request_id: 'r1' } })
+
+  expect(handler).toHaveBeenCalledWith({ notification_type: 'friend_request', data: { from_nickname: '朱迪', request_id: 'r1' } })
+  unsubscribe()
+})
+
+it('正对照：只有 data 一个键的帧（typing）仍把 data 本身交给处理器', () => {
+  const handler = vi.fn()
+  const unsubscribe = useWSStore.getState().registerHandler('typing', handler)
+  useWSStore.getState().connect()
+
+  deliver({ type: 'typing', data: { user_id: 'bob', conversation_type: 'private', conversation_id: 'bob', is_typing: true } })
+
+  expect(handler).toHaveBeenCalledWith({ user_id: 'bob', conversation_type: 'private', conversation_id: 'bob', is_typing: true })
+  unsubscribe()
+})
