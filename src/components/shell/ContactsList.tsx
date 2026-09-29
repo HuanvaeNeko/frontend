@@ -59,7 +59,9 @@ export function ContactsList() {
   const { t } = useI18n()
   const [params, setParams] = useSearchParams()
   const { userId, groupId } = useParams()
-  const tab = contactsTabFrom(params)
+  // 群详情的 URL 本身就说明「在看群」：直接打开（书签、通知、分享链接）时 URL 不带 ?tab=，
+  // 原来一律落到「好友」，左栏既不在群页、也不高亮这个群
+  const tab = groupId && !params.get('tab') ? 'groups' : contactsTabFrom(params)
   const add = contactsAddFrom(params)
   const [query, setQuery] = useState('')
   const friends = useFriendsStore((s) => s.friends)
@@ -139,8 +141,15 @@ export function ContactsList() {
           )))}
         {tab === 'requests' && (
           <div className="space-y-3">
-            <FriendList subTab="new" searchQuery="" />
-            <FriendList subTab="sent" searchQuery="" />
+            {/* 两段好友申请原来挨着排，只靠一个「待处理」徽标区分方向；群邀请段自带标题 */}
+            <section>
+              <h3 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t('shell.contacts.incomingRequests')}</h3>
+              <FriendList subTab="new" searchQuery="" />
+            </section>
+            <section>
+              <h3 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t('shell.contacts.sentRequests')}</h3>
+              <FriendList subTab="sent" searchQuery="" />
+            </section>
             <GroupList subTab="invites" searchQuery="" />
           </div>
         )}

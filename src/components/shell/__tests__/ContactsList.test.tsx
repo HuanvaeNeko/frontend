@@ -131,6 +131,19 @@ describe('ContactsList', () => {
     expect(testRouter?.state.location.search).toBe('?tab=groups&add=create-group')
   })
 
+  it('申请页分区有标题：收到的好友申请 / 我发出的好友申请（原来两段卡片挨着，只靠一个「待处理」徽标分方向）', () => {
+    renderAt('/app/contacts?tab=requests')
+    expect(screen.getByRole('heading', { name: '收到的好友申请' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '我发出的好友申请' })).toBeInTheDocument()
+  })
+
+  it('直接打开群详情（/app/contacts/groups/:id，URL 不带 tab）：左栏切到「群」并高亮这个群', () => {
+    // 原来 tab 只看 ?tab=，缺省就是「好友」——从书签、通知、分享链接进群详情时，左栏停在好友列表
+    renderAt('/app/contacts/groups/g1')
+    expect(screen.getByRole('button', { name: '群' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('contact-g-g1')).toHaveAttribute('data-selected', 'true')
+  })
+
   it('群行副标题：/api/groups/my 不返回人数时显示我在群里的角色，不把群 UUID 露给用户', () => {
     renderAt('/app/contacts?tab=groups')
     const row = screen.getByTestId('contact-g-g1')
