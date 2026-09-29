@@ -94,6 +94,21 @@ describe('设备管理页', () => {
     )
   })
 
+  it('加载失败时列表区显示错误与重试，不是「暂无设备信息」；重试成功后出现设备', async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok({ success: false, code: 502, error: '网关超时' }, 502))
+      .mockResolvedValueOnce(ok({ success: true, code: 200, data: { devices: DEVICES, total: 2 } }))
+
+    renderPage()
+
+    const retry = await screen.findByRole('button', { name: /重试/ })
+    expect(screen.queryByText('暂无设备信息')).toBeNull()
+
+    await userEvent.click(retry)
+
+    expect(await screen.findByText('10.0.0.2', { exact: false })).toBeInTheDocument()
+  })
+
   it('某条设备缺少 is_current 时加载失败，绝不把它悄悄当成"不是当前设备"', async () => {
     // require: ['devices','total'] 只保护顶层字段，保护不到数组元素内部；
     // 这里模拟的正是"当前设备"那条记录漏了 is_current 的情况——如果代码用

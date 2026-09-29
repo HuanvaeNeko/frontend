@@ -29,9 +29,11 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const loadDevices = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const response = await authApi.getDevices()
       // 没有 `|| []`：getDevices 现在要么抛错、要么返回真数组（解包层已 require
@@ -63,7 +65,10 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
       })
       setDevices(normalized)
     } catch (error) {
-      toast({ title: '加载失败', description: error instanceof Error ? error.message : '无法获取设备列表', variant: 'destructive' })
+      const message = error instanceof Error ? error.message : '无法获取设备列表'
+      // 列表区原地显示错误 + 重试：原来只弹 toast，列表落到「暂无设备信息」，看起来像没有登录设备
+      setLoadError(message)
+      toast({ title: '加载失败', description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -157,6 +162,15 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
 
         {loading ? (
           <div className="flex h-52 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />加载中...</div>
+        ) : loadError ? (
+          <Card>
+            <CardContent className="flex h-40 flex-col items-center justify-center gap-2 text-center">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+              <p className="text-sm font-medium text-destructive">设备列表加载失败</p>
+              <p className="max-w-sm text-xs text-muted-foreground">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={loadDevices}>重试</Button>
+            </CardContent>
+          </Card>
         ) : devices.length === 0 ? (
           <Card>
             <CardContent className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">

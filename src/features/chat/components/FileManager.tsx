@@ -43,6 +43,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
   
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [page, setPage] = useState(1)
@@ -84,6 +85,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
     if (loading) return
     
     setLoading(true)
+    setLoadError(null)
     try {
       const currentPage = refresh ? 1 : page
       const response = await storageApi.getFileList(currentPage, 20, 'created_at', 'desc')
@@ -100,11 +102,9 @@ export default function FileManager({ subTab }: FileManagerProps) {
         setPage(p => p + 1)
       }
     } catch (error) {
-      toast({
-        title: t('chat.fileManager.loadFailedTitle'),
-        description: error instanceof Error ? error.message : t('chat.fileManager.loadFailedDesc'),
-        variant: 'destructive',
-      })
+      // 列表区原地显示错误 + 重试；原来只弹 toast，列表落到「暂无文件 / 上传后显示」——
+      // 用户会以为文件丢了
+      setLoadError(error instanceof Error ? error.message : t('chat.fileManager.loadFailedDesc'))
     } finally {
       setLoading(false)
     }
@@ -286,6 +286,16 @@ export default function FileManager({ subTab }: FileManagerProps) {
             {loading && files.length === 0 ? (
               <div className="flex items-center justify-center h-48">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : loadError && files.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-2 text-center">
+                <p className="text-sm font-medium text-destructive">{t('chat.fileManager.loadFailedTitle')}</p>
+                <p className="text-xs text-muted-foreground max-w-[260px]">{loadError}</p>
+                <Button variant="outline" size="sm" className="mt-1" onClick={() => loadFiles(true)}>{t('shell.list.retry')}</Button>
+              </div>
+            ) : files.length > 0 && filteredFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                <p className="text-sm">{t('chat.fileManager.noMatch')}</p>
               </div>
             ) : filteredFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">

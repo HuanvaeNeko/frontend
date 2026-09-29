@@ -98,3 +98,36 @@ describe('FileManager 上传入口', () => {
     })
   })
 })
+
+describe('FileManager 文件列表的三态', () => {
+  const file = (name: string) => ({
+    file_uuid: `u-${name}`, filename: name, file_size: 1024, content_type: 'application/pdf', preview_support: 'inline',
+    created_at: '2026-09-20T08:00:00Z', file_url: `https://x/${name}`, file_hash: 'h',
+  })
+
+  it('加载失败：显示错误与重试，而不是「暂无文件」；重试会重新请求', async () => {
+    const getFileList = vi.spyOn(storageApi, 'getFileList')
+      .mockRejectedValueOnce(new Error('网关超时'))
+      .mockResolvedValueOnce({ files: [file('报告.pdf')], total: 1, page: 1, page_size: 20, total_pages: 1, has_more: false })
+    const { findByText, queryByText, getByRole } = render(<FileManager subTab="main" />)
+
+    expect(await findByText('chat.fileManager.loadFailedTitle')).toBeInTheDocument()
+    expect(queryByText('chat.fileManager.noFiles')).toBeNull()
+
+    getByRole('button', { name: 'shell.list.retry' }).click()
+
+    expect(await findByText('报告.pdf')).toBeInTheDocument()
+    expect(getFileList).toHaveBeenCalledTimes(2)
+  })
+
+  it('有文件但搜索无匹配：说「没有匹配」，而不是「暂无文件 / 上传后显示」', async () => {
+    vi.spyOn(storageApi, 'getFileList').mockResolvedValue({ files: [file('报告.pdf')], total: 1, page: 1, page_size: 20, total_pages: 1, has_more: false })
+    const { findByText, getByPlaceholderText, queryByText } = render(<FileManager subTab="main" />)
+    await findByText('报告.pdf')
+
+    fireEvent.change(getByPlaceholderText('chat.fileManager.searchPlaceholder'), { target: { value: '不存在的名字' } })
+
+    expect(await findByText('chat.fileManager.noMatch')).toBeInTheDocument()
+    expect(queryByText('chat.fileManager.noFilesHint')).toBeNull()
+  })
+})
