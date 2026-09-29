@@ -211,6 +211,10 @@ const zhCN = {
       appImage: '便携可执行文件',
       deb: 'Debian 软件包',
       apk: 'Android 安装包',
+      recommended: '推荐',
+      download: '下载',
+      latestRelease: '最新版本',
+      releasedOn: '发布于 {date}',
     },
   },
   settings: {
@@ -800,6 +804,10 @@ const enUS = {
       appImage: 'Portable Executable',
       deb: 'Debian Package',
       apk: 'Android Package',
+      recommended: 'Recommended',
+      download: 'Download',
+      latestRelease: 'Latest release',
+      releasedOn: 'Released on {date}',
     },
   },
   settings: {
