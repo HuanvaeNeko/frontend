@@ -207,6 +207,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const prev = state.unreadSummary
       if (!prev) {
         return {
+          totalUnreadCount: increment ? 1 : 0,
           unreadSummary: {
             total_count: increment ? 1 : 0,
             friend_unreads: [{
@@ -243,6 +244,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         prev.group_unreads.reduce((sum, u) => sum + u.unread_count, 0)
 
       return {
+        totalUnreadCount: totalCount,
         unreadSummary: {
           total_count: totalCount,
           friend_unreads: newFriendUnreads,
@@ -257,6 +259,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const prev = state.unreadSummary
       if (!prev) {
         return {
+          totalUnreadCount: increment ? 1 : 0,
           unreadSummary: {
             total_count: increment ? 1 : 0,
             friend_unreads: [],
@@ -293,6 +296,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         newGroupUnreads.reduce((sum, u) => sum + u.unread_count, 0)
 
       return {
+        totalUnreadCount: totalCount,
         unreadSummary: {
           total_count: totalCount,
           friend_unreads: prev.friend_unreads,
@@ -326,7 +330,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         newSummary = { total_count: totalCount, friend_unreads: prev.friend_unreads, group_unreads: newGroupUnreads }
       }
 
-      return { unreadSummary: newSummary }
+      return { unreadSummary: newSummary, totalUnreadCount: newSummary.total_count }
     })
   },
 

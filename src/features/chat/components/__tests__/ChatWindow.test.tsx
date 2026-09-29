@@ -15,8 +15,8 @@ import ChatWindow from '../ChatWindow'
 
 vi.mock('@/i18n/I18nProvider', () => ({ useI18n: () => ({ locale: 'zh-CN', t: (key: string) => key }) }))
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }), toast: vi.fn() }))
-// 实时消息 hook 会连 WS、注册一整套处理器——与这里验的历史加载无关
-vi.mock('@/features/chat/hooks/useRealtimeMessages', () => ({ useRealtimeMessages: () => ({ setActiveChat: vi.fn() }) }))
+// 打开会话即标记已读会发 WS mark_read——与这里验的历史加载无关
+vi.mock('@/features/chat/hooks/useRealtimeMessages', () => ({ setActiveChat: vi.fn() }))
 // file-preview 在模块顶层引 react-pdf（pdf.js 要 DOMMatrix）；群管理与本用例无关
 vi.mock('@/components/ui/file-preview', () => ({ FilePreview: () => null }))
 vi.mock('../sidebar/GroupManagement', () => ({ default: () => null }))

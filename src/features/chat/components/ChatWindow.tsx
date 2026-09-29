@@ -10,7 +10,7 @@ import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import GroupManagement from './sidebar/GroupManagement'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
-import { useRealtimeMessages } from '@/features/chat/hooks/useRealtimeMessages'
+import { setActiveChat } from '@/features/chat/hooks/useRealtimeMessages'
 import type { MarkdownEditorRef } from './window/MarkdownEditor'
 import { useI18n } from '@/i18n/I18nProvider'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -32,7 +32,6 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const { t } = useI18n()
   const { toast } = useToast()
   const { user } = useAuthStore()
-  const { setActiveChat } = useRealtimeMessages()
   const {
     selectedConversation,
     messages,

@@ -21,12 +21,42 @@ import type { Message } from '../api/messages'
  * - 浏览器通知 + 音效
  * - 应用启动时自动同步增量消息
  */
+/**
+ * 标记会话已读：先发 WS `mark_read`（后端真值），再清本地未读摘要——只清本地的话，
+ * 下一次 `unread_summary` 推送或刷新会把角标打回来。不依赖任何 hook 状态，
+ * 列表右键「标记已读」和聊天窗口打开会话都走这里。
+ */
+export function markConversationRead(targetType: 'friend' | 'group', targetId: string) {
+  useWSStore.getState().sendMarkRead(targetType, targetId)
+  useChatStore.getState().markRead(targetType, targetId)
+}
+
+/** 设置当前活跃会话（打开即已读；null 表示没有打开任何会话） */
+export function setActiveChat(type: 'friend' | 'group' | null, id: string | null) {
+  if (type && id) {
+    useChatStore.getState().setActiveChat({ type, id })
+    markConversationRead(type, id)
+  } else {
+    useChatStore.getState().setActiveChat(null)
+  }
+}
+
+/**
+ * 整个 /app/* 只能挂**一次**（由壳层的 `RealtimeBridge` 挂）：它注册全部 WS 处理器，
+ * 挂两次就是双重注册；而只挂在聊天窗口里（历史做法）又意味着停在会话列表/联系人/
+ * 设置页时，连接时的 `unread_summary` 与之后的新消息全部无人处理、被静默丢弃。
+ *
+ * 订阅一律用 selector：整店订阅会让挂载点在每次心跳（`lastPingTime`）和每条消息时重渲染。
+ */
 export function useRealtimeMessages() {
-  const { isAuthenticated } = useAuthStore()
-  const { connect, disconnect, connected, registerHandler, sendMarkRead } = useWSStore()
-  const chatStore = useChatStore()
-  const { loadPendingRequests, loadFriends } = useFriendsStore()
-  const { loadMyGroups } = useGroupStore()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const connect = useWSStore((s) => s.connect)
+  const connected = useWSStore((s) => s.connected)
+  const registerHandler = useWSStore((s) => s.registerHandler)
+  const conversationCount = useChatStore((s) => s.conversations.length)
+  const loadPendingRequests = useFriendsStore((s) => s.loadPendingRequests)
+  const loadFriends = useFriendsStore((s) => s.loadFriends)
+  const loadMyGroups = useGroupStore((s) => s.loadMyGroups)
 
   // 标记是否已执行过初始同步
   const hasSyncedRef = useRef(false)
@@ -41,14 +71,14 @@ export function useRealtimeMessages() {
   
   // 连接成功后自动同步消息
   useEffect(() => {
-    if (connected && chatStore.conversations.length > 0 && !hasSyncedRef.current) {
+    if (connected && conversationCount > 0 && !hasSyncedRef.current) {
       hasSyncedRef.current = true
       console.log('🔄 应用启动，开始同步消息...')
-      chatStore.syncMessages().catch(error => {
+      useChatStore.getState().syncMessages().catch(error => {
         console.error('消息同步失败:', error)
       })
     }
-  }, [connected, chatStore.conversations.length, chatStore])
+  }, [connected, conversationCount])
 
   // =============================================
   // 处理 connected 消息（未读摘要）
@@ -269,28 +299,7 @@ export function useRealtimeMessages() {
     handleTyping,
   ])
 
-  // =============================================
-  // Mark Read 功能
-  // =============================================
-  const markRead = useCallback((targetType: 'friend' | 'group', targetId: string) => {
-    // 发送 WebSocket 消息
-    sendMarkRead(targetType, targetId)
-    // 本地清零
-    useChatStore.getState().markRead(targetType, targetId)
-  }, [sendMarkRead])
-
-  // 设置活跃聊天
-  const setActiveChat = useCallback((type: 'friend' | 'group' | null, id: string | null) => {
-    if (type && id) {
-      useChatStore.getState().setActiveChat({ type, id })
-      // 设置活跃聊天时自动 markRead
-      markRead(type, id)
-    } else {
-      useChatStore.getState().setActiveChat(null)
-    }
-  }, [markRead])
-
-  return { connected, disconnect, markRead, setActiveChat }
+  return { connected }
 }
 
 // =============================================
