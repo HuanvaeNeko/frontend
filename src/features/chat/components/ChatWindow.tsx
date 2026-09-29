@@ -88,6 +88,23 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convKey])
 
+  // 图片/视频在首屏滚到底之后才加载完，内容变高、最后几条被推到视口下面（线上慢网很明显）。
+  // 用户本来停在底部就补滚一次。load 不冒泡，所以在 document 捕获阶段听、再按容器过滤——
+  // 容器会随消息从无到有重新挂载，挂在容器上的监听器会丢。
+  useEffect(() => {
+    const onMediaLoaded = (event: Event) => {
+      const container = messagesContainerRef.current
+      if (!container || !(event.target instanceof Node) || !container.contains(event.target)) return
+      if (stickToBottomRef.current) container.scrollTop = container.scrollHeight
+    }
+    document.addEventListener('load', onMediaLoaded, true)
+    document.addEventListener('loadedmetadata', onMediaLoaded, true)
+    return () => {
+      document.removeEventListener('load', onMediaLoaded, true)
+      document.removeEventListener('loadedmetadata', onMediaLoaded, true)
+    }
+  }, [])
+
   // 消息区滚动：原来只要 messages.length 变就拽到底——上翻「加载更早」会被拽回
   // 最底部，看历史时来一条新消息也被拽走。现在按变化的种类处理：
   // - 换了会话 / 首屏：到底
