@@ -9,7 +9,7 @@ export const themeInitScript = `
     const raw = localStorage.getItem('app-settings')
     const parsed = raw ? JSON.parse(raw) : null
     const state = parsed?.state || {}
-    const theme = state.theme || 'light'
+    const theme = state.theme || 'auto'
     const root = document.documentElement
     const isDark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
     root.classList.toggle('dark', isDark)

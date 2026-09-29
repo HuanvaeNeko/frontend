@@ -49,7 +49,7 @@ const defaultSettings: Omit<SettingsState, 'setSetting' | 'resetSettings'> = {
   use24HourFormat: true,
   showOnlineStatus: true,
   messageEncryption: true,
-  theme: 'light',
+  theme: 'auto',
   animationsEnabled: true,
   notificationsEnabled: true,
   soundEnabled: true,
