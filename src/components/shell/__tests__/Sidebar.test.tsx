@@ -66,6 +66,8 @@ vi.mock('framer-motion', async () => {
   }
 })
 
+const realLogout = useAuthStore.getState().logout
+
 const renderAt = (path: string, activeTab: 'chat' | 'contacts') =>
   render(<RouterProvider router={createMemoryRouter([{ path: '*', element: <Sidebar activeTab={activeTab} /> }], { initialEntries: [path] })} />)
 
@@ -75,6 +77,32 @@ describe('Sidebar', () => {
     useChatStore.setState({ totalUnreadCount: 0 })
     useFriendsStore.setState({ pendingRequests: [] })
     useProfileStore.setState({ profile: makeProfile({ user_nickname: '爱丽丝', user_avatar_url: 'https://cdn.test/a.png' }) })
+    useAuthStore.setState({ logout: realLogout })
+  })
+
+  it('底部有「退出登录」（同 APP 侧栏底部，原来只在设置页最底下）；先确认，确认后才真的退出', async () => {
+    const logout = vi.fn(async () => {})
+    useAuthStore.setState({ logout })
+    renderAt('/app/chat', 'chat')
+
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(logout).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '退出登录' }))
+    await waitFor(() => expect(logout).toHaveBeenCalledTimes(1))
+  })
+
+  it('确认框点「取消」：不退出', async () => {
+    const logout = vi.fn(async () => {})
+    useAuthStore.setState({ logout })
+    renderAt('/app/chat', 'chat')
+
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '取消' }))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(logout).not.toHaveBeenCalled()
   })
 
   it('两个 tab 链接到 /app/chat 与 /app/contacts，当前 tab 带 aria-current', () => {
@@ -118,6 +146,19 @@ describe('Sidebar', () => {
     const avatar = screen.getByRole('link', { name: '个人资料' })
     expect(avatar).toHaveAttribute('href', '/app/profile')
     expect(avatar.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/a.png')
+  })
+
+  it('头像图片加载失败（404 / 对象存储里没有）：退回首字母，不露浏览器破图图标', () => {
+    renderAt('/app/chat', 'chat')
+    const avatar = screen.getByRole('link', { name: '个人资料' })
+    const img = avatar.querySelector('img')
+    // 前置：确实先渲染了图片，下面的「退回首字母」才有意义
+    expect(img).not.toBeNull()
+
+    fireEvent.error(img as HTMLImageElement)
+
+    expect(avatar.querySelector('img')).toBeNull()
+    expect(avatar).toHaveTextContent('爱')
   })
 
   it('「更多」面板列出五个工具并链接到各自 URL；设置链接到 /app/settings', async () => {

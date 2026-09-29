@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { registerSessionReset } from '@/lib/sessionScope'
+import { translate } from '@/i18n/translate'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）
@@ -190,17 +191,6 @@ export interface WSOnlineStatus {
   }
 }
 
-// 正在输入状态
-export interface WSTypingStatus {
-  type: 'typing'
-  data: {
-    user_id: string
-    conversation_type: 'private' | 'group'
-    conversation_id: string
-    is_typing: boolean
-  }
-}
-
 // 文件上传完成通知（好友/群聊文件上传 confirm 后触发）
 export interface WSFileUploaded {
   type: 'file_uploaded'
@@ -254,7 +244,6 @@ export type WSMessage =
   | WSSystemNotification
   | WSReadSync
   | WSOnlineStatus
-  | WSTypingStatus
   | WSFileUploaded
   | { type: string; data?: unknown; [key: string]: unknown }
 
@@ -276,7 +265,6 @@ interface WSState {
   connect: () => void
   disconnect: () => void
   send: (message: { type: string; [key: string]: unknown }) => void
-  sendTyping: (conversationType: 'private' | 'group', conversationId: string, isTyping: boolean) => void
   sendMarkRead: (targetType: 'friend' | 'group', targetId: string) => void
   registerHandler: <T>(type: string, handler: MessageHandler<T>) => () => void
   unregisterHandler: (type: string, handler: MessageHandler) => void
@@ -317,7 +305,7 @@ export const useWSStore = create<WSState>((set, get) => {
     const state = get()
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        set({ error: '无法连接到服务器，请刷新页面重试', reconnecting: false })
+        set({ error: translate('errors.ws.unreachable'), reconnecting: false })
 
         // 给上重连不等于「还登录着」：这是一个只读页面，可能从头到尾不发一次
         // HTTP 请求，也就永远不会触发那个能让 `fetchWithAuth` 发现 401 并
@@ -463,17 +451,13 @@ export const useWSStore = create<WSState>((set, get) => {
             if (handlers) {
               handlers.forEach(handler => {
                 try {
-                  // 根据消息类型传递不同的数据
-                  // 对于有 data 属性的消息，传递 data
-                  // 对于没有 data 属性的消息，传递除 type 外的所有字段
-                  let payload: unknown
-                  if ('data' in message) {
-                    payload = message.data
-                  } else {
-                    const { type: _type, ...rest } = message
-                    payload = rest
-                  }
-                  handler(payload)
+                  // 载荷 = 帧里除 type 外的全部字段。不能「有 data 就只交 data」：system_notification 是
+                  // {type, notification_type, data}（backend-docs groups/群聊管理.md「通知格式」），
+                  // 只交 data 会丢掉 notification_type——处理器恒走 default，好友申请、群邀请、
+                  // 被移出、解散……全部静默失效。（原来还有一条「只有 data 一个键就交 data 本身」，
+                  // 只为 typing 帧服务；后端没有 typing 协议，随「正在输入」的死代码一起删了。）
+                  const { type: _type, ...rest } = message as { type: string } & Record<string, unknown>
+                  handler(rest)
                 } catch (error) {
                   console.error(`消息处理器错误 (${message.type}):`, error)
                 }
@@ -508,7 +492,7 @@ export const useWSStore = create<WSState>((set, get) => {
           }
           
           set({
-            error: 'WebSocket 连接错误',
+            error: translate('errors.ws.connectionError'),
             connected: false,
             connecting: false
           })
@@ -537,7 +521,7 @@ export const useWSStore = create<WSState>((set, get) => {
       } catch (error) {
         console.error('创建 WebSocket 连接失败:', error)
         set({
-          error: error instanceof Error ? error.message : 'WebSocket 连接失败',
+          error: error instanceof Error ? error.message : translate('errors.ws.connectFailed'),
           connected: false,
           connecting: false
         })
@@ -578,17 +562,6 @@ export const useWSStore = create<WSState>((set, get) => {
       } else {
         console.error('WebSocket 未连接，无法发送消息')
       }
-    },
-
-    sendTyping: (conversationType, conversationId, isTyping) => {
-      get().send({
-        type: 'typing',
-        data: {
-          conversation_type: conversationType,
-          conversation_id: conversationId,
-          is_typing: isTyping
-        }
-      })
     },
 
     sendMarkRead: (targetType, targetId) => {

@@ -76,9 +76,9 @@ describe('PrivacySettings 渲染', () => {
 
     render(<PrivacySettings />)
 
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
-    expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('false')
-    expect(switchByLabel('允许通过用户 ID 被搜索').getAttribute('aria-checked')).toBe('true')
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
+    expect(switchByLabel('允许被搜索 / 添加').getAttribute('aria-checked')).toBe('false')
+    expect(switchByLabel('允许通过 ID / 用户名被添加').getAttribute('aria-checked')).toBe('true')
   })
 
   it('总开关关掉时，"通过用户 ID 被搜索"跟着禁用（doc:104「完全不可被搜索/添加」）', async () => {
@@ -86,8 +86,8 @@ describe('PrivacySettings 渲染', () => {
 
     render(<PrivacySettings />)
 
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
-    expect(switchByLabel('允许通过用户 ID 被搜索').hasAttribute('disabled')).toBe(true)
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
+    expect(switchByLabel('允许通过 ID / 用户名被添加').hasAttribute('disabled')).toBe(true)
   })
 
   it('正对照：总开关开着时，那一项是可用的', async () => {
@@ -96,8 +96,8 @@ describe('PrivacySettings 渲染', () => {
 
     render(<PrivacySettings />)
 
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
-    expect(switchByLabel('允许通过用户 ID 被搜索').hasAttribute('disabled')).toBe(false)
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
+    expect(switchByLabel('允许通过 ID / 用户名被添加').hasAttribute('disabled')).toBe(false)
   })
 
   it('两个策略下拉显示的是后端当前值的中文标签', async () => {
@@ -110,7 +110,7 @@ describe('PrivacySettings 渲染', () => {
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: '好友申请处理方式' }).textContent).toBe('自动拒绝'),
     )
-    expect(screen.getByRole('combobox', { name: '群邀请处理方式' }).textContent).toBe('自动同意')
+    expect(screen.getByRole('combobox', { name: '群邀请处理方式' }).textContent).toBe('自动通过')
   })
 })
 
@@ -122,9 +122,9 @@ describe('PrivacySettings 保存', () => {
     mockBackend(makeProfileWire({ allow_search: true }))
 
     render(<PrivacySettings />)
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
 
-    await userEvent.click(switchByLabel('允许被搜索'))
+    await userEvent.click(switchByLabel('允许被搜索 / 添加'))
 
     await waitFor(() => expect(putBodies().length).toBe(1))
     expect(putBodies()).toEqual([{ allow_search: false }])
@@ -134,9 +134,9 @@ describe('PrivacySettings 保存', () => {
     mockBackend(makeProfileWire({ search_visible_by_id: true }))
 
     render(<PrivacySettings />)
-    await waitFor(() => expect(switchByLabel('允许通过用户 ID 被搜索')).toBeTruthy())
+    await waitFor(() => expect(switchByLabel('允许通过 ID / 用户名被添加')).toBeTruthy())
 
-    await userEvent.click(switchByLabel('允许通过用户 ID 被搜索'))
+    await userEvent.click(switchByLabel('允许通过 ID / 用户名被添加'))
 
     // `toEqual` 而不是 `toMatchObject`：多带一个字段就是一次覆盖写。
     await waitFor(() => expect(putBodies()).toEqual([{ search_visible_by_id: false }]))
@@ -146,9 +146,9 @@ describe('PrivacySettings 保存', () => {
     mockBackend(makeProfileWire({ allow_search: true }), json({ error: '更新失败' }, 400))
 
     render(<PrivacySettings />)
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
 
-    await userEvent.click(switchByLabel('允许被搜索'))
+    await userEvent.click(switchByLabel('允许被搜索 / 添加'))
 
     await waitFor(() =>
       expect(toastMock).toHaveBeenCalledWith(
@@ -157,7 +157,7 @@ describe('PrivacySettings 保存', () => {
     )
     // 请求确实发过（正对照），但界面上仍然显示"开着"——因为它读的是后端确认过的那份。
     expect(putBodies()).toEqual([{ allow_search: false }])
-    expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('true')
+    expect(switchByLabel('允许被搜索 / 添加').getAttribute('aria-checked')).toBe('true')
     expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ title: '已保存' }))
   })
 
@@ -182,16 +182,16 @@ describe('PrivacySettings 保存', () => {
     })
 
     render(<PrivacySettings />)
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
 
-    await userEvent.click(switchByLabel('允许被搜索'))
+    await userEvent.click(switchByLabel('允许被搜索 / 添加'))
 
     // 正对照：PUT 发出去了、读回也确实发生并失败了（否则下面两行测的是别的东西）。
     await waitFor(() => expect(putBodies()).toEqual([{ allow_search: false }]))
     await waitFor(() => expect(getCount).toBe(2))
 
     await waitFor(() =>
-      expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('false'),
+      expect(switchByLabel('允许被搜索 / 添加').getAttribute('aria-checked')).toBe('false'),
     )
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: '已保存' }))
     expect(toastMock).not.toHaveBeenCalledWith(
@@ -204,7 +204,7 @@ describe('PrivacySettings 保存', () => {
  * 读路径的失败态。
  *
  * 此前这个组件对 `loadProfile()` 的 reject **没有任何分支**：`ready` 停在 `false`，
- * 屏幕上留下一句永远转不完的「正在加载隐私设置…」。那正是这一轮在消灭的静默形态——
+ * 屏幕上留下一句永远转不完的「加载中...」。那正是这一轮在消灭的静默形态——
  * 用户既不知道发生了什么，也没有任何能自己走出去的动作。
  */
 describe('PrivacySettings 的读失败态', () => {
@@ -223,8 +223,8 @@ describe('PrivacySettings 的读失败态', () => {
 
     render(<PrivacySettings />)
 
-    // 把 `if (loadError)` 那一屏删掉 → 本行红（页面上只剩「正在加载隐私设置…」）。
-    await waitFor(() => expect(screen.getByText(/隐私设置读取失败/)).toBeTruthy())
+    // 把 `if (loadError !== null)` 那一屏删掉 → 本行红（页面上只剩「加载中...」）。
+    await waitFor(() => expect(screen.getByText(/加载隐私设置失败/)).toBeTruthy())
     // 后端原文要在屏幕上，不是一句自造的"请稍后重试"。
     expect(screen.getByText(/服务器内部错误/)).toBeTruthy()
     // 失败态下**不能**渲染开关：一个猜出来的取值比这条提示危险得多。
@@ -233,10 +233,10 @@ describe('PrivacySettings 的读失败态', () => {
     await userEvent.click(screen.getByRole('button', { name: '重试' }))
 
     // 正对照：重试真的重跑了那次读，而且用的是这一次拿回来的值（`false`）。
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
     expect(attempts).toBe(2)
-    expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('false')
-    expect(screen.queryByText(/隐私设置读取失败/)).toBeNull()
+    expect(switchByLabel('允许被搜索 / 添加').getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryByText(/加载隐私设置失败/)).toBeNull()
   })
 })
 
@@ -273,7 +273,7 @@ describe('PrivacySettings 的 ready 闸（旧落盘数据没有这四个字段�
     // 把 `ready` 闸拿掉 → **上面这句**先炸（加载中文案不见了，getByText 抛
     // "Unable to find an element"，实测停在这一行），下面那句同样不再成立：
     // 会渲染出一个 aria-checked="false" 的开关，而后端说的是 true。
-    expect(screen.getByText('正在加载隐私设置…')).toBeTruthy()
+    expect(screen.getByText('加载中...')).toBeTruthy()
     expect(screen.queryByRole('switch')).toBeNull()
 
     // 正对照：闸不是"永远关着"，新资料一到就放行，而且用的是新值。
@@ -290,7 +290,7 @@ describe('PrivacySettings 的 ready 闸（旧落盘数据没有这四个字段�
       }) as UserProfile,
     )
 
-    await waitFor(() => expect(switchByLabel('允许被搜索')).toBeTruthy())
-    expect(switchByLabel('允许被搜索').getAttribute('aria-checked')).toBe('true')
+    await waitFor(() => expect(switchByLabel('允许被搜索 / 添加')).toBeTruthy())
+    expect(switchByLabel('允许被搜索 / 添加').getAttribute('aria-checked')).toBe('true')
   })
 })

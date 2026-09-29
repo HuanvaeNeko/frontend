@@ -252,15 +252,31 @@ setCatchHandler(async ({ request }) => {
 // ============================================
 // 自定义功能：推送通知
 // ============================================
+
+// 推送载荷缺字段时的兜底文案。刻意不 import 页面那套 i18n（src/i18n/messages.ts）：
+// SW 是单独打包的 bundle，import 它就得把全站几百条文案整本打进 sw.js，只为用上三句话；
+// 而且 SW 里没有 localStorage，读不到用户在设置里选的语言，只能看浏览器语言——
+// zh* 用中文，其余一律英文。载荷自带 body / actions 时以载荷为准，这里只管缺省。
+const PUSH_FALLBACK_TEXT = {
+  zh: { body: '您有新消息', open: '查看', dismiss: '忽略' },
+  en: { body: 'You have a new message', open: 'View', dismiss: 'Dismiss' },
+} as const
+
+function pushFallbackText() {
+  // 每次推送时现读：SW 可以常驻很久，期间浏览器语言可能被改过
+  return (self.navigator?.language ?? '').toLowerCase().startsWith('zh') ? PUSH_FALLBACK_TEXT.zh : PUSH_FALLBACK_TEXT.en
+}
+
 self.addEventListener('push', (event) => {
   if (!event.data) return
 
   try {
     const data = event.data.json()
+    const text = pushFallbackText()
 
     // 使用扩展的通知选项（包含非标准但广泛支持的属性）
     const options = {
-      body: data.body || '您有新消息',
+      body: data.body || text.body,
       icon: '/logo.svg',
       badge: '/logo.svg',
       vibrate: [100, 50, 100],
@@ -269,8 +285,8 @@ self.addEventListener('push', (event) => {
         ...data.data,
       },
       actions: data.actions || [
-        { action: 'open', title: '查看' },
-        { action: 'dismiss', title: '忽略' },
+        { action: 'open', title: text.open },
+        { action: 'dismiss', title: text.dismiss },
       ],
       tag: data.tag || 'huanvae-notification',
       renotify: !!data.renotify,

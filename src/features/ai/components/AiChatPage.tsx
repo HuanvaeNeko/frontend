@@ -21,22 +21,26 @@ import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { aiChatApi } from '@/features/ai/api/aiChat'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useI18n } from '@/i18n/I18nProvider'
 
 export default function AiChat() {
+  const { t, locale } = useI18n()
   const { toast } = useToast()
   const apiConfigStore = useApiConfigStore()
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: '您好！我是 AI 聊天助手。有什么可以帮助您的吗？',
-      timestamp: Date.now(),
-    },
-  ])
+  // 开场白只存「哪一句 + 时间」，文字渲染时按当前语言取：I18nProvider 首帧还是默认中文，
+  // 直接打开本页时首帧就会跑到这里——把译文存进 state，英文界面就会被钉上一句中文开场白。
+  const [intro, setIntro] = useState(() => ({ cleared: false, timestamp: Date.now() }))
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const allMessages: ChatMessage[] = [
+    { role: 'assistant', content: intro.cleared ? t('aiChat.cleared') : t('aiChat.greeting'), timestamp: intro.timestamp },
+    ...messages,
+  ]
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +48,8 @@ export default function AiChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // 后端按会话保存上下文：第一句不带、之后都带上它返回的 conversation_id；清空聊天即新会话
+  const conversationIdRef = useRef<string | null>(null)
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -57,16 +63,31 @@ export default function AiChat() {
   }, [messages])
 
   const formatTime = (timestamp: number): string => {
-    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+    return new Date(timestamp).toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
     })
   }
 
   const sendToAI = async (userMessage: string): Promise<string> => {
-    const apiUrl = apiConfigStore.useCustomApi ? apiConfigStore.aiApiUrl : `${apiConfigStore.aiApiUrl}`
-
     abortControllerRef.current = new AbortController()
+
+    // 默认：后端 AI 助手 POST /api/ai/chat（原来打的是不存在的 /api/chat，还在信封顶层找 reply）
+    if (!apiConfigStore.useCustomApi) {
+      try {
+        const result = await aiChatApi.send(userMessage, conversationIdRef.current, abortControllerRef.current.signal)
+        conversationIdRef.current = result.conversation_id
+        return result.reply
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error(t('aiChat.errors.cancelled'), { cause: err })
+        }
+        throw err
+      }
+    }
+
+    // 自定义 API：用户自备的第三方地址，形状未知，沿用宽松解析
+    const apiUrl = apiConfigStore.aiApiUrl
 
     try {
       const headers: Record<string, string> = {
@@ -75,7 +96,7 @@ export default function AiChat() {
 
       if (apiConfigStore.useCustomApi && apiConfigStore.aiApiKey) headers['X-API-Key'] = apiConfigStore.aiApiKey
 
-      const messageHistory = messages.map((msg) => ({ role: msg.role, content: msg.content }))
+      const messageHistory = allMessages.map((msg) => ({ role: msg.role, content: msg.content }))
       messageHistory.push({ role: 'user', content: userMessage })
 
       const response = await fetch(apiUrl, {
@@ -90,7 +111,7 @@ export default function AiChat() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || errorData.message || `请求失败 (${response.status})`)
+        throw new Error(errorData.error || errorData.message || t('aiChat.errors.requestFailed', { status: response.status }))
       }
 
       const data = await response.json()
@@ -100,11 +121,11 @@ export default function AiChat() {
         data.response ||
         data.reply ||
         data.choices?.[0]?.message?.content ||
-        '收到您的消息，但我暂时无法回复。'
+        t('aiChat.errors.noReply')
       )
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error('请求已取消', { cause: err })
+        throw new Error(t('aiChat.errors.cancelled'), { cause: err })
       }
       throw err
     }
@@ -129,13 +150,13 @@ export default function AiChat() {
       const aiResponse = await sendToAI(currentInput)
       setMessages((prev) => [...prev, { role: 'assistant', content: aiResponse, timestamp: Date.now() }])
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '发送失败，请稍后重试'
+      const errorMessage = err instanceof Error ? err.message : t('aiChat.errors.sendFailed')
       setError(errorMessage)
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: `抱歉，发生了错误：${errorMessage}\n\n您可以尝试：\n1. 检查网络连接\n2. 在设置中配置正确的 API 地址\n3. 稍后重试`,
+          content: t('aiChat.errors.bubble', { message: errorMessage }),
           timestamp: Date.now(),
         },
       ])
@@ -152,22 +173,18 @@ export default function AiChat() {
   }
 
   const clearChat = () => {
-    if (confirm('确定要清空聊天记录吗？')) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: '聊天记录已清空。有什么可以帮助您的吗？',
-          timestamp: Date.now(),
-        },
-      ])
+    if (confirm(t('aiChat.confirmClear'))) {
+      setMessages([])
+      setIntro({ cleared: true, timestamp: Date.now() })
+      conversationIdRef.current = null
       setError(null)
     }
   }
 
   const exportChat = () => {
-    const chatContent = messages
+    const chatContent = allMessages
       .map((msg) => {
-        const role = msg.role === 'user' ? '我' : 'AI'
+        const role = msg.role === 'user' ? t('aiChat.me') : 'AI'
         const time = formatTime(msg.timestamp)
         return `[${time}] ${role}: ${msg.content}`
       })
@@ -183,14 +200,14 @@ export default function AiChat() {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    toast({ title: '导出成功', description: '聊天记录已保存' })
+    toast({ title: t('aiChat.exportSuccess'), description: t('aiChat.exportSuccessDesc') })
   }
 
   const quickPrompts = [
-    { label: '介绍自己', text: '你好，请介绍一下自己' },
-    { label: '功能说明', text: '你能帮我做什么？' },
-    { label: '话题推荐', text: '推荐一些有趣的话题' },
-    { label: '写代码', text: '帮我写一段代码' },
+    { label: t('aiChat.prompts.introLabel'), text: t('aiChat.prompts.introText') },
+    { label: t('aiChat.prompts.featuresLabel'), text: t('aiChat.prompts.featuresText') },
+    { label: t('aiChat.prompts.topicsLabel'), text: t('aiChat.prompts.topicsText') },
+    { label: t('aiChat.prompts.codeLabel'), text: t('aiChat.prompts.codeText') },
   ]
 
   return (
@@ -199,23 +216,24 @@ export default function AiChat() {
         <Card className="flex h-full flex-col overflow-hidden border-border/80">
           <CardHeader className="space-y-3 border-b pb-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted text-primary">
+              {/* 窄屏：标题区可收缩、文字不换行；右侧按钮只留图标（原来三个带字按钮把标题挤成竖排、设置按钮溢出屏幕） */}
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-muted text-primary">
                   <Bot className="h-5 w-5" />
                 </div>
-                <div>
-                  <CardTitle className="text-lg">AI 聊天助手</CardTitle>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary" className="h-5 px-2">在线</Badge>
-                    <span>上下文对话模式</span>
+                <div className="min-w-0">
+                  <CardTitle className="truncate text-lg">{t('aiChat.assistant')}</CardTitle>
+                  <div className="mt-1 flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="h-5 px-2">{t('layout.online')}</Badge>
+                    <span className="truncate">{apiConfigStore.useCustomApi ? t('aiChat.subtitleCustomApi') : t('aiChat.subtitle')}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={exportChat} className="gap-1.5"><Download className="h-4 w-4" />导出</Button>
-                <Button variant="outline" size="sm" onClick={clearChat} className="gap-1.5"><Trash className="h-4 w-4" />清空</Button>
-                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5"><Settings className="h-4 w-4" />设置</Button>
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <Button variant="outline" size="sm" onClick={exportChat} className="gap-1.5" aria-label={t('aiChat.export')} title={t('aiChat.export')}><Download className="h-4 w-4" /><span className="hidden sm:inline">{t('aiChat.export')}</span></Button>
+                <Button variant="outline" size="sm" onClick={clearChat} className="gap-1.5" aria-label={t('aiChat.clear')} title={t('aiChat.clear')}><Trash className="h-4 w-4" /><span className="hidden sm:inline">{t('aiChat.clear')}</span></Button>
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5" aria-label={t('chat.page.settings')} title={t('chat.page.settings')}><Settings className="h-4 w-4" /><span className="hidden sm:inline">{t('chat.page.settings')}</span></Button>
               </div>
             </div>
           </CardHeader>
@@ -231,7 +249,7 @@ export default function AiChat() {
                 >
                   <AlertCircle className="h-4 w-4" />
                   <span className="flex-1">{error}</span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setError(null)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setError(null)} aria-label={t('common.close')}>
                     <X className="h-4 w-4" />
                   </Button>
                 </motion.div>
@@ -239,7 +257,7 @@ export default function AiChat() {
             </AnimatePresence>
 
             <div ref={messagesContainerRef} className="flex-1 space-y-4 overflow-y-auto rounded-xl border bg-muted/30 p-3 md:p-4">
-              {messages.map((message, index) => (
+              {allMessages.map((message, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, y: 8 }}
@@ -255,7 +273,7 @@ export default function AiChat() {
                   <div className={`max-w-[88%] space-y-1 ${message.role === 'user' ? 'items-end' : ''}`}>
                     <div className={`flex items-center gap-1.5 text-[11px] text-muted-foreground ${message.role === 'user' ? 'justify-end' : ''}`}>
                       {message.role === 'assistant' ? <Wand2 className="h-3 w-3" /> : <User className="h-3 w-3" />}
-                      <span>{message.role === 'user' ? '我' : 'AI 助手'}</span>
+                      <span>{message.role === 'user' ? t('aiChat.me') : t('aiChat.assistant')}</span>
                       <span>{formatTime(message.timestamp)}</span>
                     </div>
                     <div className={`rounded-xl border px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${message.role === 'user' ? 'bg-primary text-primary-foreground border-primary/30' : 'bg-card'}`}>
@@ -278,8 +296,8 @@ export default function AiChat() {
                   </div>
                   <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    思考中...
-                    <Button variant="ghost" size="sm" onClick={cancelRequest} className="h-6 px-2 text-xs text-destructive">取消</Button>
+                    {t('aiChat.thinking')}
+                    <Button variant="ghost" size="sm" onClick={cancelRequest} className="h-6 px-2 text-xs text-destructive">{t('chat.window.cancel')}</Button>
                   </div>
                 </div>
               )}
@@ -292,7 +310,7 @@ export default function AiChat() {
                   <Input
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder="输入你的问题..."
+                    placeholder={t('aiChat.placeholder')}
                     disabled={isLoading}
                     maxLength={2000}
                     className="pr-16"
@@ -303,7 +321,7 @@ export default function AiChat() {
                 </div>
                 <Button type="submit" disabled={!inputMessage.trim() || isLoading} className="gap-1.5">
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  发送
+                  {t('chat.window.send')}
                 </Button>
               </div>
 
@@ -322,15 +340,15 @@ export default function AiChat() {
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>API 配置</DialogTitle>
-            <DialogDescription>配置 AI 接口地址和密钥</DialogDescription>
+            <DialogTitle>{t('aiChat.config.title')}</DialogTitle>
+            <DialogDescription>{t('aiChat.config.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
-                <div className="text-sm font-medium">使用自定义 API</div>
-                <div className="text-xs text-muted-foreground">启用后使用你配置的接口</div>
+                <div className="text-sm font-medium">{t('aiChat.config.useCustom')}</div>
+                <div className="text-xs text-muted-foreground">{t('aiChat.config.useCustomDesc')}</div>
               </div>
               <Switch checked={apiConfigStore.useCustomApi} onCheckedChange={(checked) => apiConfigStore.setApiConfig({ useCustomApi: checked })} />
             </div>
@@ -352,15 +370,15 @@ export default function AiChat() {
                 type="password"
                 value={apiConfigStore.aiApiKey}
                 onChange={(e) => apiConfigStore.setApiConfig({ aiApiKey: e.target.value })}
-                placeholder="输入 API Key（可选）"
+                placeholder={t('aiChat.config.keyPlaceholder')}
                 disabled={!apiConfigStore.useCustomApi}
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => apiConfigStore.resetToDefault()}>重置</Button>
-            <Button onClick={() => setShowSettings(false)}>完成</Button>
+            <Button variant="outline" onClick={() => apiConfigStore.resetToDefault()}>{t('aiChat.config.reset')}</Button>
+            <Button onClick={() => setShowSettings(false)}>{t('aiChat.config.done')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

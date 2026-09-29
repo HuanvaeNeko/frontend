@@ -49,7 +49,7 @@ export const ChatHeader = memo(({
           </h2>
           <span className="text-[11px] sm:text-xs text-muted-foreground truncate font-medium flex items-center gap-1.5">
             {conversation.type === 'friend' ? (
-              conversation.online ? <span className="text-green-600">Online</span> : t('chat.window.friend')
+              conversation.online ? <span className="text-green-600">{t('layout.online')}</span> : t('chat.window.friend')
             ) : (
               t('chat.window.group')
             )}

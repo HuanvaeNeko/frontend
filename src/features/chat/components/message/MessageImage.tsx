@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { storageApi } from '@/api/storage'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface MessageImageProps {
   fileUrl: string | null
@@ -32,14 +33,15 @@ function isPresignedUrl(url: string): boolean {
   return url.includes('X-Amz-Signature=') || url.includes('x-amz-signature=')
 }
 
-export function MessageImage({ 
-  fileUrl, 
-  fileUuid, 
-  alt = '图片',
+export function MessageImage({
+  fileUrl,
+  fileUuid,
+  alt,
   className = 'max-w-[240px] rounded-xl',
   onClick,
   isFriendMessage = false
 }: MessageImageProps) {
+  const { t } = useI18n()
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -112,7 +114,7 @@ export function MessageImage({
     return (
       <div className={`${className} bg-muted flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
         <AlertCircle className="h-6 w-6 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">图片加载失败</span>
+        <span className="text-xs text-muted-foreground">{t('filePreview.imageLoadFailed')}</span>
       </div>
     )
   }
@@ -120,7 +122,7 @@ export function MessageImage({
   return (
     <img
       src={imageSrc}
-      alt={alt}
+      alt={alt ?? t('chat.window.image')}
       className={`${className} cursor-pointer hover:opacity-90 transition-opacity`}
       onClick={onClick}
       loading="lazy"

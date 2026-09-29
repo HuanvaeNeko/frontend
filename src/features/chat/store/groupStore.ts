@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { groupsApi, type MyGroup, type GroupMember, type GroupNotice } from '../api/groups'
 import { loadGroups } from '@/data'
 import { pinSession, registerPristineStoreReset } from '@/lib/sessionScope'
+import { translate } from '@/i18n/translate'
 
 interface GroupState {
   // 我的群聊列表
@@ -120,7 +121,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = error instanceof Error ? error.message : '加载群聊列表失败'
+      const errorMessage = error instanceof Error ? error.message : translate('groupManage.errors.storeLoadGroups')
       set({ error: errorMessage, isLoading: false, hasLoaded: true })
       throw error
     }
@@ -138,7 +139,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = error instanceof Error ? error.message : '加载群成员失败'
+      const errorMessage = error instanceof Error ? error.message : translate('groupManage.errors.storeLoadMembers')
       set({ selectionError: errorMessage, isLoading: false })
       throw error
     }
@@ -156,7 +157,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = error instanceof Error ? error.message : '加载群公告失败'
+      const errorMessage = error instanceof Error ? error.message : translate('groupManage.errors.storeLoadNotices')
       set({ selectionError: errorMessage, isLoading: false })
       throw error
     }
@@ -205,7 +206,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       return group
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = error instanceof Error ? error.message : '创建群聊失败'
+      const errorMessage = error instanceof Error ? error.message : translate('chat.groupList.createFailed')
       set({ error: errorMessage, isLoading: false })
       throw error
     }
@@ -227,7 +228,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = error instanceof Error ? error.message : '更新群信息失败'
+      const errorMessage = error instanceof Error ? error.message : translate('groupManage.errors.storeUpdateGroup')
       set({ error: errorMessage, isLoading: false })
       throw error
     }

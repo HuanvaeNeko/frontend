@@ -26,6 +26,21 @@ vi.mock('@/hooks/use-toast', () => ({
   toast: toastMock,
 }))
 
+// 文件行的进出场动画在卸载时被 happy-dom 取消，会抛未处理的 AbortError（同 Sidebar.test.tsx 的说明）
+vi.mock('framer-motion', async () => {
+  const react = await import('react')
+  const strip = ({ initial: _i, animate: _a, exit: _e, transition: _t, variants: _v, layout: _l, whileHover: _h, whileTap: _w, ...rest }: Record<string, unknown>) => rest
+  const passthrough = (tag: string) =>
+    react.forwardRef(function MockMotion(props: Record<string, unknown>, ref: React.Ref<unknown>) {
+      const { children, ...rest } = strip(props)
+      return react.createElement(tag, { ...rest, ref }, children as React.ReactNode)
+    })
+  return {
+    motion: new Proxy({}, { get: (_t, tag: string) => passthrough(tag) }),
+    AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
+  }
+})
+
 // t 直接回显 key：断言与语言环境无关，"这个文案还在不在"也看得最清楚。
 vi.mock('@/i18n/I18nProvider', () => ({
   useI18n: () => ({ locale: 'zh', t: (key: string) => key }),
@@ -96,5 +111,63 @@ describe('FileManager 上传入口', () => {
     expect(toastMock.mock.calls[0][0]).toMatchObject({
       description: '文件大小超过限制: 最大 10 MB（实际 12345678 字节）',
     })
+  })
+})
+
+describe('FileManager 文件列表的三态', () => {
+  const file = (name: string) => ({
+    file_uuid: `u-${name}`, filename: name, file_size: 1024, content_type: 'application/pdf', preview_support: 'inline',
+    created_at: '2026-09-20T08:00:00Z', file_url: `https://x/${name}`, file_hash: 'h',
+  })
+
+  it('加载失败：显示错误与重试，而不是「暂无文件」；重试会重新请求', async () => {
+    const getFileList = vi.spyOn(storageApi, 'getFileList')
+      .mockRejectedValueOnce(new Error('网关超时'))
+      .mockResolvedValueOnce({ files: [file('报告.pdf')], total: 1, page: 1, page_size: 20, total_pages: 1, has_more: false })
+    const { findByText, queryByText, getByRole } = render(<FileManager subTab="main" />)
+
+    expect(await findByText('chat.fileManager.loadFailedTitle')).toBeInTheDocument()
+    expect(queryByText('chat.fileManager.noFiles')).toBeNull()
+
+    getByRole('button', { name: 'shell.list.retry' }).click()
+
+    expect(await findByText('报告.pdf')).toBeInTheDocument()
+    expect(getFileList).toHaveBeenCalledTimes(2)
+  })
+
+  it('有文件但搜索无匹配：说「没有匹配」，而不是「暂无文件 / 上传后显示」', async () => {
+    vi.spyOn(storageApi, 'getFileList').mockResolvedValue({ files: [file('报告.pdf')], total: 1, page: 1, page_size: 20, total_pages: 1, has_more: false })
+    const { findByText, getByPlaceholderText, queryByText } = render(<FileManager subTab="main" />)
+    await findByText('报告.pdf')
+
+    fireEvent.change(getByPlaceholderText('chat.fileManager.searchPlaceholder'), { target: { value: '不存在的名字' } })
+
+    expect(await findByText('chat.fileManager.noMatch')).toBeInTheDocument()
+    expect(queryByText('chat.fileManager.noFilesHint')).toBeNull()
+  })
+})
+
+describe('FileManager「加载更多」', () => {
+  const file = (name: string) => ({
+    file_uuid: `u-${name}`, filename: name, file_size: 1024, content_type: 'application/pdf', preview_support: 'inline',
+    created_at: '2026-09-20T08:00:00Z', file_url: `https://x/${name}`, file_hash: 'h',
+  })
+
+  it('加载的是第 2 页，不是把第 1 页再拼一遍', async () => {
+    // 原实现刷新后 page 停在 1、只在非刷新分支推进页码：第一次「加载更多」请求的还是第 1 页，
+    // 列表翻倍、全是重复项（React 还会报重复 key）
+    const getFileList = vi.spyOn(storageApi, 'getFileList').mockImplementation(async (page = 1) =>
+      page === 1
+        ? { files: [file('第一页-a.pdf'), file('第一页-b.pdf')], total: 3, page: 1, page_size: 2, total_pages: 2, has_more: true }
+        : { files: [file('第二页-c.pdf')], total: 3, page: 2, page_size: 2, total_pages: 2, has_more: false },
+    )
+    const { findByText, getAllByText, getByRole } = render(<FileManager subTab="main" />)
+    await findByText('第一页-a.pdf')
+
+    getByRole('button', { name: 'chat.fileManager.loadMore' }).click()
+
+    expect(await findByText('第二页-c.pdf')).toBeInTheDocument()
+    expect(getFileList.mock.calls.map((c) => c[0])).toEqual([1, 2])
+    expect(getAllByText('第一页-a.pdf')).toHaveLength(1)
   })
 })

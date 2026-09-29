@@ -1,6 +1,7 @@
 import { getAuthApiUrl } from '@/lib/apiConfig'
 import { assertEnvelopeOk, readEnvelope } from '@/lib/apiEnvelope'
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 
 // 设备列表响应（与后端 GET /api/auth/devices 一致）
 export interface DeviceInfo {
@@ -73,7 +74,7 @@ export const authApi = {
     // 字段名检查会整档失效——见 apiEnvelope.ts 里 EnvelopeOptions.require 的说明。
     return readEnvelope<GetDevicesResponse>(response, {
       endpoint: 'GET /api/auth/devices',
-      fallbackMessage: '获取设备列表失败',
+      fallbackMessage: translate('errors.devices.load'),
       require: ['devices', 'total'],
     })
   },
@@ -93,7 +94,7 @@ export const authApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/auth/devices/{device_id}',
-      fallbackMessage: '撤销设备失败',
+      fallbackMessage: translate('errors.devices.revoke'),
     })
   },
 }

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { messagePreviewText } from '@/features/chat/lib/messagePreview'
 import { Message } from '@/types'
 import {
   buildFriendConversationId,
@@ -20,15 +21,6 @@ export interface Conversation {
   unreadCount: number
   online?: boolean
   lastSeq?: number // 本地最后消息序列号，用于增量同步
-}
-
-// 正在输入状态
-export interface TypingStatus {
-  conversationId: string
-  conversationType: 'private' | 'group'
-  userId: string
-  isTyping: boolean
-  timestamp: number
 }
 
 // =============================================
@@ -110,12 +102,6 @@ interface ChatState {
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
 
-  // 正在输入状态
-  typingUsers: Map<string, TypingStatus>
-  setTypingStatus: (status: TypingStatus) => void
-  clearTypingStatus: (conversationId: string, userId: string) => void
-  getTypingUsers: (conversationId: string) => TypingStatus[]
-
   // 消息同步
   isSyncing: boolean
   syncMessages: () => Promise<SyncConversationResponse[]>
@@ -125,16 +111,6 @@ interface ChatState {
   clearCurrentChat: () => void
 }
 
-// 生成消息预览文本
-function getMessagePreviewText(messageType: string, content: string): string {
-  switch (messageType) {
-    case 'text': return content.length > 50 ? content.slice(0, 50) + '...' : content
-    case 'image': return '[图片]'
-    case 'video': return '[视频]'
-    case 'file': return '[文件]'
-    default: return content
-  }
-}
 
 export const useChatStore = create<ChatState>((set, get) => ({
   selectedConversation: null,
@@ -207,6 +183,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const prev = state.unreadSummary
       if (!prev) {
         return {
+          totalUnreadCount: increment ? 1 : 0,
           unreadSummary: {
             total_count: increment ? 1 : 0,
             friend_unreads: [{
@@ -243,6 +220,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         prev.group_unreads.reduce((sum, u) => sum + u.unread_count, 0)
 
       return {
+        totalUnreadCount: totalCount,
         unreadSummary: {
           total_count: totalCount,
           friend_unreads: newFriendUnreads,
@@ -257,6 +235,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const prev = state.unreadSummary
       if (!prev) {
         return {
+          totalUnreadCount: increment ? 1 : 0,
           unreadSummary: {
             total_count: increment ? 1 : 0,
             friend_unreads: [],
@@ -293,6 +272,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         newGroupUnreads.reduce((sum, u) => sum + u.unread_count, 0)
 
       return {
+        totalUnreadCount: totalCount,
         unreadSummary: {
           total_count: totalCount,
           friend_unreads: prev.friend_unreads,
@@ -326,12 +306,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         newSummary = { total_count: totalCount, friend_unreads: prev.friend_unreads, group_unreads: newGroupUnreads }
       }
 
-      return { unreadSummary: newSummary }
+      return { unreadSummary: newSummary, totalUnreadCount: newSummary.total_count }
     })
   },
 
   updateLastMessage: (targetType, targetId, preview, messageType, timestamp) => {
-    const previewText = getMessagePreviewText(messageType, preview)
+    const previewText = messagePreviewText(messageType, preview)
     if (targetType === 'friend') {
       get().updateFriendUnread(targetId, previewText, timestamp, false)
     } else {
@@ -347,42 +327,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   wsConnected: false,
   setWsConnected: (connected) => set({ wsConnected: connected }),
-
-  typingUsers: new Map(),
-  setTypingStatus: (status) => {
-    const key = `${status.conversationId}-${status.userId}`
-    const typingUsers = new Map(get().typingUsers)
-    
-    if (status.isTyping) {
-      typingUsers.set(key, { ...status, timestamp: Date.now() })
-    } else {
-      typingUsers.delete(key)
-    }
-    
-    set({ typingUsers })
-    
-    // 5秒后自动清除 typing 状态
-    if (status.isTyping) {
-      setTimeout(() => {
-        const currentTyping = get().typingUsers.get(key)
-        if (currentTyping && Date.now() - currentTyping.timestamp >= 5000) {
-          get().clearTypingStatus(status.conversationId, status.userId)
-        }
-      }, 5000)
-    }
-  },
-  clearTypingStatus: (conversationId, userId) => {
-    const key = `${conversationId}-${userId}`
-    const typingUsers = new Map(get().typingUsers)
-    typingUsers.delete(key)
-    set({ typingUsers })
-  },
-  getTypingUsers: (conversationId) => {
-    const typingUsers = get().typingUsers
-    return Array.from(typingUsers.values()).filter(
-      s => s.conversationId === conversationId && s.isTyping
-    )
-  },
 
   // 消息同步
   isSyncing: false,

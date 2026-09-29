@@ -504,7 +504,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <Users className="h-8 w-8 text-muted-foreground/60" />
               </div>
               <p className="text-sm font-medium text-foreground">{t('chat.groupList.noGroups')}</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.groupList.tryOtherSearch') : '创建或加入一个群聊吧！'}</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.groupList.tryOtherSearch') : t('groupManage.list.emptyHint')}</p>
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -552,6 +552,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               placeholder={t('chat.groupList.enterGroupKeywordPlaceholder')}
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
+              // 回车即搜（原来只能点按钮）；输入法组字中的回车是上屏，不算
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && !searchingGroup) void handleSearchGroup()
+              }}
               className="flex-1 h-10"
             />
             <Button
@@ -774,6 +778,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             size="icon-sm"
             onClick={loadInvitations}
             disabled={loadingInvites}
+            aria-label={t('chat.groupList.refresh')}
+            title={t('chat.groupList.refresh')}
           >
             <RefreshCw className={`h-4 w-4 ${loadingInvites ? 'animate-spin' : ''}`} />
           </Button>
@@ -859,6 +865,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       className="bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={() => handleAcceptInvite(invitation)}
                       disabled={processingInvite === invitation.request_id}
+                      aria-label={t('chat.groupList.acceptInvite')}
+                      title={t('chat.groupList.acceptInvite')}
                     >
                       {processingInvite === invitation.request_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -872,6 +880,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       onClick={() => handleDeclineInvite(invitation.request_id)}
                       disabled={processingInvite === invitation.request_id}
                       className="hover:text-destructive"
+                      aria-label={t('chat.groupList.declineInvite')}
+                      title={t('chat.groupList.declineInvite')}
                     >
                       <X className="h-4 w-4" />
                     </Button>

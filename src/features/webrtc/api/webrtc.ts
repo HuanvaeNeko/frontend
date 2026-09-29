@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 
 const WEBRTC_BASE_URL = `${getApiBaseUrl()}/api/webrtc`
 
@@ -158,8 +159,8 @@ export const webrtcApi = {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '获取 ICE 服务器配置失败' }))
-      throw new Error(error.error?.message || error.error || '获取 ICE 服务器配置失败')
+      const error = await response.json().catch(() => ({ error: translate('meeting.errors.iceServersFailed') }))
+      throw new Error(error.error?.message || error.error || translate('meeting.errors.iceServersFailed'))
     }
 
     const data: ICEServersResponse = await response.json()
@@ -182,8 +183,8 @@ export const webrtcApi = {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '创建房间失败' }))
-      throw new Error(error.error || error.message || '创建房间失败')
+      const error = await response.json().catch(() => ({ error: translate('chat.webrtc.createFailedDesc') }))
+      throw new Error(error.error || error.message || translate('chat.webrtc.createFailedDesc'))
     }
 
     const data: CreateRoomResponse = await response.json()
@@ -206,17 +207,17 @@ export const webrtcApi = {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '加入房间失败' }))
-      
+      const error = await response.json().catch(() => ({ error: translate('chat.webrtc.joinFailedDesc') }))
+
       if (response.status === 401) {
-        throw new Error('密码错误')
+        throw new Error(translate('meeting.errors.wrongPassword'))
       } else if (response.status === 404) {
-        throw new Error('房间不存在')
+        throw new Error(translate('meeting.errors.roomNotFound'))
       } else if (response.status === 400) {
-        throw new Error(error.error || error.message || '房间已过期或已满')
+        throw new Error(error.error || error.message || translate('meeting.errors.roomUnavailable'))
       }
-      
-      throw new Error(error.error || error.message || '加入房间失败')
+
+      throw new Error(error.error || error.message || translate('chat.webrtc.joinFailedDesc'))
     }
 
     const data: JoinRoomResponse = await response.json()

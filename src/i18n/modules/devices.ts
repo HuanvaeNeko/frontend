@@ -1,0 +1,96 @@
+import { defineMessages } from './define'
+
+/** 登录设备（DevicesPage.tsx）。中文措辞参考 APP src/components/settings/DeviceListPanel.tsx */
+export const devices = defineMessages(
+  {
+    // 页面标题复用 nav.devices，当前设备的「退出登录」按钮复用 shell.settings.logout
+    subtitle: '查看和管理登录设备',
+    refresh: '刷新',
+    loading: '加载中...',
+    loadFailed: '设备列表加载失败',
+    retry: '重试',
+    empty: '暂无设备信息',
+    current: '当前设备',
+    unknown: '未知',
+    lastActive: '最后活跃: {time}',
+    loginTime: '登录时间: {time}',
+    remove: '移除',
+    confirmLogoutTitle: '确认退出登录？',
+    confirmRemoveTitle: '确认移除此设备？',
+    confirmLogoutDesc: '退出后需要重新登录才能继续使用。',
+    confirmRemoveDesc: '移除后该设备将无法继续访问。',
+    cancel: '取消',
+    confirm: '确认',
+    toast: {
+      loadFailed: '加载失败',
+      loadFailedFallback: '无法获取设备列表',
+      loggedOutTitle: '已退出登录',
+      loggedOutDesc: '当前设备已被移除，请重新登录',
+      success: '成功',
+      removed: '设备已移除',
+      removeFailed: '移除失败',
+      removeFailedFallback: '无法移除设备',
+    },
+    /** 从 UA 里认出浏览器但认不出系统时的设备名 */
+    browser: '{name} 浏览器',
+    time: {
+      justNow: '刚刚',
+      minutesAgo: '{n} 分钟前',
+      hoursAgo: '{n} 小时前',
+      daysAgo: '{n} 天前',
+    },
+    errors: {
+      /** 某条设备记录漏了 is_current：整页判失败，绝不把它当成「不是当前设备」 */
+      missingIsCurrent: '设备 {id} 缺少 is_current 字段，响应形状不符合预期',
+      noId: '(无 ID)',
+    },
+    securityTitle: '安全提示',
+    securityDesc: '定期检查设备并移除异常登录',
+    securityBody: '建议在公共设备使用后及时退出，发现陌生设备请立即移除并修改密码。',
+  },
+  {
+    subtitle: 'View and manage signed-in devices',
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    loadFailed: 'Failed to load devices',
+    retry: 'Retry',
+    empty: 'No devices',
+    current: 'Current device',
+    unknown: 'Unknown',
+    lastActive: 'Last active: {time}',
+    loginTime: 'Signed in: {time}',
+    remove: 'Remove',
+    confirmLogoutTitle: 'Log out of this device?',
+    confirmRemoveTitle: 'Remove this device?',
+    confirmLogoutDesc: "You'll need to sign in again to keep using the app.",
+    confirmRemoveDesc: 'This device will no longer have access.',
+    cancel: 'Cancel',
+    confirm: 'Confirm',
+    toast: {
+      loadFailed: 'Failed to load',
+      loadFailedFallback: 'Unable to load devices',
+      loggedOutTitle: 'Logged out',
+      loggedOutDesc: 'This device was removed. Please sign in again.',
+      success: 'Success',
+      removed: 'Device removed',
+      removeFailed: 'Failed to remove',
+      removeFailedFallback: 'Unable to remove the device',
+    },
+    browser: '{name} browser',
+    // 紧凑写法：1m / 5m 都不必处理单复数
+    time: {
+      justNow: 'Just now',
+      minutesAgo: '{n}m ago',
+      hoursAgo: '{n}h ago',
+      daysAgo: '{n}d ago',
+    },
+    errors: {
+      missingIsCurrent: 'Device {id} is missing the is_current field; unexpected response shape',
+      noId: '(no ID)',
+    },
+    securityTitle: 'Security tips',
+    securityDesc: 'Review your devices regularly and remove unfamiliar sign-ins',
+    securityBody:
+      "Log out after using a public device. If you see a device you don't recognize, remove it right away and change your password.",
+  },
+)

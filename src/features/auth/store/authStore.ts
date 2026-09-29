@@ -4,6 +4,7 @@ import type { AuthStore, LoginRequest, RegisterRequest, User } from '../types/au
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { assertEnvelopeOk, readEnvelope } from '@/lib/apiEnvelope'
 import { beginSession, endSession, sessionScopedLocalStorage } from '@/lib/sessionScope'
+import { translate } from '@/i18n/translate'
 
 /**
  * 落盘格式版本。`1` = `user.avatar_url` 是**绝对地址**；`2` = 落盘里**没有 token**。
@@ -142,6 +143,7 @@ export const useAuthStore = create<AuthStore>()(
       isAuthenticated: false,
       isRestoring: false,
       error: null,
+      signedOutByUser: false,
 
       login: async (credentials: LoginRequest) => {
         // 打的是**同源** BFF，不是后端。BFF 会 Set-Cookie，浏览器手里从此
@@ -157,7 +159,7 @@ export const useAuthStore = create<AuthStore>()(
         // 设备标识就是它，客户端不必再传。
         const data = await readEnvelope<{ user: User }>(response, {
           endpoint: 'POST /api/auth/login',
-          fallbackMessage: '登录失败',
+          fallbackMessage: translate('errors.auth.loginFailed'),
           parse: { parse: (input) => {
             const record = input as { user?: unknown } | null
             const user = record && typeof record === 'object' ? record.user : null
@@ -178,6 +180,7 @@ export const useAuthStore = create<AuthStore>()(
           user: { ...data.user, avatar_url: toAbsoluteApiUrl(data.user.avatar_url) },
           isAuthenticated: true,
           error: null,
+          signedOutByUser: false,
         })
       },
 
@@ -192,7 +195,7 @@ export const useAuthStore = create<AuthStore>()(
             user_id: data.user_id, nickname: data.nickname, email: data.email, password: data.password,
           }),
         })
-        await assertEnvelopeOk(response, { endpoint: 'POST /api/auth/register', fallbackMessage: '注册失败' })
+        await assertEnvelopeOk(response, { endpoint: 'POST /api/auth/register', fallbackMessage: translate('errors.auth.registerFailed') })
       },
 
       logout: async () => {
@@ -201,6 +204,7 @@ export const useAuthStore = create<AuthStore>()(
         } catch {
           // BFF 不可达不能阻止本地登出：用户点了登出就该登出
         }
+        set({ signedOutByUser: true })
         get().clearAuth()
       },
 
@@ -247,7 +251,7 @@ export const useAuthStore = create<AuthStore>()(
 
             if (!response.ok) {
               const body = (await response.json().catch(() => null)) as { error?: string } | null
-              set({ isRestoring: false, error: body?.error ?? '无法确认登录状态，请稍后重试' })
+              set({ isRestoring: false, error: body?.error ?? translate('errors.auth.sessionCheckFailed') })
               return
             }
 
@@ -259,7 +263,7 @@ export const useAuthStore = create<AuthStore>()(
             const body = (await response.json().catch(() => null)) as { data?: { user?: User } } | null
             const user = body?.data?.user
             if (!user || typeof user.user_id !== 'string') {
-              set({ isRestoring: false, error: '会话响应形状不符合预期' })
+              set({ isRestoring: false, error: translate('errors.auth.sessionUnexpected') })
               return
             }
 
@@ -278,7 +282,7 @@ export const useAuthStore = create<AuthStore>()(
             })
           } catch {
             // 网络失败：同 502，保持状态
-            set({ isRestoring: false, error: '无法确认登录状态，请稍后重试' })
+            set({ isRestoring: false, error: translate('errors.auth.sessionCheckFailed') })
           }
         })().finally(() => {
           restoreSessionInFlight = null
@@ -324,6 +328,12 @@ export const useAuthStore = create<AuthStore>()(
       clearAuth: () => {
         set({ user: null, isAuthenticated: false, error: null })
         endSession()
+      },
+
+      consumeSignedOutByUser: () => {
+        const value = get().signedOutByUser
+        if (value) set({ signedOutByUser: false })
+        return value
       },
     }),
     {

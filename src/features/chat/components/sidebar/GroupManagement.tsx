@@ -39,6 +39,7 @@ import { ApiError } from '@/lib/apiEnvelope'
 import { isUploadSessionExpired } from '@/api/storage'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface GroupManagementProps {
   groupId: string
@@ -47,6 +48,7 @@ interface GroupManagementProps {
 
 export default function GroupManagement({ groupId, onClose }: GroupManagementProps) {
   const { toast } = useToast()
+  const { t } = useI18n()
   const { user } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -116,25 +118,21 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const canApproveJoinRequests = isOwner || (isAdmin && group !== null && group.admin_can_approve)
 
   // 加载数据
-  //
-  // ⚠️ 已知 bug，本批不碰：`isAdmin` 在这里是挂载那一刻的闭包值，那时
-  // `members` 还是空数组 ⇒ 恒为 `false` ⇒ 这个自动加载从不发生，只有
-  // 页签里的「刷新」按钮能触发（第 4 节有完整分析）。留给下一个人修的陷阱：
-  // 页签的可见性已经改用 `canApproveJoinRequests`（群主，或
-  // `admin_can_approve=true` 的管理员），如果照搬同一个量把这里的
-  // `isAdmin` 也换掉，会变成对着一个「有审批权限」的量做闭包修复——
-  // 一个 `admin_can_approve=false` 的管理员本来就不该看到这个页签，也就不该
-  // 触发这次加载；`isAdmin` 换成 `canApproveJoinRequests` 才是对的方向，
-  // 不是随手把 `isAdmin` 从依赖数组里加进去就完事。
   useEffect(() => {
     loadGroupInfo()
     loadMembers()
     loadNotices()
-    if (isAdmin) {
-      loadJoinRequests()
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
+
+  // 入群申请要等「有没有审批权」确定之后再拉：挂载那一刻 members 还是空的，原实现按那时
+  // 闭包里的 isAdmin（恒 false）判断，自动加载从不发生——页签显示「加入申请0」、点开是
+  // 「暂无加入申请」，群主以为没人申请。判据用 canApproveJoinRequests（群主，或
+  // admin_can_approve=true 的管理员），不是 isAdmin：无审批权的管理员拉这个列表只会 403。
+  useEffect(() => {
+    if (canApproveJoinRequests) loadJoinRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, canApproveJoinRequests])
 
   /**
    * 加载群详情。`getGroupDetail` 现在会抛 `ApiError`，文案是后端原文
@@ -154,8 +152,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setNewDescription(data.group_description || '')
     } catch (err) {
       toast({
-        title: '错误',
-        description: err instanceof Error ? err.message : '加载群信息失败',
+        title: t('chat.groupList.error'),
+        description: err instanceof Error ? err.message : t('groupManage.info.loadFailed'),
         variant: 'destructive',
       })
     } finally {
@@ -173,7 +171,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       // 三态：失败要能和"这个群真的没有成员"区分开，不能只 console.error
       // 然后让成员列表继续显示上一次（或初始的空）状态。
       console.error('加载成员失败:', err)
-      setMembersError(err instanceof Error ? err.message : '加载成员失败')
+      setMembersError(err instanceof Error ? err.message : t('groupManage.members.loadFailed'))
     } finally {
       setLoadingMembers(false)
     }
@@ -187,7 +185,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setNotices(data)
     } catch (err) {
       console.error('加载公告失败:', err)
-      setNoticesError(err instanceof Error ? err.message : '加载公告失败')
+      setNoticesError(err instanceof Error ? err.message : t('groupManage.notices.loadFailed'))
     } finally {
       setLoadingNotices(false)
     }
@@ -201,7 +199,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       setJoinRequests(data)
     } catch (err) {
       console.error('加载加入请求失败:', err)
-      setRequestsError(err instanceof Error ? err.message : '加载加入请求失败')
+      setRequestsError(err instanceof Error ? err.message : t('groupManage.requests.loadFailed'))
     } finally {
       setLoadingRequests(false)
     }
@@ -214,7 +212,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
    */
   const describeApprovalError = (err: unknown, fallback: string): string => {
     if (err instanceof ApiError && err.status === 403) {
-      return '无权操作：本群未开放管理员审批，仅群主可处理入群申请'
+      return t('groupManage.requests.noPermission')
     }
     return err instanceof Error ? err.message : fallback
   }
@@ -223,11 +221,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     setProcessingRequest(requestId)
     try {
       await groupsApi.approveJoinRequest(groupId, requestId)
-      toast({ title: '成功', description: '已通过加入申请' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.requests.approved') })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
       loadMembers()
     } catch (err) {
-      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: describeApprovalError(err, t('groupManage.actionFailed')), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -237,10 +235,10 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     setProcessingRequest(requestId)
     try {
       await groupsApi.rejectJoinRequest(groupId, requestId)
-      toast({ title: '已拒绝', description: '已拒绝加入申请' })
+      toast({ title: t('chat.groupList.rejected'), description: t('groupManage.requests.rejected') })
       setJoinRequests(prev => prev.filter(r => r.request_id !== requestId))
     } catch (err) {
-      toast({ title: '错误', description: describeApprovalError(err, '操作失败'), variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: describeApprovalError(err, t('groupManage.actionFailed')), variant: 'destructive' })
     } finally {
       setProcessingRequest(null)
     }
@@ -253,9 +251,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.updateGroup(groupId, { group_name: newGroupName.trim() })
       setGroup(prev => prev ? { ...prev, group_name: newGroupName.trim() } : null)
       setEditingName(false)
-      toast({ title: '成功', description: '群名称已更新' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.info.nameUpdated') })
     } catch {
-      toast({ title: '错误', description: '更新群名称失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.info.nameUpdateFailed'), variant: 'destructive' })
     }
   }
 
@@ -264,9 +262,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       await groupsApi.updateGroup(groupId, { group_description: newDescription })
       setGroup(prev => prev ? { ...prev, group_description: newDescription } : null)
       setEditingDescription(false)
-      toast({ title: '成功', description: '群简介已更新' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.info.descriptionUpdated') })
     } catch {
-      toast({ title: '错误', description: '更新群简介失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.info.descriptionUpdateFailed'), variant: 'destructive' })
     }
   }
 
@@ -299,12 +297,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const result = await groupsApi.uploadGroupAvatar(groupId, file)
       setGroup(prev => prev ? { ...prev, group_avatar_url: result.file_url } : null)
-      toast({ title: '成功', description: '群头像已更新' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.info.avatarUpdated') })
     } catch (err) {
       const description = isUploadSessionExpired(err)
-        ? `${err.message}（可能是本群另一位管理员同时在换头像）`
-        : err instanceof Error ? err.message : '上传失败'
-      toast({ title: '错误', description, variant: 'destructive' })
+        ? t('groupManage.info.avatarSessionTaken', { message: err.message })
+        : err instanceof Error ? err.message : t('groupManage.info.avatarUploadFailed')
+      toast({ title: t('chat.groupList.error'), description, variant: 'destructive' })
     } finally {
       setUploadingAvatar(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -328,11 +326,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       const policy = await groupsApi.updateJoinPolicy(groupId, patch)
       setGroup(prev => prev ? { ...prev, ...policy } : null)
-      toast({ title: '成功', description: '入群策略已更新' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.policy.updated') })
     } catch (err) {
       toast({
-        title: '错误',
-        description: err instanceof Error ? err.message : '更新入群策略失败',
+        title: t('chat.groupList.error'),
+        description: err instanceof Error ? err.message : t('groupManage.errors.updateJoinPolicy'),
         variant: 'destructive',
       })
     } finally {
@@ -344,7 +342,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
   /** 逐条结果拼成一行行「谁：后端怎么说」，文案照抄后端（doc:2299-2300）。 */
   const describeInviteResults = (rows: InviteResult[]): string =>
-    rows.map(row => `${row.user_id}：${row.message}`).join('；')
+    rows
+      .map(row => t('groupManage.invite.resultRow', { user: row.user_id, message: row.message }))
+      .join(t('groupManage.invite.resultSeparator'))
 
   /**
    * 邀请成员。**本模块唯一一处「HTTP 200 里表达失败」**：整批请求成功的同时，
@@ -368,26 +368,26 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         // 成功文案也照抄后端：审核开着时它是「邀请已发送，待对方同意并经管理员
         // 审核」，关着时是「对方已自动加入群聊」——自己写一句固定文案就等于
         // 又回到"按我是不是管理员预测结果"。
-        toast({ title: '成功', description: describeInviteResults(results) })
+        toast({ title: t('chat.groupList.success'), description: describeInviteResults(results) })
         setShowInviteDialog(false)
         setInviteUserIds('')
       } else if (failed.length === results.length) {
         toast({
-          title: '邀请失败',
+          title: t('groupManage.invite.failed'),
           description: describeInviteResults(failed),
           variant: 'destructive',
         })
       } else {
         toast({
-          title: `${results.length - failed.length} 人已邀请，${failed.length} 人失败`,
+          title: t('groupManage.invite.partial', { ok: results.length - failed.length, failed: failed.length }),
           description: describeInviteResults(failed),
           variant: 'destructive',
         })
       }
     } catch (err) {
       toast({
-        title: '错误',
-        description: err instanceof Error ? err.message : '邀请失败',
+        title: t('chat.groupList.error'),
+        description: err instanceof Error ? err.message : t('groupManage.invite.failed'),
         variant: 'destructive',
       })
     } finally {
@@ -395,15 +395,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     }
   }
 
-  const handleRemoveMember = async (userId: string) => {
-    if (!confirm('确定要移除该成员吗？')) return
+  /** `name` 只用于确认框文案（同 APP「确定要将 某某 移出群聊吗？」），请求仍按 user_id 发。 */
+  const handleRemoveMember = async (userId: string, name: string) => {
+    if (!confirm(t('groupManage.members.removeConfirm', { name }))) return
     setOperating(true)
     try {
       await groupsApi.removeMember(groupId, userId)
       setMembers(prev => prev.filter(m => m.user_id !== userId))
-      toast({ title: '成功', description: '成员已移除' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.removed') })
     } catch {
-      toast({ title: '错误', description: '移除失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.members.removeFailed'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
@@ -414,9 +415,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       await groupsApi.setAdmin(groupId, userId)
       setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: 'admin' } : m))
-      toast({ title: '成功', description: '已设为管理员' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.adminSet') })
     } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.actionFailed'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
@@ -427,9 +428,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       await groupsApi.removeAdmin(groupId, userId)
       setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: 'member' } : m))
-      toast({ title: '成功', description: '已取消管理员' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.adminRemoved') })
     } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.actionFailed'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
@@ -440,11 +441,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     setOperating(true)
     try {
       await groupsApi.muteMember(groupId, selectedMember.user_id, muteDuration)
-      toast({ title: '成功', description: `已禁言 ${muteDuration} 分钟` })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.muted', { minutes: muteDuration }) })
       setShowMuteDialog(false)
       loadMembers()
     } catch {
-      toast({ title: '错误', description: '禁言失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.errors.mute'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
@@ -455,23 +456,24 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
     try {
       await groupsApi.unmuteMember(groupId, userId)
       loadMembers()
-      toast({ title: '成功', description: '已解除禁言' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.unmuted') })
     } catch {
-      toast({ title: '错误', description: '操作失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.actionFailed'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
   }
 
-  const handleTransferOwner = async (userId: string) => {
-    if (!confirm('确定要转让群主吗？此操作不可撤销！')) return
+  /** `name` 同上，只进确认框文案（同 APP TransferOwner 的「确定要将群主转让给 某某 吗？」）。 */
+  const handleTransferOwner = async (userId: string, name: string) => {
+    if (!confirm(t('groupManage.members.transferConfirm', { name }))) return
     setOperating(true)
     try {
       await groupsApi.transferOwner(groupId, userId)
-      toast({ title: '成功', description: '群主已转让' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.members.transferred') })
       loadMembers()
     } catch {
-      toast({ title: '错误', description: '转让失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.members.transferFailed'), variant: 'destructive' })
     } finally {
       setOperating(false)
     }
@@ -487,27 +489,27 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
         content: noticeContent.trim(),
         is_pinned: noticePinned
       })
-      toast({ title: '成功', description: '公告已发布' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.notices.published') })
       setShowNoticeDialog(false)
       setNoticeTitle('')
       setNoticeContent('')
       setNoticePinned(false)
       loadNotices()
     } catch {
-      toast({ title: '错误', description: '发布失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.notices.publishFailed'), variant: 'destructive' })
     } finally {
       setCreatingNotice(false)
     }
   }
 
   const handleDeleteNotice = async (noticeId: string) => {
-    if (!confirm('确定要删除该公告吗？')) return
+    if (!confirm(t('groupManage.notices.deleteConfirm'))) return
     try {
       await groupsApi.deleteNotice(groupId, noticeId)
       setNotices(prev => prev.filter(n => n.id !== noticeId))
-      toast({ title: '成功', description: '公告已删除' })
+      toast({ title: t('chat.groupList.success'), description: t('groupManage.notices.deleted') })
     } catch {
-      toast({ title: '错误', description: '删除失败', variant: 'destructive' })
+      toast({ title: t('chat.groupList.error'), description: t('groupManage.notices.deleteFailed'), variant: 'destructive' })
     }
   }
 
@@ -539,10 +541,10 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       {/* 标签导航 */}
       <div className="flex border-b overflow-x-auto">
         {[
-          { key: 'info', label: '基本信息', icon: Settings, show: true },
-          { key: 'members', label: '成员管理', icon: Users, show: true },
-          { key: 'notices', label: '群公告', icon: Bell, show: true },
-          { key: 'requests', label: '加入申请', icon: UserPlus, show: canApproveJoinRequests, badge: joinRequests.length }
+          { key: 'info', label: t('groupManage.tabs.info'), icon: Settings, show: true },
+          { key: 'members', label: t('groupManage.tabs.members'), icon: Users, show: true },
+          { key: 'notices', label: t('groupManage.tabs.notices'), icon: Bell, show: true },
+          { key: 'requests', label: t('groupManage.tabs.requests'), icon: UserPlus, show: canApproveJoinRequests, badge: joinRequests.length }
         ].filter(tab => tab.show).map(tab => (
           <button
             key={tab.key}
@@ -555,7 +557,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           >
             <tab.icon className="h-4 w-4" />
             {tab.label}
-            {tab.badge && tab.badge > 0 && (
+            {/* 不能写 `tab.badge && …`：数字 0 会被当成文本渲染出来，按钮变成「入群申请0」 */}
+            {(tab.badge ?? 0) > 0 && (
               <span className="bg-destructive text-destructive-foreground text-xs rounded-full px-1.5 py-0.5 min-w-5 text-center">
                 {tab.badge}
               </span>
@@ -609,8 +612,8 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       onChange={e => setNewGroupName(e.target.value)}
                       className="flex-1"
                     />
-                    <Button size="sm" onClick={handleUpdateName}>保存</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingName(false)}>取消</Button>
+                    <Button size="sm" onClick={handleUpdateName}>{t('shell.contacts.save')}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingName(false)}>{t('chat.groupList.cancel')}</Button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -623,7 +626,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                   </div>
                 )}
                 <p className="text-sm text-muted-foreground mt-1">
-                  {group?.member_count} 成员 · {group?.status === 'active' ? '正常' : '已解散'}
+                  {t('chat.groupList.memberCount', { count: group?.member_count ?? '' })} · {group?.status === 'active' ? t('groupManage.info.statusActive') : t('groupManage.info.statusDisbanded')}
                 </p>
               </div>
             </div>
@@ -632,7 +635,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center justify-between">
-                  群简介
+                  {t('groupManage.info.description')}
                   {isAdmin && !editingDescription && (
                     <button onClick={() => setEditingDescription(true)}>
                       <Edit3 className="h-4 w-4 text-muted-foreground" />
@@ -647,16 +650,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       value={newDescription}
                       onChange={e => setNewDescription(e.target.value)}
                       className="w-full p-2 border rounded-lg resize-none h-24"
-                      placeholder="输入群简介..."
+                      placeholder={t('groupManage.info.descriptionPlaceholder')}
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={handleUpdateDescription}>保存</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingDescription(false)}>取消</Button>
+                      <Button size="sm" onClick={handleUpdateDescription}>{t('shell.contacts.save')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingDescription(false)}>{t('chat.groupList.cancel')}</Button>
                     </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {group?.group_description || '暂无简介'}
+                    {group?.group_description || t('groupManage.info.noDescription')}
                   </p>
                 )}
               </CardContent>
@@ -668,15 +671,15 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {isOwner && group && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">入群策略</CardTitle>
+                  <CardTitle className="text-sm">{t('groupManage.policy.title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-4">
                       <label htmlFor="policy-join-approval" className="text-sm">
-                        需要入群审核
+                        {t('groupManage.policy.requireApproval')}
                         <span className="block text-xs text-muted-foreground">
-                          开启后申请落待审；关闭则符合条件的人直接入群
+                          {t('groupManage.policy.requireApprovalHint')}
                         </span>
                       </label>
                       <Switch
@@ -689,9 +692,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
                     <div className="flex items-center justify-between gap-4">
                       <label htmlFor="policy-admin-approve" className="text-sm">
-                        允许管理员参与审核
+                        {t('groupManage.policy.adminCanApprove')}
                         <span className="block text-xs text-muted-foreground">
-                          关闭后只有群主能列出、通过或拒绝入群申请
+                          {t('groupManage.policy.adminCanApproveHint')}
                         </span>
                       </label>
                       <Switch
@@ -705,10 +708,10 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
                   {/* 三档范围：管「看得到 / 拿得到」。与下面三个开关正交（doc:498-507）。 */}
                   <div className="space-y-3 border-t pt-4">
-                    <p className="text-xs text-muted-foreground">谁能把这个群传播出去</p>
+                    <p className="text-xs text-muted-foreground">{t('groupManage.policy.scopesTitle')}</p>
 
                     <div className="space-y-1">
-                      <label htmlFor="policy-card-share-scope" className="text-sm">谁能分享群卡片</label>
+                      <label htmlFor="policy-card-share-scope" className="text-sm">{t('groupManage.policy.cardShareScope')}</label>
                       <select
                         id="policy-card-share-scope"
                         value={group.card_share_scope}
@@ -716,14 +719,14 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         onChange={e => handleUpdateJoinPolicy({ card_share_scope: e.target.value as ShareScope })}
                         className="w-full p-2 border rounded-lg"
                       >
-                        <option value="all_members">全体成员</option>
-                        <option value="admins">群主与管理员</option>
-                        <option value="owner_only">仅群主</option>
+                        <option value="all_members">{t('groupManage.policy.scopeAllMembers')}</option>
+                        <option value="admins">{t('groupManage.policy.scopeAdmins')}</option>
+                        <option value="owner_only">{t('groupManage.policy.scopeOwnerOnly')}</option>
                       </select>
                     </div>
 
                     <div className="space-y-1">
-                      <label htmlFor="policy-qr-show-scope" className="text-sm">谁能展示群二维码</label>
+                      <label htmlFor="policy-qr-show-scope" className="text-sm">{t('groupManage.policy.qrShowScope')}</label>
                       <select
                         id="policy-qr-show-scope"
                         value={group.qr_show_scope}
@@ -731,16 +734,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         onChange={e => handleUpdateJoinPolicy({ qr_show_scope: e.target.value as ShareScope })}
                         className="w-full p-2 border rounded-lg"
                       >
-                        <option value="all_members">全体成员</option>
-                        <option value="admins">群主与管理员</option>
-                        <option value="owner_only">仅群主</option>
+                        <option value="all_members">{t('groupManage.policy.scopeAllMembers')}</option>
+                        <option value="admins">{t('groupManage.policy.scopeAdmins')}</option>
+                        <option value="owner_only">{t('groupManage.policy.scopeOwnerOnly')}</option>
                       </select>
                     </div>
 
                     {/* 🔴 最松档叫 everyone（任何登录用户），不是上面两档的 all_members
                         （本群全体成员）——语义方向相反，传错会被后端 400（doc:210、:552-554）。 */}
                     <div className="space-y-1">
-                      <label htmlFor="policy-search-scope" className="text-sm">谁能搜到这个群</label>
+                      <label htmlFor="policy-search-scope" className="text-sm">{t('groupManage.policy.searchScope')}</label>
                       <select
                         id="policy-search-scope"
                         value={group.search_scope}
@@ -748,9 +751,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         onChange={e => handleUpdateJoinPolicy({ search_scope: e.target.value as SearchScope })}
                         className="w-full p-2 border rounded-lg"
                       >
-                        <option value="everyone">任何登录用户</option>
-                        <option value="admins">群主与管理员</option>
-                        <option value="owner_only">仅群主</option>
+                        <option value="everyone">{t('groupManage.policy.searchEveryone')}</option>
+                        <option value="admins">{t('groupManage.policy.searchAdmins')}</option>
+                        <option value="owner_only">{t('groupManage.policy.searchOwnerOnly')}</option>
                       </select>
                     </div>
                   </div>
@@ -758,10 +761,10 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                   {/* 三个开关：管「能不能进」。关掉搜索加群不会让群从搜索结果里消失，
                       那是上面的 search_scope 管的事（doc:498-507）。 */}
                   <div className="space-y-3 border-t pt-4">
-                    <p className="text-xs text-muted-foreground">哪几条加群通道是开的</p>
+                    <p className="text-xs text-muted-foreground">{t('groupManage.policy.channelsTitle')}</p>
 
                     <div className="flex items-center justify-between gap-4">
-                      <label htmlFor="policy-allow-qr" className="text-sm">允许扫码加群</label>
+                      <label htmlFor="policy-allow-qr" className="text-sm">{t('groupManage.policy.allowQr')}</label>
                       <Switch
                         id="policy-allow-qr"
                         checked={group.allow_join_via_qr}
@@ -771,7 +774,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                      <label htmlFor="policy-allow-search" className="text-sm">允许搜索群 ID 加群</label>
+                      <label htmlFor="policy-allow-search" className="text-sm">{t('groupManage.policy.allowSearch')}</label>
                       <Switch
                         id="policy-allow-search"
                         checked={group.allow_join_via_search}
@@ -782,9 +785,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
 
                     <div className="flex items-center justify-between gap-4">
                       <label htmlFor="policy-allow-referral" className="text-sm">
-                        允许好友推荐加群
+                        {t('groupManage.policy.allowReferral')}
                         <span className="block text-xs text-muted-foreground">
-                          同时管住普通成员发起的邀请；群主与管理员的邀请不受它约束
+                          {t('groupManage.policy.allowReferralHint')}
                         </span>
                       </label>
                       <Switch
@@ -802,20 +805,20 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {/* 群信息 */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">群信息</CardTitle>
+                <CardTitle className="text-sm">{t('groupManage.info.detailsTitle')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">群ID</span>
+                  <span className="text-muted-foreground">{t('groupManage.info.groupId')}</span>
                   <span className="font-mono text-xs">{group?.group_id}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">创建时间</span>
+                  <span className="text-muted-foreground">{t('groupManage.info.createdAt')}</span>
                   <span>{group?.created_at ? new Date(group.created_at).toLocaleDateString() : '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">入群审核</span>
-                  <span>{group ? (group.join_approval_required ? '需要审核' : '无需审核') : '-'}</span>
+                  <span className="text-muted-foreground">{t('groupManage.info.joinMethod')}</span>
+                  <span>{group ? (group.join_approval_required ? t('groupManage.info.joinNeedsApproval') : t('groupManage.info.joinDirect')) : '-'}</span>
                 </div>
               </CardContent>
             </Card>
@@ -823,7 +826,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {/* 危险操作 */}
             <Card className="border-destructive/30">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-destructive">危险操作</CardTitle>
+                <CardTitle className="text-sm text-destructive">{t('groupManage.danger.title')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {/* 普通成员可以退出群聊 */}
@@ -832,18 +835,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" className="w-full gap-2 text-destructive border-destructive/30 hover:bg-destructive/10">
                         <UserMinus className="h-4 w-4" />
-                        退出群聊
+                        {t('groupManage.danger.leave')}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认退出群聊？</AlertDialogTitle>
+                        <AlertDialogTitle>{t('groupManage.danger.leaveTitle')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          退出后将不再接收群消息，需要重新申请或被邀请才能再次加入。
+                          {t('groupManage.danger.leaveDesc')}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t('chat.groupList.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
                             // 本文件之前唯一没有 try/catch 的调用点：抛错会变成
@@ -851,18 +854,18 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             // 执行，用户只会看到弹窗自己关掉、什么反馈都没有。
                             try {
                               await groupsApi.leaveGroup(groupId)
-                              toast({ title: '成功', description: '已退出群聊' })
+                              toast({ title: t('chat.groupList.success'), description: t('groupManage.danger.left') })
                               onClose?.()
                             } catch (err) {
                               toast({
-                                title: '错误',
-                                description: err instanceof Error ? err.message : '退出群聊失败',
+                                title: t('chat.groupList.error'),
+                                description: err instanceof Error ? err.message : t('groupManage.errors.leave'),
                                 variant: 'destructive',
                               })
                             }
                           }}
                         >
-                          确认退出
+                          {t('groupManage.danger.leaveConfirm')}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -875,35 +878,35 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                     <AlertDialogTrigger asChild>
                       <Button variant="destructive" className="w-full gap-2">
                         <Trash2 className="h-4 w-4" />
-                        解散群聊
+                        {t('groupManage.danger.disband')}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认解散群聊？</AlertDialogTitle>
+                        <AlertDialogTitle>{t('groupManage.danger.disbandTitle')}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          此操作不可撤销，群聊将被永久删除。
+                          {t('groupManage.danger.disbandDesc')}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t('chat.groupList.cancel')}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={async () => {
                             // 同上一个弹窗：补 try/catch，失败要有可见反馈。
                             try {
                               await groupsApi.disbandGroup(groupId)
-                              toast({ title: '成功', description: '群聊已解散' })
+                              toast({ title: t('chat.groupList.success'), description: t('groupManage.danger.disbanded') })
                               onClose?.()
                             } catch (err) {
                               toast({
-                                title: '错误',
-                                description: err instanceof Error ? err.message : '解散群聊失败',
+                                title: t('chat.groupList.error'),
+                                description: err instanceof Error ? err.message : t('groupManage.errors.disband'),
                                 variant: 'destructive',
                               })
                             }
                           }}
                         >
-                          确认解散
+                          {t('groupManage.danger.disbandConfirm')}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -936,7 +939,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {isAdmin && (
               <Button className="w-full gap-2" onClick={() => setShowInviteDialog(true)}>
                 <UserPlus className="h-4 w-4" />
-                邀请成员
+                {t('groupManage.members.invite')}
               </Button>
             )}
 
@@ -948,11 +951,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               // 失败态必须和"这个群真的没有成员"长得不一样——同一句"暂无成员"
               // 曾经在信封化之前把网络故障和真实空列表渲染成同一个画面。
               <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <p className="text-sm text-destructive">加载成员失败：{membersError}</p>
-                <Button variant="outline" size="sm" onClick={loadMembers}>重试</Button>
+                <p className="text-sm text-destructive">{t('groupManage.members.loadFailedWith', { error: membersError })}</p>
+                <Button variant="outline" size="sm" onClick={loadMembers}>{t('chat.groupList.retry')}</Button>
               </div>
             ) : members.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无成员</p>
+              <p className="text-center text-muted-foreground py-8">{t('groupManage.members.empty')}</p>
             ) : (
               <div className="space-y-2">
                 {members.map(member => {
@@ -983,7 +986,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {member.role === 'owner' ? '群主' : member.role === 'admin' ? '管理员' : '成员'}
+                        {member.role === 'owner'
+                          ? t('shell.contacts.roleOwner')
+                          : member.role === 'admin'
+                            ? t('shell.contacts.roleAdmin')
+                            : t('shell.contacts.roleMember')}
                       </span>
                     </div>
 
@@ -1045,7 +1052,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleTransferOwner(member.user_id)}
+                              onClick={() => handleTransferOwner(member.user_id, displayName)}
                               disabled={operating}
                             >
                               <Crown className="h-4 w-4 text-primary" />
@@ -1056,7 +1063,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleRemoveMember(member.user_id)}
+                          onClick={() => handleRemoveMember(member.user_id, displayName)}
                           disabled={operating}
                         >
                           <UserMinus className="h-4 w-4 text-destructive" />
@@ -1077,7 +1084,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
             {isAdmin && (
               <Button className="w-full gap-2" onClick={() => setShowNoticeDialog(true)}>
                 <Plus className="h-4 w-4" />
-                发布公告
+                {t('groupManage.notices.create')}
               </Button>
             )}
 
@@ -1087,11 +1094,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               </div>
             ) : noticesError ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <p className="text-sm text-destructive">加载公告失败：{noticesError}</p>
-                <Button variant="outline" size="sm" onClick={loadNotices}>重试</Button>
+                <p className="text-sm text-destructive">{t('groupManage.notices.loadFailedWith', { error: noticesError })}</p>
+                <Button variant="outline" size="sm" onClick={loadNotices}>{t('chat.groupList.retry')}</Button>
               </div>
             ) : notices.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无公告</p>
+              <p className="text-center text-muted-foreground py-8">{t('groupManage.notices.empty')}</p>
             ) : (
               <div className="space-y-4">
                 {notices.map(notice => (
@@ -1100,7 +1107,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           {notice.is_pinned && (
-                            <span className="text-xs text-primary font-medium">📌 置顶</span>
+                            <span className="text-xs text-primary font-medium">{t('groupManage.notices.pinned')}</span>
                           )}
                           <h4 className="font-medium">{notice.title}</h4>
                           <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">
@@ -1135,7 +1142,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                待处理的加入申请
+                {t('groupManage.requests.pendingTitle')}
               </span>
               <Button
                 variant="ghost"
@@ -1146,7 +1153,7 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                 {loadingRequests ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  '刷新'
+                  t('chat.groupList.refresh')
                 )}
               </Button>
             </div>
@@ -1157,11 +1164,11 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               </div>
             ) : requestsError ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <p className="text-sm text-destructive">加载加入申请失败：{requestsError}</p>
-                <Button variant="outline" size="sm" onClick={loadJoinRequests}>重试</Button>
+                <p className="text-sm text-destructive">{t('groupManage.requests.loadFailedWith', { error: requestsError })}</p>
+                <Button variant="outline" size="sm" onClick={loadJoinRequests}>{t('chat.groupList.retry')}</Button>
               </div>
             ) : joinRequests.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无加入申请</p>
+              <p className="text-center text-muted-foreground py-8">{t('groupManage.requests.empty')}</p>
             ) : (
               <div className="space-y-2">
                 {joinRequests.map(request => {
@@ -1199,8 +1206,13 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                               的按钮都照常渲染，只有说明文案不同。 */}
                           <div className="text-xs text-muted-foreground mt-1">
                             {request.request_type === 'search_apply'
-                              ? `主动申请入群 · 申请时间: ${new Date(request.created_at).toLocaleString()}`
-                              : `${request.user_accepted ? '由群成员邀请，对方已同意，待你审批' : '由群成员邀请，等待对方确认'} · 邀请时间: ${new Date(request.created_at).toLocaleString()}`}
+                              ? t('groupManage.requests.appliedAt', { time: new Date(request.created_at).toLocaleString() })
+                              : t('groupManage.requests.invitedAt', {
+                                status: request.user_accepted
+                                  ? t('groupManage.requests.invitedAccepted')
+                                  : t('groupManage.requests.invitedPending'),
+                                time: new Date(request.created_at).toLocaleString(),
+                              })}
                           </div>
                         </div>
                         <div className="flex gap-1">
@@ -1239,12 +1251,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>邀请成员</DialogTitle>
-            <DialogDescription className="sr-only">通过用户ID邀请成员加入群聊</DialogDescription>
+            <DialogTitle>{t('groupManage.members.invite')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('groupManage.invite.description')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm text-muted-foreground">用户ID（多个用逗号分隔）</label>
+              <label className="text-sm text-muted-foreground">{t('groupManage.invite.userIdsLabel')}</label>
               <Input
                 value={inviteUserIds}
                 onChange={e => setInviteUserIds(e.target.value)}
@@ -1253,9 +1265,9 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowInviteDialog(false)}>取消</Button>
+              <Button variant="ghost" onClick={() => setShowInviteDialog(false)}>{t('chat.groupList.cancel')}</Button>
               <Button onClick={handleInviteMembers} disabled={inviting}>
-                {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : '邀请'}
+                {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('groupManage.invite.submit')}
               </Button>
             </div>
           </div>
@@ -1266,25 +1278,25 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       <Dialog open={showNoticeDialog} onOpenChange={setShowNoticeDialog}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>发布公告</DialogTitle>
-            <DialogDescription className="sr-only">编写并发布群公告</DialogDescription>
+            <DialogTitle>{t('groupManage.notices.dialogTitle')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('groupManage.notices.dialogDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm text-muted-foreground">标题</label>
+              <label className="text-sm text-muted-foreground">{t('groupManage.notices.titleLabel')}</label>
               <Input
                 value={noticeTitle}
                 onChange={e => setNoticeTitle(e.target.value)}
-                placeholder="公告标题"
+                placeholder={t('groupManage.notices.titlePlaceholder')}
                 className="mt-1"
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground">内容</label>
+              <label className="text-sm text-muted-foreground">{t('groupManage.notices.contentLabel')}</label>
               <textarea
                 value={noticeContent}
                 onChange={e => setNoticeContent(e.target.value)}
-                placeholder="公告内容"
+                placeholder={t('groupManage.notices.contentPlaceholder')}
                 className="mt-1 w-full p-2 border rounded-lg resize-none h-32"
               />
             </div>
@@ -1294,12 +1306,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                 checked={noticePinned}
                 onChange={e => setNoticePinned(e.target.checked)}
               />
-              <span className="text-sm">置顶公告</span>
+              <span className="text-sm">{t('groupManage.notices.pinLabel')}</span>
             </label>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>取消</Button>
+              <Button variant="ghost" onClick={() => setShowNoticeDialog(false)}>{t('chat.groupList.cancel')}</Button>
               <Button onClick={handleCreateNotice} disabled={creatingNotice}>
-                {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : '发布'}
+                {creatingNotice ? <Loader2 className="h-4 w-4 animate-spin" /> : t('groupManage.notices.submit')}
               </Button>
             </div>
           </div>
@@ -1310,12 +1322,12 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
       <Dialog open={showMuteDialog} onOpenChange={setShowMuteDialog}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>禁言成员: {selectedMember?.user_nickname}</DialogTitle>
-            <DialogDescription className="sr-only">设置禁言时长</DialogDescription>
+            <DialogTitle>{t('groupManage.mute.title', { name: selectedMember ? selectedMember.group_nickname || selectedMember.user_nickname || selectedMember.user_id : '' })}</DialogTitle>
+            <DialogDescription className="sr-only">{t('groupManage.mute.description')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm text-muted-foreground">禁言时长（分钟）</label>
+              <label className="text-sm text-muted-foreground">{t('groupManage.mute.durationLabel')}</label>
               <Input
                 type="number"
                 value={muteDuration}
@@ -1332,14 +1344,16 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
                   size="sm"
                   onClick={() => setMuteDuration(mins)}
                 >
-                  {mins < 60 ? `${mins}分钟` : `${mins / 60}小时`}
+                  {mins < 60
+                    ? t('groupManage.mute.presetMinutes', { n: mins })
+                    : t('groupManage.mute.presetHours', { n: mins / 60 })}
                 </Button>
               ))}
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowMuteDialog(false)}>取消</Button>
+              <Button variant="ghost" onClick={() => setShowMuteDialog(false)}>{t('chat.groupList.cancel')}</Button>
               <Button onClick={handleMuteMember} disabled={operating}>
-                {operating ? <Loader2 className="h-4 w-4 animate-spin" /> : '确认禁言'}
+                {operating ? <Loader2 className="h-4 w-4 animate-spin" /> : t('groupManage.mute.confirm')}
               </Button>
             </div>
           </div>

@@ -8,7 +8,7 @@
  * `src/lib` 下的任何东西——拷一份常量过去，比把整个 `src/` 目录拖进 runtime
  * 镜像便宜得多。两处一旦要加/删前缀，必须同时改。
  */
-export const BFF_PREFIXES = ['/api/', '/avatars/', '/user-file/', '/friends-file/', '/apps/'] as const
+export const BFF_PREFIXES = ['/api/', '/avatars/', '/user-file/', '/friends-file/', '/group-file/', '/apps/'] as const
 
 /**
  * 这个 URL 是不是「本应用自己的静态资源」（js/css/字体/图标之类，可以放心

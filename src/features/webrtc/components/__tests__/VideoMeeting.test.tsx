@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MotionGlobalConfig } from 'framer-motion'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { useAuthStore } from '@/features/auth/store/authStore'
@@ -20,6 +20,20 @@ import VideoMeeting from '../VideoMeeting'
  * discovery / profile 四个 api 出口同一条约定）。这条用例钉的就是这两者之间那一次转换：
  * 把 `toApiRelativePath(...)` 改回 `user?.avatar_url || undefined`，本条红。
  */
+
+/** t 用真实 zh-CN 字典查（带参数替换）：下面「访客加入」的用例按中文文案找元素 */
+vi.mock('@/i18n/I18nProvider', async () => {
+  const { messages } = await import('@/i18n/messages')
+  const t = (key: string, params?: Record<string, string | number>) => {
+    const value = key.split('.').reduce<unknown>((acc, segment) => {
+      if (!acc || typeof acc !== 'object') return undefined
+      return (acc as Record<string, unknown>)[segment]
+    }, messages['zh-CN'] as unknown)
+    if (typeof value !== 'string') return key
+    return value.replace(/\{(\w+)\}/g, (_, k: string) => String(params?.[k] ?? `{${k}}`))
+  }
+  return { useI18n: () => ({ locale: 'zh-CN', t }) }
+})
 
 const ROOM_ID = 'ABC123'
 
@@ -140,5 +154,67 @@ describe('VideoMeeting 加入房间时发出的 avatar_url', () => {
     await waitFor(() => expect(joinRoom).toHaveBeenCalled())
     const payload = joinRoom.mock.calls[0]?.[1] as { avatar_url?: string }
     expect(payload.avatar_url).toBeUndefined()
+  })
+})
+
+describe('VideoMeeting 访客（没登录）拿着会议链接进来', () => {
+  const renderLink = () =>
+    render(
+      <RouterProvider
+        router={createMemoryRouter([{ path: '/app/video-meeting', element: <VideoMeeting /> }], {
+          initialEntries: ['/app/video-meeting?room=R8K2QF&pwd=246810'],
+        })}
+      />,
+    )
+
+  it('先填显示名称，填好才加入，display_name 用填的名字（原来直接以「访客」进房，谁也认不出是谁）', async () => {
+    useAuthStore.setState({ user: null })
+    renderLink()
+
+    const input = await screen.findByLabelText('你的名字')
+    expect(joinRoom).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: '  路人甲 ' } })
+    fireEvent.click(screen.getByRole('button', { name: '加入会议' }))
+
+    await waitFor(() => expect(joinRoom).toHaveBeenCalledWith('R8K2QF', expect.objectContaining({ password: '246810', display_name: '路人甲' })))
+  })
+
+  it('正对照：已登录用户不经过这一步，直接用昵称加入', async () => {
+    useAuthStore.setState({ user: { user_id: 'alice', nickname: '爱丽丝' } })
+    renderLink()
+
+    await waitFor(() => expect(joinRoom).toHaveBeenCalledWith('R8K2QF', expect.objectContaining({ display_name: '爱丽丝' })))
+    expect(screen.queryByLabelText('你的名字')).toBeNull()
+  })
+
+  it('「有账号？登录后加入」带着原会议链接去登录页', async () => {
+    useAuthStore.setState({ user: null })
+    renderLink()
+
+    const link = await screen.findByRole('link', { name: /登录后加入/ })
+    expect(link).toHaveAttribute('href', `/app/login?next=${encodeURIComponent('/app/video-meeting?room=R8K2QF&pwd=246810')}`)
+  })
+})
+
+describe('VideoMeeting 邀请链接', () => {
+  it('复制出去的是能打开的 /app/video-meeting 链接（原来少了 /app 前缀，别人点开是 404）', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const socket = fakeSocket()
+    vi.spyOn(webrtcApi, 'createSignalingConnection').mockReturnValue(socket)
+    useAuthStore.setState({ user: { user_id: 'alice', nickname: '爱丽丝' } })
+    render(
+      <RouterProvider
+        router={createMemoryRouter([{ path: '/app/video-meeting', element: <VideoMeeting /> }], {
+          initialEntries: ['/app/video-meeting?room=R8K2QF&pwd=246810'],
+        })}
+      />,
+    )
+
+    await waitFor(() => expect(typeof socket.onopen).toBe('function'))
+    act(() => { (socket.onopen as () => void)() })
+    fireEvent.click(await screen.findByRole('button', { name: '复制邀请链接' }))
+
+    expect(writeText).toHaveBeenCalledWith(`${location.origin}/app/video-meeting?room=R8K2QF&pwd=246810`)
   })
 })

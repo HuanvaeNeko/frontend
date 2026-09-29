@@ -2,29 +2,19 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
-import { DEFAULT_LOCALE, type AppLocale, messages, normalizeLocale } from './messages'
+import { DEFAULT_LOCALE, type AppLocale, normalizeLocale } from './messages'
+import { setActiveLocale, translateIn } from './translate'
 
 interface I18nContextValue {
   locale: AppLocale
   t: (key: string, params?: Record<string, string | number>) => string
 }
 
+// 不在 Provider 里（测试里单独渲染组件）时按默认语言查字典，而不是把 key 原样吐出来
 const I18nContext = createContext<I18nContextValue>({
   locale: DEFAULT_LOCALE,
-  t: (key) => key,
+  t: (key, params) => translateIn(DEFAULT_LOCALE, key, params),
 })
-
-function getValueByPath(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((acc, segment) => {
-    if (!acc || typeof acc !== 'object') return undefined
-    return (acc as Record<string, unknown>)[segment]
-  }, obj)
-}
-
-function formatMessage(template: string, params?: Record<string, string | number>): string {
-  if (!params) return template
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`))
-}
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const language = useSettingsStore((s) => s.language)
@@ -46,21 +36,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('languagechange', handleLanguageChange)
   }, [language])
 
-  const value = useMemo<I18nContextValue>(() => {
-    const t = (key: string, params?: Record<string, string | number>) => {
-      const currentDict = messages[locale]
-      const fallbackDict = messages[DEFAULT_LOCALE]
-
-      const localized = getValueByPath(currentDict, key)
-      const fallback = getValueByPath(fallbackDict, key)
-      const raw = typeof localized === 'string'
-        ? localized
-        : (typeof fallback === 'string' ? fallback : key)
-
-      return formatMessage(raw, params)
-    }
-    return { locale, t }
+  // 组件外的 translate() 跟着同一个生效语言走
+  useEffect(() => {
+    setActiveLocale(locale)
   }, [locale])
+
+  const value = useMemo<I18nContextValue>(() => ({
+    locale,
+    t: (key: string, params?: Record<string, string | number>) => translateIn(locale, key, params),
+  }), [locale])
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }

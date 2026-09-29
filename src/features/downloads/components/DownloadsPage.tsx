@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Download, Globe, Laptop, Smartphone, Monitor, HardDrive, Package, Calendar, Info, ArrowLeft } from 'lucide-react'
-import { fetchReleaseInfo, type GitHubRelease, PROXY_PREFIX_URL } from '@/lib/appInstall'
+import { fetchReleaseInfo, type GitHubRelease, PROXY_PREFIX_URL, RELEASES_URL } from '@/lib/appInstall'
 import { useI18n } from '@/i18n/I18nProvider'
 import { ROUTES } from '@/lib/routes'
 import { useRouter } from '@/lib/navigation'
@@ -21,12 +21,18 @@ function formatBytes(bytes: number, decimals = 1) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
 }
 
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString(undefined, {
+// 按应用语言而不是浏览器语言格式化：否则英文界面里会出现「2026年9月23日」
+function formatDate(dateString: string, locale: string) {
+  return new Date(dateString).toLocaleDateString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
   })
+}
+
+// GitHub 的 tag 本身通常就带 v（v1.1.52），再拼一个就成了「vv1.1.52」
+function formatTag(tag: string) {
+  return tag.startsWith('v') ? tag : `v${tag}`
 }
 
 export default function DownloadsPage() {
@@ -87,7 +93,7 @@ export default function DownloadsPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge className="bg-sky-500 hover:bg-sky-600">Recommended</Badge>
+                  <Badge className="bg-sky-500 hover:bg-sky-600">{t('landing.download.recommended')}</Badge>
                   <span className="text-xs text-muted-foreground font-mono">{primary.name}</span>
                 </div>
                 <h4 className="text-lg font-semibold flex items-center gap-2">
@@ -96,14 +102,14 @@ export default function DownloadsPage() {
                 </h4>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1"><HardDrive size={12} /> {formatBytes(primary.size)}</span>
-                  <span className="flex items-center gap-1"><Calendar size={12} /> {formatDate(primary.created_at)}</span>
+                  <span className="flex items-center gap-1"><Calendar size={12} /> {formatDate(primary.created_at, locale)}</span>
                   {primary.download_count > 0 && <span className="flex items-center gap-1"><Download size={12} /> {primary.download_count}</span>}
                 </div>
               </div>
               <Button size="lg" className="w-full sm:w-auto shadow-lg shadow-sky-500/20" asChild>
                 <a href={getDownloadUrl(primary.browser_download_url)} target="_blank" rel="noreferrer">
                   <Download className="mr-2 h-5 w-5" />
-                  Download
+                  {t('landing.download.download')}
                 </a>
               </Button>
             </div>
@@ -121,11 +127,11 @@ export default function DownloadsPage() {
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{formatBytes(asset.size)}</span>
-                    <span>{formatDate(asset.created_at)}</span>
+                    <span>{formatDate(asset.created_at, locale)}</span>
                   </div>
                 </div>
                 <Button variant="ghost" size="icon" asChild className="shrink-0">
-                  <a href={getDownloadUrl(asset.browser_download_url)} target="_blank" rel="noreferrer">
+                  <a href={getDownloadUrl(asset.browser_download_url)} target="_blank" rel="noreferrer" aria-label={`${t('landing.download.download')} ${asset.name}`}>
                     <Download size={18} />
                   </a>
                 </Button>
@@ -150,7 +156,7 @@ export default function DownloadsPage() {
         <div className="mb-16 text-center space-y-6">
           <div className="inline-flex items-center rounded-full border bg-white/50 px-3 py-1 text-sm font-medium text-muted-foreground backdrop-blur dark:bg-slate-900/50">
             <Info size={14} className="mr-2" />
-            <span>Latest Release</span>
+            <span>{t('landing.download.latestRelease')}</span>
           </div>
           
           <h1 className="text-4xl font-bold tracking-tight sm:text-6xl bg-gradient-to-br from-slate-900 to-slate-600 bg-clip-text text-transparent dark:from-white dark:to-slate-400">
@@ -166,11 +172,11 @@ export default function DownloadsPage() {
           {release?.tag_name && (
              <div className="flex items-center justify-center gap-2">
                 <Badge variant="outline" className="px-3 py-1 text-base font-normal">
-                  v{release.tag_name}
+                  {formatTag(release.tag_name)}
                 </Badge>
                 {release.published_at && (
                   <span className="text-sm text-muted-foreground">
-                    Released on {formatDate(release.published_at)}
+                    {t('landing.download.releasedOn', { date: formatDate(release.published_at, locale) })}
                   </span>
                 )}
              </div>
@@ -207,7 +213,7 @@ export default function DownloadsPage() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-4">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-500 border-t-transparent" />
-                <p className="text-muted-foreground">Fetching latest release...</p>
+                <p className="text-muted-foreground">{t('landing.download.fetchingLatest')}</p>
               </div>
             ) : (
               <div className="rounded-2xl border bg-white p-6 shadow-xl shadow-slate-200/40 dark:bg-slate-900 dark:shadow-none sm:p-8 transition-all">
@@ -270,14 +276,14 @@ export default function DownloadsPage() {
 
         <div className="mt-16 text-center">
           <p className="text-sm text-muted-foreground">
-            Looking for older versions? {' '}
-            <a 
-              href="https://github.com/huanvae/Huanvae-Chat-App/releases" 
-              target="_blank" 
+            {t('landing.download.olderVersions')}{' '}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
               rel="noreferrer"
               className="font-medium text-sky-600 hover:underline dark:text-sky-400"
             >
-              View release history on GitHub
+              {t('landing.download.releaseHistory')}
             </a>
           </p>
         </div>

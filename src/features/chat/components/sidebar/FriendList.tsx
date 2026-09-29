@@ -1,13 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import { UserPlus, Check, X, Loader2, Trash2, MoreVertical, Users, Clock, Send } from 'lucide-react'
 import { format } from 'date-fns'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import type { Friend } from '@/features/chat/api/friends'
@@ -15,6 +13,7 @@ import { useChatStore } from '@/features/chat/store/chatStore'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/I18nProvider'
 import { ConversationItem } from './ConversationItem'
+import { AddFriendDialog } from './AddFriendDialog'
 
 // 列表项动画配置
 const listItemVariants: Variants = {
@@ -36,22 +35,6 @@ const listItemVariants: Variants = {
 }
 
 // 弹窗动画
-const dialogVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.95, y: 10 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { type: 'spring' as const, stiffness: 300, damping: 25 },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    y: 10,
-    transition: { duration: 0.2 },
-  },
-}
-
 /**
  * 好友的展示名：备注 > 昵称 > 用户 ID。
  *
@@ -92,7 +75,6 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     pendingRequests,
     sentRequests,
     isLoading,
-    sendFriendRequest,
     approveFriendRequest,
     rejectFriendRequest,
     removeFriend,
@@ -102,9 +84,6 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
   const { setSelectedConversation, selectedConversation } = useChatStore()
   
   const [showAddDialog, setShowAddDialog] = useState(false)
-  const [targetUserId, setTargetUserId] = useState('')
-  const [reason, setReason] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const [deletingFriend, setDeletingFriend] = useState<string | null>(null)
 
   // 确保 friends 是数组
@@ -117,38 +96,6 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
     friendDisplayName(friend).toLowerCase().includes(searchQuery.toLowerCase()) ||
     friend.friend_id.toLowerCase().includes(searchQuery.toLowerCase())
   )
-
-  // 发送好友请求
-  const handleSendRequest = async () => {
-    if (!targetUserId.trim()) {
-      toast({
-        title: t('chat.friendList.error'),
-        description: t('chat.friendList.enterUserId'),
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      await sendFriendRequest(targetUserId.trim(), reason.trim() || undefined)
-      toast({
-        title: t('chat.friendList.success'),
-        description: t('chat.friendList.requestSent'),
-      })
-      setShowAddDialog(false)
-      setTargetUserId('')
-      setReason('')
-    } catch (error) {
-      toast({
-        title: t('chat.friendList.failed'),
-        description: error instanceof Error ? error.message : t('chat.friendList.requestSendFailed'),
-        variant: 'destructive',
-      })
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   // 同意好友请求
   const handleApprove = async (applicantUserId: string) => {
@@ -262,7 +209,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <Users className="h-8 w-8 text-muted-foreground/60" />
               </div>
               <p className="text-sm font-medium text-foreground">{t('chat.friendList.noFriends')}</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.friendList.tryOtherSearch') : '添加好友开始聊天吧！'}</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.friendList.tryOtherSearch') : t('system.addFriendsToChat')}</p>
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -271,7 +218,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 const summary = useChatStore.getState().unreadSummary
                 const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.friend_id)
                 // 后端 FriendDto 不返回 signature，这一档回退随字段一起消失
-                const lastMsg = friendUnread?.last_message_preview || "Say hi!"
+                const lastMsg = friendUnread?.last_message_preview || t('shell.list.noMessage')
 
                 return (
                   <div key={friend.friend_id} className="relative group">
@@ -315,95 +262,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
           )}
         </div>
 
-        {/* Add Friend Dialog Portal ... (unchanged) */}
-        {typeof document !== 'undefined' && createPortal(
-          <AnimatePresence>
-            {showAddDialog && (
-              <>
-                {/* 遮罩层 */}
-                <motion.div
-                  className="fixed inset-0 z-[9998] bg-foreground/45"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setShowAddDialog(false)}
-                />
-                {/* 对话框 */}
-                <motion.div
-                  className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none p-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                <motion.div
-                  className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-card p-6 shadow-xl"
-                  variants={dialogVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <h3 className="text-xl font-semibold mb-6 text-foreground">{t('chat.friendList.addFriend')}</h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.friendList.userId')}</label>
-                      <Input
-                        type="text"
-                        placeholder={t('chat.friendList.enterUserIdPlaceholder')}
-                        value={targetUserId}
-                        onChange={(e) => setTargetUserId(e.target.value)}
-                        className="h-10"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-foreground mb-1.5 block">{t('chat.friendList.verifyMessageOptional')}</label>
-                      <Input
-                        type="text"
-                        placeholder={t('chat.friendList.verifyPlaceholder')}
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        className="h-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 mt-6">
-                    <Button
-                      variant="outline"
-                      className="flex-1 h-10"
-                      onClick={() => {
-                        setShowAddDialog(false)
-                        setTargetUserId('')
-                        setReason('')
-                      }}
-                      disabled={submitting}
-                    >
-                      {t('chat.friendList.cancel')}
-                    </Button>
-                    <Button
-                      className="flex-1 h-10"
-                      onClick={handleSendRequest}
-                      disabled={submitting}
-                    >
-                      {submitting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          {t('chat.friendList.sending')}
-                        </>
-                      ) : (
-                        t('chat.friendList.sendRequest')
-                      )}
-                    </Button>
-                  </div>
-                </motion.div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>,
-          document.body
-        )}
+        <AddFriendDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
       </div>
     )
   }

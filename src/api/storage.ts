@@ -1,3 +1,4 @@
+import { translate } from '@/i18n/translate'
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ApiError, type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { trackUpload } from '@/lib/uploadsInFlight'
@@ -589,18 +590,31 @@ function validateAvatarFile(file: File): void {
     // 矛盾的话。后端那一档（`个人资料管理.md:444`）的文案带的就是**实际字节数**，
     // 这里照抄那个口径；MB 值留着方便读，但真正判定的那个数必须可见。
     throw new Error(
-      `文件太大，最大 10MB，当前: ${file.size} 字节（约 ${(file.size / 1024 / 1024).toFixed(2)} MB）`,
+      translate('profile.storage.fileTooLarge', {
+        max: AVATAR_MAX_SIZE / 1024 / 1024,
+        size: file.size,
+        mb: (file.size / 1024 / 1024).toFixed(2),
+      }),
     )
   }
   if (!(AVATAR_ALLOWED_CONTENT_TYPES as readonly string[]).includes(file.type)) {
-    throw new Error('不支持的文件格式，支持: jpg, jpeg, png, gif, webp')
+    // 列给用户看的是扩展名（与上面 accept 的后半段同一张表），分隔符随界面语言
+    throw new Error(
+      translate('profile.storage.unsupportedType', {
+        formats: AVATAR_ALLOWED_EXTENSIONS.join(translate('profile.storage.listSeparator')),
+      }),
+    )
   }
   // 扩展名单独判：MIME 与扩展名在后端是两条独立规则，而且**扩展名**才是拼进
   // object key 的那一个（`个人资料管理.md` 的 :391、:420、:453 —— 不是本文件里
   // 不加限定的那份 `文件存储管理.md`）。`photo.bmp` 被改名成
   // `image/png` 的 MIME 照样过不了后端那一关。
   if (!(AVATAR_ALLOWED_EXTENSIONS as readonly string[]).includes(fileExtension(file.name))) {
-    throw new Error('文件扩展名不支持，请使用 .jpg / .jpeg / .png / .gif / .webp')
+    throw new Error(
+      translate('profile.storage.unsupportedExtension', {
+        extensions: AVATAR_ALLOWED_EXTENSIONS.map((ext) => `.${ext}`).join(' / '),
+      }),
+    )
   }
 }
 
@@ -728,7 +742,7 @@ async function postUploadRequest<T>(
 
   return readEnvelope<T>(response, {
     endpoint: 'POST /api/storage/upload/request',
-    fallbackMessage: '请求上传失败',
+    fallbackMessage: translate('profile.storage.requestUploadFailed'),
     parse,
   })
 }
@@ -790,7 +804,7 @@ export const storageApi = {
     // 409 会原样带着 status 抛出来，用 isUploadSessionExpired 分诊（文档 :625-645）。
     return readEnvelope<PartUrlResponse>(response, {
       endpoint: 'GET /api/storage/multipart/part_url',
-      fallbackMessage: '获取分片URL失败',
+      fallbackMessage: translate('profile.storage.partUrlFailed'),
       parse: partUrlResponse,
     })
   },
@@ -825,11 +839,11 @@ export const storageApi = {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve()
         } else {
-          reject(new Error(`分片上传失败: HTTP ${xhr.status}`))
+          reject(new Error(translate('profile.storage.chunkFailed', { status: xhr.status })))
         }
       }
 
-      xhr.onerror = () => reject(new Error('网络错误'))
+      xhr.onerror = () => reject(new Error(translate('profile.storage.networkError')))
 
       xhr.open('PUT', url)
       xhr.send(chunk)
@@ -935,7 +949,7 @@ export const storageApi = {
     // （message → error → details → HTTP 片段）一次性覆盖了这两种字段名。
     const data = await readEnvelope<ConfirmUploadResponse>(response, {
       endpoint: 'POST /api/storage/upload/confirm',
-      fallbackMessage: '确认上传失败',
+      fallbackMessage: translate('profile.storage.confirmFailed'),
       parse: confirmUploadResponse,
     })
 
@@ -1051,7 +1065,7 @@ export const storageApi = {
 
     const key = avatarSingleFlightKey(target)
     if (avatarUploadsInFlight.has(key)) {
-      throw new Error('该头像正在上传中，请等待当前上传完成后再试')
+      throw new Error(translate('profile.storage.uploadInFlight'))
     }
 
     // 「查表 → 落表」之间没有任何 await：await 之前的代码是同步执行的，
@@ -1094,7 +1108,7 @@ export const storageApi = {
 
     const data = await readEnvelope<PresignedUrlResponse>(response, {
       endpoint: 'POST /api/storage/file/{uuid}/presigned_url',
-      fallbackMessage: '获取预签名URL失败',
+      fallbackMessage: translate('profile.storage.presignedUrlFailed'),
       parse: presignedUrlResponse,
     })
 
@@ -1133,7 +1147,7 @@ export const storageApi = {
 
     const data = await readEnvelope<PresignedUrlResponse>(response, {
       endpoint: 'POST /api/storage/file/{uuid}/presigned_url/extended',
-      fallbackMessage: '获取扩展预签名URL失败',
+      fallbackMessage: translate('profile.storage.extendedPresignedUrlFailed'),
       parse: presignedUrlResponse,
     })
 
@@ -1174,7 +1188,7 @@ export const storageApi = {
 
     const data = await readEnvelope<PresignedUrlResponse>(response, {
       endpoint: 'POST /api/storage/friends_file/{uuid}/presigned_url',
-      fallbackMessage: '获取好友文件预签名URL失败',
+      fallbackMessage: translate('profile.storage.friendPresignedUrlFailed'),
       parse: presignedUrlResponse,
     })
 
@@ -1207,7 +1221,7 @@ export const storageApi = {
 
     const data = await readEnvelope<PresignedUrlResponse>(response, {
       endpoint: 'POST /api/storage/friends_file/{uuid}/presigned_url/extended',
-      fallbackMessage: '获取好友文件扩展预签名URL失败',
+      fallbackMessage: translate('profile.storage.friendExtendedPresignedUrlFailed'),
       parse: presignedUrlResponse,
     })
 
@@ -1244,7 +1258,7 @@ export const storageApi = {
     // 每一行的 file_url 都在 parse 里补成了绝对地址（文档 :46）。
     return readEnvelope<FileListResponse>(response, {
       endpoint: 'GET /api/storage/files',
-      fallbackMessage: '获取文件列表失败',
+      fallbackMessage: translate('chat.fileManager.loadFailedDesc'),
       parse: fileListResponse,
     })
   },

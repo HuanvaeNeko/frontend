@@ -12,6 +12,7 @@ import {
 } from '@/features/profile/api/profile'
 import { useProfileStore } from '@/features/profile/store/profileStore'
 import { useToast } from '@/hooks/use-toast'
+import { useI18n } from '@/i18n/I18nProvider'
 
 /**
  * 隐私与可见性四项（`个人资料管理.md:104-107` 读侧字段表、:144-147 写侧字段表）。
@@ -46,11 +47,15 @@ import { useToast } from '@/hooks/use-toast'
  * 唯一读这四个字段的地方。
  */
 export default function PrivacySettings() {
+  const { t } = useI18n()
   const { toast } = useToast()
   const { profile, loadProfile, updateProfile } = useProfileStore()
   const [ready, setReady] = useState(false)
   const [saving, setSaving] = useState(false)
-  /** 读失败的后端原文；`null` = 没失败（还在读，或者已经读到了）。 */
+  /**
+   * 读失败的后端原文；`''` = 失败了但拿不到原文（渲染时换成兜底提示——文案在渲染时才翻译，
+   * 这样 effect 不必依赖 `t`，切换语言也不会重读一次资料）；`null` = 没失败（还在读，或者已经读到了）。
+   */
   const [loadError, setLoadError] = useState<string | null>(null)
   /** 点一次「重试」加一，重跑下面那个 effect。 */
   const [attempt, setAttempt] = useState(0)
@@ -66,7 +71,7 @@ export default function PrivacySettings() {
         // 不弹 toast：这是**读**失败，用户没有做任何动作，一条飘过去的提示既不能
         // 解释为什么面板是空的，也没给出下一步。改成把失败画在面板自己的位置上。
         console.error(`加载隐私设置失败（第 ${attempt + 1} 次）:`, error)
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : '请稍后重试')
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : '')
       })
     return () => {
       cancelled = true
@@ -91,11 +96,11 @@ export default function PrivacySettings() {
     setSaving(true)
     try {
       await updateProfile(patch)
-      toast({ title: '已保存', description: label })
+      toast({ title: t('privacy.saved'), description: label })
     } catch (error) {
       toast({
-        title: '保存失败',
-        description: error instanceof Error ? error.message : '请稍后重试',
+        title: t('privacy.saveFailed'),
+        description: error instanceof Error ? error.message : t('privacy.retryLater'),
         variant: 'destructive',
       })
     } finally {
@@ -105,7 +110,7 @@ export default function PrivacySettings() {
 
   /**
    * 读失败的样子。**这一屏必须存在**：`ready` 闸只有"点亮"与"不点亮"两态，
-   * 读失败时用户看到的是一句永远转不完的「正在加载隐私设置…」——本轮要消灭的
+   * 读失败时用户看到的是一句永远转不完的「加载中...」——本轮要消灭的
    * 正是这种静默形态。三件事缺一不可：说明失败的是**读**（不是"你的设置没了"）、
    * 透出后端原文（`profileStore.updateProfile` 之外这里是唯一能看到它的地方）、
    * 给一个能自己走出去的动作。
@@ -115,67 +120,78 @@ export default function PrivacySettings() {
    * 这一屏是不是被看见并不重要。真正需要它的是 500 / 网络断 / 形状漂移那一类：
    * 会话好好的，就是这一次读没成。
    */
-  if (loadError) {
+  if (loadError !== null) {
     return (
       <div className="space-y-2 py-3">
-        <div className="text-sm text-destructive">隐私设置读取失败：{loadError}</div>
-        <p className="text-xs text-muted-foreground">
-          在读到后端当前值之前，这四项不会显示——显示一份猜出来的取值，比这条提示危险得多。
-        </p>
+        <div className="text-sm text-destructive">
+          {t('privacy.loadFailed', { message: loadError || t('privacy.retryLater') })}
+        </div>
+        <p className="text-xs text-muted-foreground">{t('privacy.loadFailedHint')}</p>
         <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>
-          重试
+          {t('privacy.retry')}
         </Button>
       </div>
     )
   }
 
   if (!ready || !profile) {
-    return <div className="py-3 text-sm text-muted-foreground">正在加载隐私设置…</div>
+    return <div className="py-3 text-sm text-muted-foreground">{t('privacy.loading')}</div>
   }
+
+  /**
+   * 三档策略的标签。`value` 取自 `PROFILE_POLICIES`（`profile.ts` 的同一份常量，
+   * 解析器也用它），所以下拉里选不出后端不认的值——**枚举的执行者是解析器和这张表，
+   * 不是 TS 类型**。
+   */
+  const policyOptions: readonly { value: ProfilePolicy; label: string }[] = [
+    { value: PROFILE_POLICIES[0], label: t('privacy.policy.manual') },
+    { value: PROFILE_POLICIES[1], label: t('privacy.policy.autoAccept') },
+    { value: PROFILE_POLICIES[2], label: t('privacy.policy.autoReject') },
+  ]
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 border-b py-3">
         <div>
-          <div className="text-sm font-medium">允许被搜索</div>
+          <div className="text-sm font-medium">{t('privacy.allowSearch')}</div>
           {/* doc:104 逐字：`false` = 完全不可被搜索/添加。 */}
-          <div className="text-xs text-muted-foreground">关闭后完全不可被搜索或添加</div>
+          <div className="text-xs text-muted-foreground">{t('privacy.allowSearchHint')}</div>
         </div>
         <Switch
-          aria-label="允许被搜索"
+          aria-label={t('privacy.allowSearch')}
           checked={profile.allow_search}
           disabled={saving}
-          onCheckedChange={(v) => save({ allow_search: v }, v ? '现在可以被搜索' : '现在完全不可被搜索')}
+          onCheckedChange={(v) => save({ allow_search: v }, v ? t('privacy.searchOn') : t('privacy.searchOff'))}
         />
       </div>
 
       <div className="flex items-center justify-between gap-3 border-b py-3">
         <div>
-          <div className="text-sm font-medium">允许通过用户 ID 被搜索</div>
-          <div className="text-xs text-muted-foreground">别人可以用用户 ID / 用户名找到并添加你</div>
+          <div className="text-sm font-medium">{t('privacy.searchById')}</div>
+          <div className="text-xs text-muted-foreground">{t('privacy.searchByIdHint')}</div>
         </div>
         {/*
           总开关关掉时这一项没有意义（doc:104 的「完全不可被搜索/添加」已经覆盖了它），
           禁用而不是隐藏：隐藏会让用户以为这个设置消失了。
         */}
         <Switch
-          aria-label="允许通过用户 ID 被搜索"
+          aria-label={t('privacy.searchById')}
           checked={profile.search_visible_by_id}
           disabled={saving || !profile.allow_search}
-          onCheckedChange={(v) => save({ search_visible_by_id: v }, '已更新用户 ID 搜索设置')}
+          onCheckedChange={(v) => save({ search_visible_by_id: v }, t('privacy.searchByIdSaved'))}
         />
       </div>
 
       <div className="space-y-2 py-1">
-        <Label>好友申请处理方式</Label>
+        <Label>{t('privacy.friendPolicy')}</Label>
         <Select
           value={profile.friend_request_policy}
           disabled={saving}
-          onValueChange={(v) => save({ friend_request_policy: v as ProfilePolicy }, '已更新好友申请策略')}
+          onValueChange={(v) => save({ friend_request_policy: v as ProfilePolicy }, t('privacy.friendPolicySaved'))}
         >
-          <SelectTrigger aria-label="好友申请处理方式"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t('privacy.friendPolicy')}><SelectValue /></SelectTrigger>
           <SelectContent>
-            {POLICY_OPTIONS.map((option) => (
+            {policyOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
             ))}
           </SelectContent>
@@ -183,15 +199,15 @@ export default function PrivacySettings() {
       </div>
 
       <div className="space-y-2 py-1">
-        <Label>群邀请处理方式</Label>
+        <Label>{t('privacy.groupPolicy')}</Label>
         <Select
           value={profile.group_invite_policy}
           disabled={saving}
-          onValueChange={(v) => save({ group_invite_policy: v as ProfilePolicy }, '已更新群邀请策略')}
+          onValueChange={(v) => save({ group_invite_policy: v as ProfilePolicy }, t('privacy.groupPolicySaved'))}
         >
-          <SelectTrigger aria-label="群邀请处理方式"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t('privacy.groupPolicy')}><SelectValue /></SelectTrigger>
           <SelectContent>
-            {POLICY_OPTIONS.map((option) => (
+            {policyOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
             ))}
           </SelectContent>
@@ -200,14 +216,3 @@ export default function PrivacySettings() {
     </div>
   )
 }
-
-/**
- * 三档策略的中文标签。`value` 取自 `PROFILE_POLICIES`（`profile.ts` 的同一份常量，
- * 解析器也用它），所以下拉里选不出后端不认的值——**枚举的执行者是解析器和这张表，
- * 不是 TS 类型**。
- */
-const POLICY_OPTIONS: readonly { value: ProfilePolicy; label: string }[] = [
-  { value: PROFILE_POLICIES[0], label: '人工处理' },
-  { value: PROFILE_POLICIES[1], label: '自动同意' },
-  { value: PROFILE_POLICIES[2], label: '自动拒绝' },
-]

@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { authApi } from '@/features/auth/api/auth'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { useI18n } from '@/i18n/I18nProvider'
 import { DEFAULT_UNAUTHENTICATED_ROUTE, ROUTES } from '@/lib/routes'
 
 interface Device {
@@ -23,15 +24,18 @@ interface Device {
 
 export default function Devices({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter()
+  const { t, locale } = useI18n()
   const { toast } = useToast()
   const { logout } = useAuthStore()
 
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const loadDevices = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const response = await authApi.getDevices()
       // 没有 `|| []`：getDevices 现在要么抛错、要么返回真数组（解包层已 require
@@ -50,7 +54,7 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
       // 而报错至少保证用户不会在这条信息缺失的情况下继续做撤销操作。
       const normalized: Device[] = response.devices.map((d) => {
         if (typeof d.is_current !== 'boolean') {
-          throw new Error(`设备 ${d.device_id || '(无 ID)'} 缺少 is_current 字段，响应形状不符合预期`)
+          throw new Error(t('devices.errors.missingIsCurrent', { id: d.device_id || t('devices.errors.noId') }))
         }
         return {
           device_id: d.device_id,
@@ -63,7 +67,10 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
       })
       setDevices(normalized)
     } catch (error) {
-      toast({ title: '加载失败', description: error instanceof Error ? error.message : '无法获取设备列表', variant: 'destructive' })
+      const message = error instanceof Error ? error.message : t('devices.toast.loadFailedFallback')
+      // 列表区原地显示错误 + 重试：原来只弹 toast，列表落到「暂无设备信息」，看起来像没有登录设备
+      setLoadError(message)
+      toast({ title: t('devices.toast.loadFailed'), description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -79,18 +86,22 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
     try {
       await authApi.revokeDevice(deviceId)
       if (isCurrent) {
-        toast({ title: '已退出登录', description: '当前设备已被移除，请重新登录' })
+        toast({ title: t('devices.toast.loggedOutTitle'), description: t('devices.toast.loggedOutDesc') })
         // 撤销当前设备 = 登出。必须走 authStore.logout()（它打 BFF 的
         // /api/auth/logout，由 BFF 删会话、清 cookie、关该会话的 WS），
         // 而不是只清本地 state —— 只清本地的话 cookie 还在，刷新页面就又登回去了。
         await logout()
         router.push(DEFAULT_UNAUTHENTICATED_ROUTE)
       } else {
-        toast({ title: '成功', description: '设备已移除' })
+        toast({ title: t('devices.toast.success'), description: t('devices.toast.removed') })
         await loadDevices()
       }
     } catch (error) {
-      toast({ title: '移除失败', description: error instanceof Error ? error.message : '无法移除设备', variant: 'destructive' })
+      toast({
+        title: t('devices.toast.removeFailed'),
+        description: error instanceof Error ? error.message : t('devices.toast.removeFailedFallback'),
+        variant: 'destructive',
+      })
     } finally {
       setRevoking(null)
     }
@@ -109,18 +120,18 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
       if (deviceInfo.includes('Mac')) return 'Mac Chrome'
       if (deviceInfo.includes('Linux')) return 'Linux Chrome'
       if (deviceInfo.includes('Android')) return 'Android Chrome'
-      return 'Chrome 浏览器'
+      return t('devices.browser', { name: 'Chrome' })
     }
-    if (deviceInfo.includes('Firefox')) return 'Firefox 浏览器'
-    if (deviceInfo.includes('Safari') && !deviceInfo.includes('Chrome')) return 'Safari 浏览器'
-    if (deviceInfo.includes('Edge')) return 'Edge 浏览器'
+    if (deviceInfo.includes('Firefox')) return t('devices.browser', { name: 'Firefox' })
+    if (deviceInfo.includes('Safari') && !deviceInfo.includes('Chrome')) return t('devices.browser', { name: 'Safari' })
+    if (deviceInfo.includes('Edge')) return t('devices.browser', { name: 'Edge' })
     return deviceInfo.length > 30 ? deviceInfo.substring(0, 30) + '...' : deviceInfo
   }
 
   const formatTime = (timeString: string | null | undefined) => {
-    if (!timeString) return '未知'
+    if (!timeString) return t('devices.unknown')
     const date = new Date(timeString)
-    if (isNaN(date.getTime())) return '未知'
+    if (isNaN(date.getTime())) return t('devices.unknown')
 
     const now = new Date()
     const diff = now.getTime() - date.getTime()
@@ -128,11 +139,11 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
 
-    if (minutes < 1) return '刚刚'
-    if (minutes < 60) return `${minutes} 分钟前`
-    if (hours < 24) return `${hours} 小时前`
-    if (days < 7) return `${days} 天前`
-    return date.toLocaleDateString('zh-CN')
+    if (minutes < 1) return t('devices.time.justNow')
+    if (minutes < 60) return t('devices.time.minutesAgo', { n: minutes })
+    if (hours < 24) return t('devices.time.hoursAgo', { n: hours })
+    if (days < 7) return t('devices.time.daysAgo', { n: days })
+    return date.toLocaleDateString(locale)
   }
 
   return (
@@ -145,23 +156,32 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">设备管理</h1>
-                <p className="text-sm text-muted-foreground">查看并移除已登录设备</p>
+                <h1 className="text-2xl font-semibold tracking-tight">{t('nav.devices')}</h1>
+                <p className="text-sm text-muted-foreground">{t('devices.subtitle')}</p>
               </div>
             </div>
           )}
           <Button variant="outline" onClick={loadDevices} disabled={loading} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />{t('devices.refresh')}
           </Button>
         </div>
 
         {loading ? (
-          <div className="flex h-52 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />加载中...</div>
+          <div className="flex h-52 items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />{t('devices.loading')}</div>
+        ) : loadError ? (
+          <Card>
+            <CardContent className="flex h-40 flex-col items-center justify-center gap-2 text-center">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+              <p className="text-sm font-medium text-destructive">{t('devices.loadFailed')}</p>
+              <p className="max-w-sm text-xs text-muted-foreground">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={loadDevices}>{t('devices.retry')}</Button>
+            </CardContent>
+          </Card>
         ) : devices.length === 0 ? (
           <Card>
             <CardContent className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground">
               <AlertTriangle className="h-8 w-8" />
-              暂无设备信息
+              {t('devices.empty')}
             </CardContent>
           </Card>
         ) : (
@@ -179,28 +199,31 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
                         <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
                             <div className="truncate font-medium">{getDeviceName(device.device_info)}</div>
-                            {device.is_current && <Badge>当前设备</Badge>}
+                            {device.is_current && <Badge>{t('devices.current')}</Badge>}
                           </div>
-                          <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />IP: {device.ip_address || '未知'}</div>
-                          <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />最后活动: {formatTime(device.last_active_at)}</div>
-                          <div className="text-xs text-muted-foreground">登录时间: {new Date(device.created_at).toLocaleString('zh-CN')}</div>
+                          {/* 两段原来是相邻的 inline-flex，中间没有间距：「127.0.0.1」和时钟图标贴在一起 */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />IP: {device.ip_address || t('devices.unknown')}</span>
+                            <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{t('devices.lastActive', { time: formatTime(device.last_active_at) })}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{t('devices.loginTime', { time: new Date(device.created_at).toLocaleString(locale) })}</div>
                         </div>
                       </div>
 
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant={device.is_current ? 'outline' : 'destructive'} disabled={revoking === device.device_id}>
-                            {revoking === device.device_id ? <Loader2 className="h-4 w-4 animate-spin" /> : device.is_current ? '退出登录' : '移除'}
+                            {revoking === device.device_id ? <Loader2 className="h-4 w-4 animate-spin" /> : device.is_current ? t('shell.settings.logout') : t('devices.remove')}
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>{device.is_current ? '确认退出登录？' : '确认移除此设备？'}</AlertDialogTitle>
-                            <AlertDialogDescription>{device.is_current ? '退出后需要重新登录才能继续使用。' : '移除后该设备将无法继续访问。'}</AlertDialogDescription>
+                            <AlertDialogTitle>{device.is_current ? t('devices.confirmLogoutTitle') : t('devices.confirmRemoveTitle')}</AlertDialogTitle>
+                            <AlertDialogDescription>{device.is_current ? t('devices.confirmLogoutDesc') : t('devices.confirmRemoveDesc')}</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleRevoke(device.device_id, device.is_current)}>确认</AlertDialogAction>
+                            <AlertDialogCancel>{t('devices.cancel')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleRevoke(device.device_id, device.is_current)}>{t('devices.confirm')}</AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -214,12 +237,10 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">安全提示</CardTitle>
-            <CardDescription>定期检查设备并移除异常登录</CardDescription>
+            <CardTitle className="text-base">{t('devices.securityTitle')}</CardTitle>
+            <CardDescription>{t('devices.securityDesc')}</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            建议在公共设备使用后及时退出，发现陌生设备请立即移除并修改密码。
-          </CardContent>
+          <CardContent className="text-sm text-muted-foreground">{t('devices.securityBody')}</CardContent>
         </Card>
       </div>
     </div>

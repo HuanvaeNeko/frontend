@@ -8,10 +8,6 @@ import {
 } from '@/lib/sessionScope'
 
 interface SettingsState {
-  // AI 配置
-  aiEnabled: boolean
-  aiModel: string
-  
   // 语言和地区
   language: LanguagePreference
   use24HourFormat: boolean
@@ -43,13 +39,11 @@ interface SettingsState {
 }
 
 const defaultSettings: Omit<SettingsState, 'setSetting' | 'resetSettings'> = {
-  aiEnabled: true,
-  aiModel: 'gpt-4',
   language: 'auto',
   use24HourFormat: true,
   showOnlineStatus: true,
   messageEncryption: true,
-  theme: 'light',
+  theme: 'auto',
   animationsEnabled: true,
   notificationsEnabled: true,
   soundEnabled: true,

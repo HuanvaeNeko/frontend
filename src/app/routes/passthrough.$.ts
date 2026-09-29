@@ -2,7 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router'
 import { forwardToUpstream } from '../../../server/proxy/forward'
 
 /**
- * 透传代理：`/avatars/*`、`/user-file/*`、`/friends-file/*`、`/apps/*`。
+ * 透传代理：`/avatars/*`、`/user-file/*`、`/friends-file/*`、`/group-file/*`、`/apps/*`。
  *
  * 与 `api.$.ts` 的差别是**两个不作为**，都是硬约束：
  *

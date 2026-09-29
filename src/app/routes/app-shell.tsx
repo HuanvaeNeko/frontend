@@ -6,9 +6,9 @@ import { useShellTab } from '@/components/shell/shellTab'
 import { SettingsSectionList } from '@/components/shell/settings/SettingsSectionList'
 import { UnifiedList } from '@/components/shell/UnifiedList'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { markConversationRead, useRealtimeMessages } from '@/features/chat/hooks/useRealtimeMessages'
 import { useUnifiedConversations } from '@/features/chat/hooks/useUnifiedConversations'
 import { parseConversationId } from '@/features/chat/lib/conversationId'
-import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { useGroupStore } from '@/features/chat/store/groupStore'
 import { usePinnedStore } from '@/features/chat/store/pinnedStore'
@@ -47,7 +47,6 @@ function ChatListColumn() {
   const groupsError = useGroupStore((s) => s.error)
   const loadMyGroups = useGroupStore((s) => s.loadMyGroups)
   const togglePin = usePinnedStore((s) => s.toggle)
-  const markRead = useChatStore((s) => s.markRead)
   return (
     <UnifiedList
       conversations={conversations}
@@ -59,13 +58,8 @@ function ChatListColumn() {
       onMarkRead={(id) => {
         const p = parseConversationId(id)
         if (!p) return
-        const targetId = p.kind === 'friend' ? p.userId : p.groupId
-        // 先发 WS `mark_read`（后端真值），再清本地未读摘要——只清本地的话，
-        // 下一次 `unread_summary` 推送或刷新会把角标打回来（终审 finding #1）。
-        // 不在这里用 `useRealtimeMessages()`：那个 hook 自己会注册一整套 WS
-        // 消息处理器，壳内再挂一次就是双重注册。
-        useWSStore.getState().sendMarkRead(p.kind, targetId)
-        markRead(p.kind, targetId)
+        // 先发 WS `mark_read` 再清本地未读（顺序与理由见 markConversationRead）
+        markConversationRead(p.kind, p.kind === 'friend' ? p.userId : p.groupId)
       }}
       onRetry={() => { loadFriends().catch(console.error); loadMyGroups().catch(console.error) }}
       onCreateGroup={() => router.push(`${ROUTES.app.contacts}?tab=groups&add=create-group`)}
@@ -73,6 +67,17 @@ function ChatListColumn() {
       onJoinGroup={() => router.push(`${ROUTES.app.contacts}?tab=groups&add=join-group`)}
     />
   )
+}
+
+/**
+ * WS 处理器（未读摘要、新消息、撤回、系统通知、正在输入）在整个 /app/* 只注册这一次。
+ * 以前只在聊天窗口里注册：停在会话列表（登录后的默认落点）、联系人、设置页时，连接时的
+ * `unread_summary` 和之后的新消息全部被静默丢弃——卡片全是「暂无消息」、没有角标。
+ * 单独做成渲染 null 的组件：hook 内的订阅只让它自己重渲染，不牵动整个壳。
+ */
+function RealtimeBridge() {
+  useRealtimeMessages()
+  return null
 }
 
 export default function AppShellLayout() {
@@ -84,8 +89,13 @@ export default function AppShellLayout() {
     if (pathname.startsWith('/app')) localStorage.setItem('last_visited_path', pathname)
   }, [pathname])
   return (
-    <AppShell activeTab={tab} list={tab === 'settings' ? <SettingsSectionList /> : tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
-      <Outlet />
-    </AppShell>
+    <>
+      {/* 放在 AppShell 外：折叠布局在「列表 ↔ 详情」间切换时 children 会换父节点重新挂载，
+          挂在里面的话每次进出会话都要注销重注册一遍处理器、再跑一次增量同步 */}
+      <RealtimeBridge />
+      <AppShell activeTab={tab} list={tab === 'settings' ? <SettingsSectionList /> : tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
+        <Outlet />
+      </AppShell>
+    </>
   )
 }

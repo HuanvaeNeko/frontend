@@ -188,6 +188,8 @@ beforeEach(() => {
   // 默认：群信息立刻返回，不然顶层 `loading` 永远是 true，标签页和三态内容
   // 根本不会挂载。
   groupsApiMock.getGroupDetail.mockResolvedValue(GROUP)
+  // 群主身份下挂载即自动拉入群申请：默认给真实接口的形状（数组），各用例按需覆盖
+  groupsApiMock.getJoinRequests.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -305,15 +307,12 @@ describe('GroupManagement 公告列表三态（loadNotices → noticesError）',
 })
 
 describe('GroupManagement 加入申请三态（loadJoinRequests → requestsError）', () => {
-  // 加入申请 tab 只对管理员可见，且挂载时的自动加载看的是挂载那一刻的
-  // `isAdmin`（当时 `members` 还是空数组，必然是 false）——所以这里统一走
-  // tab 里始终存在的"刷新"按钮手动触发，不依赖首次挂载的自动加载时序。
-  const openRequestsTabAndRefresh = async () => {
-    // 该标签按钮还挂着一个 badge（`joinRequests.length`）：数字 0 是 falsy 但
-    // React 仍会把它渲染成一个独立的文本节点，导致按钮的拼接文本是
-    // "加入申请0" 而不是精确的 "加入申请"，只能用前缀匹配。
-    ;(await screen.findByText(/^加入申请/)).click()
-    ;(await screen.findByText('刷新')).click()
+  // 群主身份确定后会自动拉一次申请（见「自动加载申请」那条）；这里只打开页签，
+  // 断言的就是那一次自动加载的三态。原来这里要手点「刷新」绕开自动加载从不发生的 bug。
+  const openRequestsTab = async () => {
+    // 精确匹配：0 条申请时按钮上不该多出一个「0」（原来 `tab.badge && …` 把数字 0 渲染了出来，
+    // 按钮文字是「入群申请0」，这里只能用前缀匹配绕过去）
+    ;(await screen.findByRole('button', { name: '入群申请' })).click()
   }
 
   beforeEach(() => {
@@ -321,52 +320,65 @@ describe('GroupManagement 加入申请三态（loadJoinRequests → requestsErro
     groupsApiMock.getNotices.mockResolvedValue([])
   })
 
-  it('加载中：既不是"暂无加入申请"也不是失败文案', async () => {
+  it('加载中：既不是"暂无入群申请"也不是失败文案', async () => {
     const requestsDeferred = deferred<JoinRequest[]>()
     groupsApiMock.getJoinRequests.mockReturnValue(requestsDeferred.promise)
 
     const { container } = render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(container.querySelectorAll('.animate-spin').length).toBeGreaterThan(0))
-    expect(screen.queryByText('暂无加入申请')).not.toBeInTheDocument()
-    expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
+    expect(screen.queryByText('暂无入群申请')).not.toBeInTheDocument()
+    expect(screen.queryByText(/加载入群申请失败/)).not.toBeInTheDocument()
 
     requestsDeferred.resolve([])
-    await waitFor(() => expect(screen.getByText('暂无加入申请')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('暂无入群申请')).toBeInTheDocument())
   })
 
-  it('请求失败：显示"加载加入申请失败：<原因>" + 重试按钮，绝不是"暂无加入申请"', async () => {
+  it('请求失败：显示"加载入群申请失败：<原因>" + 重试按钮，绝不是"暂无入群申请"', async () => {
     groupsApiMock.getJoinRequests.mockRejectedValueOnce(new Error('权限不足'))
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
-    await waitFor(() => expect(screen.getByText('加载加入申请失败：权限不足')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('加载入群申请失败：权限不足')).toBeInTheDocument())
     expect(screen.getByText('重试')).toBeInTheDocument()
-    expect(screen.queryByText('暂无加入申请')).not.toBeInTheDocument()
+    expect(screen.queryByText('暂无入群申请')).not.toBeInTheDocument()
   })
 
-  it('真正的空列表：显示"暂无加入申请"，不显示错误或重试', async () => {
+  it('真正的空列表：显示"暂无入群申请"，不显示错误或重试', async () => {
     groupsApiMock.getJoinRequests.mockResolvedValueOnce([])
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
-    await waitFor(() => expect(screen.getByText('暂无加入申请')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('暂无入群申请')).toBeInTheDocument())
     expect(screen.queryByText('重试')).not.toBeInTheDocument()
-    expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/加载入群申请失败/)).not.toBeInTheDocument()
+  })
+
+  it('群主一打开就自动加载申请：不点「刷新」，页签计数就是 1、列表里有申请人', async () => {
+    // 原实现在挂载那一刻按闭包里的 isAdmin 决定要不要加载——那时 members 还是空的，
+    // isAdmin 恒 false，自动加载从不发生：页签显示「加入申请0」、点开是「暂无加入申请」，
+    // 群主以为没人申请，申请就一直挂着。
+    groupsApiMock.getJoinRequests.mockResolvedValue([REQUEST])
+
+    render(<GroupManagement groupId="g1" />)
+
+    await waitFor(() => expect(groupsApiMock.getJoinRequests).toHaveBeenCalledWith('g1'))
+    ;(await screen.findByRole('button', { name: /^入群申请\s*1$/ })).click()
+    expect(await screen.findByText('小李')).toBeInTheDocument()
   })
 
   it('成功：渲染真实申请数据（用户昵称），不是"没抛错"就算数', async () => {
     groupsApiMock.getJoinRequests.mockResolvedValueOnce([REQUEST])
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(screen.getByText('小李')).toBeInTheDocument())
-    expect(screen.queryByText('暂无加入申请')).not.toBeInTheDocument()
-    expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
+    expect(screen.queryByText('暂无入群申请')).not.toBeInTheDocument()
+    expect(screen.queryByText(/加载入群申请失败/)).not.toBeInTheDocument()
   })
 })
 
@@ -452,13 +464,13 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
 
     render(<GroupManagement groupId="g1" />)
 
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     expect(screen.getByLabelText(/需要入群审核/)).toBeChecked()
     expect(screen.getByLabelText(/允许管理员参与审核/)).not.toBeChecked()
-    expect(screen.getByLabelText('谁能分享群卡片')).toHaveValue('admins')
+    expect(screen.getByLabelText('谁能分享群名片')).toHaveValue('admins')
     expect(screen.getByLabelText('谁能展示群二维码')).toHaveValue('owner_only')
-    expect(screen.getByLabelText('谁能搜到这个群')).toHaveValue('everyone')
+    expect(screen.getByLabelText('谁搜得到这个群')).toHaveValue('everyone')
     expect(screen.getByLabelText('允许扫码加群')).toBeChecked()
     expect(screen.getByLabelText('允许搜索群 ID 加群')).not.toBeChecked()
     expect(screen.getByLabelText(/允许好友推荐加群/)).toBeChecked()
@@ -482,7 +494,7 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     })
 
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText(/需要入群审核/))
 
@@ -497,9 +509,9 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     })
 
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
-    fireEvent.change(screen.getByLabelText('谁能搜到这个群'), { target: { value: 'owner_only' } })
+    fireEvent.change(screen.getByLabelText('谁搜得到这个群'), { target: { value: 'owner_only' } })
 
     await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
     expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { search_scope: 'owner_only' })
@@ -520,15 +532,15 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     })
 
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText(/允许管理员参与审核/))
 
     await waitFor(() => expect(screen.getByLabelText(/需要入群审核/)).not.toBeChecked())
     expect(screen.getByLabelText(/允许管理员参与审核/)).not.toBeChecked()
-    expect(screen.getByLabelText('谁能分享群卡片')).toHaveValue('owner_only')
+    expect(screen.getByLabelText('谁能分享群名片')).toHaveValue('owner_only')
     expect(screen.getByLabelText('谁能展示群二维码')).toHaveValue('admins')
-    expect(screen.getByLabelText('谁能搜到这个群')).toHaveValue('owner_only')
+    expect(screen.getByLabelText('谁搜得到这个群')).toHaveValue('owner_only')
     expect(screen.getByLabelText('允许扫码加群')).not.toBeChecked()
     expect(screen.getByLabelText('允许搜索群 ID 加群')).not.toBeChecked()
     expect(screen.getByLabelText(/允许好友推荐加群/)).not.toBeChecked()
@@ -544,7 +556,7 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     groupsApiMock.updateJoinPolicy.mockRejectedValueOnce(forbidden)
 
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText(/允许扫码加群/))
 
@@ -554,7 +566,7 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
       ),
     )
     expect(toastMock).not.toHaveBeenCalledWith(
-      expect.objectContaining({ description: '更新失败' }),
+      expect.objectContaining({ description: '更新入群与可见性设置失败' }),
     )
   })
 
@@ -562,7 +574,7 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     groupsApiMock.updateJoinPolicy.mockRejectedValueOnce(new Error('群聊不存在'))
 
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     expect(screen.getByLabelText(/需要入群审核/)).toBeChecked()
     fireEvent.click(screen.getByLabelText(/需要入群审核/))
@@ -578,7 +590,7 @@ describe('GroupManagement 入群策略面板（批 3：五档 join_mode → 八�
     render(<GroupManagement groupId="g1" />)
 
     await screen.findByText('群信息')
-    expect(screen.queryByText('入群策略')).not.toBeInTheDocument()
+    expect(screen.queryByText('入群与可见性')).not.toBeInTheDocument()
   })
 })
 
@@ -602,7 +614,7 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
 
   it('允许管理员参与审核 拨动只发 admin_can_approve', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText(/允许管理员参与审核/))
 
@@ -610,11 +622,11 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
     expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { admin_can_approve: false })
   })
 
-  it('谁能分享群卡片 下拉只发 card_share_scope', async () => {
+  it('谁能分享群名片 下拉只发 card_share_scope', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
-    fireEvent.change(screen.getByLabelText('谁能分享群卡片'), { target: { value: 'owner_only' } })
+    fireEvent.change(screen.getByLabelText('谁能分享群名片'), { target: { value: 'owner_only' } })
 
     await waitFor(() => expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledTimes(1))
     expect(groupsApiMock.updateJoinPolicy).toHaveBeenCalledWith('g1', { card_share_scope: 'owner_only' })
@@ -622,7 +634,7 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
 
   it('谁能展示群二维码 下拉只发 qr_show_scope', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.change(screen.getByLabelText('谁能展示群二维码'), { target: { value: 'admins' } })
 
@@ -632,7 +644,7 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
 
   it('允许扫码加群 拨动只发 allow_join_via_qr', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText('允许扫码加群'))
 
@@ -642,7 +654,7 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
 
   it('允许搜索群 ID 加群 拨动只发 allow_join_via_search', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText('允许搜索群 ID 加群'))
 
@@ -652,7 +664,7 @@ describe('GroupManagement 入群策略：六个此前未钉住派发键的控件
 
   it('允许好友推荐加群 拨动只发 allow_join_via_referral', async () => {
     render(<GroupManagement groupId="g1" />)
-    await screen.findByText('入群策略')
+    await screen.findByText('入群与可见性')
 
     fireEvent.click(screen.getByLabelText(/允许好友推荐加群/))
 
@@ -678,7 +690,7 @@ describe('GroupManagement 加入申请页签的可见性看 admin_can_approve', 
     // 为真时挂载（组件里 `{isAdmin && (<input type="file" …>)}`），
     // 拿它当"角色已就位"的信号。
     await waitFor(() => expect(container.querySelector('input[type="file"]')).toBeTruthy())
-    expect(screen.queryByText(/^加入申请/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^入群申请/)).not.toBeInTheDocument()
   })
 
   it('admin_can_approve=true 时管理员看得到页签', async () => {
@@ -687,7 +699,7 @@ describe('GroupManagement 加入申请页签的可见性看 admin_can_approve', 
 
     render(<GroupManagement groupId="g1" />)
 
-    await waitFor(() => expect(screen.getByText(/^加入申请/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/^入群申请/)).toBeInTheDocument())
   })
 
   it('群主在 admin_can_approve=false 时仍然看得到页签（doc:543：仅群主）', async () => {
@@ -696,7 +708,7 @@ describe('GroupManagement 加入申请页签的可见性看 admin_can_approve', 
 
     render(<GroupManagement groupId="g1" />)
 
-    await waitFor(() => expect(screen.getByText(/^加入申请/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/^入群申请/)).toBeInTheDocument())
   })
 })
 
@@ -875,7 +887,7 @@ describe('GroupManagement 待审申请行：附言字段与四类 request_type',
   }
 
   const openRequestsTabAndRefresh = async () => {
-    ;(await screen.findByText(/^加入申请/)).click()
+    ;(await screen.findByText(/^入群申请/)).click()
     ;(await screen.findByText('刷新')).click()
   }
 
@@ -939,7 +951,7 @@ describe('GroupManagement 待审申请行：附言字段与四类 request_type',
     await openRequestsTabAndRefresh()
 
     await waitFor(() => expect(screen.getAllByText('u2').length).toBeGreaterThan(0))
-    expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/加载入群申请失败/)).not.toBeInTheDocument()
   })
 })
 

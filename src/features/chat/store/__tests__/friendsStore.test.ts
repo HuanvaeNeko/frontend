@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AuthenticationError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { setActiveLocale } from '@/i18n/translate'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import { friendsApi } from '../../api/friends'
@@ -121,6 +123,14 @@ const ACTIONS = [
     run: () => useFriendsStore.getState().removeBlacklist('u2'),
     writesSharedError: false,
   },
+  {
+    action: 'setRemark',
+    endpoint: 'POST /api/friends/remark',
+    stub: (error: Error) => vi.spyOn(friendsApi, 'setRemark').mockRejectedValue(error),
+    run: () => useFriendsStore.getState().setRemark('u2', '小二'),
+    // ProfileView 就地显示保存失败，不读 store.error
+    writesSharedError: false,
+  },
 ] as const
 
 beforeEach(() => {
@@ -151,15 +161,47 @@ describe('friendsStore 的认证分支（handleApiError 返回 null）', () => {
     expect(useFriendsStore.getState().error).toBeNull()
   })
 
-  it('前端哨兵「用户未登录」同样跳登录页且 reject', async () => {
-    // friends.ts 在拿不到自己的 user_id 时抛的正是这条裸 Error，请求根本没发出去。
-    // 它走的是 isAuthError 的第 3 档（哨兵整串相等），与上面的状态码档不是同一条路。
-    vi.spyOn(friendsApi, 'sendFriendRequest').mockRejectedValue(new Error('用户未登录'))
+  it('前端「用户未登录」同样跳登录页且 reject', async () => {
+    // friends.ts 在拿不到自己的 user_id 时抛的正是这条 AuthenticationError，请求根本没发出去。
+    // 它走的是 isAuthError 的第 1 档（类型），与上面的状态码档不是同一条路。
+    vi.spyOn(friendsApi, 'sendFriendRequest').mockRejectedValue(new AuthenticationError('用户未登录'))
 
     await expect(useFriendsStore.getState().sendFriendRequest('u2')).rejects.toThrow('用户未登录')
 
     expect(loggedIn()).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+  })
+
+  it('英文界面：真实抛出点抛的英文哨兵同样跳登录页且 reject（不是一条可见的 "Not signed in"）', async () => {
+    // 不 mock friendsApi：让 friends.ts 自己在拿不到 user_id 时按当前语言抛
+    setActiveLocale('en-US')
+    useAuthStore.setState({ user: null })
+    try {
+      await expect(useFriendsStore.getState().removeFriend('u2')).rejects.toThrow('Not signed in')
+
+      expect(loggedIn()).toBe(false)
+      expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+      expect(useFriendsStore.getState().error).toBeNull()
+    } finally {
+      setActiveLocale('zh-CN')
+    }
+  })
+})
+
+describe('friendsStore 的兜底文案（抛出来的不是 Error 时才用得上）跟随界面语言', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('中文（默认语言）', async () => {
+    vi.spyOn(friendsApi, 'getFriendsList').mockRejectedValue('boom')
+    await expect(useFriendsStore.getState().loadFriends()).rejects.toBe('boom')
+    expect(useFriendsStore.getState().error).toBe('获取好友列表失败')
+  })
+
+  it('英文', async () => {
+    setActiveLocale('en-US')
+    vi.spyOn(friendsApi, 'approveFriendRequest').mockRejectedValue('boom')
+    await expect(useFriendsStore.getState().approveFriendRequest('u2')).rejects.toBe('boom')
+    expect(useFriendsStore.getState().error).toBe('Failed to accept friend request')
   })
 })
 
@@ -318,6 +360,7 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     { action: 'loadBlacklist', defer: 'getBlacklist', landed: [ALICE_BLACKLISTED] },
     { action: 'addBlacklist', defer: 'addBlacklist', landed: undefined },
     { action: 'removeBlacklist', defer: 'removeBlacklist', landed: undefined },
+    { action: 'setRemark', defer: 'setRemark', landed: undefined },
   ] as const
 
   const runOf = (action: (typeof CROSS_ACTIONS)[number]['action']): Promise<void> => {
@@ -343,6 +386,8 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
         return store.addBlacklist('u2')
       case 'removeBlacklist':
         return store.removeBlacklist('u2')
+      case 'setRemark':
+        return store.setRemark('u2', '小二')
     }
   }
 
@@ -572,5 +617,31 @@ describe('friendsStore 黑名单：成功后翻转 friends[].is_blacklisted 并�
     useAuthStore.getState().clearAuth()
     expect(useFriendsStore.getState().blacklist).toEqual([])
     expect(useFriendsStore.getState().blacklistLoaded).toBe(false)
+  })
+})
+
+describe('friendsStore.setRemark：成功后就地改 friends[].friend_remark，不重拉', () => {
+  const FRIEND = { friend_id: 'u1', friend_nickname: '张三', friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z', approve_reason: null, friend_remark: null, is_blacklisted: false, is_special_care: false }
+
+  it('去掉首尾空白再发、再存；列表不重拉', async () => {
+    useFriendsStore.setState({ friends: [FRIEND] })
+    const api = vi.spyOn(friendsApi, 'setRemark').mockResolvedValue(undefined)
+    const reload = vi.spyOn(friendsApi, 'getFriendsList')
+
+    await useFriendsStore.getState().setRemark('u1', '  小张  ')
+
+    expect(api).toHaveBeenCalledWith('u1', '小张')
+    expect(useFriendsStore.getState().friends[0].friend_remark).toBe('小张')
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('空白 = 清除：发空串，本地存 null（与 GET /api/friends 未设置时的 null 一致）', async () => {
+    useFriendsStore.setState({ friends: [{ ...FRIEND, friend_remark: '小张' }] })
+    const api = vi.spyOn(friendsApi, 'setRemark').mockResolvedValue(undefined)
+
+    await useFriendsStore.getState().setRemark('u1', '   ')
+
+    expect(api).toHaveBeenCalledWith('u1', '')
+    expect(useFriendsStore.getState().friends[0].friend_remark).toBeNull()
   })
 })

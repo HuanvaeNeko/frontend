@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setActiveLocale } from '@/i18n/translate'
 
 /**
  * 批 3 的级联点：`GroupList.handleCreateGroup` → `groupStore.createGroup`
@@ -317,5 +318,21 @@ describe('groupStore.hasLoaded：区分"没加载过"与"加载过，结果确�
     await expect(useGroupStore.getState().loadMyGroups()).rejects.toThrow('加载群聊列表失败')
 
     expect(useGroupStore.getState().hasLoaded).toBe(true)
+  })
+})
+
+/** 兜底文案原来写死中文；现在按当前界面语言取（只有失败不是 Error 实例、读不到 message 时才用得上）。 */
+describe('groupStore 兜底文案跟着当前界面语言走', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('loadMyGroups 被一个非 Error 值拒绝：中文界面中文兜底，英文界面英文兜底', async () => {
+    getMyGroupsMock.mockRejectedValue('boom')
+
+    await expect(useGroupStore.getState().loadMyGroups()).rejects.toBe('boom')
+    expect(useGroupStore.getState().error).toBe('加载群聊列表失败')
+
+    setActiveLocale('en-US')
+    await expect(useGroupStore.getState().loadMyGroups()).rejects.toBe('boom')
+    expect(useGroupStore.getState().error).toBe('Failed to load groups')
   })
 })

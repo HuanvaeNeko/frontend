@@ -12,6 +12,17 @@ beforeEach(() => {
 })
 
 describe('themeInitScript', () => {
+  it('首次打开（没有落盘设置）跟随系统：系统深色就进深色；正对照：系统浅色不进', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    run()
+    expect(root().classList.contains('dark')).toBe(true)
+    expect(root().style.colorScheme).toBe('dark')
+
+    root().classList.remove('dark')
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    run()
+    expect(root().classList.contains('dark')).toBe(false)
+  })
   it('custom + dark：写深色快照，且仍切 .dark', () => {
     localStorage.setItem('app-settings', JSON.stringify({ state: { theme: 'dark' } }))
     localStorage.setItem('huanvae.theme', JSON.stringify({ state: { config: { preset: 'custom', customColors: { primary: '#e11d48' } }, snapshot: { light: { '--primary': '#bc002c' }, dark: { '--primary': '#ff5577', '--white-alpha-90': 'rgba(20, 23, 28, 0.9)' } } } }))

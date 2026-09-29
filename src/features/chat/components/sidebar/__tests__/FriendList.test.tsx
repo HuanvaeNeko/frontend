@@ -101,6 +101,13 @@ describe('好友列表（main）', () => {
     expect(screen.getByRole('button', { name: /张三/ })).toBeInTheDocument()
   })
 
+  it('没有任何消息的好友：预览走 shell.list.noMessage（与新会话列表同一句），不再是写死的英文 "Say hi!"', () => {
+    friendsState.friends = [FRIEND]
+    render(<FriendList subTab="main" searchQuery="" />)
+    expect(screen.getByText('shell.list.noMessage')).toBeInTheDocument()
+    expect(screen.queryByText('Say hi!')).toBeNull()
+  })
+
   it('备注优先于昵称显示', () => {
     friendsState.friends = [{ ...FRIEND, friend_remark: '大学室友' }]
 
@@ -126,6 +133,14 @@ describe('好友列表（main）', () => {
 
     expect(screen.queryByText('张三')).not.toBeInTheDocument()
     expect(screen.getByText('chat.friendList.noFriends')).toBeInTheDocument()
+    expect(screen.getByText('chat.friendList.tryOtherSearch')).toBeInTheDocument()
+  })
+
+  it('一个好友都没有（也没在搜）：引导语走 system.addFriendsToChat，不再是写死的中文', () => {
+    render(<FriendList subTab="main" searchQuery="" />)
+
+    expect(screen.getByText('system.addFriendsToChat')).toBeInTheDocument()
+    expect(screen.queryByText('添加好友开始聊天吧！')).not.toBeInTheDocument()
   })
 
   it('点击好友后，会话 id 是 friend_id 而不是 undefined', () => {

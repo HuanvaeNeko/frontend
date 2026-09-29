@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
@@ -78,7 +78,7 @@ describe('AccountSection', () => {
 
     // PrivacySettings 真实渲染出来的文案——这一行是本条用例存在的全部意义：证明它
     // 在 AccountSection 里真的挂得起来，不是靠 vi.mock 探针"假装"挂了。
-    await waitFor(() => expect(screen.getByRole('switch', { name: '允许被搜索' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('switch', { name: '允许被搜索 / 添加' })).toBeTruthy())
     expect(screen.getByTestId('devices')).toBeInTheDocument()
     expect(screen.getByTestId('blacklist')).toBeInTheDocument()
     expect(screen.getByText('黑名单')).toBeInTheDocument()
@@ -86,5 +86,22 @@ describe('AccountSection', () => {
     expect(screen.getByText('在资料对话框中修改')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '前往' })).toHaveAttribute('href', '/app/profile')
     expect(screen.getByRole('button', { name: /退出登录/ })).toBeInTheDocument()
+  })
+
+  it('设置页的「退出登录」同样先确认，确认后才退出', async () => {
+    const logout = vi.fn(async () => {})
+    const realLogout = useAuthStore.getState().logout
+    useAuthStore.setState({ logout })
+    try {
+      mockBackend(makeProfileWire({ allow_search: true }))
+      render(<RouterProvider router={createMemoryRouter([{ path: '*', element: <AccountSection /> }], { initialEntries: ['/app/settings/account'] })} />)
+      fireEvent.click(await screen.findByRole('button', { name: /退出登录/ }))
+      const dialog = await screen.findByRole('alertdialog')
+      expect(logout).not.toHaveBeenCalled()
+      fireEvent.click(within(dialog).getByRole('button', { name: '退出登录' }))
+      await waitFor(() => expect(logout).toHaveBeenCalledTimes(1))
+    } finally {
+      useAuthStore.setState({ logout: realLogout })
+    }
   })
 })

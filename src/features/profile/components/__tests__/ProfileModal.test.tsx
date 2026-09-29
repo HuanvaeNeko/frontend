@@ -160,7 +160,7 @@ describe('ProfileModal 上传头像', () => {
     }
 
     await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像已更新' }),
     )
 
     const log = fetchMock.mock.calls.map(
@@ -212,7 +212,7 @@ describe('ProfileModal 上传头像', () => {
     await userEvent.upload(fileInput(), avatarFile())
 
     await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像上传成功' }),
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '头像已更新' }),
     )
     // 正对照：确实跑到了 confirm，那次 GET 也确实失败过（否则下面是句空话）。
     expect(fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))).toContain(
@@ -302,10 +302,10 @@ describe('ProfileModal 保存个人资料', () => {
     await userEvent.clear(signature)
     await userEvent.type(signature, '新签名')
 
-    await userEvent.click(screen.getByRole('button', { name: /保存更改/ }))
+    await userEvent.click(screen.getByRole('button', { name: /保存修改/ }))
 
     await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人信息已更新' }),
     )
     // 把 `handleSubmit` 改回 `updateProfile(formData)` → 请求体多出 email / nickname，本行红。
     expect(putBodies()).toEqual([{ signature: '新签名' }])
@@ -321,10 +321,10 @@ describe('ProfileModal 保存个人资料', () => {
     await userEvent.clear(nickname)
     await userEvent.type(nickname, '新昵称')
 
-    await userEvent.click(screen.getByRole('button', { name: /保存更改/ }))
+    await userEvent.click(screen.getByRole('button', { name: /保存修改/ }))
 
     await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人资料已更新' }),
+      expect(toastMock).toHaveBeenCalledWith({ title: '成功', description: '个人信息已更新' }),
     )
     expect(putBodies()).toEqual([{ nickname: '新昵称' }])
   })
@@ -335,7 +335,7 @@ describe('ProfileModal 保存个人资料', () => {
     render(<ProfileModal isOpen onClose={() => {}} />)
     await screen.findByDisplayValue('old@example.com')
 
-    const save = screen.getByRole('button', { name: /保存更改/ })
+    const save = screen.getByRole('button', { name: /保存修改/ })
     expect((save as HTMLButtonElement).disabled).toBe(true)
     await userEvent.click(save)
 
@@ -346,7 +346,7 @@ describe('ProfileModal 保存个人资料', () => {
 })
 
 /**
- * 「保存更改」在**首屏那一拍**就是灰的。
+ * 「保存修改」在**首屏那一拍**就是灰的。
  *
  * 稳定态测不出这件事：修好之前，回填 `formData` 的那个 effect 跑完之后按钮同样是灰的，
  * 闪的是中间那一拍。所以这里观察的是**每一次 DOM 提交**，用 `MutationObserver` 记
@@ -357,7 +357,7 @@ describe('ProfileModal 保存个人资料', () => {
  * 而 `formData` 初值是空三元组，于是首屏那一拍：按钮可点、输入框却是空的——
  * 点下去发的是 `nickname: ''`，`assertValidUpdate` 在任何 fetch 之前就抛。
  * 实测把这里的派生换回「空初值 + `useEffect` 回填」，本条用例会拿到两条
- * `oldValue === null` 的记录（保存更改与重置各一条）。
+ * `oldValue === null` 的记录（保存修改与重置各一条）。
  */
 describe('ProfileModal 的首屏：保存按钮不闪', () => {
   /**
@@ -404,7 +404,7 @@ describe('ProfileModal 的首屏：保存按钮不闪', () => {
     await screen.findByDisplayValue('fresh@example.com')
     records.push(...observer.takeRecords())
 
-    const save = screen.getByRole('button', { name: /保存更改/ })
+    const save = screen.getByRole('button', { name: /保存修改/ })
     // 正对照 1：按钮在屏幕上，而且首屏的输入框**有值**——不是"什么都没渲染出来"。
     expect((save as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByDisplayValue('测试用户') as HTMLInputElement).value).toBe('测试用户')
@@ -422,5 +422,48 @@ describe('ProfileModal 的首屏：保存按钮不闪', () => {
 
     expect((save as HTMLButtonElement).disabled).toBe(false)
     expect(disabledChanges(records, save).length).toBeGreaterThan(0)
+  })
+})
+
+describe('ProfileModal 关闭', () => {
+  /**
+   * 其它弹窗右上角都有 ×，资料弹窗原来显式关掉了（showCloseButton={false}），桌面上
+   * 只能点遮罩或按 Esc 关——很多人不知道。
+   */
+  it('有可见的关闭按钮，点了会关', async () => {
+    fetchMock.mockResolvedValue(envelope(PROFILE_DTO))
+    const onClose = vi.fn()
+    render(<ProfileModal isOpen onClose={onClose} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /关闭|close/i }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ProfileModal 修改密码：旧密码错误', () => {
+  /**
+   * 这个端点的 401 是业务失败「旧密码错误」（profile.ts changePassword 注释），后端原文是英文
+   * `Old password is incorrect`——原实现把它原样塞进中文界面的 toast。
+   */
+  it('401 显示中文的「旧密码不正确」，不透英文原文', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes('/password')
+        ? json({ success: false, code: 401, error: 'Old password is incorrect' }, 401)
+        : envelope(PROFILE_DTO)),
+    )
+    render(<ProfileModal isOpen onClose={() => {}} />)
+
+    // 桌面侧栏与窄屏横排各有一套页签（CSS 断点切换），happy-dom 里两套都在
+    await userEvent.click((await screen.findAllByRole('tab', { name: /修改密码/ }))[0])
+    const inputs = document.querySelectorAll('input[type="password"]')
+    await userEvent.type(inputs[0] as HTMLInputElement, 'wrongold1')
+    await userEvent.type(inputs[1] as HTMLInputElement, 'NewPass123')
+    await userEvent.type(inputs[2] as HTMLInputElement, 'NewPass123')
+    await userEvent.click(screen.getAllByRole('button', { name: /修改密码/ }).at(-1) as HTMLElement)
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })))
+    const call = toastMock.mock.calls.find(([arg]) => arg.variant === 'destructive')?.[0] as { description: string }
+    expect(call.description).toBe('旧密码不正确')
   })
 })

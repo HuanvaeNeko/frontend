@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
 import { storageApi } from '@/api/storage'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface MessageVideoProps {
   fileUrl: string | null
@@ -32,6 +33,7 @@ export function MessageVideo({
   className = 'max-w-[240px] rounded-xl',
   isFriendMessage = false
 }: MessageVideoProps) {
+  const { t } = useI18n()
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -110,7 +112,7 @@ export function MessageVideo({
     return (
       <div className={`${className} bg-muted flex flex-col items-center justify-center min-h-[100px] gap-2 p-4`}>
         <AlertCircle className="h-6 w-6 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">视频加载失败</span>
+        <span className="text-xs text-muted-foreground">{t('filePreview.videoLoadFailed')}</span>
       </div>
     )
   }

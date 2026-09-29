@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react'
 import { NavLink, useParams, useSearchParams } from 'react-router'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CreateGroupDialog } from '@/features/chat/components/sidebar/CreateGroupDialog'
+import { AddFriendDialog } from '@/features/chat/components/sidebar/AddFriendDialog'
+import { AddMenu } from './AddMenu'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import { friendDisplayName } from '@/features/chat/lib/friendName'
@@ -49,12 +51,17 @@ function ContactRow({ testId, to, name, subtitle, avatarUrl, selected, muted }: 
   )
 }
 
+// /api/groups/my 不返回人数（文档 7 字段）：副标题退到「我在群里的角色」，而不是把群 UUID 露给用户
+const GROUP_ROLE_LABEL = { owner: 'shell.contacts.roleOwner', admin: 'shell.contacts.roleAdmin', member: 'shell.contacts.roleMember' } as const
+
 /** 联系人栏：好友 / 群 / 申请三段；主列表自渲染并导航，add 与申请面板复用旧组件 */
 export function ContactsList() {
   const { t } = useI18n()
   const [params, setParams] = useSearchParams()
   const { userId, groupId } = useParams()
-  const tab = contactsTabFrom(params)
+  // 群详情的 URL 本身就说明「在看群」：直接打开（书签、通知、分享链接）时 URL 不带 ?tab=，
+  // 原来一律落到「好友」，左栏既不在群页、也不高亮这个群
+  const tab = groupId && !params.get('tab') ? 'groups' : contactsTabFrom(params)
   const add = contactsAddFrom(params)
   const [query, setQuery] = useState('')
   const friends = useFriendsStore((s) => s.friends)
@@ -74,6 +81,8 @@ export function ContactsList() {
 
   const setTab = (next: ContactsTab) => { const p = new URLSearchParams(params); p.set('tab', next); p.delete('add'); setParams(p, { replace: true }) }
   const closeAdd = () => { const p = new URLSearchParams(params); p.delete('add'); setParams(p, { replace: true }) }
+  // 与会话列表「+」同一套落点（app-shell 的 ChatListColumn）：加好友留在好友页，加群/建群切到群页
+  const openAdd = (next: ContactsAdd, nextTab?: ContactsTab) => { const p = new URLSearchParams(); if (nextTab) p.set('tab', nextTab); p.set('add', next); setParams(p) }
 
   const segment = (key: ContactsTab, label: string) => (
     <button type="button" key={key} onClick={() => setTab(key)} aria-pressed={tab === key}
@@ -85,12 +94,15 @@ export function ContactsList() {
   const addPanel = add === 'create-group' ? (
     // 建群只是一个对话框（终审 finding #4）：不渲染 GroupList 主列表，关闭即清 add 参数
     <CreateGroupDialog open onClose={closeAdd} />
+  ) : add === 'friend' ? (
+    // 加好友同理只是一个对话框。原来渲染 FriendList 的 'new' 子面板——那只是「待处理的申请」，
+    // 没有输入框，新壳里因此根本没有入口能加好友
+    <AddFriendDialog open onClose={closeAdd} />
   ) : add && (
     <div className="mb-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
       <div className="mb-1 flex justify-end">
         <button type="button" aria-label={t('shell.contacts.closePanel')} onClick={closeAdd} className="rounded-md p-1 text-muted-foreground hover:bg-[var(--primary-subtle)]"><X className="h-4 w-4" /></button>
       </div>
-      {add === 'friend' && <FriendList subTab="new" searchQuery="" />}
       {add === 'join-group' && <GroupList subTab="join" searchQuery="" />}
     </div>
   )
@@ -98,8 +110,15 @@ export function ContactsList() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 p-3">
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('shell.contacts.search')}
-          className="w-full rounded-[10px] border border-[var(--white-alpha-70)] bg-[var(--white-alpha-60)] px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-app-light focus:border-[var(--border-strong)]" />
+        <div className="flex items-center gap-2">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('shell.contacts.search')} aria-label={t('shell.contacts.search')}
+            className="min-w-0 flex-1 rounded-[10px] border border-[var(--white-alpha-70)] bg-[var(--white-alpha-60)] px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-app-light focus:border-[var(--border-strong)]" />
+          <AddMenu
+            onAddFriend={() => openAdd('friend')}
+            onJoinGroup={() => openAdd('join-group', 'groups')}
+            onCreateGroup={() => openAdd('create-group', 'groups')}
+          />
+        </div>
         <div className="flex gap-1 rounded-md bg-[var(--bg-tertiary)] p-1">
           {segment('friends', t('shell.contacts.friends'))}
           {segment('groups', t('shell.contacts.groups'))}
@@ -117,13 +136,20 @@ export function ContactsList() {
         {tab === 'groups' && ((groupsLoading || !groupsHasLoaded) ? <ListLoading /> : groupsError ? <ListError error={groupsError} onRetry={() => { loadMyGroups().catch(console.error) }} /> :
           groups.length === 0 ? <ListEmpty message={t('shell.contacts.noGroups')} /> : shownGroups.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :
           shownGroups.map((g) => (
-            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? t('shell.contacts.memberCount', { n: g.member_count }) : g.group_id}
+            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? t('shell.contacts.memberCount', { n: g.member_count }) : t(GROUP_ROLE_LABEL[g.role])}
               avatarUrl={g.group_avatar_url ? (toAbsoluteApiUrl(g.group_avatar_url) ?? null) : null} selected={groupId === g.group_id} />
           )))}
         {tab === 'requests' && (
           <div className="space-y-3">
-            <FriendList subTab="new" searchQuery="" />
-            <FriendList subTab="sent" searchQuery="" />
+            {/* 两段好友申请原来挨着排，只靠一个「待处理」徽标区分方向；群邀请段自带标题 */}
+            <section>
+              <h3 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t('shell.contacts.incomingRequests')}</h3>
+              <FriendList subTab="new" searchQuery="" />
+            </section>
+            <section>
+              <h3 className="px-2 pb-1 text-xs font-medium text-muted-foreground">{t('shell.contacts.sentRequests')}</h3>
+              <FriendList subTab="sent" searchQuery="" />
+            </section>
             <GroupList subTab="invites" searchQuery="" />
           </div>
         )}

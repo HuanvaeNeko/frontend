@@ -26,7 +26,7 @@ export default function LandingPage() {
           HUANVAE INTELLIGENCE
         </div>
 
-        <h1 data-gsap="hero-title" className="relative max-w-4xl text-center text-5xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-7xl lg:text-[5.4rem]">
+        <h1 data-gsap="hero-title" className="relative max-w-4xl text-balance text-center text-5xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-7xl lg:text-[5.4rem]">
           {t('landing.hero.title')}
         </h1>
 

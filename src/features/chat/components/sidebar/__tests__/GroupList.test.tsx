@@ -202,6 +202,17 @@ describe('GroupList 群邀请 tab 的三态', () => {
     expect(screen.queryByText('chat.groupList.retry')).not.toBeInTheDocument()
   })
 
+  it('邀请行的两个图标按钮与刷新按钮都有可访问名称（读屏不再只读「按钮」）', async () => {
+    getInvitationsMock.mockResolvedValueOnce([INVITATION])
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+
+    await waitFor(() => expect(screen.getByText('Test Group')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'chat.groupList.acceptInvite' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'chat.groupList.declineInvite' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'chat.groupList.refresh' })).toBeInTheDocument()
+  })
+
   it('成功：渲染真实邀请数据（行数与字段值），不是"没抛错"就算数', async () => {
     getInvitationsMock.mockResolvedValueOnce([INVITATION])
 
@@ -270,6 +281,21 @@ describe('GroupList selectionError → toast 消费（groupStore.selectGroup 失
 })
 
 
+describe('GroupList 群列表为空时的提示', () => {
+  // 这里的 t 回显 key：断言的是「接的是哪个 key」，key 背后的中英文由 i18n 的 key 覆盖测试兜住。
+  it('没有群、也没在搜索：提示去创建或加入（原来这句写死中文，英文界面也照样显示中文）', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
+    expect(await screen.findByText('groupManage.list.emptyHint')).toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.tryOtherSearch')).not.toBeInTheDocument()
+  })
+
+  it('搜索无结果：换成「试试其他搜索条件」，不再提示去创建', async () => {
+    render(<GroupList subTab="main" searchQuery="no-such-group" />)
+    expect(await screen.findByText('chat.groupList.tryOtherSearch')).toBeInTheDocument()
+    expect(screen.queryByText('groupManage.list.emptyHint')).not.toBeInTheDocument()
+  })
+})
+
 describe('GroupList 建群入口', () => {
   it('点「创建群聊」打开对话框（表单标题出现），再点取消关闭', async () => {
     render(<GroupList subTab="main" searchQuery="" />)
@@ -313,6 +339,16 @@ describe('GroupList 申请入群：source 必填 + status 两态', () => {
 
   beforeEach(() => {
     searchGroupsMock.mockResolvedValue([SEARCH_RESULT])
+  })
+
+  it('在搜索框里按回车就搜索（原来只能点「搜索」按钮）', async () => {
+    render(<GroupList subTab="join" searchQuery="" />)
+    const input = await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder')
+    fireEvent.change(input, { target: { value: 'Test Group' } })
+
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13 })
+
+    await waitFor(() => expect(searchGroupsMock).toHaveBeenCalledWith('Test Group'))
   })
 
   it('搜索结果卡片按 join_approval_required 显示审核角标（不是按已删的 join_mode 猜）', async () => {

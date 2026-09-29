@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
@@ -15,6 +16,13 @@ vi.mock('@/features/chat/components/sidebar/GroupList', () => ({
 }))
 // 建群（?add=create-group）只渲染这一个对话框（终审 finding #4），不再是 GroupList
 // 的一个 dialogOnly 变体——单独探针，断言 open 与 onClose 是否接到 closeAdd。
+// 加好友（?add=friend）同理：只渲染「添加好友」对话框。原来渲染的是 FriendList 的 'new'
+// 子面板——那只是「待处理的申请」，没有输入框，新壳里因此根本加不了好友。
+vi.mock('@/features/chat/components/sidebar/AddFriendDialog', () => ({
+  AddFriendDialog: (p: { open: boolean; onClose: () => void }) => (
+    <div data-testid="add-friend-dialog" data-open={String(p.open)}><button type="button" onClick={p.onClose}>close-add-friend</button></div>
+  ),
+}))
 vi.mock('@/features/chat/components/sidebar/CreateGroupDialog', () => ({
   CreateGroupDialog: (p: { open: boolean; onClose: () => void }) => (
     <div data-testid="create-group-dialog" data-open={String(p.open)}><button type="button" onClick={p.onClose}>close-dialog</button></div>
@@ -105,6 +113,44 @@ describe('ContactsList', () => {
     expect(screen.getByTestId('contact-f-alice').querySelector('.line-through')).toBeNull()
   })
 
+  it('联系人页也有「添加」入口：加好友 / 加入群 / 创建群聊各自落到对应的 add 参数', async () => {
+    // 原来只有会话列表有「+」，联系人页（最该加好友的地方）连入口都没有
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('添加好友'))
+    expect(testRouter?.state.location.search).toBe('?add=friend')
+
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('加入群'))
+    expect(testRouter?.state.location.search).toBe('?tab=groups&add=join-group')
+
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('创建群聊'))
+    expect(testRouter?.state.location.search).toBe('?tab=groups&add=create-group')
+  })
+
+  it('申请页分区有标题：收到的好友申请 / 我发出的好友申请（原来两段卡片挨着，只靠一个「待处理」徽标分方向）', () => {
+    renderAt('/app/contacts?tab=requests')
+    expect(screen.getByRole('heading', { name: '收到的好友申请' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '我发出的好友申请' })).toBeInTheDocument()
+  })
+
+  it('直接打开群详情（/app/contacts/groups/:id，URL 不带 tab）：左栏切到「群」并高亮这个群', () => {
+    // 原来 tab 只看 ?tab=，缺省就是「好友」——从书签、通知、分享链接进群详情时，左栏停在好友列表
+    renderAt('/app/contacts/groups/g1')
+    expect(screen.getByRole('button', { name: '群' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('contact-g-g1')).toHaveAttribute('data-selected', 'true')
+  })
+
+  it('群行副标题：/api/groups/my 不返回人数时显示我在群里的角色，不把群 UUID 露给用户', () => {
+    renderAt('/app/contacts?tab=groups')
+    const row = screen.getByTestId('contact-g-g1')
+    expect(row).toHaveTextContent('成员')
+    expect(row).not.toHaveTextContent('g1')
+  })
+
   it('?tab=groups：群行链接到 /app/contacts/groups/:id；?tab=requests：申请面板复用旧组件', () => {
     renderAt('/app/contacts?tab=groups')
     expect(screen.getByRole('link', { name: /读书会/ })).toHaveAttribute('href', '/app/contacts/groups/g1')
@@ -115,9 +161,13 @@ describe('ContactsList', () => {
     expect(screen.getByTestId('group-list')).toHaveAttribute('data-subtab', 'invites')
   })
 
-  it('?add=friend / join-group / create-group 各自渲染对应旧面板', () => {
+  it('?add=friend / join-group / create-group 各自渲染对应面板', () => {
     renderAt('/app/contacts?add=friend')
-    expect(screen.getByTestId('friend-list')).toHaveAttribute('data-subtab', 'new')
+    expect(screen.getByTestId('add-friend-dialog')).toHaveAttribute('data-open', 'true')
+    // 不再是「待处理申请」那个没有输入框的旧面板
+    expect(screen.queryByTestId('friend-list')).toBeNull()
+    fireEvent.click(screen.getByText('close-add-friend'))
+    expect(testRouter?.state.location.search).toBe('')
     renderAt('/app/contacts?tab=groups&add=join-group')
     expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-subtab', 'join')
     renderAt('/app/contacts?tab=groups&add=create-group')

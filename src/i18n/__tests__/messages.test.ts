@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SUPPORTED_LOCALES, messages } from '@/i18n/messages'
+import { SUPPORTED_LOCALES, messages, normalizeLocale } from '@/i18n/messages'
 
 /**
  * 文案资源层的断言：盯的是 `messages.ts` 里**那句话本身**，不是组件里的 key。
@@ -75,5 +75,43 @@ describe('i18n 资源：加入群聊的搜索文案必须说出「完整群名�
     expect(groupList.alreadyMember).toMatch(locale === 'zh-CN' ? /已(经)?在/ : /already/i)
     // 不能和「加入成功」是同一句：那两种状态在屏幕上必须能区分
     expect(groupList.alreadyMember).not.toBe(groupList.joinSuccess)
+  })
+})
+
+describe('i18n 资源：中英文逐 key 对齐', () => {
+  const leaves = (node: unknown, prefix = ''): string[] =>
+    node && typeof node === 'object'
+      ? Object.entries(node as Record<string, unknown>).flatMap(([k, v]) => leaves(v, prefix ? `${prefix}.${k}` : k))
+      : [prefix]
+
+  it('en-US 与 zh-CN 的 key 集合完全一致（英文界面不会因为缺 key 回落成中文）', () => {
+    const zh = new Set(leaves(messages['zh-CN']))
+    const en = new Set(leaves(messages['en-US']))
+    expect([...zh].filter((k) => !en.has(k))).toEqual([])
+    expect([...en].filter((k) => !zh.has(k))).toEqual([])
+    // 正对照：确实遍历到了叶子
+    expect(zh.size).toBeGreaterThan(500)
+  })
+})
+
+describe('normalizeLocale（「跟随系统」时按浏览器语言选界面语言）', () => {
+  it('英文的各种地区写法都进英文界面（原来只认精确的 en-US：en-GB / en / en-AU 的用户看到的是中文）', () => {
+    expect(normalizeLocale('en-GB')).toBe('en-US')
+    expect(normalizeLocale('en')).toBe('en-US')
+    expect(normalizeLocale('EN-au')).toBe('en-US')
+  })
+
+  it('中文的各种写法进中文；其他语言进英文，与 Service Worker 推送的判断（zh 开头为中文）一致', () => {
+    expect(normalizeLocale('zh')).toBe('zh-CN')
+    expect(normalizeLocale('zh-TW')).toBe('zh-CN')
+    expect(normalizeLocale('zh-Hans-CN')).toBe('zh-CN')
+    expect(normalizeLocale('ja-JP')).toBe('en-US')
+  })
+
+  it('正对照：设置里存的两个精确值原样返回；取不到语言时回落默认中文', () => {
+    expect(normalizeLocale('zh-CN')).toBe('zh-CN')
+    expect(normalizeLocale('en-US')).toBe('en-US')
+    expect(normalizeLocale(undefined)).toBe('zh-CN')
+    expect(normalizeLocale('')).toBe('zh-CN')
   })
 })

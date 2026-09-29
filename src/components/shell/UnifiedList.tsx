@@ -1,8 +1,8 @@
-import { Plus, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { UnifiedConversation } from '@/features/chat/hooks/useUnifiedConversations'
 import { useI18n } from '@/i18n/I18nProvider'
+import { AddMenu } from './AddMenu'
 import { ConversationCard } from './ConversationCard'
 import { ListEmpty, ListError, ListLoading } from './ListStates'
 
@@ -43,18 +43,7 @@ export function UnifiedList(props: UnifiedListProps) {
             className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-app-light"
           />
         </label>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" aria-label={t('shell.list.add')} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-[var(--primary-subtle)] hover:text-primary">
-              <Plus className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="glass-surface min-w-[160px] rounded-lg border-[var(--glass-border)]">
-            <DropdownMenuItem onSelect={props.onCreateGroup}>{t('shell.list.createGroup')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={props.onAddFriend}>{t('shell.list.addFriend')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={props.onJoinGroup}>{t('shell.list.joinGroup')}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AddMenu onCreateGroup={props.onCreateGroup} onAddFriend={props.onAddFriend} onJoinGroup={props.onJoinGroup} />
       </div>
       {/* APP .conversation-list:右侧 2px + 滚动条槽 6px = 左侧 8px,各 tab 卡片等宽 */}
       <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto py-2 pl-2 pr-0.5 [scrollbar-gutter:stable]">

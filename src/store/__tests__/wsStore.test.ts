@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { setActiveLocale } from '@/i18n/translate'
 import { useWSStore } from '@/store/wsStore'
 
 /**
@@ -71,6 +72,26 @@ it('重连放弃之后问一声 BFF 还登不登录着；更早的一次尝试�
   expect(useWSStore.getState().error).toBe('无法连接到服务器，请刷新页面重试')
 })
 
+it('英文界面：给上重连后写进 error 的是英文（写入那一刻按当前语言取）', () => {
+  useAuthStore.setState({ restoreSession: vi.fn().mockResolvedValue(undefined) })
+  setActiveLocale('en-US')
+  try {
+    useWSStore.getState().connect()
+    const ws = useWSStore.getState().ws as unknown as {
+      onerror?: (event: unknown) => void
+      onclose?: (event: { code: number; reason: string }) => void
+    }
+    ws.onerror?.({})
+    expect(useWSStore.getState().error).toBe('WebSocket connection error')
+
+    useWSStore.setState({ reconnectAttempts: 10, reconnecting: false })
+    ws.onclose?.({ code: 1006, reason: 'abnormal' })
+    expect(useWSStore.getState().error).toBe('Can’t connect to the server. Please refresh the page and try again.')
+  } finally {
+    setActiveLocale('zh-CN')
+  }
+})
+
 it('同一个 give-up episode 只问一次：两次连续放弃（中间没有真正连上）只调一次 restoreSession', () => {
   // 复现 I2 的真实机制：给上之后没有任何自动重连（放弃分支只 return，不排
   // setTimeout），但外部调用方（生产环境里是 ChatPage 的 effect）可能再调一次
@@ -103,4 +124,37 @@ it('同一个 give-up episode 只问一次：两次连续放弃（中间没有�
   ws2.onclose?.({ code: 1006, reason: 'abnormal' })
 
   expect(restoreSession).toHaveBeenCalledTimes(1)
+})
+
+/**
+ * 处理器拿到的载荷。system_notification 的帧是 `{type, notification_type, data}`
+ * （backend-docs groups/群聊管理.md「通知格式」），原分发规则「帧里有 data 就只交 data」
+ * 把 notification_type 丢了：处理器 switch 恒走 default，好友申请、群邀请、被移出、解散……
+ * 全部静默失效。现在一律交「帧里除 type 外的全部字段」。
+ */
+function deliver(frame: unknown) {
+  const ws = useWSStore.getState().ws as unknown as { onmessage?: (event: { data: string }) => void }
+  ws.onmessage?.({ data: JSON.stringify(frame) })
+}
+
+it('system_notification：notification_type 与 data 一起交给处理器', () => {
+  const handler = vi.fn()
+  const unsubscribe = useWSStore.getState().registerHandler('system_notification', handler)
+  useWSStore.getState().connect()
+
+  deliver({ type: 'system_notification', notification_type: 'friend_request', data: { from_nickname: '朱迪', request_id: 'r1' } })
+
+  expect(handler).toHaveBeenCalledWith({ notification_type: 'friend_request', data: { from_nickname: '朱迪', request_id: 'r1' } })
+  unsubscribe()
+})
+
+it('正对照：字段平铺的帧（presence_update，backend-docs friends/好友添加删除.md「通知格式」）交除 type 外的全部字段', () => {
+  const handler = vi.fn()
+  const unsubscribe = useWSStore.getState().registerHandler('presence_update', handler)
+  useWSStore.getState().connect()
+
+  deliver({ type: 'presence_update', user_id: 'bob', online: false, last_seen_at: '2026-07-08T09:30:00Z' })
+
+  expect(handler).toHaveBeenCalledWith({ user_id: 'bob', online: false, last_seen_at: '2026-07-08T09:30:00Z' })
+  unsubscribe()
 })

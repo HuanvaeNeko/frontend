@@ -2,7 +2,7 @@ import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, pointerWithi
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { AnimatePresence } from 'framer-motion'
-import { MessageCircle, Moon, MoreHorizontal, Settings, Sun, Users } from 'lucide-react'
+import { LogOut, MessageCircle, Moon, MoreHorizontal, Settings, Sun, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink } from 'react-router'
@@ -11,6 +11,7 @@ import { formatUnreadCount } from '@/features/chat/lib/formatUnreadCount'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { useProfileStore } from '@/features/profile/store/profileStore'
+import { LogoutConfirmDialog } from '@/features/auth/components/LogoutConfirmDialog'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { useI18n } from '@/i18n/I18nProvider'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
@@ -87,6 +88,9 @@ export function Sidebar({ activeTab }: SidebarProps) {
   // 裸 <img src=""> 会让 React 告警并重下整页。`||` 而不是 `??`：空串必须继续往后找。
   const avatarSrc = toAbsoluteApiUrl(profile?.user_avatar_url || user?.avatar_url) ?? null
   const avatarInitial = (profile?.user_nickname || user?.nickname || 'U')[0]?.toUpperCase() ?? 'U'
+  // 加载失败的那个地址（对象存储里没有 / 过期）：退回首字母，而不是露浏览器破图图标。
+  // 记的是地址而不是布尔值：换了新头像（地址变了）会自动重新尝试。
+  const [failedAvatarSrc, setFailedAvatarSrc] = useState<string | null>(null)
 
   // ---- 双区布局：SSR 先渲染默认布局，挂载后再读 localStorage（避免 hydration 不一致） ----
   const [layout, setLayout] = useState<SidebarLayout>(defaultLayout)
@@ -101,6 +105,7 @@ export function Sidebar({ activeTab }: SidebarProps) {
   const [activeKey, setActiveKey] = useState<SidebarToolKey | null>(null)
   const snapshotRef = useRef<SidebarLayout | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement>(null)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
   // 仅 PointerSensor、6px 才算拖：点击不触发拖拽，链接照常导航。不加键盘 sensor（APP 同款理由）
@@ -177,8 +182,8 @@ export function Sidebar({ activeTab }: SidebarProps) {
       <aside data-testid="sidebar" className="glass-surface z-10 flex h-full w-[60px] flex-col items-center border-r border-[var(--glass-border)] py-4">
         {/* APP .sidebar-avatar + .online-indicator */}
         <NavLink to={ROUTES.app.profile} aria-label={t('shell.nav.profile')} title={t('shell.nav.profile')} className="relative mb-6 block h-10 w-10 overflow-hidden rounded-[10px] border-2 border-[var(--white-alpha-90)] bg-[linear-gradient(135deg,var(--white-alpha-80),var(--white-alpha-50))] shadow-[0_4px_12px_rgba(59,130,246,0.15)]">
-          {avatarSrc ? (
-            <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+          {avatarSrc && avatarSrc !== failedAvatarSrc ? (
+            <img src={avatarSrc} alt="" className="h-full w-full object-cover" onError={() => setFailedAvatarSrc(avatarSrc)} />
           ) : (
             <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-app-light">{avatarInitial}</span>
           )}
@@ -223,8 +228,13 @@ export function Sidebar({ activeTab }: SidebarProps) {
           <button type="button" title={t('shell.nav.theme')} aria-label={t('shell.nav.theme')} className={navBtn} onClick={() => setSetting('theme', isDark ? 'light' : 'dark')}>
             {isDark ? <Sun /> : <Moon />}
           </button>
+          {/* APP .nav-btn.logout：侧栏最底下。原来网页端只在「设置 → 账户与安全」最底部 */}
+          <button type="button" title={t('shell.settings.logout')} aria-label={t('shell.settings.logout')} className={cn(navBtn, 'hover:text-destructive')} onClick={() => setConfirmLogout(true)}>
+            <LogOut />
+          </button>
         </div>
       </aside>
+      <LogoutConfirmDialog open={confirmLogout} onOpenChange={setConfirmLogout} />
 
       {/* 面板与拖拽幽灵卡都 portal 到 body：不被 aside 的 overflow 裁切；SSR 没有 document，挂载后再渲染 */}
       {mounted && createPortal(

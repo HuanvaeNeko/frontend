@@ -43,6 +43,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
   
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [page, setPage] = useState(1)
@@ -84,27 +85,24 @@ export default function FileManager({ subTab }: FileManagerProps) {
     if (loading) return
     
     setLoading(true)
+    setLoadError(null)
     try {
-      const currentPage = refresh ? 1 : page
+      // page 是「已加载到第几页」：刷新拿第 1 页，加载更多拿下一页。原来刷新后 page 停在 1、
+      // 只在非刷新分支推进——第一次「加载更多」请求的还是第 1 页，列表翻倍全是重复项
+      const currentPage = refresh ? 1 : page + 1
       const response = await storageApi.getFileList(currentPage, 20, 'created_at', 'desc')
       
       if (refresh) {
         setFiles(response.files)
-        setPage(1)
       } else {
         setFiles(prev => [...prev, ...response.files])
       }
-      
+      setPage(currentPage)
       setHasMore(response.has_more)
-      if (!refresh && response.has_more) {
-        setPage(p => p + 1)
-      }
     } catch (error) {
-      toast({
-        title: t('chat.fileManager.loadFailedTitle'),
-        description: error instanceof Error ? error.message : t('chat.fileManager.loadFailedDesc'),
-        variant: 'destructive',
-      })
+      // 列表区原地显示错误 + 重试；原来只弹 toast，列表落到「暂无文件 / 上传后显示」——
+      // 用户会以为文件丢了
+      setLoadError(error instanceof Error ? error.message : t('chat.fileManager.loadFailedDesc'))
     } finally {
       setLoading(false)
     }
@@ -266,7 +264,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
               <Input 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('chat.fileManager.searchPlaceholder') || "Search files..."}
+                placeholder={t('chat.fileManager.searchPlaceholder')}
                 className="pl-9 h-10 bg-muted/50 border-transparent focus:bg-background focus:border-input rounded-xl"
               />
             </div>
@@ -286,6 +284,16 @@ export default function FileManager({ subTab }: FileManagerProps) {
             {loading && files.length === 0 ? (
               <div className="flex items-center justify-center h-48">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : loadError && files.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-2 text-center">
+                <p className="text-sm font-medium text-destructive">{t('chat.fileManager.loadFailedTitle')}</p>
+                <p className="text-xs text-muted-foreground max-w-[260px]">{loadError}</p>
+                <Button variant="outline" size="sm" className="mt-1" onClick={() => loadFiles(true)}>{t('shell.list.retry')}</Button>
+              </div>
+            ) : files.length > 0 && filteredFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                <p className="text-sm">{t('chat.fileManager.noMatch')}</p>
               </div>
             ) : filteredFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -395,7 +403,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
              {uploading && (
                 <div className="max-w-xs mx-auto mb-6 space-y-2">
                   <div className="flex justify-between text-xs font-medium">
-                    <span>Uploading...</span>
+                    <span>{t('chat.fileManager.uploading')}</span>
                     <span>{uploadProgress}%</span>
                   </div>
                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden">

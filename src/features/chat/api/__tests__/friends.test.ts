@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { setActiveLocale } from '@/i18n/translate'
 import { ApiShapeError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { friendsApi } from '../friends'
@@ -289,5 +290,76 @@ describe('friendsApi 黑名单三接口（backend-docs friends/好友添加删�
   it('拉黑 HTTP 200 但 success:false 透出后端文案', async () => {
     fetchMock.mockResolvedValueOnce(ok({ success: false, code: 400, error: '不能拉黑自己' }))
     await expect(friendsApi.addBlacklist('me')).rejects.toThrow(/不能拉黑自己/)
+  })
+})
+
+describe('friendsApi.setRemark（backend-docs friends/好友添加删除.md:124-135）', () => {
+  it('POST /api/friends/remark，请求体 { user_id, friend_user_id, remark }；成功是 200 空响应体，不当成形状错误', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }))
+
+    await friendsApi.setRemark('carol', '卡卡')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${FRIENDS_BASE}/remark`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ user_id: 'me', friend_user_id: 'carol', remark: '卡卡' })
+  })
+
+  it('空串 = 清除备注：原样发空串（后端没有 DELETE）', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }))
+    await friendsApi.setRemark('carol', '')
+    expect(JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)).toMatchObject({ remark: '' })
+  })
+
+  it('400（超过 30 字 / 不是好友）抛出后端原文', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ error: '好友关系不存在' }, 400))
+    await expect(friendsApi.setRemark('stranger', '路人')).rejects.toThrow('好友关系不存在')
+  })
+})
+
+/**
+ * 兜底报错与默认招呼语在**发请求 / 抛错那一刻**按当前界面语言取（errors.*）。
+ * 原来整份文件写死中文：英文界面下后端不给文案时，照样冒出「删除好友失败」。
+ */
+describe('friendsApi 的兜底文案跟随界面语言', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('中文（默认语言）：兜底与默认招呼语和改成 key 之前逐字一致', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(friendsApi.removeFriend('u2')).rejects.toThrow('删除好友失败 (HTTP 500)')
+
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: null }))
+    await friendsApi.sendFriendRequest('u2')
+    expect(JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string).reason).toBe('你好，我想加你为好友')
+  })
+
+  it('英文：后端不给文案时的兜底、没填验证消息时代发的招呼语都是英文', async () => {
+    setActiveLocale('en-US')
+
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(friendsApi.removeFriend('u2')).rejects.toThrow('Failed to remove friend (HTTP 500)')
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 502 }))
+    await expect(friendsApi.getFriendsList()).rejects.toThrow('Failed to load friends (HTTP 502)')
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(friendsApi.removeBlacklist('u2')).rejects.toThrow('Failed to unblock (HTTP 500)')
+
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: null }))
+    await friendsApi.sendFriendRequest('u2')
+    expect(JSON.parse((fetchMock.mock.calls[3] as [string, RequestInit])[1].body as string).reason).toBe('Hi, I’d like to add you as a friend')
+
+    // 后端给了文案就用后端的，兜底不抢
+    fetchMock.mockResolvedValueOnce(ok({ success: false, code: 400, message: '该申请已被处理' }))
+    await expect(friendsApi.approveFriendRequest('u2')).rejects.toThrow('该申请已被处理')
+  })
+
+  it('英文：拿不到自己的 user_id 时抛英文，且仍被判成认证错误（静默跳登录，不是可见报错）', async () => {
+    setActiveLocale('en-US')
+    useAuthStore.setState({ user: null })
+
+    const error = await friendsApi.setRemark('u2', 'x').catch((e: unknown) => e)
+
+    expect((error as Error).message).toBe('Not signed in')
+    expect(isAuthError(error as Error)).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

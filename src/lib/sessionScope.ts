@@ -168,14 +168,11 @@ type DeviceScopedRule =
  * 它被 `root.tsx` 的预水合内联脚本在 React 挂载前读，清掉会让每次登出后的
  * 首屏闪一次浅色。
  *
- * **没有**列进来的四个字段是有意的：
+ * **没有**列进来的两个字段是有意的：
  * - `showOnlineStatus` / `messageEncryption`：隐私姿态。今天它们是**纯 UI 开关**
  *   （除 `settingsStore` 自身外，全仓只有 `SettingsPage` 的两个 `<Switch>` 读写它们，
  *   没有任何请求或渲染读），所以留着也不会真的泄露什么；但正因为将来接上消费点
  *   是一句话的事，默认让它们跟账号走，比"等接上了记得回来改这张表"可靠。
- * - `aiEnabled` / `aiModel`：与 `api-config-storage`（存着用户自备的第三方
- *   `aiApiKey`）是同一套 AI 配置，那个键整体跟账号走，这两个字段留下会变成
- *   "上一个人的 AI 偏好 + 没有钥匙"的半截状态。
  */
 export const DEVICE_SCOPED_SETTING_FIELDS = [
   'theme',

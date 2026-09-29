@@ -7,6 +7,8 @@
  * 存 ArrayBuffer 不存 Blob：fake-indexeddb 用 structuredClone 复制值，happy-dom 的
  * Blob 不是 Node 平台对象会 DataCloneError；浏览器两者都行。
  */
+import { translate } from '@/i18n/translate'
+
 export interface SoundOption { id: string; name: string; kind: 'builtin' | 'custom'; src: string | null }
 
 export const BUILTIN_SOUNDS: readonly SoundOption[] = [
@@ -36,19 +38,19 @@ export function isIndexedDbAvailable(): boolean {
 function request<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB 请求失败'))
+    req.onerror = () => reject(req.error ?? new Error(translate('errors.sound.storageRequest')))
   })
 }
 
 function openDb(): Promise<IDBDatabase> {
-  if (!isIndexedDbAvailable()) return Promise.reject(new SoundLibraryError('unavailable', '当前浏览器无法保存自定义提示音'))
+  if (!isIndexedDbAvailable()) return Promise.reject(new SoundLibraryError('unavailable', translate('shell.settings.sounds.errUnavailable')))
   return new Promise((resolve, reject) => {
     const req = globalThis.indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: 'id' })
     }
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new SoundLibraryError('unavailable', '打开提示音库失败'))
+    req.onerror = () => reject(req.error ?? new SoundLibraryError('unavailable', translate('errors.sound.openFailed')))
   })
 }
 
@@ -80,9 +82,10 @@ function uniqueName(base: string, taken: Set<string>): string {
 }
 
 export async function saveCustom(file: File): Promise<SoundOption> {
-  if (!isIndexedDbAvailable()) throw new SoundLibraryError('unavailable', '当前浏览器无法保存自定义提示音')
-  if (file.type !== 'audio/mpeg') throw new SoundLibraryError('type', '只支持 MP3（audio/mpeg）')
-  if (file.size > MAX_CUSTOM_SOUND_BYTES) throw new SoundLibraryError('size', '文件不能超过 2 MB')
+  // message 与 SoundSelector 按 code 显示的是同一句（同一个 key），不另写一份
+  if (!isIndexedDbAvailable()) throw new SoundLibraryError('unavailable', translate('shell.settings.sounds.errUnavailable'))
+  if (file.type !== 'audio/mpeg') throw new SoundLibraryError('type', translate('shell.settings.sounds.errType'))
+  if (file.size > MAX_CUSTOM_SOUND_BYTES) throw new SoundLibraryError('size', translate('shell.settings.sounds.errSize'))
   // bytes 必须在开事务之前 await 完：事务里除了同一事务下 IDBRequest 的 promise，
   // 不能再 await 别的东西（比如这个），否则事务会在这次 await 让出的间隙里自动提交关闭。
   const bytes = await file.arrayBuffer()

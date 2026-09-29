@@ -6,6 +6,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { ROUTES } from '@/lib/routes'
 import { loadFriends } from '@/data'
 import { pinSession, registerPristineStoreReset } from '@/lib/sessionScope'
+import { translate } from '@/i18n/translate'
 
 interface FriendsState {
   friends: Friend[]
@@ -45,6 +46,8 @@ interface FriendsState {
   /** 成功后翻转 friends[].is_blacklisted 并本地补一条，不重拉（spec §5） */
   addBlacklist: (userId: string) => Promise<void>
   removeBlacklist: (userId: string) => Promise<void>
+  /** 设置 / 清除备注（去首尾空白；空 = 清除，本地存 null） */
+  setRemark: (userId: string, remark: string) => Promise<void>
 }
 
 /**
@@ -166,7 +169,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ friends, isLoading: false, hasLoaded: true })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '加载好友列表失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.loadList'))
       // ⚠️ 认证分支（errorMessage === null）不写 hasLoaded：`handleApiError` 在上面
       // 这一行内部已经调过 `silentRedirectToLogin → clearAuth → endSession`，本 store
       // 被 `registerPristineStoreReset` 同步清回了 pristine（hasLoaded 已经是 false）。
@@ -190,7 +193,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ pendingRequests, isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '加载好友请求失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.loadPending'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -205,7 +208,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ sentRequests, isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '加载已发送请求失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.loadSent'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -224,7 +227,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '发送好友请求失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.sendRequest'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -247,7 +250,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '同意好友请求失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.approve'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -265,7 +268,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '拒绝好友请求失败')
+      const errorMessage = handleApiError(error, translate('errors.friends.reject'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -283,7 +286,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       set({ isLoading: false })
     } catch (error) {
       if (!stillMine()) throw error
-      const errorMessage = handleApiError(error, '删除好友失败')
+      const errorMessage = handleApiError(error, translate('shell.contacts.removeFailed'))
       set(errorMessage === null ? { isLoading: false } : { error: errorMessage, isLoading: false })
       throw error
     }
@@ -302,7 +305,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       // 根本不读这个字段——写了只是纯粹外溢，会让设置页一次网络抖动污染整个聊天列表。
       // `handleApiError` 仍然要调：认证失败时它会 `clearAuth()` 并跳登录页，这个副作用
       // 必须保留，只是不再消费它返回的文案。
-      handleApiError(error, '获取黑名单失败')
+      handleApiError(error, translate('errors.friends.loadBlacklist'))
       throw error
     }
   },
@@ -327,7 +330,22 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     } catch (error) {
       if (!stillMine()) throw error
       // 不写共享的 `error`，理由同 loadBlacklist 上方注释。
-      handleApiError(error, '拉黑失败')
+      handleApiError(error, translate('errors.friends.block'))
+      throw error
+    }
+  },
+
+  setRemark: async (userId: string, remark: string) => {
+    const stillMine = pinSession()
+    const value = remark.trim()
+    try {
+      await friendsApi.setRemark(userId, value)
+      if (!stillMine()) return
+      set({ friends: get().friends.map((f) => (f.friend_id === userId ? { ...f, friend_remark: value || null } : f)) })
+    } catch (error) {
+      if (!stillMine()) throw error
+      // 不写共享的 `error`：ProfileView 就地显示保存失败
+      handleApiError(error, translate('errors.friends.setRemark'))
       throw error
     }
   },
@@ -345,7 +363,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     } catch (error) {
       if (!stillMine()) throw error
       // 不写共享的 `error`，理由同 loadBlacklist 上方注释。
-      handleApiError(error, '取消拉黑失败')
+      handleApiError(error, translate('shell.settings.blacklist.removeFailed'))
       throw error
     }
   },

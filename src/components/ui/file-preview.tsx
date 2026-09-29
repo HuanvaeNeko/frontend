@@ -18,6 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react'
 import { Markdown } from './markdown'
+import { useI18n } from '@/i18n/I18nProvider'
 
 // pdf.js 只在预览 PDF 时才需要，见 file-preview-pdf.tsx 顶部注释
 const PdfPreview = lazy(() => import('./file-preview-pdf'))
@@ -87,14 +88,18 @@ function formatSize(bytes?: number): string {
   return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
-const pdfLoading = (
-  <div className="p-8 flex items-center gap-3">
-    <Loader2 className="w-5 h-5 animate-spin" />
-    加载 PDF...
-  </div>
-)
+function PdfLoading() {
+  const { t } = useI18n()
+  return (
+    <div className="p-8 flex items-center gap-3">
+      <Loader2 className="w-5 h-5 animate-spin" />
+      {t('filePreview.pdfLoading')}
+    </div>
+  )
+}
 
 export function FilePreview({ file, files = [], onClose, onDownload }: FilePreviewProps) {
+  const { t } = useI18n()
   const [scale, setScale] = useState(1)
   const [rotation, setRotation] = useState(0)
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -102,7 +107,9 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
   const [currentPage, setCurrentPage] = useState(1)
   const [textContent, setTextContent] = useState<string>('')
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // 只记哪一种失败，文案渲染时按当前语言取（原来把 err.message 原样显示：
+  // HTTP 失败是写死的「加载失败」，断网则是浏览器自带的英文 "Failed to fetch"）
+  const [error, setError] = useState<'load' | 'pdf' | null>(null)
 
   // 获取当前文件
   const allFiles = files.length > 0 ? files : (file ? [file] : [])
@@ -121,15 +128,15 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
       setError(null)
       fetch(currentFile.url)
         .then(res => {
-          if (!res.ok) throw new Error('加载失败')
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
           return res.text()
         })
         .then(text => {
           setTextContent(text)
           setLoading(false)
         })
-        .catch(err => {
-          setError(err.message)
+        .catch(() => {
+          setError('load')
           setLoading(false)
         })
     } else {
@@ -206,7 +213,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
               <p className="text-sm text-white/60">
                 {formatSize(currentFile.size)}
                 {allFiles.length > 1 && ` · ${currentIndex + 1} / ${allFiles.length}`}
-                {previewType === 'pdf' && numPages > 0 && ` · 第 ${currentPage} / ${numPages} 页`}
+                {previewType === 'pdf' && numPages > 0 && ` · ${t('filePreview.pageOf', { page: currentPage, total: numPages })}`}
               </p>
             </div>
           </div>
@@ -218,7 +225,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
                 <button
                   className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
                   onClick={() => setScale(s => Math.max(s - 0.25, 0.5))}
-                  title="缩小"
+                  title={t('filePreview.zoomOut')}
                 >
                   <ZoomOut className="w-5 h-5" />
                 </button>
@@ -228,7 +235,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
                 <button
                   className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
                   onClick={() => setScale(s => Math.min(s + 0.25, 3))}
-                  title="放大"
+                  title={t('filePreview.zoomIn')}
                 >
                   <ZoomIn className="w-5 h-5" />
                 </button>
@@ -240,7 +247,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
               <button
                 className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
                 onClick={() => setRotation(r => (r + 90) % 360)}
-                title="旋转"
+                title={t('filePreview.rotate')}
               >
                 <RotateCw className="w-5 h-5" />
               </button>
@@ -251,7 +258,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
               <button
                 className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
                 onClick={() => { setScale(1); setRotation(0) }}
-                title="重置"
+                title={t('filePreview.reset')}
               >
                 <Maximize2 className="w-5 h-5" />
               </button>
@@ -261,7 +268,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
             <button
               className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
               onClick={() => window.open(currentFile.url, '_blank')}
-              title="在新标签页打开"
+              title={t('filePreview.openInNewTab')}
             >
               <ExternalLink className="w-5 h-5" />
             </button>
@@ -270,7 +277,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
             <button
               className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
               onClick={handleDownload}
-              title="下载"
+              title={t('chat.window.download')}
             >
               <Download className="w-5 h-5" />
             </button>
@@ -279,7 +286,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
             <button
               className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
               onClick={onClose}
-              title="关闭 (Esc)"
+              title={t('filePreview.closeEsc')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -294,19 +301,19 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
           {loading && (
             <div className="flex flex-col items-center gap-4 text-white">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p>加载中...</p>
+              <p>{t('chat.window.loading')}</p>
             </div>
           )}
 
           {error && (
             <div className="flex flex-col items-center gap-4 text-white">
               <File className="w-16 h-16 text-white/50" />
-              <p className="text-red-400">{error}</p>
+              <p className="text-red-400">{error === 'pdf' ? t('filePreview.pdfLoadFailed') : t('filePreview.loadFailed')}</p>
               <button
                 className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
                 onClick={handleDownload}
               >
-                下载文件
+                {t('filePreview.downloadFile')}
               </button>
             </div>
           )}
@@ -339,7 +346,7 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
                   className="max-w-full max-h-full"
                   onLoadedData={() => setLoading(false)}
                 >
-                  您的浏览器不支持视频播放
+                  {t('filePreview.videoUnsupported')}
                 </video>
               )}
 
@@ -364,17 +371,17 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
               {/* PDF 预览 */}
               {previewType === 'pdf' && (
                 <div className="bg-white rounded-lg overflow-hidden shadow-2xl">
-                  <Suspense fallback={pdfLoading}>
+                  <Suspense fallback={<PdfLoading />}>
                     <PdfPreview
                       url={currentFile.url}
                       page={currentPage}
                       scale={scale}
-                      loading={pdfLoading}
+                      loading={<PdfLoading />}
                       onLoadSuccess={(pages) => {
                         setNumPages(pages)
                         setLoading(false)
                       }}
-                      onLoadError={() => setError('PDF 加载失败')}
+                      onLoadError={() => setError('pdf')}
                     />
                   </Suspense>
                 </div>
@@ -405,14 +412,14 @@ export function FilePreview({ file, files = [], onClose, onDownload }: FilePrevi
                   <File className="w-24 h-24 text-white/50" />
                   <div className="text-center">
                     <p className="text-xl font-medium mb-2">{currentFile.name}</p>
-                    <p className="text-white/60">此文件类型暂不支持预览</p>
+                    <p className="text-white/60">{t('filePreview.unsupported')}</p>
                   </div>
                   <button
                     className="px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors flex items-center gap-2"
                     onClick={handleDownload}
                   >
                     <Download className="w-5 h-5" />
-                    下载文件
+                    {t('filePreview.downloadFile')}
                   </button>
                 </div>
               )}

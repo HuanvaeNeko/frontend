@@ -1,6 +1,7 @@
 import { fetchWithAuth } from '@/api/authedFetch'
 import { readEnvelope } from '@/lib/apiEnvelope'
 import { arrayOf, asRecord, str } from '@/lib/apiParse'
+import { translate } from '@/i18n/translate'
 
 /** `GET /api/bots` 一条（APP src/api/bots.ts 的 BotInfo；本期只取六个字段） */
 export interface BotSummary {
@@ -29,7 +30,7 @@ export const botsApi = {
     const response = await fetchWithAuth('/api/bots')
     return readEnvelope<BotSummary[]>(response, {
       endpoint: 'GET /api/bots',
-      fallbackMessage: '加载机器人失败',
+      fallbackMessage: translate('errors.bots.load'),
       parse: arrayOf(parseBotSummary),
     })
   },

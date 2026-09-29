@@ -7,6 +7,7 @@ import { useLocalStorageState } from 'ahooks'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { useI18n } from '@/i18n/I18nProvider'
 import {
   RELEASE_PAGE_URL,
   type DownloadTarget,
@@ -14,6 +15,8 @@ import {
 } from '@/lib/appInstall'
 
 const DISMISS_STORAGE_KEY = 'huanvae.install_prompt_hidden_until'
+/** 「N 天不再提示」：按钮文案和实际隐藏天数共用这一个数 */
+const SNOOZE_DAYS = 7
 
 function shouldSkipPrompt(): boolean {
   if (typeof window === 'undefined') return true
@@ -26,6 +29,7 @@ function shouldSkipPrompt(): boolean {
 }
 
 export default function AppInstallPrompt() {
+  const { t } = useI18n()
   const [visible, setVisible] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [normalTarget, setNormalTarget] = useState<DownloadTarget>({ version: null, downloadUrl: RELEASE_PAGE_URL })
@@ -83,7 +87,7 @@ export default function AppInstallPrompt() {
             onClick={() => setVisible(true)}
           >
             <Download size={14} />
-            安装客户端
+            {t('system.installPrompt.open')}
           </Button>
         </motion.div>
       )}
@@ -106,16 +110,16 @@ export default function AppInstallPrompt() {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">安装 Huanvae Chat 客户端</span>
+                    <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{t('system.installPrompt.title')}</span>
                     {versionText && <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">v{versionText}</Badge>}
                   </div>
-                  <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">更稳连接、通知更及时，推荐桌面端使用。</p>
+                  <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{t('system.installPrompt.description')}</p>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
                   <Button asChild size="sm" className="h-8 rounded-full px-3 text-xs">
                     <a href={normalTarget.downloadUrl} target="_blank" rel="noreferrer">
-                      <Globe size={13} />直连
+                      <Globe size={13} />{t('system.installPrompt.direct')}
                     </a>
                   </Button>
 
@@ -126,7 +130,7 @@ export default function AppInstallPrompt() {
                     className="h-8 rounded-full px-2.5 text-xs text-slate-600 dark:text-slate-300"
                     onClick={() => setExpanded((v) => !v)}
                   >
-                    更多{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {t('home.more')}{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </Button>
 
                   <Button
@@ -135,7 +139,7 @@ export default function AppInstallPrompt() {
                     size="icon"
                     className="h-8 w-8 rounded-full text-slate-500"
                     onClick={() => dismissForDays(1)}
-                    aria-label="关闭"
+                    aria-label={t('common.close')}
                   >
                     <X size={14} />
                   </Button>
@@ -154,7 +158,7 @@ export default function AppInstallPrompt() {
                     <div className="mt-3 grid grid-cols-1 gap-2 border-t border-slate-200/80 pt-3 dark:border-slate-700/70 sm:grid-cols-2">
                       <Button asChild variant="secondary" className="h-9 justify-between px-3 text-xs">
                         <a href={proxyTarget.downloadUrl} target="_blank" rel="noreferrer">
-                          <span className="flex items-center gap-1.5"><ShieldCheck size={13} />代理线路</span>
+                          <span className="flex items-center gap-1.5"><ShieldCheck size={13} />{t('system.installPrompt.proxy')}</span>
                           <Download size={13} />
                         </a>
                       </Button>
@@ -165,9 +169,9 @@ export default function AppInstallPrompt() {
                           variant="ghost"
                           size="sm"
                           className="h-8 rounded-full px-3 text-xs text-slate-500"
-                          onClick={() => dismissForDays(7)}
+                          onClick={() => dismissForDays(SNOOZE_DAYS)}
                         >
-                          7 天不再提示
+                          {t('system.installPrompt.snooze', { n: SNOOZE_DAYS })}
                         </Button>
                       </div>
                     </div>

@@ -1,5 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setActiveLocale } from '@/i18n/translate'
 import { BUILTIN_SOUNDS, DEFAULT_SOUND_ID, MAX_CUSTOM_SOUND_BYTES, SoundLibraryError, deleteCustom, isIndexedDbAvailable, listCustom, resolveSoundSrc, saveCustom } from '../soundLibrary'
 
 const mp3 = (name: string, bytes = 1024, type = 'audio/mpeg') => new File([new Uint8Array(bytes)], name, { type })
@@ -72,5 +73,25 @@ describe('soundLibrary', () => {
     expect(isIndexedDbAvailable()).toBe(false)
     expect(await listCustom()).toEqual([])
     await expect(saveCustom(mp3('a.mp3'))).rejects.toMatchObject({ code: 'unavailable' })
+  })
+})
+
+/**
+ * SoundLibraryError.message 与 SoundSelector 按 code 显示的是同一个 key（shell.settings.sounds.err*），
+ * 抛错那一刻按当前界面语言取——原来写死中文，谁若直接显示 message，英文界面照样冒中文。
+ */
+describe('soundLibrary 报错文案跟随界面语言', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('中文（默认语言）', async () => {
+    await expect(saveCustom(mp3('a.wav', 10, 'audio/wav'))).rejects.toMatchObject({ code: 'type', message: '只支持 MP3（audio/mpeg）' })
+  })
+
+  it('英文：type / size / unavailable 三种都是英文', async () => {
+    setActiveLocale('en-US')
+    await expect(saveCustom(mp3('a.wav', 10, 'audio/wav'))).rejects.toMatchObject({ code: 'type', message: 'Only MP3 (audio/mpeg) is supported' })
+    await expect(saveCustom(mp3('big.mp3', MAX_CUSTOM_SOUND_BYTES + 1))).rejects.toMatchObject({ code: 'size', message: 'File must be 2 MB or smaller' })
+    vi.stubGlobal('indexedDB', undefined)
+    await expect(saveCustom(mp3('a.mp3'))).rejects.toMatchObject({ code: 'unavailable', message: 'This browser cannot store custom sounds (private mode?)' })
   })
 })

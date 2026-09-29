@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { usePathname } from '@/lib/navigation'
 import { useAuthStore } from '../../store/authStore'
@@ -161,5 +161,42 @@ describe('ProtectedRoute —— 挂载时问一次 GET /api/session', () => {
     render(<RouterProvider router={router} />)
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
     expect(router.state.location.search).toBe('')
+  })
+})
+
+describe('ProtectedRoute —— 本人主动退出 vs 会话在别处失效', () => {
+  const renderSettings = () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/app/settings/account', element: <ProtectedRoute><div>设置页</div></ProtectedRoute> },
+        { path: '/app/login', element: <div>登录页</div> },
+      ],
+      { initialEntries: ['/app/settings/account'] },
+    )
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  it('本人点「退出登录」：去登录页但不带 next——下次登录进默认页，而不是又被送回设置页', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'alice' } } }))
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: null }))
+    const router = renderSettings()
+    expect(await screen.findByText('设置页')).toBeInTheDocument()
+
+    await act(() => useAuthStore.getState().logout())
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
+    expect(router.state.location.search).toBe('')
+  })
+
+  it('正对照：用着用着会话失效（401 走 clearAuth，不是本人退出）仍带 next，登录后回到原处', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ success: true, code: 200, data: { user: { user_id: 'alice' } } }))
+    const router = renderSettings()
+    expect(await screen.findByText('设置页')).toBeInTheDocument()
+
+    act(() => useAuthStore.getState().clearAuth())
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
+    expect(router.state.location.search).toBe('?next=%2Fapp%2Fsettings%2Faccount')
   })
 })

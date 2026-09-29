@@ -123,7 +123,7 @@ describe('purgeAccountScopedStorage —— app-settings 的字段级裁剪', () 
       theme: 'dark',
       language: 'en',
       soundVolume: 0.2,
-      // 账号级：隐私姿态 + AI 偏好
+      // 账号级：隐私姿态；以及已删除的 AI 偏好（老用户的落盘里还留着这两个字段）
       showOnlineStatus: false,
       messageEncryption: false,
       aiEnabled: false,

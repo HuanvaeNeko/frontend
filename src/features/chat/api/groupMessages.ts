@@ -2,6 +2,7 @@ import { getApiBaseUrl } from '@/lib/apiConfig'
 import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 
 const GROUP_MESSAGES_BASE_URL = `${getApiBaseUrl()}/api/group_messages`
 
@@ -168,7 +169,7 @@ export const groupMessagesApi = {
     // `.catch(() => ({error:'发送群消息失败'}))` 抹平成一句通用文案。
     const data = await readEnvelope<SendGroupMessageResponse>(response, {
       endpoint: 'POST /api/group_messages',
-      fallbackMessage: '发送群消息失败',
+      fallbackMessage: translate('groupManage.errors.sendMessage'),
       parse: sendGroupMessageResponse,
     })
     console.log('✅ 群消息发送成功:', data.message_uuid)
@@ -206,7 +207,7 @@ export const groupMessagesApi = {
     // 坐实了信封，形状不是"可能"，收到裸响应就该炸。
     const page = await readEnvelope<GetGroupMessagesResponse>(response, {
       endpoint: 'GET /api/group_messages',
-      fallbackMessage: '获取群消息失败',
+      fallbackMessage: translate('groupManage.errors.loadMessages'),
       parse: getGroupMessagesResponse,
     })
 
@@ -243,7 +244,7 @@ export const groupMessagesApi = {
     // 于是一次业务失败长得和成功一模一样，ChatWindow 照样把消息从本地移除并弹成功 toast。
     const data = await readEnvelope<GroupMessageMutationResult>(response, {
       endpoint: 'DELETE /api/group_messages/delete',
-      fallbackMessage: '删除群消息失败',
+      fallbackMessage: translate('groupManage.errors.deleteMessage'),
       parse: groupMessageMutationResult,
     })
 
@@ -279,7 +280,7 @@ export const groupMessagesApi = {
     // `群消息.md:343-361`）在旧代码里都会被读成 success:true。
     const data = await readEnvelope<GroupMessageMutationResult>(response, {
       endpoint: 'POST /api/group_messages/recall',
-      fallbackMessage: '撤回群消息失败',
+      fallbackMessage: translate('groupManage.errors.recallMessage'),
       parse: groupMessageMutationResult,
     })
 

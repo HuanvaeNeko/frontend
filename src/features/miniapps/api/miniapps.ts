@@ -2,6 +2,7 @@ import { fetchWithAuth } from '@/api/authedFetch'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { readEnvelope } from '@/lib/apiEnvelope'
 import { arrayOf, asRecord, str } from '@/lib/apiParse'
+import { translate } from '@/i18n/translate'
 
 /** `GET /api/miniapps/my` 一条 */
 export interface MiniAppSummary {
@@ -55,7 +56,7 @@ export const miniappsApi = {
     const response = await fetchWithAuth('/api/miniapps/my')
     return readEnvelope<MiniAppSummary[]>(response, {
       endpoint: 'GET /api/miniapps/my',
-      fallbackMessage: '加载小程序失败',
+      fallbackMessage: translate('errors.miniapps.load'),
       parse: arrayOf(parseMiniAppSummary),
     })
   },

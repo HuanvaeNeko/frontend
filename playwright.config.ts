@@ -77,6 +77,9 @@ export default defineConfig({
       command: 'bun run tests/fixtures/fake-backend.ts',
       url: `http://127.0.0.1:${FAKE_BACKEND_PORT}/healthz`,
       env: { FAKE_BACKEND_PORT: String(FAKE_BACKEND_PORT) },
+      // 假后端把前端打到的未实现端点打成 stdout 上的 `[fake-backend] UNIMPLEMENTED <METHOD> <path>`；
+      // webServer 的 stdout 默认被丢弃，不 pipe 出来这些缺口在 e2e 输出里就看不见。
+      stdout: 'pipe',
       reuseExistingServer: false,
       timeout: 30_000,
     },

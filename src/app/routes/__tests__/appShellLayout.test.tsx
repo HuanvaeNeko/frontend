@@ -100,6 +100,24 @@ const renderShell = (initialPath: string) => {
   return { router, ...view }
 }
 
+/** 带会话子路由的版本：折叠布局在 /app/chat/:id 下才进入「详情」态 */
+const renderShellWithConversation = (initialPath: string) => {
+  const router = createMemoryRouter(
+    [
+      {
+        element: <AppShellLayout />,
+        children: [
+          { path: '/app/chat', element: <div>OUTLET</div> },
+          { path: '/app/chat/:conversationId', element: <div>CONVERSATION</div> },
+        ],
+      },
+    ],
+    { initialEntries: [initialPath] },
+  )
+  const view = render(<RouterProvider router={router} />)
+  return { router, ...view }
+}
+
 describe('AppShellLayout（app-shell.tsx 接线，终审 finding #8）', () => {
   // 类型从这两个带显式参数类型的初始化器推出：裸 `vi.fn()`（或 `ReturnType<typeof vi.fn>`
   // 这种不给类型参数的写法）会落到 `Mock<Procedure | Constructable>`，跟 WSState 上
@@ -182,6 +200,25 @@ describe('AppShellLayout（app-shell.tsx 接线，终审 finding #8）', () => {
     await userEvent.click(screen.getByRole('button', { name: '添加' }))
     await userEvent.click(await screen.findByText('加入群'))
     await waitFor(() => expect(third.router.state.location.pathname + third.router.state.location.search).toBe('/app/contacts?tab=groups&add=join-group'))
+  })
+
+  it('手机折叠下「列表 → 会话」切换，实时处理器不被注销重注册（RealtimeBridge 不随内容栏重挂载）', async () => {
+    // 折叠布局里列表态把 children 放在 hidden 容器、详情态放进 <main>——换了父节点，挂在
+    // children 里的东西会重新挂载。实时桥若在里面，每次进出会话都注销再注册一遍、再跑一次增量同步。
+    stubViewport(390)
+    // 记录调用、照常转给真实实现。不用 vi.spyOn：registerHandler 是泛型签名，spy 的 Mock 经
+    // Parameters<> 把 T 抹成 unknown，喂回 setState 时 tsc 报错；参数写成 (data: never) => void 才对得上。
+    const realRegisterHandler = useWSStore.getState().registerHandler
+    const registerHandler = vi.fn((type: string, handler: (data: never) => void) => realRegisterHandler(type, handler))
+    useWSStore.setState({ registerHandler })
+    const { router } = renderShellWithConversation('/app/chat')
+    await waitFor(() => expect(registerHandler.mock.calls.some(([type]) => type === 'new_message')).toBe(true))
+    const before = registerHandler.mock.calls.filter(([type]) => type === 'new_message').length
+
+    await router.navigate('/app/chat/f-alice')
+    await screen.findByText('CONVERSATION')
+
+    expect(registerHandler.mock.calls.filter(([type]) => type === 'new_message').length).toBe(before)
   })
 
   it('挂载后把当前路径写进 localStorage.last_visited_path（原 Navigation.tsx 的"上次访问路径"）', () => {

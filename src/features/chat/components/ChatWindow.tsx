@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, memo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { messagesApi, type Message, type MessageType } from '@/features/chat/api/messages'
 import { groupMessagesApi } from '@/features/chat/api/groupMessages'
@@ -9,10 +10,11 @@ import { FilePreview, type PreviewFile } from '@/components/ui/file-preview'
 import GroupManagement from './sidebar/GroupManagement'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useToast } from '@/hooks/use-toast'
-import { useRealtimeMessages } from '@/features/chat/hooks/useRealtimeMessages'
+import { setActiveChat } from '@/features/chat/hooks/useRealtimeMessages'
 import type { MarkdownEditorRef } from './window/MarkdownEditor'
 import { useI18n } from '@/i18n/I18nProvider'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { differenceInMinutes } from 'date-fns'
 import { useDropzone } from 'react-dropzone'
 
@@ -31,19 +33,13 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const { t } = useI18n()
   const { toast } = useToast()
   const { user } = useAuthStore()
-  const { setActiveChat } = useRealtimeMessages()
   const {
     selectedConversation,
     messages,
     setMessages,
     addMessage,
     prependMessages,
-    getTypingUsers,
-    typingUsers,
   } = useChatStore()
-  
-  // Trigger typingUsers subscription/update if needed by accessing it
-  void typingUsers
 
   // State
   const [loading, setLoading] = useState(false)
@@ -54,12 +50,23 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const [showGroupManagement, setShowGroupManagement] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [editorHasContent, setEditorHasContent] = useState(false)
+  // 待确认删除的消息：删除不可撤销，右键「删除」先弹确认（原来即刻删除）
+  const [pendingDeleteUuid, setPendingDeleteUuid] = useState<string | null>(null)
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<MarkdownEditorRef>(null)
+  // 每次（重新）加载会话历史都换一个号，切会话也会换号。响应回来时号已不是最新
+  // ——期间切过会话——就整页丢弃：线上 TTFB 1–2 s，快速点两个会话，前一个的历史
+  // 晚到会写进后一个的窗口（标题是 B、消息是 A）。
+  const loadSeqRef = useRef(0)
+  const convKey = selectedConversation ? `${selectedConversation.type}:${selectedConversation.id}` : null
+  // 用户是否停在消息区底部（滚动时更新）；「加载更早」前记下的滚动高度，用来还原视口
+  const stickToBottomRef = useRef(true)
+  const prependAnchorRef = useRef<{ height: number; top: number } | null>(null)
+  const [unseenCount, setUnseenCount] = useState(0)
 
   // =============================================
   // Effects
@@ -67,80 +74,133 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
 
   // Load messages when conversation changes
   useEffect(() => {
+    // 先清掉上一个会话的消息：新会话加载期间显示加载态，而不是挂着别人的聊天记录
+    setMessages([])
     if (!selectedConversation) {
-      setMessages([])
+      loadSeqRef.current++
       setActiveChat(null, null)
       return
     }
     setActiveChat(selectedConversation.type, selectedConversation.id)
     loadMessages()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation?.id]) // Optimized dependency
+  }, [convKey])
 
-  // Scroll to bottom on new messages
-  useEffect(() => { 
-    scrollToBottom() 
-  }, [messages.length, selectedConversation?.id]) // Scroll only when message count changes or conversation changes
+  // 图片/视频在首屏滚到底之后才加载完，内容变高、最后几条被推到视口下面（线上慢网很明显）。
+  // 用户本来停在底部就补滚一次。load 不冒泡，所以在 document 捕获阶段听、再按容器过滤——
+  // 容器会随消息从无到有重新挂载，挂在容器上的监听器会丢。
+  useEffect(() => {
+    const onMediaLoaded = (event: Event) => {
+      const container = messagesContainerRef.current
+      if (!container || !(event.target instanceof Node) || !container.contains(event.target)) return
+      if (stickToBottomRef.current) container.scrollTop = container.scrollHeight
+    }
+    document.addEventListener('load', onMediaLoaded, true)
+    document.addEventListener('loadedmetadata', onMediaLoaded, true)
+    return () => {
+      document.removeEventListener('load', onMediaLoaded, true)
+      document.removeEventListener('loadedmetadata', onMediaLoaded, true)
+    }
+  }, [])
+
+  // 消息区滚动：原来只要 messages.length 变就拽到底——上翻「加载更早」会被拽回
+  // 最底部，看历史时来一条新消息也被拽走。现在按变化的种类处理：
+  // - 换了会话 / 首屏：到底
+  // - 头部拼进更早的一页：按加载前记下的高度差还原视口，读到哪还在哪
+  // - 尾部来了新消息：本来就在底部、或是自己发的，才跟到底；否则计入「N 条新消息」
+  const prevEdgesRef = useRef<{ key: string | null; last?: string }>({ key: null })
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current
+    const prev = prevEdgesRef.current
+    const lastMessage = messages[messages.length - 1]
+    prevEdgesRef.current = { key: convKey, last: lastMessage?.message_uuid }
+    if (!container || !lastMessage) return
+
+    const anchor = prependAnchorRef.current
+    if (anchor) {
+      prependAnchorRef.current = null
+      container.scrollTop = container.scrollHeight - anchor.height + anchor.top
+      return
+    }
+    if (prev.key !== convKey || prev.last === undefined) {
+      container.scrollTop = container.scrollHeight
+      stickToBottomRef.current = true
+      setUnseenCount(0)
+      return
+    }
+    if (lastMessage.message_uuid !== prev.last) {
+      if (stickToBottomRef.current || lastMessage.sender_id === user?.user_id) {
+        container.scrollTop = container.scrollHeight
+        setUnseenCount(0)
+      } else {
+        setUnseenCount((n) => n + 1)
+      }
+    }
+  }, [messages, convKey, user?.user_id])
 
   // =============================================
   // Message Loading Logic
   // =============================================
 
   const loadMessages = async () => {
-    if (!selectedConversation || loading) return
+    if (!selectedConversation) return
+    // 不再用 `loading` 早退：它可能是**上一个会话**还在途的那次加载，挡掉的是当前会话
+    const seq = ++loadSeqRef.current
     setLoading(true)
     try {
-      if (selectedConversation.type === 'friend') {
-        const response = await messagesApi.getMessages(selectedConversation.id, undefined, 50)
-        setMessages(response.messages)
-        setHasMore(response.has_more)
-      } else if (selectedConversation.type === 'group') {
-        const response = await groupMessagesApi.getMessages(selectedConversation.id, undefined, 50)
-        setMessages(response.messages as unknown as Message[])
-        setHasMore(response.has_more)
-      }
+      const response = selectedConversation.type === 'friend'
+        ? await messagesApi.getMessages(selectedConversation.id, undefined, 50)
+        : await groupMessagesApi.getMessages(selectedConversation.id, undefined, 50)
+      if (seq !== loadSeqRef.current) return
+      setMessages(response.messages as unknown as Message[])
+      setHasMore(response.has_more)
     } catch (error) {
+      if (seq !== loadSeqRef.current) return
       console.error('Failed to load messages:', error)
       toast({ title: t('chat.window.error'), description: t('chat.window.loadFailed'), variant: 'destructive' })
-    } finally { 
-      setLoading(false) 
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }
 
   const loadMoreMessages = useCallback(async () => {
     if (!selectedConversation || loading || !hasMore || messages.length === 0) return
+    // 翻页不换号：期间若切了会话，号会被新会话的加载换掉，这一页随之作废
+    const seq = loadSeqRef.current
     setLoading(true)
     try {
       const oldestTime = messages[0].send_time
-      if (selectedConversation.type === 'friend') {
-        const response = await messagesApi.getMessages(selectedConversation.id, oldestTime, 50)
-        prependMessages(response.messages)
-        setHasMore(response.has_more)
-      } else if (selectedConversation.type === 'group') {
-        const response = await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
-        prependMessages(response.messages as unknown as Message[])
-        setHasMore(response.has_more)
-      }
-    } catch (error) { 
-      console.error('Failed to load more messages:', error) 
-    } finally { 
-      setLoading(false) 
+      const response = selectedConversation.type === 'friend'
+        ? await messagesApi.getMessages(selectedConversation.id, oldestTime, 50)
+        : await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
+      if (seq !== loadSeqRef.current) return
+      const container = messagesContainerRef.current
+      prependAnchorRef.current = container ? { height: container.scrollHeight, top: container.scrollTop } : null
+      prependMessages(response.messages as unknown as Message[])
+      setHasMore(response.has_more)
+    } catch (error) {
+      console.error('Failed to load more messages:', error)
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [selectedConversation, loading, hasMore, messages, prependMessages])
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current
-    if (container && container.scrollTop === 0 && hasMore && !loading) {
+    if (!container) return
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+    stickToBottomRef.current = atBottom
+    if (atBottom) setUnseenCount(0)
+    if (container.scrollTop === 0 && hasMore && !loading) {
       loadMoreMessages()
     }
   }, [hasMore, loading, loadMoreMessages])
 
-  const scrollToBottom = () => {
-    requestAnimationFrame(() => {
-      const container = messagesContainerRef.current
-      if (container) container.scrollTop = container.scrollHeight
-    })
-  }
+  const jumpToLatest = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    setUnseenCount(0)
+  }, [])
 
   // =============================================
   // Message Sending Logic
@@ -152,6 +212,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     
     const content = markdownContent.trim()
     editorRef.current?.clear()
+    // 点发送按钮时焦点在按钮上：还给输入框，接着打下一条
+    editorRef.current?.focus()
     setSending(true)
     
     try {
@@ -212,7 +274,10 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
       )
     } catch (error) {
       console.error('Failed to send message:', error)
-      toast({ 
+      // 发送前已清空输入框：失败了把原文放回去，别让用户重打。
+      // 若这期间用户已经开始打下一条，就不覆盖他正在打的内容。
+      if (editorRef.current?.isEmpty()) editorRef.current.insertText(content)
+      toast({
         title: t('chat.window.sendFailedTitle'), 
         description: error instanceof Error ? error.message : t('chat.window.sendFailedDesc'), 
         variant: 'destructive' 
@@ -278,6 +343,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
       
       if (uploadResult.messageUuid) {
         await loadMessages()
+        // 秒传/后端代插消息这条路径同样要更新会话预览（下面显式发送那条也是）
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, file.name, messageType, new Date().toISOString())
         toast({ 
           title: t('chat.window.sendSuccessTitle'), 
           description: uploadResult.isInstant ? t('chat.window.fileInstantSuccess') : t('chat.window.fileSendSuccess') 
@@ -318,6 +385,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
           seq: response.seq, 
           send_time: response.send_time 
         })
+        // 原来只有文本消息更新会话预览：发完图片，列表里还是上一条文字、时间停在几天前
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, file.name, messageType, response.send_time)
         
         toast({ 
           title: t('chat.window.sendSuccessTitle'), 
@@ -399,11 +468,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     try {
       if (selectedConversation?.type === 'friend') await messagesApi.recallMessage(messageUuid)
       else if (selectedConversation?.type === 'group') await groupMessagesApi.recallMessage(messageUuid)
+      // 与接收方（WS message_recalled）、与刷新后的历史一致：标 is_recalled，由 MessageItem 渲染
+      // 撤回胶囊。原来只把正文改成「你撤回了一条消息」，显示成一个普通蓝色气泡
+      const recalled = messages.find(m => m.message_uuid === messageUuid)
+      const wasLast = messages[messages.length - 1]?.message_uuid === messageUuid
       setMessages(messages.map(m =>
-        m.message_uuid === messageUuid
-          ? { ...m, message_content: t('chat.window.youRecalled'), message_type: 'text' as const }
-          : m
+        m.message_uuid === messageUuid ? ({ ...m, is_recalled: true } as Message) : m
       ))
+      // 被撤回的是最后一条：会话预览不能还挂着原文
+      if (wasLast && recalled && selectedConversation) {
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, t('chat.window.youRecalled'), 'text', recalled.send_time)
+      }
       toast({ title: t('chat.window.successTitle'), description: t('chat.window.messageRecalled') })
     } catch (error) {
       toast({ title: t('chat.window.recallFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.recallFailedDesc'), variant: 'destructive' })
@@ -465,17 +540,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         onGroupManage={() => setShowGroupManagement(true)}
       />
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <MessageList
         messages={messages}
         conversation={selectedConversation}
         user={user}
         loading={loading}
         hasMore={hasMore}
-        typingUsers={getTypingUsers(selectedConversation.id)}
         onLoadMore={loadMoreMessages}
         onScroll={handleScroll}
         onCopy={handleCopyMessage}
-        onDelete={handleDeleteMessage}
+        onDelete={setPendingDeleteUuid}
         onRecall={handleRecallMessage}
         onDownload={handleFileDownload}
         onPreview={handleFilePreview}
@@ -483,6 +558,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         messagesContainerRef={messagesContainerRef}
         messagesEndRef={messagesEndRef}
       />
+      {unseenCount > 0 && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          {t('chat.window.newMessagesBelow', { n: unseenCount })}
+        </button>
+      )}
+      </div>
 
       <ChatInput
         sending={sending}
@@ -514,6 +600,28 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeleteUuid !== null} onOpenChange={(open) => { if (!open) setPendingDeleteUuid(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('chat.window.confirmDeleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('chat.window.confirmDeleteDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('chat.window.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                const uuid = pendingDeleteUuid
+                setPendingDeleteUuid(null)
+                if (uuid) void handleDeleteMessage(uuid)
+              }}
+            >
+              {t('chat.window.confirmDeleteAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {previewFile && <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { Markdown } from '@/components/ui/markdown'
+import { useI18n } from '@/i18n/I18nProvider'
 
 export interface MarkdownEditorRef {
   focus: () => void
@@ -67,7 +68,7 @@ const ToolbarButton = ({
 )
 
 export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(({
-  placeholder = '输入消息... (支持 Markdown 语法)',
+  placeholder,
   onSubmit,
   onChange,
   disabled = false,
@@ -75,6 +76,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   minHeight = '42px',
   maxHeight = '150px',
 }, ref) => {
+  const { t } = useI18n()
   const [value, setValue] = useState('')
   const [showPreview, setShowPreview] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -113,6 +115,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 输入法组字中的回车是「上屏」不是「发送」：Chrome/Firefox 给 isComposing，
+    // Safari 在 compositionend 之后才补发这下 keydown、只剩 keyCode 229 可认。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
     // Enter 发送，Shift+Enter 换行
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -222,73 +228,74 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
     }, 0)
   }, [value, onChange])
 
-  const insertBold = () => insertMarkdown('**', '**', '粗体文本')
-  const insertItalic = () => insertMarkdown('*', '*', '斜体文本')
-  const insertStrike = () => insertMarkdown('~~', '~~', '删除线文本')
+  const insertBold = () => insertMarkdown('**', '**', t('editor.sample.bold'))
+  const insertItalic = () => insertMarkdown('*', '*', t('editor.sample.italic'))
+  const insertStrike = () => insertMarkdown('~~', '~~', t('editor.sample.strike'))
   const insertCode = () => insertMarkdown('`', '`', 'code')
-  const insertCodeBlock = () => insertMarkdown('\n```\n', '\n```\n', '代码块')
+  const insertCodeBlock = () => insertMarkdown('\n```\n', '\n```\n', t('editor.sample.codeBlock'))
   const insertLink = () => {
-    const url = window.prompt('输入链接 URL')
+    const url = window.prompt(t('editor.linkPrompt'))
     if (url) {
       const textarea = textareaRef.current
       const start = textarea?.selectionStart || 0
       const end = textarea?.selectionEnd || 0
-      const selectedText = value.slice(start, end) || '链接文字'
+      const selectedText = value.slice(start, end) || t('editor.sample.linkText')
       insertMarkdown('[', `](${url})`, selectedText)
     }
   }
-  const insertBulletList = () => insertLineMarkdown('- ', '列表项')
-  const insertOrderedList = () => insertLineMarkdown('1. ', '列表项')
-  const insertQuote = () => insertLineMarkdown('> ', '引用内容')
-  const insertHeading = () => insertLineMarkdown('## ', '标题')
+  const insertBulletList = () => insertLineMarkdown('- ', t('editor.sample.listItem'))
+  const insertOrderedList = () => insertLineMarkdown('1. ', t('editor.sample.listItem'))
+  const insertQuote = () => insertLineMarkdown('> ', t('editor.sample.quote'))
+  const insertHeading = () => insertLineMarkdown('## ', t('editor.sample.heading'))
 
   return (
     <div className={`markdown-editor ${className}`}>
-      {/* 工具栏 */}
+      {/* 工具栏：窄屏隐藏——手机上 11 个按钮会溢出编辑框，整块输入区占掉近三成屏幕；
+          Markdown 语法照样能直接打，快捷键也还在 */}
       <div 
-        className="flex items-center gap-0.5 border-b bg-muted/40 px-2 py-1.5"
+        className="hidden items-center gap-0.5 border-b bg-muted/40 px-2 py-1.5 md:flex"
       >
-        <ToolbarButton onClick={insertBold} disabled={disabled} title="粗体 **text** (Ctrl+B)">
+        <ToolbarButton onClick={insertBold} disabled={disabled} title={t('editor.bold')}>
           <Bold className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertItalic} disabled={disabled} title="斜体 *text* (Ctrl+I)">
+        <ToolbarButton onClick={insertItalic} disabled={disabled} title={t('editor.italic')}>
           <Italic className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertStrike} disabled={disabled} title="删除线 ~~text~~">
+        <ToolbarButton onClick={insertStrike} disabled={disabled} title={t('editor.strike')}>
           <Strikethrough className="h-4 w-4" />
         </ToolbarButton>
-        
+
         <div className="mx-1 h-4 w-px bg-border" />
-        
-        <ToolbarButton onClick={insertCode} disabled={disabled} title="行内代码 `code`">
+
+        <ToolbarButton onClick={insertCode} disabled={disabled} title={t('editor.inlineCode')}>
           <Code className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertCodeBlock} disabled={disabled} title="代码块 ```code```">
+        <ToolbarButton onClick={insertCodeBlock} disabled={disabled} title={t('editor.codeBlock')}>
           <Code2 className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertHeading} disabled={disabled} title="标题 ## heading">
+        <ToolbarButton onClick={insertHeading} disabled={disabled} title={t('editor.heading')}>
           <Heading2 className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertBulletList} disabled={disabled} title="无序列表 - item">
+        <ToolbarButton onClick={insertBulletList} disabled={disabled} title={t('editor.bulletList')}>
           <List className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertOrderedList} disabled={disabled} title="有序列表 1. item">
+        <ToolbarButton onClick={insertOrderedList} disabled={disabled} title={t('editor.orderedList')}>
           <ListOrdered className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertQuote} disabled={disabled} title="引用 > quote">
+        <ToolbarButton onClick={insertQuote} disabled={disabled} title={t('editor.quote')}>
           <Quote className="h-4 w-4" />
         </ToolbarButton>
-        <ToolbarButton onClick={insertLink} disabled={disabled} title="链接 [text](url) (Ctrl+K)">
+        <ToolbarButton onClick={insertLink} disabled={disabled} title={t('editor.link')}>
           <LinkIcon className="h-4 w-4" />
         </ToolbarButton>
-        
+
         <div className="flex-1" />
-        
-        <ToolbarButton 
-          onClick={() => setShowPreview(!showPreview)} 
+
+        <ToolbarButton
+          onClick={() => setShowPreview(!showPreview)}
           isActive={showPreview}
           disabled={disabled}
-          title={showPreview ? '编辑' : '预览'}
+          title={showPreview ? t('editor.edit') : t('chat.window.preview')}
         >
           {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </ToolbarButton>
@@ -304,7 +311,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             {value.trim() ? (
               <Markdown className="text-sm">{value}</Markdown>
             ) : (
-              <span className="text-sm text-muted-foreground">无内容预览</span>
+              <span className="text-sm text-muted-foreground">{t('editor.emptyPreview')}</span>
             )}
           </div>
         ) : (
@@ -313,7 +320,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t('editor.placeholder')}
             disabled={disabled}
             className="h-full w-full resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             style={{ minHeight: 'inherit' }}
