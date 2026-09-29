@@ -14,13 +14,16 @@ import { expect, test } from '@playwright/test'
  * language 走；这个 e2e 环境里 Chromium 的默认 locale 解析成英文（已用失败截图
  * 实测确认：User ID / Password / Sign in），所以两种语言都要匹配，不能只认
  * 中文——这也是 tests/chat.spec.ts 里 /好友|Friends/ 一类断言的同一个理由。
+ *
+ * 标签匹配锚定整串（`^…$`）：密码框旁的显隐按钮叫「显示密码 / Show password」、勾选框叫
+ * 「记住账号 / Remember my account」，不锚定的 /密码|Password/ 会同时命中两个控件（严格模式报错）。
  */
 test.describe('BFF 会话层', () => {
   test('登录 → cookie → 鉴权请求 → WS，浏览器侧从头到尾没有 token', async ({ page, context }) => {
     await page.goto('/app/login')
 
-    await page.getByLabel(/用户\s*ID|User\s*ID/i).fill('e2e')
-    await page.getByLabel(/密码|Password/i).fill('correct-horse')
+    await page.getByLabel(/^(用户\s*ID|User\s*ID)$/i).fill('e2e')
+    await page.getByLabel(/^(密码|Password)$/i).fill('correct-horse')
     await page.getByRole('button', { name: /登录|Sign in/i }).click()
 
     // 1. cookie 是 httpOnly，且 JS 读不到
@@ -59,8 +62,8 @@ test.describe('BFF 会话层', () => {
 
   test('WS 由 BFF 注入 token：浏览器只发 cookie，上游收到 ?token=', async ({ page, context }) => {
     await page.goto('/app/login')
-    await page.getByLabel(/用户\s*ID|User\s*ID/i).fill('e2e')
-    await page.getByLabel(/密码|Password/i).fill('correct-horse')
+    await page.getByLabel(/^(用户\s*ID|User\s*ID)$/i).fill('e2e')
+    await page.getByLabel(/^(密码|Password)$/i).fill('correct-horse')
     await page.getByRole('button', { name: /登录|Sign in/i }).click()
 
     // 同 case 1：click() 一返回登录请求可能还在飞，先等 cookie 真的落地，
@@ -91,8 +94,8 @@ test.describe('BFF 会话层', () => {
 
   test('登出后 cookie 被清、再访问受保护页面跳登录', async ({ page, context }) => {
     await page.goto('/app/login')
-    await page.getByLabel(/用户\s*ID|User\s*ID/i).fill('e2e')
-    await page.getByLabel(/密码|Password/i).fill('correct-horse')
+    await page.getByLabel(/^(用户\s*ID|User\s*ID)$/i).fill('e2e')
+    await page.getByLabel(/^(密码|Password)$/i).fill('correct-horse')
     await page.getByRole('button', { name: /登录|Sign in/i }).click()
 
     // 正对照：先证明会话真的建起来了，再证明登出把它清掉——否则整条用例

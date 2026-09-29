@@ -707,7 +707,7 @@ const enUS = {
       password: 'Password',
       userIdPlaceholder: 'Enter user ID',
       passwordPlaceholder: 'Enter password',
-      rememberMe: 'Remember user ID',
+      rememberMe: 'Remember my account',
       forgotPassword: 'Forgot password?',
       forgotPasswordHint: 'Online password recovery isn’t available yet. Please ask an administrator to reset it; once signed in you can change it under Settings → Account & security.',
       showPassword: 'Show password',
