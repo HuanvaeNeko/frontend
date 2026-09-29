@@ -440,3 +440,30 @@ describe('ProfileModal 关闭', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('ProfileModal 修改密码：旧密码错误', () => {
+  /**
+   * 这个端点的 401 是业务失败「旧密码错误」（profile.ts changePassword 注释），后端原文是英文
+   * `Old password is incorrect`——原实现把它原样塞进中文界面的 toast。
+   */
+  it('401 显示中文的「当前密码不正确」，不透英文原文', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes('/password')
+        ? json({ success: false, code: 401, error: 'Old password is incorrect' }, 401)
+        : envelope(PROFILE_DTO)),
+    )
+    render(<ProfileModal isOpen onClose={() => {}} />)
+
+    // 桌面侧栏与窄屏横排各有一套页签（CSS 断点切换），happy-dom 里两套都在
+    await userEvent.click((await screen.findAllByRole('tab', { name: /修改密码/ }))[0])
+    const inputs = document.querySelectorAll('input[type="password"]')
+    await userEvent.type(inputs[0] as HTMLInputElement, 'wrongold1')
+    await userEvent.type(inputs[1] as HTMLInputElement, 'NewPass123')
+    await userEvent.type(inputs[2] as HTMLInputElement, 'NewPass123')
+    await userEvent.click(screen.getAllByRole('button', { name: /修改密码/ }).at(-1) as HTMLElement)
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' })))
+    const call = toastMock.mock.calls.find(([arg]) => arg.variant === 'destructive')?.[0] as { description: string }
+    expect(call.description).toBe('当前密码不正确')
+  })
+})

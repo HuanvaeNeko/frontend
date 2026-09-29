@@ -37,6 +37,7 @@ import {
 } from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { playTap, playToggle, playButton, playPop } from '@/hooks/useSound'
+import { ApiError } from '@/lib/apiEnvelope'
 
 // ============================================
 // 类型定义
@@ -476,7 +477,11 @@ function PasswordSettings() {
     } catch (error) {
       toast({
         title: '修改失败',
-        description: error instanceof Error ? error.message : '旧密码可能不正确',
+        // 这个端点的 401 是业务失败「旧密码错误」（见 profileApi.changePassword），后端原文是英文
+        // `Old password is incorrect`，原样透进中文界面不合适
+        description: error instanceof ApiError && error.status === 401
+          ? '当前密码不正确'
+          : error instanceof Error ? error.message : '修改密码失败',
         variant: 'destructive',
       })
     } finally {
