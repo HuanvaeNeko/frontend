@@ -1,5 +1,6 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { storageApi, type AvatarUploadProgress, type AvatarUploadResult } from '@/api/storage'
+import { PASSWORD_LIMITS } from '@/lib/passwordRules'
 import { ApiError, assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
 import { asRecord, bool, describe as describeValue, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
@@ -452,8 +453,8 @@ const UPDATABLE_PROFILE_FIELDS = [
   'region',
 ] as const
 
-/** doc:305-306：`old_password` ≥ 6，`new_password` 6-100。 */
-export const PASSWORD_LIMITS = { oldMin: 6, newMin: 6, newMax: 100 } as const
+/** doc:305-306：`old_password` ≥ 6，`new_password` 6-100。注册页共用，定义在 lib/passwordRules。 */
+export { PASSWORD_LIMITS }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 

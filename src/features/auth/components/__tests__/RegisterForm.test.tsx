@@ -16,12 +16,13 @@ import Register from '../RegisterForm'
  */
 vi.mock('@/i18n/I18nProvider', async () => {
   const { messages } = await import('@/i18n/messages')
-  const t = (key: string) => {
+  const t = (key: string, params?: Record<string, string | number>) => {
     const value = key.split('.').reduce<unknown>((acc, segment) => {
       if (!acc || typeof acc !== 'object') return undefined
       return (acc as Record<string, unknown>)[segment]
     }, messages['zh-CN'] as unknown)
-    return typeof value === 'string' ? value : key
+    if (typeof value !== 'string') return key
+    return value.replace(/\{(\w+)\}/g, (_, k: string) => String(params?.[k] ?? `{${k}}`))
   }
   return { useI18n: () => ({ locale: 'zh-CN', t }) }
 })
@@ -96,12 +97,12 @@ function renderRegisterInApp() {
   return router
 }
 
-async function fillValidForm() {
+async function fillValidForm(password = 'abc12345') {
   fireEvent.change(await screen.findByLabelText(zh.userId), { target: { value: 'newbie' } })
   fireEvent.change(screen.getByLabelText(zh.nickname), { target: { value: '新人' } })
   fireEvent.change(screen.getByLabelText(zh.email), { target: { value: 'newbie@example.com' } })
-  fireEvent.change(screen.getByLabelText(zh.password), { target: { value: 'abc12345' } })
-  fireEvent.change(screen.getByLabelText(zh.confirmPassword), { target: { value: 'abc12345' } })
+  fireEvent.change(screen.getByLabelText(zh.password), { target: { value: password } })
+  fireEvent.change(screen.getByLabelText(zh.confirmPassword), { target: { value: password } })
   fireEvent.click(screen.getByRole('checkbox'))
 }
 
@@ -140,5 +141,40 @@ describe('RegisterForm —— 已登录 / 注册成功之后去哪', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/login'))
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringMatching(/注册成功/) }))
+  })
+})
+
+describe('RegisterForm 密码规则跟随后端：6–100 个字符、不限字符种类（profile/个人资料管理.md:305-306；APP useRegisterForm 同样只要求 ≥ 6）', () => {
+  it('6 位纯字母可以注册（原来要求至少 8 位且必须含字母和数字）', async () => {
+    const register = vi.fn(async () => {})
+    useAuthStore.setState({ register, login: vi.fn(async () => { useAuthStore.setState({ isAuthenticated: true }) }) })
+    renderRegisterInApp()
+
+    await fillValidForm('abcdef')
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(zh.submit) }))
+
+    await waitFor(() => expect(register).toHaveBeenCalledWith(expect.objectContaining({ password: 'abcdef' })))
+  })
+
+  it.each([['5 位', 'abc12'], ['101 位', 'a'.repeat(101)]])('%s：报长度错误并说清 6–100，不提交', async (_label, password) => {
+    const register = vi.fn(async () => {})
+    useAuthStore.setState({ register })
+    renderRegisterInApp()
+
+    await fillValidForm(password)
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(zh.submit) }))
+
+    await waitFor(() => expect(errorUnder(zh.password)).toBeTruthy())
+    expect(errorUnder(zh.password)).toMatch(/6/)
+    expect(errorUnder(zh.password)).toMatch(/100/)
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  it('强度提示只列硬性要求（长度），不再把「包含字母 / 包含数字」列成必须项', async () => {
+    renderRegisterInApp()
+    fireEvent.change(await screen.findByLabelText(zh.password), { target: { value: 'abcdef' } })
+    // 正对照：强度提示确实渲染出来了
+    expect(screen.getByText(messages['zh-CN'].common.passwordStrength)).toBeInTheDocument()
+    expect(screen.queryByText(/包含字母|包含数字/)).toBeNull()
   })
 })
