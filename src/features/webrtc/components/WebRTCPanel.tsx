@@ -116,7 +116,7 @@ export default function WebRTCPanel() {
             whileTap={{ scale: 0.98 }}
           >
             <Button 
-              className="h-auto py-8 w-full flex-col gap-4 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all border-0 bg-gradient-to-br from-primary to-primary/80" 
+              className="h-auto py-8 w-full flex-col gap-4 whitespace-normal rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all border-0 bg-gradient-to-br from-primary to-primary/80" 
               onClick={() => setShowCreateDialog(true)}
             >
               <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center">
@@ -124,7 +124,7 @@ export default function WebRTCPanel() {
               </div>
               <div className="space-y-1">
                  <span className="text-xl font-bold text-white block">{t('chat.webrtc.createRoom')}</span>
-                 <span className="text-sm text-white/80 font-normal block">Start a new instant meeting</span>
+                 <span className="text-sm text-white/80 font-normal block">{t('chat.webrtc.createRoomDesc')}</span>
               </div>
             </Button>
           </motion.div>
@@ -138,7 +138,7 @@ export default function WebRTCPanel() {
           >
             <Button 
               variant="outline" 
-              className="h-auto py-8 w-full flex-col gap-4 rounded-2xl border-2 border-dashed border-border/60 hover:border-primary/50 hover:bg-accent/50 transition-all bg-card/50" 
+              className="h-auto py-8 w-full flex-col gap-4 whitespace-normal rounded-2xl border-2 border-dashed border-border/60 hover:border-primary/50 hover:bg-accent/50 transition-all bg-card/50" 
               onClick={() => setShowJoinDialog(true)}
             >
               <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
@@ -146,18 +146,18 @@ export default function WebRTCPanel() {
               </div>
               <div className="space-y-1">
                  <span className="text-xl font-bold text-foreground block">{t('chat.webrtc.joinRoom')}</span>
-                 <span className="text-sm text-muted-foreground font-normal block">Enter code to join existing meeting</span>
+                 <span className="text-sm text-muted-foreground font-normal block">{t('chat.webrtc.joinRoomDesc')}</span>
               </div>
             </Button>
           </motion.div>
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+        <div className="grid grid-cols-2 gap-3 mt-8">
           {features.map((feature, index) => (
             <motion.div 
               key={index} 
-              className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-card/50 border border-border/50 text-center" 
+              className="flex items-center gap-3 p-3 rounded-2xl bg-card/50 border border-border/50 text-left" 
               initial={{ opacity: 0, y: 20 }} 
               animate={{ opacity: 1, y: 0 }} 
               transition={{ duration: 0.3, delay: 0.5 + index * 0.1 }}

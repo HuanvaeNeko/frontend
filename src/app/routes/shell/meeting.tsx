@@ -8,7 +8,7 @@ export default function MeetingRoute() {
   return (
     <>
       <EmptyContent hint="chat" />
-      <RouteDialog title={t('shell.modals.meeting')} className="max-w-3xl">
+      <RouteDialog title={t('shell.modals.meeting')} className="sm:max-w-3xl">
         <WebRTCPanel />
       </RouteDialog>
     </>

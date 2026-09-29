@@ -22,6 +22,9 @@ export function useRouteDialogClose(): () => void {
 
 /**
  * 带 URL 的模态框（spec §3/§9）：路由挂着它就打开；关闭规则见 useRouteDialogClose。
+ *
+ * 宽度要传 `sm:max-w-*`：DialogContent 自带 `sm:max-w-lg`，只传 `max-w-3xl` 在 ≥640px 时
+ * 会被它压住（带断点的类优先），弹窗实际只有 512px——会议、文件弹窗曾因此挤爆。
  */
 export function RouteDialog({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   const close = useRouteDialogClose()

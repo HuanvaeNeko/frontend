@@ -20,7 +20,7 @@ export default function FilesRoute() {
   return (
     <>
       <EmptyContent hint="chat" />
-      <RouteDialog title={t('shell.modals.files')} className="max-w-4xl">
+      <RouteDialog title={t('shell.modals.files')} className="sm:max-w-4xl">
         <div className="mb-3 flex gap-1 rounded-[10px] bg-[var(--bg-tertiary)] p-1">
           {(['main', 'upload'] as const).map((k) => (
             <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)} className={cn('flex-1 rounded-sm py-1.5 text-[13px]', tab === k ? 'bg-[var(--primary-subtle)] font-semibold text-[var(--primary-text)]' : 'text-muted-foreground')}>
