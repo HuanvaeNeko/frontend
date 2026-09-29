@@ -103,7 +103,7 @@ export function CreateGroupDialog({ open, onClose, onCreated }: { open: boolean;
                 exit={{ opacity: 0 }}
               >
               <motion.div
-                className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-card p-6 shadow-xl"
+                className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-background p-6 shadow-xl"
                 variants={dialogVariants}
                 initial="hidden"
                 animate="visible"

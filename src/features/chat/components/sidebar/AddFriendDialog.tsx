@@ -101,7 +101,7 @@ export function AddFriendDialog({ open, onClose }: { open: boolean; onClose: () 
               role="dialog"
               aria-modal="true"
               aria-labelledby="add-friend-title"
-              className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-card p-6 shadow-xl"
+              className="w-[400px] max-w-full pointer-events-auto rounded-2xl border bg-background p-6 shadow-xl"
               variants={dialogVariants}
               initial="hidden"
               animate="visible"
