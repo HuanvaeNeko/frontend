@@ -17,6 +17,11 @@ describe('isAppAsset —— Service Worker 用它区分"本应用静态资源"�
     expect(isAppAsset(url, ORIGIN)).toBe(false)
   })
 
+  it('/group-file/ 群文件预签名下载不是应用资源（群图片/视频/文件的地址前缀，backend-docs storage §群文件预签名）', () => {
+    const url = new URL('/group-file/g1/images/a.png?X-Amz-Signature=abc', ORIGIN)
+    expect(isAppAsset(url, ORIGIN)).toBe(false)
+  })
+
   it('/api/ 不是应用资源', () => {
     expect(isAppAsset(new URL('/api/storage/file/uuid', ORIGIN), ORIGIN)).toBe(false)
   })

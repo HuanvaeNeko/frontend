@@ -78,7 +78,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 // 这些前缀属于下面注册的 BFF 资源路由（会话代理、头像/文件透传等）。
 // public/ 静态文件查找必须跳过它们，否则一个同名的 public/ 文件会静默抢在
 // BFF 路由之前返回，且不会有任何报错——只会表现成"接口神秘地不工作了"。
-const BFF_PREFIXES = ['/api/', '/avatars/', '/user-file/', '/friends-file/', '/apps/']
+const BFF_PREFIXES = ['/api/', '/avatars/', '/user-file/', '/friends-file/', '/group-file/', '/apps/']
 
 const { createRequestHandler } = await import('react-router')
 

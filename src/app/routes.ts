@@ -15,6 +15,9 @@ export default [
   route('avatars/*', 'routes/passthrough.$.ts', { id: 'passthrough-avatars' }),
   route('user-file/*', 'routes/passthrough.$.ts', { id: 'passthrough-user-file' }),
   route('friends-file/*', 'routes/passthrough.$.ts', { id: 'passthrough-friends-file' }),
+  // 群文件（图片/视频/文件）的预签名地址是 group-file/…（backend-docs storage 群文件预签名）。
+  // 漏了这一条，群聊里的图片、视频、文件在网页端全部 404。
+  route('group-file/*', 'routes/passthrough.$.ts', { id: 'passthrough-group-file' }),
   route('apps/*', 'routes/passthrough.$.ts', { id: 'passthrough-apps' }),
 
   index('routes/home.tsx'),
