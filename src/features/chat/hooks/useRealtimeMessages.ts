@@ -276,24 +276,6 @@ export function useRealtimeMessages() {
   }, [loadPendingRequests, loadFriends, loadMyGroups])
 
   // =============================================
-  // 处理正在输入状态
-  // =============================================
-  const handleTyping = useCallback((data: {
-    user_id: string
-    conversation_type: 'private' | 'group'
-    conversation_id: string
-    is_typing: boolean
-  }) => {
-    useChatStore.getState().setTypingStatus({
-      conversationId: data.conversation_id,
-      conversationType: data.conversation_type,
-      userId: data.user_id,
-      isTyping: data.is_typing,
-      timestamp: Date.now(),
-    })
-  }, [])
-
-  // =============================================
   // 注册消息处理器
   // =============================================
   useEffect(() => {
@@ -305,12 +287,6 @@ export function useRealtimeMessages() {
     unsubscribers.push(registerHandler<Omit<WSMessageRecalled, 'type'>>('message_recalled', handleMessageRecalled))
     unsubscribers.push(registerHandler<{ message_uuid: string; content: string; message_type: string; rev: number }>('message_updated', handleMessageUpdated))
     unsubscribers.push(registerHandler<Omit<WSSystemNotification, 'type'>>('system_notification', handleSystemNotification))
-    unsubscribers.push(registerHandler<{
-      user_id: string
-      conversation_type: 'private' | 'group'
-      conversation_id: string
-      is_typing: boolean
-    }>('typing', handleTyping))
 
     return () => {
       unsubscribers.forEach(unsub => unsub())
@@ -322,54 +298,7 @@ export function useRealtimeMessages() {
     handleMessageRecalled,
     handleMessageUpdated,
     handleSystemNotification,
-    handleTyping,
   ])
 
   return { connected }
-}
-
-// =============================================
-// 辅助函数
-// =============================================
-
-
-/**
- * 发送正在输入状态
- */
-export function useSendTyping() {
-  const { sendTyping, connected } = useWSStore()
-
-  return useCallback((conversationType: 'private' | 'group', conversationId: string, isTyping: boolean) => {
-    if (connected) {
-      sendTyping(conversationType, conversationId, isTyping)
-    }
-  }, [connected, sendTyping])
-}
-
-/**
- * 监听正在输入状态
- */
-export function useTypingIndicator(conversationType: 'private' | 'group', conversationId: string) {
-  const { registerHandler } = useWSStore()
-
-  useEffect(() => {
-    const unsub = registerHandler<{
-      user_id: string
-      conversation_type: 'private' | 'group'
-      conversation_id: string
-      is_typing: boolean
-    }>('typing', (data) => {
-      if (data.conversation_type === conversationType && data.conversation_id === conversationId) {
-        useChatStore.getState().setTypingStatus({
-          conversationId: data.conversation_id,
-          conversationType: data.conversation_type,
-          userId: data.user_id,
-          isTyping: data.is_typing,
-          timestamp: Date.now(),
-        })
-      }
-    })
-
-    return unsub
-  }, [registerHandler, conversationType, conversationId])
 }

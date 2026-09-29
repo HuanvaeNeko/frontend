@@ -27,7 +27,6 @@
  *   curl -XPOST localhost:39473/__test/send -d '{"from":"dave","to":"alice","type":"image"}'   # type: text|image|video|file
  *   curl -XPOST localhost:39473/__test/friend-request -d '{"from":"grace","to":"alice","message":"hi"}'
  *   curl -XPOST localhost:39473/__test/recall -d '{"by":"bob","message_uuid":"…"}'           # 不受 2 分钟限制
- *   curl -XPOST localhost:39473/__test/typing -d '{"from":"bob","to":"alice"}'                # 或 {"from","group","is_typing":false}
  *   curl -XPOST localhost:39473/__test/group-invite -d '{"from":"dave","to":"alice","group":"…"}'
  *
  * 全部走与 REST 相同的业务函数（`fake-backend/actions.ts`），WS 推送、未读、预览与真人操作一致。

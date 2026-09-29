@@ -5,11 +5,10 @@ import { AnimatePresence } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageItem } from '../message/MessageItem'
-import { TypingIndicator } from './TypingIndicator'
 import { useI18n } from '@/i18n/I18nProvider'
 import { formatDayDivider, isSameLocalDay } from '@/features/chat/lib/dayDivider'
 import type { Message } from '@/features/chat/api/messages'
-import type { Conversation, TypingStatus } from '@/features/chat/store/chatStore'
+import type { Conversation } from '@/features/chat/store/chatStore'
 import type { User } from '@/features/auth/types/auth'
 
 interface MessageListProps {
@@ -18,7 +17,6 @@ interface MessageListProps {
   user: User | null
   loading: boolean
   hasMore: boolean
-  typingUsers: TypingStatus[]
   onLoadMore: () => void
   onScroll: () => void
   onCopy: (content: string) => void
@@ -37,7 +35,6 @@ export const MessageList = memo(({
   user,
   loading,
   hasMore,
-  typingUsers,
   onLoadMore,
   onScroll,
   onCopy,
@@ -125,11 +122,6 @@ export const MessageList = memo(({
           )
         })}
       </AnimatePresence>
-      
-      <TypingIndicator 
-        typingUsers={typingUsers} 
-        conversationType={conversation.type} 
-      />
       
       <div ref={messagesEndRef} />
     </div>

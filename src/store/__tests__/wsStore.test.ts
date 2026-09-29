@@ -130,7 +130,7 @@ it('同一个 give-up episode 只问一次：两次连续放弃（中间没有�
  * 处理器拿到的载荷。system_notification 的帧是 `{type, notification_type, data}`
  * （backend-docs groups/群聊管理.md「通知格式」），原分发规则「帧里有 data 就只交 data」
  * 把 notification_type 丢了：处理器 switch 恒走 default，好友申请、群邀请、被移出、解散……
- * 全部静默失效。只有 data 一个键的帧（typing）仍然交 data 本身。
+ * 全部静默失效。现在一律交「帧里除 type 外的全部字段」。
  */
 function deliver(frame: unknown) {
   const ws = useWSStore.getState().ws as unknown as { onmessage?: (event: { data: string }) => void }
@@ -148,13 +148,13 @@ it('system_notification：notification_type 与 data 一起交给处理器', () 
   unsubscribe()
 })
 
-it('正对照：只有 data 一个键的帧（typing）仍把 data 本身交给处理器', () => {
+it('正对照：字段平铺的帧（presence_update，backend-docs friends/好友添加删除.md「通知格式」）交除 type 外的全部字段', () => {
   const handler = vi.fn()
-  const unsubscribe = useWSStore.getState().registerHandler('typing', handler)
+  const unsubscribe = useWSStore.getState().registerHandler('presence_update', handler)
   useWSStore.getState().connect()
 
-  deliver({ type: 'typing', data: { user_id: 'bob', conversation_type: 'private', conversation_id: 'bob', is_typing: true } })
+  deliver({ type: 'presence_update', user_id: 'bob', online: false, last_seen_at: '2026-07-08T09:30:00Z' })
 
-  expect(handler).toHaveBeenCalledWith({ user_id: 'bob', conversation_type: 'private', conversation_id: 'bob', is_typing: true })
+  expect(handler).toHaveBeenCalledWith({ user_id: 'bob', online: false, last_seen_at: '2026-07-08T09:30:00Z' })
   unsubscribe()
 })

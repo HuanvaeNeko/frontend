@@ -33,7 +33,7 @@ const zhCN = {
   shell: {
     list: {
       searchPlaceholder: '搜索会话', add: '添加', createGroup: '创建群聊', addFriend: '添加好友', joinGroup: '加入群',
-      pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', typing: '正在输入', loading: '加载中...',
+      pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', loading: '加载中...',
       loadFailed: '加载失败', retry: '重试', empty: '还没有会话，先去添加好友或创建群聊', noMatch: '没有匹配的会话', groupTag: '[群聊]',
       yesterday: '昨天', weekdays: '周日,周一,周二,周三,周四,周五,周六', pinned: '已置顶',
     },
@@ -378,9 +378,6 @@ const zhCN = {
       preview: '预览',
       recall: '撤回',
       delete: '删除',
-      friendTyping: '对方正在输入...',
-      someoneTyping: '有人正在输入...',
-      peopleTyping: '{count} 人正在输入...',
       uploading: '上传中...',
       inputPlaceholder: '输入消息... (支持 Markdown，Enter 发送)',
       send: '发送',
@@ -667,7 +664,7 @@ const enUS = {
   shell: {
     list: {
       searchPlaceholder: 'Search conversations', add: 'Add', createGroup: 'Create group', addFriend: 'Add friend', joinGroup: 'Join group',
-      pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', typing: 'Typing', loading: 'Loading...',
+      pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', loading: 'Loading...',
       loadFailed: 'Failed to load', retry: 'Retry', empty: 'No conversations yet — add a friend or create a group', noMatch: 'No matching conversations', groupTag: '[Group]',
       yesterday: 'Yesterday', weekdays: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat', pinned: 'Pinned',
     },
@@ -1011,9 +1008,6 @@ const enUS = {
       preview: 'Preview',
       recall: 'Recall',
       delete: 'Delete',
-      friendTyping: 'Typing...',
-      someoneTyping: 'Someone is typing...',
-      peopleTyping: '{count} people are typing...',
       uploading: 'Uploading...',
       inputPlaceholder: 'Type message... (Markdown supported, Enter to send)',
       send: 'Send',

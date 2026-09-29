@@ -39,12 +39,7 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     setMessages,
     addMessage,
     prependMessages,
-    getTypingUsers,
-    typingUsers,
   } = useChatStore()
-  
-  // Trigger typingUsers subscription/update if needed by accessing it
-  void typingUsers
 
   // State
   const [loading, setLoading] = useState(false)
@@ -552,7 +547,6 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         user={user}
         loading={loading}
         hasMore={hasMore}
-        typingUsers={getTypingUsers(selectedConversation.id)}
         onLoadMore={loadMoreMessages}
         onScroll={handleScroll}
         onCopy={handleCopyMessage}

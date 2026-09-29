@@ -16,7 +16,6 @@ export interface ConversationItemProps {
   unreadCount?: number
   isOnline?: boolean
   isActive?: boolean
-  isTyping?: boolean
   status?: 'sent' | 'delivered' | 'read'
   onClick: () => void
   onContextMenu?: (e: React.MouseEvent) => void
@@ -31,7 +30,6 @@ export const ConversationItem = memo(({
   unreadCount = 0,
   isOnline,
   isActive,
-  isTyping,
   status,
   onClick,
   onContextMenu,
@@ -103,20 +101,14 @@ export const ConversationItem = memo(({
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            {isTyping ? (
-              <span className="text-xs text-primary font-medium animate-pulse flex items-center gap-1">
-                {t('shell.list.typing')}<span className="animate-bounce">.</span><span className="animate-bounce delay-100">.</span><span className="animate-bounce delay-200">.</span>
-              </span>
-            ) : (
-              <span className={cn(
-                "text-xs truncate",
-                isActive ? "text-muted-foreground" : "text-muted-foreground/70 group-hover:text-muted-foreground"
-              )}>
-                {status === 'read' && <CheckCheck className="inline w-3 h-3 mr-1 text-primary" />}
-                {status === 'delivered' && <Check className="inline w-3 h-3 mr-1 text-muted-foreground" />}
-                {lastMessage || t('shell.list.noMessage')}
-              </span>
-            )}
+            <span className={cn(
+              "text-xs truncate",
+              isActive ? "text-muted-foreground" : "text-muted-foreground/70 group-hover:text-muted-foreground"
+            )}>
+              {status === 'read' && <CheckCheck className="inline w-3 h-3 mr-1 text-primary" />}
+              {status === 'delivered' && <Check className="inline w-3 h-3 mr-1 text-muted-foreground" />}
+              {lastMessage || t('shell.list.noMessage')}
+            </span>
           </div>
 
           {/* Unread Badge */}

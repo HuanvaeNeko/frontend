@@ -11,10 +11,10 @@ import { iso } from './time'
  * 服务端 → 客户端（全部是前端 `src/store/wsStore.ts` 认得的形状）：
  * - `hello`：旧 fixture 的第一帧，`tests/bff-session.spec.ts` 断言首帧含 `fake-backend`，必须保持首帧
  * - `connected`：`{unread_summary}`，紧跟在 hello 之后
- * - `new_message` / `message_recalled` / `read_sync` / `typing` / `system_notification` / `file_uploaded`
+ * - `new_message` / `message_recalled` / `read_sync` / `system_notification` / `file_uploaded`
  * - `pong`：回应客户端的 `ping`
  *
- * 客户端 → 服务端：`ping`、`mark_read`、`typing`、`resync_read_positions`；其余类型忽略（不回显）。
+ * 客户端 → 服务端：`ping`、`mark_read`、`resync_read_positions`；其余类型忽略（不回显）。后端没有「正在输入」协议，这里也不模拟。
  */
 
 export type ChatSocketData = { kind: 'chat'; token: string; userId: string }
@@ -105,20 +105,6 @@ export function markRead(userId: string, targetType: string, targetId: string): 
   }
 }
 
-/**
- * 「正在输入」：私聊的 `conversation_id` 从接收方视角看是**发送方的 user_id**（前端
- * `chatStore.getTypingUsers(selectedConversation.id)` 按它过滤）；群聊是群 ID。
- */
-export function relayTyping(userId: string, conversationType: string, conversationId: string, isTyping: boolean): void {
-  if (conversationType === 'private') {
-    pushToUser(conversationId, { type: 'typing', data: { user_id: userId, conversation_type: 'private', conversation_id: userId, is_typing: isTyping } })
-    return
-  }
-  const group = groupsOf(userId).find((g) => g.group_id === conversationId)
-  if (!group) return
-  pushToUsers(group.members.keys(), { type: 'typing', data: { user_id: userId, conversation_type: 'group', conversation_id: conversationId, is_typing: isTyping } }, userId)
-}
-
 export function handleChatMessage(ws: ChatSocket, userId: string, raw: string | ArrayBufferView | ArrayBuffer): void {
   let msg: Record<string, unknown>
   try {
@@ -133,11 +119,6 @@ export function handleChatMessage(ws: ChatSocket, userId: string, raw: string | 
     case 'mark_read':
       markRead(userId, String(msg.target_type), String(msg.target_id))
       return
-    case 'typing': {
-      const data = (msg.data ?? {}) as Record<string, unknown>
-      relayTyping(userId, String(data.conversation_type), String(data.conversation_id), data.is_typing === true)
-      return
-    }
     case 'resync_read_positions': {
       const positions = Array.isArray(msg.positions) ? msg.positions : []
       for (const p of positions.slice(0, 1000) as Array<Record<string, unknown>>) {

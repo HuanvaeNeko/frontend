@@ -191,17 +191,6 @@ export interface WSOnlineStatus {
   }
 }
 
-// 正在输入状态
-export interface WSTypingStatus {
-  type: 'typing'
-  data: {
-    user_id: string
-    conversation_type: 'private' | 'group'
-    conversation_id: string
-    is_typing: boolean
-  }
-}
-
 // 文件上传完成通知（好友/群聊文件上传 confirm 后触发）
 export interface WSFileUploaded {
   type: 'file_uploaded'
@@ -255,7 +244,6 @@ export type WSMessage =
   | WSSystemNotification
   | WSReadSync
   | WSOnlineStatus
-  | WSTypingStatus
   | WSFileUploaded
   | { type: string; data?: unknown; [key: string]: unknown }
 
@@ -277,7 +265,6 @@ interface WSState {
   connect: () => void
   disconnect: () => void
   send: (message: { type: string; [key: string]: unknown }) => void
-  sendTyping: (conversationType: 'private' | 'group', conversationId: string, isTyping: boolean) => void
   sendMarkRead: (targetType: 'friend' | 'group', targetId: string) => void
   registerHandler: <T>(type: string, handler: MessageHandler<T>) => () => void
   unregisterHandler: (type: string, handler: MessageHandler) => void
@@ -464,15 +451,13 @@ export const useWSStore = create<WSState>((set, get) => {
             if (handlers) {
               handlers.forEach(handler => {
                 try {
-                  // 载荷 = 帧里除 type 外的字段；只有 data 一个键的帧（typing）交 data 本身。
-                  // 不能「有 data 就只交 data」：system_notification 是
+                  // 载荷 = 帧里除 type 外的全部字段。不能「有 data 就只交 data」：system_notification 是
                   // {type, notification_type, data}（backend-docs groups/群聊管理.md「通知格式」），
                   // 只交 data 会丢掉 notification_type——处理器恒走 default，好友申请、群邀请、
-                  // 被移出、解散……全部静默失效。
+                  // 被移出、解散……全部静默失效。（原来还有一条「只有 data 一个键就交 data 本身」，
+                  // 只为 typing 帧服务；后端没有 typing 协议，随「正在输入」的死代码一起删了。）
                   const { type: _type, ...rest } = message as { type: string } & Record<string, unknown>
-                  const keys = Object.keys(rest)
-                  const payload: unknown = keys.length === 1 && keys[0] === 'data' ? rest.data : rest
-                  handler(payload)
+                  handler(rest)
                 } catch (error) {
                   console.error(`消息处理器错误 (${message.type}):`, error)
                 }
@@ -577,17 +562,6 @@ export const useWSStore = create<WSState>((set, get) => {
       } else {
         console.error('WebSocket 未连接，无法发送消息')
       }
-    },
-
-    sendTyping: (conversationType, conversationId, isTyping) => {
-      get().send({
-        type: 'typing',
-        data: {
-          conversation_type: conversationType,
-          conversation_id: conversationId,
-          is_typing: isTyping
-        }
-      })
     },
 
     sendMarkRead: (targetType, targetId) => {

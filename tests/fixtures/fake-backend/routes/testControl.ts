@@ -9,7 +9,7 @@ import { friendMessageDto, groupMessageDto, resetWorld, W } from '../state'
 import { iso } from '../time'
 import type { FileRef, MessageType, StorageLocation } from '../types'
 import { GROUP_IDS } from '../world'
-import { closeAllChat, onlineSockets, relayTyping } from '../ws'
+import { closeAllChat, onlineSockets } from '../ws'
 
 /**
  * `/__test/*`：只挂在假后端自己的端口上（BFF 只转发 `/api/*` 与四个存储前缀，这里够不着），
@@ -125,19 +125,6 @@ export const testRoutes: Route[] = [
       const isGroup = [...W().groups.values()].some((g) => g.messages.some((m) => m.message_uuid === uuidArg))
       const message = isGroup ? recallGroupMessage(by, uuidArg, { ignoreWindow: true }) : recallFriendMessage(by, uuidArg, { ignoreWindow: true })
       return json({ ok: true, message_uuid: message.message_uuid })
-    },
-    { auth: false },
-  ),
-  route(
-    'POST',
-    '/__test/typing',
-    (ctx) => {
-      const body = readJson(ctx)
-      const from = str(body, 'from')
-      const isTyping = body.is_typing !== false
-      if (typeof body.group === 'string') relayTyping(from, 'group', body.group, isTyping)
-      else relayTyping(from, 'private', str(body, 'to', 'alice'), isTyping)
-      return json({ ok: true })
     },
     { auth: false },
   ),

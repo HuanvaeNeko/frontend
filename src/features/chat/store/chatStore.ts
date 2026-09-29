@@ -23,15 +23,6 @@ export interface Conversation {
   lastSeq?: number // 本地最后消息序列号，用于增量同步
 }
 
-// 正在输入状态
-export interface TypingStatus {
-  conversationId: string
-  conversationType: 'private' | 'group'
-  userId: string
-  isTyping: boolean
-  timestamp: number
-}
-
 // =============================================
 // 未读消息摘要（来自 WebSocket connected 消息）
 // =============================================
@@ -110,12 +101,6 @@ interface ChatState {
   // WebSocket 连接状态
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
-
-  // 正在输入状态
-  typingUsers: Map<string, TypingStatus>
-  setTypingStatus: (status: TypingStatus) => void
-  clearTypingStatus: (conversationId: string, userId: string) => void
-  getTypingUsers: (conversationId: string) => TypingStatus[]
 
   // 消息同步
   isSyncing: boolean
@@ -342,42 +327,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   wsConnected: false,
   setWsConnected: (connected) => set({ wsConnected: connected }),
-
-  typingUsers: new Map(),
-  setTypingStatus: (status) => {
-    const key = `${status.conversationId}-${status.userId}`
-    const typingUsers = new Map(get().typingUsers)
-    
-    if (status.isTyping) {
-      typingUsers.set(key, { ...status, timestamp: Date.now() })
-    } else {
-      typingUsers.delete(key)
-    }
-    
-    set({ typingUsers })
-    
-    // 5秒后自动清除 typing 状态
-    if (status.isTyping) {
-      setTimeout(() => {
-        const currentTyping = get().typingUsers.get(key)
-        if (currentTyping && Date.now() - currentTyping.timestamp >= 5000) {
-          get().clearTypingStatus(status.conversationId, status.userId)
-        }
-      }, 5000)
-    }
-  },
-  clearTypingStatus: (conversationId, userId) => {
-    const key = `${conversationId}-${userId}`
-    const typingUsers = new Map(get().typingUsers)
-    typingUsers.delete(key)
-    set({ typingUsers })
-  },
-  getTypingUsers: (conversationId) => {
-    const typingUsers = get().typingUsers
-    return Array.from(typingUsers.values()).filter(
-      s => s.conversationId === conversationId && s.isTyping
-    )
-  },
 
   // 消息同步
   isSyncing: false,

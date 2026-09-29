@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ConversationItem } from '../ConversationItem'
 
-/** 这两句原来写死英文（"No messages yet" / "Typing..."），中文界面也露英文 */
+/** 没有消息时的占位原来写死英文 "No messages yet"，中文界面也露英文 */
 vi.mock('framer-motion', async () => {
   const react = await import('react')
   const passthrough = (tag: string) =>
@@ -17,11 +17,5 @@ describe('ConversationItem', () => {
     render(<ConversationItem id="u1" type="friend" name="张三" onClick={() => {}} />)
     expect(screen.getByText('暂无消息')).toBeInTheDocument()
     expect(screen.queryByText(/No messages yet/)).toBeNull()
-  })
-
-  it('正在输入走 i18n，不是英文 Typing', () => {
-    render(<ConversationItem id="u1" type="friend" name="张三" isTyping onClick={() => {}} />)
-    expect(screen.getByText(/正在输入/)).toBeInTheDocument()
-    expect(screen.queryByText(/Typing/)).toBeNull()
   })
 })

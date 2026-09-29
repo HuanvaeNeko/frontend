@@ -44,7 +44,6 @@ function renderList(messages: Message[]) {
       user={{ user_id: 'alice', nickname: '爱丽丝' } as never}
       loading={false}
       hasMore={false}
-      typingUsers={[]}
       onLoadMore={noop}
       onScroll={noop}
       onCopy={noop}
