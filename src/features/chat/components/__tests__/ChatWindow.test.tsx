@@ -197,3 +197,30 @@ describe('ChatWindow 删除消息的二次确认', () => {
     await waitFor(() => expect(del).toHaveBeenCalledWith('m1'))
   })
 })
+
+/**
+ * 撤回自己的消息：本地要和接收方、和刷新后一样显示成撤回胶囊（is_recalled），并且如果它是会话的
+ * 最后一条，列表预览不能还挂着被撤回的原文。原实现只把正文改成「你撤回了一条消息」，渲染成一个
+ * 普通蓝色气泡；预览一直是原文。
+ */
+describe('ChatWindow 撤回自己的消息', () => {
+  it('显示为撤回胶囊，最后一条被撤回时会话预览也跟着变', async () => {
+    const recent = new Date().toISOString()
+    vi.spyOn(messagesApi, 'getMessages').mockResolvedValue({ messages: [{ ...textMessage('m1', 'alice', 'carol', '说错话了', 1), send_time: recent }], has_more: false })
+    const recall = vi.spyOn(messagesApi, 'recallMessage').mockResolvedValue({ success: true, message: 'ok' } as never)
+    useChatStore.setState({ unreadSummary: { total_count: 0, friend_unreads: [{ friend_id: 'carol', unread_count: 0, last_message_preview: '说错话了', last_message_time: recent }], group_unreads: [] } })
+
+    act(() => { useChatStore.setState({ selectedConversation: carol }) })
+    const { container } = render(<ChatWindow />)
+
+    fireEvent.contextMenu(await screen.findByText('说错话了'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /chat\.window\.recall/ }))
+    await waitFor(() => expect(recall).toHaveBeenCalledWith('m1'))
+
+    // 撤回胶囊（MessageItem 的 is_recalled 分支），不是一个写着「你撤回了」的普通气泡
+    await waitFor(() => expect(container.querySelector('[data-message-uuid="m1"] .italic')).not.toBeNull())
+    expect(screen.queryByText('说错话了')).toBeNull()
+    const row = useChatStore.getState().unreadSummary?.friend_unreads.find((u) => u.friend_id === 'carol')
+    expect(row?.last_message_preview).not.toBe('说错话了')
+  })
+})

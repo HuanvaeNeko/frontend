@@ -473,11 +473,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     try {
       if (selectedConversation?.type === 'friend') await messagesApi.recallMessage(messageUuid)
       else if (selectedConversation?.type === 'group') await groupMessagesApi.recallMessage(messageUuid)
+      // 与接收方（WS message_recalled）、与刷新后的历史一致：标 is_recalled，由 MessageItem 渲染
+      // 撤回胶囊。原来只把正文改成「你撤回了一条消息」，显示成一个普通蓝色气泡
+      const recalled = messages.find(m => m.message_uuid === messageUuid)
+      const wasLast = messages[messages.length - 1]?.message_uuid === messageUuid
       setMessages(messages.map(m =>
-        m.message_uuid === messageUuid
-          ? { ...m, message_content: t('chat.window.youRecalled'), message_type: 'text' as const }
-          : m
+        m.message_uuid === messageUuid ? ({ ...m, is_recalled: true } as Message) : m
       ))
+      // 被撤回的是最后一条：会话预览不能还挂着原文
+      if (wasLast && recalled && selectedConversation) {
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, t('chat.window.youRecalled'), 'text', recalled.send_time)
+      }
       toast({ title: t('chat.window.successTitle'), description: t('chat.window.messageRecalled') })
     } catch (error) {
       toast({ title: t('chat.window.recallFailedTitle'), description: error instanceof Error ? error.message : t('chat.window.recallFailedDesc'), variant: 'destructive' })
