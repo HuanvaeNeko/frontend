@@ -52,6 +52,8 @@ export default function Login() {
 
   const [formData, setFormData] = useState({ user_id: '', password: '' })
   const [error, setError] = useState('')
+  // 后端没有找回密码接口：点「忘记密码」给出可操作的说明（原来是个没有 onClick 的按钮）
+  const [showForgotHint, setShowForgotHint] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
@@ -155,7 +157,7 @@ export default function Login() {
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input id="password" type={showPassword ? 'text' : 'password'} required value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="pl-9 pr-9" placeholder={t('auth.login.passwordPlaceholder')} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t('auth.login.hidePassword') : t('auth.login.showPassword')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
@@ -165,8 +167,11 @@ export default function Login() {
                     <label className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Checkbox checked={rememberMe} onCheckedChange={(v) => { setRememberMe(Boolean(v)); playTap() }} />{t('auth.login.rememberMe')}
                     </label>
-                    <button type="button" className="text-sm text-primary">{t('auth.login.forgotPassword')}</button>
+                    <button type="button" className="text-sm text-primary" aria-expanded={showForgotHint} aria-controls="forgot-password-hint" onClick={() => setShowForgotHint((v) => !v)}>{t('auth.login.forgotPassword')}</button>
                   </div>
+                  {showForgotHint && (
+                    <p id="forgot-password-hint" className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">{t('auth.login.forgotPasswordHint')}</p>
+                  )}
 
                   <Button 
                     type="submit" 

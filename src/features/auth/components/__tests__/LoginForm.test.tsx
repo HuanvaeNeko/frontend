@@ -99,3 +99,21 @@ describe('LoginForm —— 挂载时已登录（next 回跳的另一处调用点
     await waitFor(() => expect(router.state.location.pathname).toBe(DEFAULT_AUTHENTICATED_ROUTE))
   })
 })
+
+describe('LoginForm —— 「忘记密码」', () => {
+  /**
+   * 后端没有找回密码接口（backend-docs auth 模块无 reset/找回），原来这是一个没有 onClick 的
+   * <button>，点了毫无反应。现在点击后在表单里说清楚怎么办。
+   */
+  it('点击后给出可操作的说明，而不是毫无反应', async () => {
+    renderLogin('')
+    const trigger = screen.getByRole('button', { name: /忘记密码/ })
+    // 前置：点之前说明不在页面上
+    expect(screen.queryByText(/联系管理员/)).toBeNull()
+
+    fireEvent.click(trigger)
+
+    expect(await screen.findByText(/联系管理员/)).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+})

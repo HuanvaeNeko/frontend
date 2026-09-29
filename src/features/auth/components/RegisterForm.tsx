@@ -198,7 +198,7 @@ export default function Register() {
                           <FormControl>
                             <Input {...field} type={showPassword ? 'text' : 'password'} className="pl-9 pr-9" placeholder={t('auth.register.passwordPlaceholder')} />
                           </FormControl>
-                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t('auth.login.hidePassword') : t('auth.login.showPassword')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
@@ -219,7 +219,7 @@ export default function Register() {
                           <FormControl>
                             <Input {...field} type={showConfirmPassword ? 'text' : 'password'} className="pl-9 pr-9" placeholder={t('auth.register.confirmPasswordPlaceholder')} />
                           </FormControl>
-                          <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                          <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? t('auth.login.hidePassword') : t('auth.login.showPassword')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                             {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
