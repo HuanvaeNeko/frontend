@@ -116,25 +116,21 @@ export default function GroupManagement({ groupId, onClose }: GroupManagementPro
   const canApproveJoinRequests = isOwner || (isAdmin && group !== null && group.admin_can_approve)
 
   // 加载数据
-  //
-  // ⚠️ 已知 bug，本批不碰：`isAdmin` 在这里是挂载那一刻的闭包值，那时
-  // `members` 还是空数组 ⇒ 恒为 `false` ⇒ 这个自动加载从不发生，只有
-  // 页签里的「刷新」按钮能触发（第 4 节有完整分析）。留给下一个人修的陷阱：
-  // 页签的可见性已经改用 `canApproveJoinRequests`（群主，或
-  // `admin_can_approve=true` 的管理员），如果照搬同一个量把这里的
-  // `isAdmin` 也换掉，会变成对着一个「有审批权限」的量做闭包修复——
-  // 一个 `admin_can_approve=false` 的管理员本来就不该看到这个页签，也就不该
-  // 触发这次加载；`isAdmin` 换成 `canApproveJoinRequests` 才是对的方向，
-  // 不是随手把 `isAdmin` 从依赖数组里加进去就完事。
   useEffect(() => {
     loadGroupInfo()
     loadMembers()
     loadNotices()
-    if (isAdmin) {
-      loadJoinRequests()
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId])
+
+  // 入群申请要等「有没有审批权」确定之后再拉：挂载那一刻 members 还是空的，原实现按那时
+  // 闭包里的 isAdmin（恒 false）判断，自动加载从不发生——页签显示「加入申请0」、点开是
+  // 「暂无加入申请」，群主以为没人申请。判据用 canApproveJoinRequests（群主，或
+  // admin_can_approve=true 的管理员），不是 isAdmin：无审批权的管理员拉这个列表只会 403。
+  useEffect(() => {
+    if (canApproveJoinRequests) loadJoinRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, canApproveJoinRequests])
 
   /**
    * 加载群详情。`getGroupDetail` 现在会抛 `ApiError`，文案是后端原文

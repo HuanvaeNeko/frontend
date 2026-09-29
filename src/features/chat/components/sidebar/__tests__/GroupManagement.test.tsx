@@ -188,6 +188,8 @@ beforeEach(() => {
   // 默认：群信息立刻返回，不然顶层 `loading` 永远是 true，标签页和三态内容
   // 根本不会挂载。
   groupsApiMock.getGroupDetail.mockResolvedValue(GROUP)
+  // 群主身份下挂载即自动拉入群申请：默认给真实接口的形状（数组），各用例按需覆盖
+  groupsApiMock.getJoinRequests.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -305,15 +307,13 @@ describe('GroupManagement 公告列表三态（loadNotices → noticesError）',
 })
 
 describe('GroupManagement 加入申请三态（loadJoinRequests → requestsError）', () => {
-  // 加入申请 tab 只对管理员可见，且挂载时的自动加载看的是挂载那一刻的
-  // `isAdmin`（当时 `members` 还是空数组，必然是 false）——所以这里统一走
-  // tab 里始终存在的"刷新"按钮手动触发，不依赖首次挂载的自动加载时序。
-  const openRequestsTabAndRefresh = async () => {
+  // 群主身份确定后会自动拉一次申请（见「自动加载申请」那条）；这里只打开页签，
+  // 断言的就是那一次自动加载的三态。原来这里要手点「刷新」绕开自动加载从不发生的 bug。
+  const openRequestsTab = async () => {
     // 该标签按钮还挂着一个 badge（`joinRequests.length`）：数字 0 是 falsy 但
     // React 仍会把它渲染成一个独立的文本节点，导致按钮的拼接文本是
     // "加入申请0" 而不是精确的 "加入申请"，只能用前缀匹配。
     ;(await screen.findByText(/^加入申请/)).click()
-    ;(await screen.findByText('刷新')).click()
   }
 
   beforeEach(() => {
@@ -326,7 +326,7 @@ describe('GroupManagement 加入申请三态（loadJoinRequests → requestsErro
     groupsApiMock.getJoinRequests.mockReturnValue(requestsDeferred.promise)
 
     const { container } = render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(container.querySelectorAll('.animate-spin').length).toBeGreaterThan(0))
     expect(screen.queryByText('暂无加入申请')).not.toBeInTheDocument()
@@ -340,7 +340,7 @@ describe('GroupManagement 加入申请三态（loadJoinRequests → requestsErro
     groupsApiMock.getJoinRequests.mockRejectedValueOnce(new Error('权限不足'))
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(screen.getByText('加载加入申请失败：权限不足')).toBeInTheDocument())
     expect(screen.getByText('重试')).toBeInTheDocument()
@@ -351,18 +351,31 @@ describe('GroupManagement 加入申请三态（loadJoinRequests → requestsErro
     groupsApiMock.getJoinRequests.mockResolvedValueOnce([])
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(screen.getByText('暂无加入申请')).toBeInTheDocument())
     expect(screen.queryByText('重试')).not.toBeInTheDocument()
     expect(screen.queryByText(/加载加入申请失败/)).not.toBeInTheDocument()
   })
 
+  it('群主一打开就自动加载申请：不点「刷新」，页签计数就是 1、列表里有申请人', async () => {
+    // 原实现在挂载那一刻按闭包里的 isAdmin 决定要不要加载——那时 members 还是空的，
+    // isAdmin 恒 false，自动加载从不发生：页签显示「加入申请0」、点开是「暂无加入申请」，
+    // 群主以为没人申请，申请就一直挂着。
+    groupsApiMock.getJoinRequests.mockResolvedValue([REQUEST])
+
+    render(<GroupManagement groupId="g1" />)
+
+    await waitFor(() => expect(groupsApiMock.getJoinRequests).toHaveBeenCalledWith('g1'))
+    ;(await screen.findByRole('button', { name: /^加入申请\s*1$/ })).click()
+    expect(await screen.findByText('小李')).toBeInTheDocument()
+  })
+
   it('成功：渲染真实申请数据（用户昵称），不是"没抛错"就算数', async () => {
     groupsApiMock.getJoinRequests.mockResolvedValueOnce([REQUEST])
 
     render(<GroupManagement groupId="g1" />)
-    await openRequestsTabAndRefresh()
+    await openRequestsTab()
 
     await waitFor(() => expect(screen.getByText('小李')).toBeInTheDocument())
     expect(screen.queryByText('暂无加入申请')).not.toBeInTheDocument()
