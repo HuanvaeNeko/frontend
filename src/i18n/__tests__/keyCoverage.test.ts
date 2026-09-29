@@ -21,7 +21,7 @@ const sources = import.meta.glob<string>(['/src/**/*.{ts,tsx}', '!/src/**/__test
 function usedKeys(): Map<string, Set<string>> {
   const used = new Map<string, Set<string>>()
   for (const [file, text] of Object.entries(sources)) {
-    for (const match of text.matchAll(/\bt\(\s*['"]([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)['"]/g)) {
+    for (const match of text.matchAll(/\b(?:t|translate)\(\s*['"]([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)['"]/g)) {
       const files = used.get(match[1]) ?? new Set<string>()
       files.add(file)
       used.set(match[1], files)

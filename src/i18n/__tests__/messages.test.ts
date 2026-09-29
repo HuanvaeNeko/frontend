@@ -77,3 +77,19 @@ describe('i18n 资源：加入群聊的搜索文案必须说出「完整群名�
     expect(groupList.alreadyMember).not.toBe(groupList.joinSuccess)
   })
 })
+
+describe('i18n 资源：中英文逐 key 对齐', () => {
+  const leaves = (node: unknown, prefix = ''): string[] =>
+    node && typeof node === 'object'
+      ? Object.entries(node as Record<string, unknown>).flatMap(([k, v]) => leaves(v, prefix ? `${prefix}.${k}` : k))
+      : [prefix]
+
+  it('en-US 与 zh-CN 的 key 集合完全一致（英文界面不会因为缺 key 回落成中文）', () => {
+    const zh = new Set(leaves(messages['zh-CN']))
+    const en = new Set(leaves(messages['en-US']))
+    expect([...zh].filter((k) => !en.has(k))).toEqual([])
+    expect([...en].filter((k) => !zh.has(k))).toEqual([])
+    // 正对照：确实遍历到了叶子
+    expect(zh.size).toBeGreaterThan(500)
+  })
+})

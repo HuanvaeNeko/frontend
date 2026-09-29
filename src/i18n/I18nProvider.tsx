@@ -10,9 +10,10 @@ interface I18nContextValue {
   t: (key: string, params?: Record<string, string | number>) => string
 }
 
+// 不在 Provider 里（测试里单独渲染组件）时按默认语言查字典，而不是把 key 原样吐出来
 const I18nContext = createContext<I18nContextValue>({
   locale: DEFAULT_LOCALE,
-  t: (key) => key,
+  t: (key, params) => translateIn(DEFAULT_LOCALE, key, params),
 })
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
