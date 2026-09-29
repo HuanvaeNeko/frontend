@@ -113,6 +113,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 输入法组字中的回车是「上屏」不是「发送」：Chrome/Firefox 给 isComposing，
+    // Safari 在 compositionend 之后才补发这下 keydown、只剩 keyCode 229 可认。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
     // Enter 发送，Shift+Enter 换行
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
