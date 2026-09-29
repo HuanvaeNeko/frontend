@@ -136,7 +136,11 @@ export function useRealtimeMessages() {
         seq: data.seq,
         send_time: data.timestamp,
       }
-      store.addMessage(message)
+      // 群消息气泡按 sender_nickname / sender_avatar_url 显示名字与头像（MessageItem 把群消息当
+      // GroupMessage 读）；只按私聊形状落库的话，实时插入的那一行没有名字、头像是「U」，刷新才正常
+      store.addMessage(data.source_type === 'group'
+        ? { ...message, sender_nickname: data.sender_nickname, sender_avatar_url: data.sender_avatar_url } as Message
+        : message)
     }
 
     // 发送通知（非自己发送、非活跃聊天）
