@@ -195,8 +195,11 @@ export default function Devices({ embedded = false }: { embedded?: boolean }) {
                             <div className="truncate font-medium">{getDeviceName(device.device_info)}</div>
                             {device.is_current && <Badge>当前设备</Badge>}
                           </div>
-                          <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />IP: {device.ip_address || '未知'}</div>
-                          <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />最后活动: {formatTime(device.last_active_at)}</div>
+                          {/* 两段原来是相邻的 inline-flex，中间没有间距：「127.0.0.1」和时钟图标贴在一起 */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />IP: {device.ip_address || '未知'}</span>
+                            <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />最后活动: {formatTime(device.last_active_at)}</span>
+                          </div>
                           <div className="text-xs text-muted-foreground">登录时间: {new Date(device.created_at).toLocaleString('zh-CN')}</div>
                         </div>
                       </div>
