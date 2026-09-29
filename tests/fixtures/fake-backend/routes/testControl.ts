@@ -7,7 +7,7 @@ import { resetRooms } from '../rtc'
 import { sessionStats } from '../sessions'
 import { friendMessageDto, groupMessageDto, resetWorld, W } from '../state'
 import { iso } from '../time'
-import type { FileRef, StorageLocation } from '../types'
+import type { FileRef, MessageType, StorageLocation } from '../types'
 import { GROUP_IDS } from '../world'
 import { closeAllChat, onlineSockets, relayTyping } from '../ws'
 
@@ -55,6 +55,7 @@ function summary() {
     conversations: [...world.convs.values()].map((c) => ({ conv_id: c.conv_id, messages: c.messages.length, seq: c.seq, last_read: Object.fromEntries(c.last_read) })),
     files: world.files.size,
     uploads: [...world.uploads.values()].map((u) => ({ file_key: u.file_key, owner: u.owner_id, status: u.status, parts: u.parts.size })),
+    interactions: world.interactions,
   }
 }
 
@@ -64,6 +65,8 @@ const str = (body: Record<string, unknown>, key: string, fallback?: string): str
   if (fallback !== undefined) return fallback
   return badRequest(`缺少字段 ${key}`)
 }
+
+const SPECIAL_TYPES: readonly MessageType[] = ['card', 'meeting_invite', 'group_card']
 
 function handleSend(ctx: Ctx): Response {
   const body = readJson(ctx)
@@ -77,6 +80,11 @@ function handleSend(ctx: Ctx): Response {
     return json({ ok: true, message: groupMessageDto(group, message) })
   }
   const to = str(body, 'to', 'alice')
+  // 卡片 / 会议邀请 / 群名片：text 就是消息体（JSON 字符串），不走文件
+  if (SPECIAL_TYPES.includes(kind as MessageType)) {
+    const { conv, message } = sendFriendMessage(from, to, { content: text, type: kind as MessageType, file: null })
+    return json({ ok: true, message: friendMessageDto(conv, message) })
+  }
   const file = kind === 'text' ? null : stageFile(from, 'friend_messages', to, kind)
   const type = file ? messageTypeForContentType(file.content_type) : 'text'
   const { conv, message } = sendFriendMessage(from, to, { content: file && !text ? autoMessageContent(type, file.filename) : text, type, file })

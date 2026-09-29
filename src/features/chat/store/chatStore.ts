@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { messagePreviewText } from '@/features/chat/lib/messagePreview'
 import { Message } from '@/types'
 import {
   buildFriendConversationId,
@@ -125,16 +126,6 @@ interface ChatState {
   clearCurrentChat: () => void
 }
 
-// 生成消息预览文本
-function getMessagePreviewText(messageType: string, content: string): string {
-  switch (messageType) {
-    case 'text': return content.length > 50 ? content.slice(0, 50) + '...' : content
-    case 'image': return '[图片]'
-    case 'video': return '[视频]'
-    case 'file': return '[文件]'
-    default: return content
-  }
-}
 
 export const useChatStore = create<ChatState>((set, get) => ({
   selectedConversation: null,
@@ -335,7 +326,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   updateLastMessage: (targetType, targetId, preview, messageType, timestamp) => {
-    const previewText = getMessagePreviewText(messageType, preview)
+    const previewText = messagePreviewText(messageType, preview)
     if (targetType === 'friend') {
       get().updateFriendUnread(targetId, previewText, timestamp, false)
     } else {

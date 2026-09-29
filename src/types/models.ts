@@ -66,6 +66,8 @@ export interface Message {
   image_height: number | null
   seq: number
   send_time: string
+  /** 卡片的修订号：WS message_updated 只接受更大的 rev（与 features/chat/api/messages.ts 的 Message 同步） */
+  rev?: number
 }
 
 /**

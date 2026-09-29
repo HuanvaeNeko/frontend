@@ -268,3 +268,24 @@ test('访客（没登录）拿着会议链接能进会：先填名字，加入�
   expect((await response.json()).data.user_info).toMatchObject({ nickname: '路人甲', is_authenticated: false })
   expect(await joined).toContain('"type":"joined"')
 })
+
+test('卡片消息真的渲染出来（原来只有一句「卡片消息」），预览是 [卡片] 而不是 JSON；点按钮把交互中继到后端', async ({ page, context }) => {
+  await loginAs(context, 'alice')
+  const card = JSON.stringify({ version: 1, nodes: [
+    { type: 'heading', text: '部署审批' },
+    { type: 'stat', label: '版本', value: 'v1.1.53' },
+    { type: 'button', action_id: 'approve', text: '批准', value: 'v1.1.53', style: 'primary' },
+  ] })
+  await page.goto('/app/chat')
+  await fakeSend({ from: 'bob', to: 'alice', type: 'card', text: card })
+
+  await expect.poll(() => cardText(page, '鲍勃')).toContain('[卡片]')
+  await page.goto('/app/chat/f-bob')
+  await expect(content(page).getByRole('heading', { name: '部署审批' })).toBeVisible()
+  await expect(content(page).getByText('v1.1.53')).toBeVisible()
+
+  await content(page).getByRole('button', { name: '批准' }).click()
+  await expect(content(page).getByRole('button', { name: /已执行/ })).toBeVisible()
+  const state = (await (await fetch(`${FAKE}/__test/state`)).json()) as { interactions: unknown[] }
+  expect(state.interactions).toContainEqual(expect.objectContaining({ action_id: 'approve', user_id: 'alice', value: { value: 'v1.1.53' } }))
+})

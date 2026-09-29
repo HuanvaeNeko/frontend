@@ -27,6 +27,19 @@ export interface Message {
   image_height: number | null
   seq: number
   send_time: string
+  /** 卡片的修订号（好友消息.md:254）：WS message_updated 只接受更大的 rev（:821） */
+  rev?: number
+}
+
+/** POST /api/messages/interact 的请求体（messages/好友消息.md:498-511） */
+export interface CardInteractRequest {
+  message_uuid: string
+  /** 不透明动作标识，1-64 字符 */
+  action_id: string
+  /** 不透明业务值，原样透传给发卡 bot */
+  value: unknown
+  /** 幂等键，≤ 128 字符 */
+  nonce: string
 }
 
 export interface SendMessageRequest {
@@ -456,6 +469,26 @@ export const messagesApi = {
    * POST /api/messages/recall
    * 请求体: { message_uuid }
    */
+  /**
+   * 卡片交互回调（messages/好友消息.md:486-525）：只有卡片接收方本人、且卡片由 bot 发出才行，否则 404。
+   * 响应文档写的是裸 `{ delivered }`；别的端点已陆续信封化，两种都认（同 APP client.ts 的 `raw.data ?? raw`）。
+   * delivered=false 只是命中重复 nonce（60 秒内同一组合只中继一次），仍算成功。
+   */
+  interact: async (request: CardInteractRequest): Promise<{ delivered: boolean }> => {
+    const response = await fetchWithAuth(`${MESSAGES_BASE_URL}/interact`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+    const raw: unknown = await response.json().catch(() => null)
+    const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+    if (!response.ok || record.success === false) {
+      const message = typeof record.error === 'string' ? record.error : typeof record.message === 'string' ? record.message : ''
+      throw new Error(message || `卡片交互失败 (${response.status})`)
+    }
+    const body = record.data && typeof record.data === 'object' ? (record.data as Record<string, unknown>) : record
+    return { delivered: body.delivered === true }
+  },
+
   recallMessage: async (messageUuid: string): Promise<{ success: boolean; message: string }> => {
     console.log('↩️ 撤回消息:', messageUuid)
     const response = await fetchWithAuth(`${MESSAGES_BASE_URL}/recall`, {

@@ -81,6 +81,25 @@ function findFriendMessage(userId: string, messageUuid: string): { conv: FriendC
   return badRequest('消息不存在')
 }
 
+/**
+ * 卡片交互（backend-docs messages/好友消息.md:486-525）：只有卡片**接收方本人**能交互，否则 404；
+ * 同一 (message_uuid, action_id, nonce) 只中继一次，重复返回 delivered=false。
+ * 真后端还要求卡片由 bot 发出——假世界的 bot 不在聊天关系里，这一条不模拟。
+ */
+export function interactWithCard(userId: string, messageUuid: string, actionId: string, value: unknown, nonce: string | null): boolean {
+  let card: ChatMessageRec | undefined
+  for (const conv of W().convs.values()) {
+    if (!conv.users.includes(userId)) continue
+    card = conv.messages.find((m) => m.message_uuid === messageUuid)
+    if (card) break
+  }
+  if (card?.type !== 'card' || card.sender_id === userId) notFound('消息不存在')
+  const world = W()
+  if (nonce !== null && world.interactions.some((i) => i.message_uuid === messageUuid && i.action_id === actionId && i.nonce === nonce)) return false
+  world.interactions.push({ message_uuid: messageUuid, action_id: actionId, value, nonce, user_id: userId })
+  return true
+}
+
 export function recallFriendMessage(userId: string, messageUuid: string, opts: { ignoreWindow?: boolean } = {}): ChatMessageRec {
   const { conv, message } = findFriendMessage(userId, messageUuid)
   if (message.sender_id !== userId) forbidden('只能撤回自己发送的消息')

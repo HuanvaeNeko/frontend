@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { messagePreviewText } from '@/features/chat/lib/messagePreview'
 import { useWSStore, type WSNewMessage, type WSMessageRecalled, type WSSystemNotification } from '@/store/wsStore'
 import { useChatStore, type UnreadSummary } from '../store/chatStore'
 import { useFriendsStore } from '../store/friendsStore'
@@ -97,7 +98,7 @@ export function useRealtimeMessages() {
     const currentUser = useAuthStore.getState().user
 
     // 生成消息预览文本
-    const previewText = getMessagePreviewText(data.message_type, data.content)
+    const previewText = messagePreviewText(data.message_type, data.content)
 
     // 检查是否是活跃聊天
     const isActiveChat = store.activeChat &&
@@ -167,6 +168,21 @@ export function useRealtimeMessages() {
         : m
     )
     store.setMessages(updatedMessages)
+  }, [])
+
+  // =============================================
+  // 卡片改版（bot patch-card）：WS message_updated 带整份新内容与 rev，只接受更大的 rev
+  // （backend-docs messages/好友消息.md:790-821）；乱序到达的旧版本不能把卡片改回去
+  // =============================================
+  const handleMessageUpdated = useCallback((data: { message_uuid: string; content: string; message_type: string; rev: number }) => {
+    const store = useChatStore.getState()
+    let changed = false
+    const next = store.messages.map((m) => {
+      if (m.message_uuid !== data.message_uuid || (m.rev ?? 0) >= data.rev) return m
+      changed = true
+      return { ...m, message_content: data.content, message_type: data.message_type as typeof m.message_type, rev: data.rev }
+    })
+    if (changed) store.setMessages(next)
   }, [])
 
   // =============================================
@@ -283,6 +299,7 @@ export function useRealtimeMessages() {
     unsubscribers.push(registerHandler<{ unread_summary: UnreadSummary }>('connected', handleConnected))
     unsubscribers.push(registerHandler<Omit<WSNewMessage, 'type'>>('new_message', handleNewMessage))
     unsubscribers.push(registerHandler<Omit<WSMessageRecalled, 'type'>>('message_recalled', handleMessageRecalled))
+    unsubscribers.push(registerHandler<{ message_uuid: string; content: string; message_type: string; rev: number }>('message_updated', handleMessageUpdated))
     unsubscribers.push(registerHandler<Omit<WSSystemNotification, 'type'>>('system_notification', handleSystemNotification))
     unsubscribers.push(registerHandler<{
       user_id: string
@@ -299,6 +316,7 @@ export function useRealtimeMessages() {
     handleConnected,
     handleNewMessage,
     handleMessageRecalled,
+    handleMessageUpdated,
     handleSystemNotification,
     handleTyping,
   ])
@@ -310,15 +328,6 @@ export function useRealtimeMessages() {
 // 辅助函数
 // =============================================
 
-function getMessagePreviewText(messageType: string, content: string): string {
-  switch (messageType) {
-    case 'text': return content.length > 50 ? content.slice(0, 50) + '...' : content
-    case 'image': return '[图片]'
-    case 'video': return '[视频]'
-    case 'file': return '[文件]'
-    default: return content
-  }
-}
 
 /**
  * 发送正在输入状态

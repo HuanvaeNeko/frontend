@@ -1,5 +1,5 @@
-import { deleteFriendMessage, deleteGroupMessage, recallFriendMessage, recallGroupMessage, type SendInput, sendFriendMessage, sendGroupMessage } from '../actions'
-import { badRequest, forbidden, ok, okResult, type Route, readJson, requireString, route } from '../http'
+import { deleteFriendMessage, deleteGroupMessage, interactWithCard, recallFriendMessage, recallGroupMessage, type SendInput, sendFriendMessage, sendGroupMessage } from '../actions'
+import { badRequest, forbidden, json, ok, okResult, type Route, readJson, requireString, route } from '../http'
 import { convIdOf, fileFields } from '../model'
 import { activeGroup, areFriends, friendMessageDto, groupMessageDto, visibleTo, W } from '../state'
 import type { ChatMessageRec, FileRef, MessageType } from '../types'
@@ -74,6 +74,13 @@ export const messageRoutes: Route[] = [
   route('POST', '/api/messages/recall', (ctx) => {
     recallFriendMessage(ctx.me.user_id, requireString(readJson(ctx), 'message_uuid'))
     return okResult('消息撤回成功')
+  }),
+
+  // 卡片交互：文档里的响应是裸的 { delivered }（好友消息.md:514-517）
+  route('POST', '/api/messages/interact', (ctx) => {
+    const body = readJson(ctx)
+    const delivered = interactWithCard(ctx.me.user_id, requireString(body, 'message_uuid'), requireString(body, 'action_id'), body.value ?? null, typeof body.nonce === 'string' ? body.nonce : null)
+    return json({ delivered })
   }),
 
   route('POST', '/api/messages/sync', (ctx) => {

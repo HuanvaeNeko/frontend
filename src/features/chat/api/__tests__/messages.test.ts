@@ -380,3 +380,35 @@ describe('buildFriendConversationId', () => {
       .toEqual(['alice', 'HuanWei'])
   })
 })
+
+describe('messagesApi.interact（backend-docs messages/好友消息.md:486-525）', () => {
+  const REQ = { message_uuid: 'm-card', action_id: 'refresh', value: { value: 2 }, nonce: 'n-1' }
+
+  it('POST /api/messages/interact，请求体原样四个字段；文档里的裸 { delivered } 响应', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ delivered: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(messagesApi.interact(REQ)).resolves.toEqual({ delivered: true })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toMatch(/\/api\/messages\/interact$/)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual(REQ)
+  })
+
+  it('信封化的 { success, data: { delivered } } 也认', async () => {
+    // delivered 必须是 true：不认信封的实现读不到它、会得到 false，这条才测得出来
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, code: 200, data: { delivered: true } }), { status: 200 })))
+    await expect(messagesApi.interact(REQ)).resolves.toEqual({ delivered: true })
+  })
+
+  it('delivered=false（60 秒内重复的 nonce，幂等跳过）仍算成功，不抛', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ delivered: false }), { status: 200 })))
+    await expect(messagesApi.interact(REQ)).resolves.toEqual({ delivered: false })
+  })
+
+  it('404（不是本人收到的 bot 卡片）/ 429 限流：抛出后端原文', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: '消息不存在' }), { status: 404 })))
+    await expect(messagesApi.interact(REQ)).rejects.toThrow('消息不存在')
+  })
+})

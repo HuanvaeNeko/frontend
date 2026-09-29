@@ -91,6 +91,7 @@ class Builder {
       users: new Map(),
       friendships: new Map(),
       remarks: new Map(),
+      interactions: [],
       blacklist: new Map(),
       specialCare: new Map(),
       friendRequests: [],

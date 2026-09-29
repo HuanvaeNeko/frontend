@@ -292,6 +292,8 @@ const zhCN = {
       webrtcHint: '请在右侧创建或加入视频房间',
       webrtcHintMobile: '请点击创建或加入视频房间',
     },
+    preview: { image: '[图片]', video: '[视频]', file: '[文件]', card: '[卡片]', meetingInvite: '[会议邀请]', groupCard: '[群名片]' },
+    card: { invalid: '[无法解析的卡片]', unsupported: '[不支持的组件]', richCard: '[富交互卡片]', chartEmpty: '[图表: 暂无数据]', chart: '图表', confirm: '确认{label}？', running: '执行中…', done: '✓ 已执行', failed: '✗ 失败', actionFailed: '操作失败', truncated: '（已截断）', selectPlaceholder: '请选择' },
     window: {
       error: '错误',
       loadFailed: '加载消息失败',
@@ -326,7 +328,6 @@ const zhCN = {
       groupCardJoined: '已加入群聊',
       groupCardApplyFailed: '申请失败',
       groupCardClosed: '群主已关闭推荐加群',
-      cardMessage: '[卡片消息] 请在客户端中查看',
       deleteFailedTitle: '删除失败',
       deleteFailedDesc: '删除消息失败',
       messageRecalled: '消息已撤回',
@@ -910,6 +911,8 @@ const enUS = {
       webrtcHint: 'Create or join a room on the right panel',
       webrtcHintMobile: 'Tap to create or join a video room',
     },
+    preview: { image: '[Image]', video: '[Video]', file: '[File]', card: '[Card]', meetingInvite: '[Meeting invite]', groupCard: '[Group card]' },
+    card: { invalid: '[Unreadable card]', unsupported: '[Unsupported component]', richCard: '[Interactive card]', chartEmpty: '[Chart: no data]', chart: 'Chart', confirm: 'Confirm {label}?', running: 'Working…', done: '✓ Done', failed: '✗ Failed', actionFailed: 'Action failed', truncated: '(truncated)', selectPlaceholder: 'Select…' },
     window: {
       error: 'Error',
       loadFailed: 'Failed to load messages',
@@ -944,7 +947,6 @@ const enUS = {
       groupCardJoined: 'Joined the group',
       groupCardApplyFailed: 'Request failed',
       groupCardClosed: 'The owner has closed joining via shared cards',
-      cardMessage: '[Card message] Open it in the desktop/mobile app',
       deleteFailedTitle: 'Delete failed',
       deleteFailedDesc: 'Failed to delete message',
       messageRecalled: 'Message recalled',

@@ -17,6 +17,7 @@ import { useProfileStore } from '@/features/profile/store/profileStore'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { cn } from '@/lib/utils'
 import { FileMessageContent } from './FileMessageContent'
+import { CardMessage } from './card/CardMessage'
 import { GroupCardMessage, MeetingInviteCard } from './SpecialMessageContent'
 
 interface MessageItemProps {
@@ -119,7 +120,7 @@ export const MessageItem = memo(({
       case 'group_card':
         return <GroupCardMessage content={message.message_content} isOwn={isOwn} />
       case 'card':
-        return <p className="text-sm opacity-80">{t('chat.window.cardMessage')}</p>
+        return <CardMessage messageUuid={message.message_uuid} content={message.message_content} />
       default:
         return <p className="text-sm opacity-70">[{t('chat.window.unsupportedMessageType')}]</p>
     }

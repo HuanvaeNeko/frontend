@@ -248,6 +248,8 @@ export interface World {
   friendships: Map<string, FriendshipRec>
   /** owner → friend → 备注 */
   remarks: Map<string, Map<string, string>>
+  /** 卡片交互（POST /api/messages/interact）的中继记录，供 /__test/state 断言 */
+  interactions: { message_uuid: string; action_id: string; value: unknown; nonce: string | null; user_id: string }[]
   /** owner → target → 拉黑时间 */
   blacklist: Map<string, Map<string, string>>
   /** owner → target → 特别关心时间 */

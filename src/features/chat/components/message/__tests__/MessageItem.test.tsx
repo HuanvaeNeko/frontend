@@ -114,9 +114,10 @@ describe('MessageItem：文档里的其它消息类型', () => {
     expect(await screen.findByRole('link', { name: '进入群聊' })).toHaveAttribute('href', '/app/chat/g-g-photo')
   })
 
-  it('card：给可读的占位，而不是「不支持」', () => {
-    renderItem(msg('card', JSON.stringify({ type: 'root', children: [] })))
-    expect(screen.getByText(/卡片消息/)).toBeInTheDocument()
-    expect(screen.queryByText(/不支持/)).toBeNull()
+  it('card：真的把卡片渲染出来（标题 + 节点），不是一句「卡片消息」占位', () => {
+    renderItem(msg('card', JSON.stringify({ version: 1, nodes: [{ type: 'heading', text: '今日天气' }, { type: 'stat', label: '杭州', value: '26°C' }] })))
+    expect(screen.getByRole('heading', { name: '今日天气' })).toBeInTheDocument()
+    expect(screen.getByText('26°C')).toBeInTheDocument()
+    expect(screen.queryByText(/卡片消息|不支持/)).toBeNull()
   })
 })
