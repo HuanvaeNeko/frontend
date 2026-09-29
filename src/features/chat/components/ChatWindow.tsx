@@ -60,6 +60,11 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<MarkdownEditorRef>(null)
+  // 每次（重新）加载会话历史都换一个号，切会话也会换号。响应回来时号已不是最新
+  // ——期间切过会话——就整页丢弃：线上 TTFB 1–2 s，快速点两个会话，前一个的历史
+  // 晚到会写进后一个的窗口（标题是 B、消息是 A）。
+  const loadSeqRef = useRef(0)
+  const convKey = selectedConversation ? `${selectedConversation.type}:${selectedConversation.id}` : null
 
   // =============================================
   // Effects
@@ -67,15 +72,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
 
   // Load messages when conversation changes
   useEffect(() => {
+    // 先清掉上一个会话的消息：新会话加载期间显示加载态，而不是挂着别人的聊天记录
+    setMessages([])
     if (!selectedConversation) {
-      setMessages([])
+      loadSeqRef.current++
       setActiveChat(null, null)
       return
     }
     setActiveChat(selectedConversation.type, selectedConversation.id)
     loadMessages()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation?.id]) // Optimized dependency
+  }, [convKey])
 
   // Scroll to bottom on new messages
   useEffect(() => { 
@@ -87,44 +94,43 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   // =============================================
 
   const loadMessages = async () => {
-    if (!selectedConversation || loading) return
+    if (!selectedConversation) return
+    // 不再用 `loading` 早退：它可能是**上一个会话**还在途的那次加载，挡掉的是当前会话
+    const seq = ++loadSeqRef.current
     setLoading(true)
     try {
-      if (selectedConversation.type === 'friend') {
-        const response = await messagesApi.getMessages(selectedConversation.id, undefined, 50)
-        setMessages(response.messages)
-        setHasMore(response.has_more)
-      } else if (selectedConversation.type === 'group') {
-        const response = await groupMessagesApi.getMessages(selectedConversation.id, undefined, 50)
-        setMessages(response.messages as unknown as Message[])
-        setHasMore(response.has_more)
-      }
+      const response = selectedConversation.type === 'friend'
+        ? await messagesApi.getMessages(selectedConversation.id, undefined, 50)
+        : await groupMessagesApi.getMessages(selectedConversation.id, undefined, 50)
+      if (seq !== loadSeqRef.current) return
+      setMessages(response.messages as unknown as Message[])
+      setHasMore(response.has_more)
     } catch (error) {
+      if (seq !== loadSeqRef.current) return
       console.error('Failed to load messages:', error)
       toast({ title: t('chat.window.error'), description: t('chat.window.loadFailed'), variant: 'destructive' })
-    } finally { 
-      setLoading(false) 
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }
 
   const loadMoreMessages = useCallback(async () => {
     if (!selectedConversation || loading || !hasMore || messages.length === 0) return
+    // 翻页不换号：期间若切了会话，号会被新会话的加载换掉，这一页随之作废
+    const seq = loadSeqRef.current
     setLoading(true)
     try {
       const oldestTime = messages[0].send_time
-      if (selectedConversation.type === 'friend') {
-        const response = await messagesApi.getMessages(selectedConversation.id, oldestTime, 50)
-        prependMessages(response.messages)
-        setHasMore(response.has_more)
-      } else if (selectedConversation.type === 'group') {
-        const response = await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
-        prependMessages(response.messages as unknown as Message[])
-        setHasMore(response.has_more)
-      }
-    } catch (error) { 
-      console.error('Failed to load more messages:', error) 
-    } finally { 
-      setLoading(false) 
+      const response = selectedConversation.type === 'friend'
+        ? await messagesApi.getMessages(selectedConversation.id, oldestTime, 50)
+        : await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
+      if (seq !== loadSeqRef.current) return
+      prependMessages(response.messages as unknown as Message[])
+      setHasMore(response.has_more)
+    } catch (error) {
+      console.error('Failed to load more messages:', error)
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [selectedConversation, loading, hasMore, messages, prependMessages])
 
