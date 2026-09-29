@@ -140,8 +140,11 @@ export const ChatInput = memo(({
             ref={editorRef} 
             placeholder={t('chat.window.inputPlaceholder')} 
             onSubmit={onSendMessage} 
-            onChange={() => setEditorHasContent(!(editorRef.current?.isEmpty() ?? true))} 
-            disabled={sending} 
+            // 用编辑器传来的新值判断：ref 上的 isEmpty() 此刻还是上一次渲染的旧值，
+            // 读它会让按钮状态慢一拍（只打一个字按钮是灰的，删空后反而亮着）
+            onChange={(value) => setEditorHasContent(value.trim().length > 0)}
+            // 发送中不禁用输入框：禁用会让浏览器把焦点移出，发完每条消息都得重新点一下
+            // 输入框才能继续打字。重复回车由 handleSendMessage 的 sending 判断挡住。
             className="bg-transparent border-none focus:ring-0 px-0 min-h-[24px] max-h-[150px] text-sm sm:text-base" 
             minHeight="24px" 
             maxHeight="150px" 

@@ -158,6 +158,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     
     const content = markdownContent.trim()
     editorRef.current?.clear()
+    // 点发送按钮时焦点在按钮上：还给输入框，接着打下一条
+    editorRef.current?.focus()
     setSending(true)
     
     try {
@@ -218,7 +220,10 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
       )
     } catch (error) {
       console.error('Failed to send message:', error)
-      toast({ 
+      // 发送前已清空输入框：失败了把原文放回去，别让用户重打。
+      // 若这期间用户已经开始打下一条，就不覆盖他正在打的内容。
+      if (editorRef.current?.isEmpty()) editorRef.current.insertText(content)
+      toast({
         title: t('chat.window.sendFailedTitle'), 
         description: error instanceof Error ? error.message : t('chat.window.sendFailedDesc'), 
         variant: 'destructive' 
