@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { profileApi } from '@/features/profile/api/profile'
@@ -46,7 +46,7 @@ describe('ProfileView', () => {
   it('显示备注名、@id、签名、地区；发消息链接到 /app/chat/f-alice', async () => {
     renderView()
     expect(await screen.findByText('早睡早起')).toBeInTheDocument()
-    expect(screen.getByText('小爱')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '小爱' })).toBeInTheDocument()
     expect(screen.getByText('@alice')).toBeInTheDocument()
     expect(screen.getByText('杭州')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发消息' })).toHaveAttribute('href', '/app/chat/f-alice')
@@ -81,7 +81,7 @@ describe('ProfileView', () => {
     vi.spyOn(profileApi, 'getPublicProfile').mockRejectedValue(new Error('boom'))
     renderView()
     expect(await screen.findByText(/资料加载失败/)).toBeInTheDocument()
-    expect(screen.getByText('小爱')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '小爱' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发消息' })).toBeInTheDocument()
   })
 
@@ -111,5 +111,38 @@ describe('ProfileView', () => {
     vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
     screen.getByRole('button', { name: '拉黑' }).click()
     expect(await screen.findByText(/操作失败/)).toHaveTextContent('boom')
+  })
+
+  it('备注：显示当前备注；「修改备注」就地编辑（≤30 字），保存调 setRemark，标题换成新备注（同 APP OtherProfilePanel）', async () => {
+    const setRemark = vi.fn(async (_id: string, remark: string) => {
+      useFriendsStore.setState((s) => ({ friends: s.friends.map((f) => (f.friend_id === 'alice' ? { ...f, friend_remark: remark.trim() || null } : f)) }))
+    })
+    useFriendsStore.setState({ setRemark })
+    renderView()
+    await screen.findByText('早睡早起')
+
+    fireEvent.click(screen.getByRole('button', { name: '修改备注' }))
+    const input = screen.getByRole('textbox', { name: '备注' })
+    expect(input).toHaveValue('小爱')
+    expect(input).toHaveAttribute('maxLength', '30')
+    fireEvent.change(input, { target: { value: '爱丽丝同学' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(setRemark).toHaveBeenCalledWith('alice', '爱丽丝同学'))
+    expect(await screen.findByRole('heading', { name: '爱丽丝同学' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '备注' })).toBeNull()
+  })
+
+  it('没有备注时按钮叫「设置备注」；保存失败原地提示、输入框保留方便重试', async () => {
+    useFriendsStore.setState((s) => ({ friends: s.friends.map((f) => ({ ...f, friend_remark: null })), setRemark: vi.fn(async () => { throw new Error('备注最长 30 个字符') }) }))
+    renderView()
+    await screen.findByText('早睡早起')
+
+    fireEvent.click(screen.getByRole('button', { name: '设置备注' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '备注' }), { target: { value: '小爱' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('备注最长 30 个字符')
+    expect(screen.getByRole('textbox', { name: '备注' })).toHaveValue('小爱')
   })
 })

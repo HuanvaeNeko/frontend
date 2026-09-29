@@ -121,6 +121,14 @@ const ACTIONS = [
     run: () => useFriendsStore.getState().removeBlacklist('u2'),
     writesSharedError: false,
   },
+  {
+    action: 'setRemark',
+    endpoint: 'POST /api/friends/remark',
+    stub: (error: Error) => vi.spyOn(friendsApi, 'setRemark').mockRejectedValue(error),
+    run: () => useFriendsStore.getState().setRemark('u2', '小二'),
+    // ProfileView 就地显示保存失败，不读 store.error
+    writesSharedError: false,
+  },
 ] as const
 
 beforeEach(() => {
@@ -318,6 +326,7 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
     { action: 'loadBlacklist', defer: 'getBlacklist', landed: [ALICE_BLACKLISTED] },
     { action: 'addBlacklist', defer: 'addBlacklist', landed: undefined },
     { action: 'removeBlacklist', defer: 'removeBlacklist', landed: undefined },
+    { action: 'setRemark', defer: 'setRemark', landed: undefined },
   ] as const
 
   const runOf = (action: (typeof CROSS_ACTIONS)[number]['action']): Promise<void> => {
@@ -343,6 +352,8 @@ describe('friendsStore 跨会话边界：上一场会话的响应落在下一场
         return store.addBlacklist('u2')
       case 'removeBlacklist':
         return store.removeBlacklist('u2')
+      case 'setRemark':
+        return store.setRemark('u2', '小二')
     }
   }
 
@@ -572,5 +583,31 @@ describe('friendsStore 黑名单：成功后翻转 friends[].is_blacklisted 并�
     useAuthStore.getState().clearAuth()
     expect(useFriendsStore.getState().blacklist).toEqual([])
     expect(useFriendsStore.getState().blacklistLoaded).toBe(false)
+  })
+})
+
+describe('friendsStore.setRemark：成功后就地改 friends[].friend_remark，不重拉', () => {
+  const FRIEND = { friend_id: 'u1', friend_nickname: '张三', friend_avatar_url: null, add_time: '2026-01-01T00:00:00Z', approve_reason: null, friend_remark: null, is_blacklisted: false, is_special_care: false }
+
+  it('去掉首尾空白再发、再存；列表不重拉', async () => {
+    useFriendsStore.setState({ friends: [FRIEND] })
+    const api = vi.spyOn(friendsApi, 'setRemark').mockResolvedValue(undefined)
+    const reload = vi.spyOn(friendsApi, 'getFriendsList')
+
+    await useFriendsStore.getState().setRemark('u1', '  小张  ')
+
+    expect(api).toHaveBeenCalledWith('u1', '小张')
+    expect(useFriendsStore.getState().friends[0].friend_remark).toBe('小张')
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('空白 = 清除：发空串，本地存 null（与 GET /api/friends 未设置时的 null 一致）', async () => {
+    useFriendsStore.setState({ friends: [{ ...FRIEND, friend_remark: '小张' }] })
+    const api = vi.spyOn(friendsApi, 'setRemark').mockResolvedValue(undefined)
+
+    await useFriendsStore.getState().setRemark('u1', '   ')
+
+    expect(api).toHaveBeenCalledWith('u1', '')
+    expect(useFriendsStore.getState().friends[0].friend_remark).toBeNull()
   })
 })

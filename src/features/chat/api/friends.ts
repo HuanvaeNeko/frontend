@@ -307,6 +307,26 @@ export const friendsApi = {
     })
   },
 
+  /**
+   * 设置 / 清除好友备注（friends/好友添加删除.md:124-135）
+   * POST /api/friends/remark，请求体 { user_id, friend_user_id, remark }：空串 = 清除；
+   * 最长 30 字符（按字符计），超限或不是好友 400。成功是 HTTP 200 **空响应体**（handler 返回 `()`，
+   * 不包信封）——assertEnvelopeOk 对空体只看状态码。
+   */
+  setRemark: async (friendUserId: string, remark: string): Promise<void> => {
+    const userId = useAuthStore.getState().user?.user_id
+    if (!userId) {
+      throw new Error('用户未登录')
+    }
+
+    const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/remark`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, friend_user_id: friendUserId, remark }),
+    })
+
+    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/remark', fallbackMessage: '设置备注失败' })
+  },
+
   /** GET /api/friends/blacklist */
   getBlacklist: async (): Promise<BlacklistedUser[]> => {
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist`, { method: 'GET' })

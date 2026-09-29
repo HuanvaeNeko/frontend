@@ -291,3 +291,27 @@ describe('friendsApi 黑名单三接口（backend-docs friends/好友添加删�
     await expect(friendsApi.addBlacklist('me')).rejects.toThrow(/不能拉黑自己/)
   })
 })
+
+describe('friendsApi.setRemark（backend-docs friends/好友添加删除.md:124-135）', () => {
+  it('POST /api/friends/remark，请求体 { user_id, friend_user_id, remark }；成功是 200 空响应体，不当成形状错误', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }))
+
+    await friendsApi.setRemark('carol', '卡卡')
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${FRIENDS_BASE}/remark`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ user_id: 'me', friend_user_id: 'carol', remark: '卡卡' })
+  })
+
+  it('空串 = 清除备注：原样发空串（后端没有 DELETE）', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 200 }))
+    await friendsApi.setRemark('carol', '')
+    expect(JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string)).toMatchObject({ remark: '' })
+  })
+
+  it('400（超过 30 字 / 不是好友）抛出后端原文', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ error: '好友关系不存在' }, 400))
+    await expect(friendsApi.setRemark('stranger', '路人')).rejects.toThrow('好友关系不存在')
+  })
+})

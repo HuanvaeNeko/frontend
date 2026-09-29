@@ -45,6 +45,8 @@ interface FriendsState {
   /** 成功后翻转 friends[].is_blacklisted 并本地补一条，不重拉（spec §5） */
   addBlacklist: (userId: string) => Promise<void>
   removeBlacklist: (userId: string) => Promise<void>
+  /** 设置 / 清除备注（去首尾空白；空 = 清除，本地存 null） */
+  setRemark: (userId: string, remark: string) => Promise<void>
 }
 
 /**
@@ -328,6 +330,21 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
       if (!stillMine()) throw error
       // 不写共享的 `error`，理由同 loadBlacklist 上方注释。
       handleApiError(error, '拉黑失败')
+      throw error
+    }
+  },
+
+  setRemark: async (userId: string, remark: string) => {
+    const stillMine = pinSession()
+    const value = remark.trim()
+    try {
+      await friendsApi.setRemark(userId, value)
+      if (!stillMine()) return
+      set({ friends: get().friends.map((f) => (f.friend_id === userId ? { ...f, friend_remark: value || null } : f)) })
+    } catch (error) {
+      if (!stillMine()) throw error
+      // 不写共享的 `error`：ProfileView 就地显示保存失败
+      handleApiError(error, '设置备注失败')
       throw error
     }
   },
