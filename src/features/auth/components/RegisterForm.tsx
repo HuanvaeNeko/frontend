@@ -61,16 +61,17 @@ export default function Register() {
 
   // Form Schema
   const registerSchema = z.object({
-    user_id: z.string().min(3, t('auth.register.userIdPlaceholder')),
-    nickname: z.string().min(1, t('auth.register.nicknamePlaceholder')),
-    email: z.string().email(t('auth.register.emailPlaceholder')),
+    // 报错要说哪里错了——原来直接复用占位符 key，昵称为空报「显示名称」、邮箱为空报「your@email.com」
+    user_id: z.string().trim().min(3, t('auth.register.errUserId')),
+    nickname: z.string().trim().min(1, t('auth.register.errNickname')),
+    email: z.string().email(t('auth.register.errEmail')),
     password: z.string()
-      .min(8, t('auth.register.passwordPlaceholder'))
-      .regex(/[a-zA-Z]/, t('common.passwordRuleLetter'))
-      .regex(/[0-9]/, t('common.passwordRuleNumber')),
+      .min(8, t('auth.register.errPasswordLength'))
+      .regex(/[a-zA-Z]/, t('auth.register.errPasswordLetter'))
+      .regex(/[0-9]/, t('auth.register.errPasswordNumber')),
     confirmPassword: z.string(),
     agreeTerms: z.boolean().refine(val => val === true, {
-      message: t('auth.register.agreeTerms'),
+      message: t('auth.register.errAgreeTerms'),
     }),
   }).refine((data) => data.password === data.confirmPassword, {
     message: t('common.passwordNotMatch'),
@@ -111,7 +112,7 @@ export default function Register() {
       playSuccess()
       router.push(DEFAULT_AUTHENTICATED_ROUTE)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Register failed, please try again later')
+      setError(err instanceof Error ? err.message : t('auth.register.failed'))
       playError()
     } finally {
       setLoading(false)
