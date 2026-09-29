@@ -66,6 +66,11 @@ export interface AuthState {
    * 只是"这一次问不到 BFF"；`null` = 没有待处理的错误。
    */
   error: string | null
+  /**
+   * 这次登出是本人点的「退出登录」（不是会话在别处失效）。`ProtectedRoute` 据此跳一个
+   * **不带 `next`** 的登录页——否则下次登录又被送回刚才点退出的那一页。读一次即清。
+   */
+  signedOutByUser: boolean
 }
 
 export interface AuthStore extends AuthState {
@@ -80,4 +85,6 @@ export interface AuthStore extends AuthState {
    */
   restoreSession: () => Promise<void>
   clearAuth: () => void
+  /** 取出并清掉 {@link AuthState.signedOutByUser}（只给 `ProtectedRoute` 的跳转用一次） */
+  consumeSignedOutByUser: () => boolean
 }

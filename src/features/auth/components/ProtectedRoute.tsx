@@ -92,8 +92,11 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (hasBeenRestoringRef.current && !isRestoring && !isAuthenticated && !error) {
       // 登录后回到原来要去的页面（spec §3 / §6.4：授权页链接会被未登录用户点开）。
       // 默认页本身不带 next——LoginForm 没有 next 时本来就去 DEFAULT_AUTHENTICATED_ROUTE。
+      // 本人点「退出登录」：去登录页就好，不带 next——否则下次登录又被送回刚才的设置页。
+      // getState() 读、不订阅：读完即清，不会因为清掉它再触发一次这个 effect。
+      const signedOutByUser = useAuthStore.getState().consumeSignedOutByUser()
       const current = `${location.pathname}${location.search}`
-      const target = current === DEFAULT_AUTHENTICATED_ROUTE
+      const target = signedOutByUser || current === DEFAULT_AUTHENTICATED_ROUTE
         ? DEFAULT_UNAUTHENTICATED_ROUTE
         : `${DEFAULT_UNAUTHENTICATED_ROUTE}?next=${encodeURIComponent(current)}`
       router.replace(target)

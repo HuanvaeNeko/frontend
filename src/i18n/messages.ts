@@ -26,6 +26,7 @@ const zhCN = {
       yesterday: '昨天', weekdays: '周日,周一,周二,周三,周四,周五,周六', pinned: '已置顶',
     },
     nav: { chat: '消息', contacts: '联系人', more: '更多功能', settings: '设置', profile: '个人资料', theme: '切换明暗', meeting: '视频会议', files: '我的文件', bots: '机器人', miniapps: '小程序', ai: 'AI 助手', backToList: '返回列表', dragHint: '拖到侧栏可钉住', allPinned: '已全部钉到侧栏', dragBackHint: '从侧栏拖回此处可收纳' },
+    logoutConfirm: { title: '退出登录？', description: '退出后需要重新输入账号和密码才能登录。', confirm: '退出登录', cancel: '取消' },
     empty: { title: '欢迎使用 Huanvae Chat', chat: '选择一个会话开始聊天', contacts: '选择一个联系人查看资料' },
     contacts: { friends: '好友', groups: '群', requests: '申请', search: '搜索联系人', noFriends: '还没有好友', noGroups: '还没有加入任何群', noMatch: '没有匹配的联系人', closePanel: '收起', message: '发消息', removeFriend: '删除好友', confirmRemove: '确定删除这位好友？', removeFailed: '删除好友失败', notFriend: '不是你的好友', loadFailed: '资料加载失败', signature: '签名', region: '地区', memberSince: '成为好友', memberCount: '{n} 人', roleOwner: '群主', roleAdmin: '管理员', roleMember: '成员', incomingRequests: '收到的好友申请', sentRequests: '我发出的好友申请', block: '拉黑', unblock: '取消拉黑', confirmBlock: '拉黑后你们互相收不到对方的消息，好友关系保留。确定拉黑？', blockFailed: '操作失败' },
     settings: {
@@ -648,6 +649,7 @@ const enUS = {
       yesterday: 'Yesterday', weekdays: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat', pinned: 'Pinned',
     },
     nav: { chat: 'Chats', contacts: 'Contacts', more: 'More', settings: 'Settings', profile: 'Profile', theme: 'Toggle theme', meeting: 'Meetings', files: 'My files', bots: 'Bots', miniapps: 'Mini apps', ai: 'AI assistant', backToList: 'Back to list', dragHint: 'Drag to the sidebar to pin', allPinned: 'Everything is pinned', dragBackHint: 'Drag back here to unpin' },
+    logoutConfirm: { title: 'Log out?', description: "You'll need your user ID and password to sign in again.", confirm: 'Log out', cancel: 'Cancel' },
     empty: { title: 'Welcome to Huanvae Chat', chat: 'Pick a conversation to start chatting', contacts: 'Pick a contact to see their profile' },
     contacts: { friends: 'Friends', groups: 'Groups', requests: 'Requests', search: 'Search contacts', noFriends: 'No friends yet', noGroups: 'No groups yet', noMatch: 'No matching contacts', closePanel: 'Close', message: 'Message', removeFriend: 'Remove friend', confirmRemove: 'Remove this friend?', removeFailed: 'Failed to remove friend', notFriend: 'Not your friend', loadFailed: 'Failed to load profile', signature: 'Signature', region: 'Region', memberSince: 'Friends since', memberCount: '{n} members', roleOwner: 'Owner', roleAdmin: 'Admin', roleMember: 'Member', incomingRequests: 'Friend requests received', sentRequests: 'Friend requests sent', block: 'Block', unblock: 'Unblock', confirmBlock: 'Blocked users cannot message each other; friendship is kept. Block this user?', blockFailed: 'Action failed' },
     settings: {

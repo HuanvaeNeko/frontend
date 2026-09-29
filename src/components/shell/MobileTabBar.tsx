@@ -1,7 +1,8 @@
-import { MessageCircle, MoreHorizontal, Settings, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { LogOut, MessageCircle, MoreHorizontal, Settings, UserRound, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink } from 'react-router'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { LogoutConfirmDialog } from '@/features/auth/components/LogoutConfirmDialog'
 import { formatUnreadCount } from '@/features/chat/lib/formatUnreadCount'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
@@ -41,6 +42,7 @@ export function MobileTabBar({ activeTab }: { activeTab: 'chat' | 'contacts' | '
   const totalUnread = useChatStore((s) => s.totalUnreadCount)
   const pendingCount = useFriendsStore((s) => s.pendingRequests.length)
   const [open, setOpen] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const close = () => setOpen(false)
   return (
     <nav data-testid="mobile-tab-bar" className="glass-surface flex h-[60px] shrink-0 items-stretch justify-around border-t border-[var(--glass-border)] pb-[env(safe-area-inset-bottom)]">
@@ -61,9 +63,12 @@ export function MobileTabBar({ activeTab }: { activeTab: 'chat' | 'contacts' | '
             <div className="my-1 border-t border-[var(--border-subtle)]" />
             <NavLink to={ROUTES.app.profile} onClick={close} className={row}><UserRound /><span>{t('shell.nav.profile')}</span></NavLink>
             <NavLink to={ROUTES.app.settings} onClick={close} className={row}><Settings /><span>{t('shell.nav.settings')}</span></NavLink>
+            {/* APP 手机抽屉底部的「退出登录」；确认框挂在 Popover 外面，菜单收起时不被一起卸载 */}
+            <button type="button" onClick={() => { close(); setConfirmLogout(true) }} className={cn(row, 'text-destructive [&>svg]:text-destructive')}><LogOut /><span>{t('shell.settings.logout')}</span></button>
           </div>
         </PopoverContent>
       </Popover>
+      <LogoutConfirmDialog open={confirmLogout} onOpenChange={setConfirmLogout} />
     </nav>
   )
 }

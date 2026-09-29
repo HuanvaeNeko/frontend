@@ -2,7 +2,7 @@ import { DndContext, DragOverlay, MeasuringStrategy, PointerSensor, pointerWithi
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { AnimatePresence } from 'framer-motion'
-import { MessageCircle, Moon, MoreHorizontal, Settings, Sun, Users } from 'lucide-react'
+import { LogOut, MessageCircle, Moon, MoreHorizontal, Settings, Sun, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, NavLink } from 'react-router'
@@ -11,6 +11,7 @@ import { formatUnreadCount } from '@/features/chat/lib/formatUnreadCount'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
 import { useProfileStore } from '@/features/profile/store/profileStore'
+import { LogoutConfirmDialog } from '@/features/auth/components/LogoutConfirmDialog'
 import { useSettingsStore } from '@/features/settings/store/settingsStore'
 import { useI18n } from '@/i18n/I18nProvider'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
@@ -104,6 +105,7 @@ export function Sidebar({ activeTab }: SidebarProps) {
   const [activeKey, setActiveKey] = useState<SidebarToolKey | null>(null)
   const snapshotRef = useRef<SidebarLayout | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement>(null)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
   // 仅 PointerSensor、6px 才算拖：点击不触发拖拽，链接照常导航。不加键盘 sensor（APP 同款理由）
@@ -226,8 +228,13 @@ export function Sidebar({ activeTab }: SidebarProps) {
           <button type="button" title={t('shell.nav.theme')} aria-label={t('shell.nav.theme')} className={navBtn} onClick={() => setSetting('theme', isDark ? 'light' : 'dark')}>
             {isDark ? <Sun /> : <Moon />}
           </button>
+          {/* APP .nav-btn.logout：侧栏最底下。原来网页端只在「设置 → 账户与安全」最底部 */}
+          <button type="button" title={t('shell.settings.logout')} aria-label={t('shell.settings.logout')} className={cn(navBtn, 'hover:text-destructive')} onClick={() => setConfirmLogout(true)}>
+            <LogOut />
+          </button>
         </div>
       </aside>
+      <LogoutConfirmDialog open={confirmLogout} onOpenChange={setConfirmLogout} />
 
       {/* 面板与拖拽幽灵卡都 portal 到 body：不被 aside 的 overflow 裁切；SSR 没有 document，挂载后再渲染 */}
       {mounted && createPortal(

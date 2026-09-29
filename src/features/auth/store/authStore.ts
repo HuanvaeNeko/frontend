@@ -142,6 +142,7 @@ export const useAuthStore = create<AuthStore>()(
       isAuthenticated: false,
       isRestoring: false,
       error: null,
+      signedOutByUser: false,
 
       login: async (credentials: LoginRequest) => {
         // 打的是**同源** BFF，不是后端。BFF 会 Set-Cookie，浏览器手里从此
@@ -178,6 +179,7 @@ export const useAuthStore = create<AuthStore>()(
           user: { ...data.user, avatar_url: toAbsoluteApiUrl(data.user.avatar_url) },
           isAuthenticated: true,
           error: null,
+          signedOutByUser: false,
         })
       },
 
@@ -201,6 +203,7 @@ export const useAuthStore = create<AuthStore>()(
         } catch {
           // BFF 不可达不能阻止本地登出：用户点了登出就该登出
         }
+        set({ signedOutByUser: true })
         get().clearAuth()
       },
 
@@ -324,6 +327,12 @@ export const useAuthStore = create<AuthStore>()(
       clearAuth: () => {
         set({ user: null, isAuthenticated: false, error: null })
         endSession()
+      },
+
+      consumeSignedOutByUser: () => {
+        const value = get().signedOutByUser
+        if (value) set({ signedOutByUser: false })
+        return value
       },
     }),
     {
