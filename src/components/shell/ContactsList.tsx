@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { NavLink, useParams, useSearchParams } from 'react-router'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CreateGroupDialog } from '@/features/chat/components/sidebar/CreateGroupDialog'
+import { AddFriendDialog } from '@/features/chat/components/sidebar/AddFriendDialog'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import { friendDisplayName } from '@/features/chat/lib/friendName'
@@ -85,12 +86,15 @@ export function ContactsList() {
   const addPanel = add === 'create-group' ? (
     // 建群只是一个对话框（终审 finding #4）：不渲染 GroupList 主列表，关闭即清 add 参数
     <CreateGroupDialog open onClose={closeAdd} />
+  ) : add === 'friend' ? (
+    // 加好友同理只是一个对话框。原来渲染 FriendList 的 'new' 子面板——那只是「待处理的申请」，
+    // 没有输入框，新壳里因此根本没有入口能加好友
+    <AddFriendDialog open onClose={closeAdd} />
   ) : add && (
     <div className="mb-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
       <div className="mb-1 flex justify-end">
         <button type="button" aria-label={t('shell.contacts.closePanel')} onClick={closeAdd} className="rounded-md p-1 text-muted-foreground hover:bg-[var(--primary-subtle)]"><X className="h-4 w-4" /></button>
       </div>
-      {add === 'friend' && <FriendList subTab="new" searchQuery="" />}
       {add === 'join-group' && <GroupList subTab="join" searchQuery="" />}
     </div>
   )

@@ -15,6 +15,13 @@ vi.mock('@/features/chat/components/sidebar/GroupList', () => ({
 }))
 // 建群（?add=create-group）只渲染这一个对话框（终审 finding #4），不再是 GroupList
 // 的一个 dialogOnly 变体——单独探针，断言 open 与 onClose 是否接到 closeAdd。
+// 加好友（?add=friend）同理：只渲染「添加好友」对话框。原来渲染的是 FriendList 的 'new'
+// 子面板——那只是「待处理的申请」，没有输入框，新壳里因此根本加不了好友。
+vi.mock('@/features/chat/components/sidebar/AddFriendDialog', () => ({
+  AddFriendDialog: (p: { open: boolean; onClose: () => void }) => (
+    <div data-testid="add-friend-dialog" data-open={String(p.open)}><button type="button" onClick={p.onClose}>close-add-friend</button></div>
+  ),
+}))
 vi.mock('@/features/chat/components/sidebar/CreateGroupDialog', () => ({
   CreateGroupDialog: (p: { open: boolean; onClose: () => void }) => (
     <div data-testid="create-group-dialog" data-open={String(p.open)}><button type="button" onClick={p.onClose}>close-dialog</button></div>
@@ -115,9 +122,13 @@ describe('ContactsList', () => {
     expect(screen.getByTestId('group-list')).toHaveAttribute('data-subtab', 'invites')
   })
 
-  it('?add=friend / join-group / create-group 各自渲染对应旧面板', () => {
+  it('?add=friend / join-group / create-group 各自渲染对应面板', () => {
     renderAt('/app/contacts?add=friend')
-    expect(screen.getByTestId('friend-list')).toHaveAttribute('data-subtab', 'new')
+    expect(screen.getByTestId('add-friend-dialog')).toHaveAttribute('data-open', 'true')
+    // 不再是「待处理申请」那个没有输入框的旧面板
+    expect(screen.queryByTestId('friend-list')).toBeNull()
+    fireEvent.click(screen.getByText('close-add-friend'))
+    expect(testRouter?.state.location.search).toBe('')
     renderAt('/app/contacts?tab=groups&add=join-group')
     expect(screen.getAllByTestId('group-list').at(-1)).toHaveAttribute('data-subtab', 'join')
     renderAt('/app/contacts?tab=groups&add=create-group')
