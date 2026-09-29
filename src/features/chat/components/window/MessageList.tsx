@@ -1,12 +1,13 @@
 'use client'
 
-import { memo } from 'react'
+import { Fragment, memo } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageItem } from '../message/MessageItem'
 import { TypingIndicator } from './TypingIndicator'
 import { useI18n } from '@/i18n/I18nProvider'
+import { formatDayDivider, isSameLocalDay } from '@/features/chat/lib/dayDivider'
 import type { Message } from '@/features/chat/api/messages'
 import type { Conversation, TypingStatus } from '@/features/chat/store/chatStore'
 import type { User } from '@/features/auth/types/auth'
@@ -48,7 +49,7 @@ export const MessageList = memo(({
   messagesContainerRef,
   messagesEndRef
 }: MessageListProps) => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
 
   if (loading && messages.length === 0) {
     return (
@@ -69,7 +70,7 @@ export const MessageList = memo(({
   return (
     <div 
       ref={messagesContainerRef} 
-      className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4" 
+      className="flex-1 min-h-0 overflow-y-auto p-6 space-y-3" 
       onScroll={onScroll}
     >
       {hasMore && (
@@ -93,21 +94,34 @@ export const MessageList = memo(({
       )}
 
       <AnimatePresence initial={false}>
-        {messages.map((message) => {
+        {messages.map((message, index) => {
           const canRecall = user?.user_id === message.sender_id && canRecallMessage(message.send_time)
-          
+          // 气泡里只有 HH:mm：每天的第一条前插一条日期分隔，否则分不清是今天还是去年
+          const prev = messages[index - 1]
+          const dayLabel = !prev || !isSameLocalDay(prev.send_time, message.send_time)
+            ? formatDayDivider(message.send_time, new Date(), locale)
+            : ''
+
           return (
-            <MessageItem
-              key={message.message_uuid}
-              message={message}
-              selectedConversationType={conversation.type}
-              onCopy={onCopy}
-              onDelete={onDelete}
-              onRecall={onRecall}
-              onDownload={onDownload}
-              onPreview={onPreview}
-              canRecall={canRecall}
-            />
+            <Fragment key={message.message_uuid}>
+              {dayLabel && (
+                <div role="separator" aria-label={dayLabel} className="flex justify-center py-1">
+                  <span className="rounded-full bg-muted/70 px-3 py-0.5 text-[11px] text-muted-foreground">{dayLabel}</span>
+                </div>
+              )}
+              <MessageItem
+                message={message}
+                selectedConversationType={conversation.type}
+                peerName={conversation.type === 'friend' ? conversation.name : undefined}
+                peerAvatarUrl={conversation.type === 'friend' ? conversation.avatar : undefined}
+                onCopy={onCopy}
+                onDelete={onDelete}
+                onRecall={onRecall}
+                onDownload={onDownload}
+                onPreview={onPreview}
+                canRecall={canRecall}
+              />
+            </Fragment>
           )
         })}
       </AnimatePresence>

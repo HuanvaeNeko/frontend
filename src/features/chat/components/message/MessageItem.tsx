@@ -13,6 +13,8 @@ import { useI18n } from '@/i18n/I18nProvider'
 import type { Message } from '@/features/chat/api/messages'
 import type { GroupMessage } from '@/features/chat/api/groupMessages'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { useProfileStore } from '@/features/profile/store/profileStore'
+import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { cn } from '@/lib/utils'
 import { FileMessageContent } from './FileMessageContent'
 
@@ -25,6 +27,9 @@ interface MessageItemProps {
   onDownload: (message: Message) => void
   onPreview: (message: Message) => void
   canRecall: boolean
+  /** 好友会话里对方的名字与头像（群消息用消息自带的 sender_*，自己的用资料） */
+  peerName?: string
+  peerAvatarUrl?: string
 }
 
 export const MessageItem = memo(({ 
@@ -35,14 +40,23 @@ export const MessageItem = memo(({
   onRecall, 
   onDownload, 
   onPreview,
-  canRecall
+  canRecall,
+  peerName,
+  peerAvatarUrl,
 }: MessageItemProps) => {
   const { t } = useI18n()
   const { user } = useAuthStore()
+  const selfAvatarUrl = useProfileStore((s) => s.profile?.user_avatar_url)
   
   const isOwn = message.sender_id === user?.user_id
   const groupMessage = selectedConversationType === 'group' ? (message as unknown as GroupMessage) : null
   const isRecalled = (message as Message & { is_recalled?: boolean }).is_recalled
+  // 头像：自己用资料头像；群消息用发送者；好友会话用对方（原来好友消息一律显示「U」）。
+  // 相对地址必须转成绝对地址——在 /app/chat/g-xxx 下，相对的 avatars/... 会被解析成
+  // /app/chat/avatars/...，永远 404。
+  const avatarSrc = toAbsoluteApiUrl(isOwn ? (selfAvatarUrl || user?.avatar_url) : groupMessage ? groupMessage.sender_avatar_url : peerAvatarUrl)
+  const avatarName = isOwn ? user?.nickname : groupMessage ? groupMessage.sender_nickname : peerName
+  const avatarInitial = (avatarName?.trim()?.[0] || 'U').toUpperCase()
 
   const renderContent = () => {
     switch (message.message_type) {
@@ -104,7 +118,8 @@ export const MessageItem = memo(({
 
   return (
     <motion.div 
-      className={cn("flex gap-3 group relative mb-4", isOwn ? "flex-row-reverse" : "flex-row")}
+      data-message-uuid={message.message_uuid}
+      className={cn("flex gap-3 group relative", isOwn ? "flex-row-reverse" : "flex-row")}
       initial={{ opacity: 0, y: 10, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
@@ -114,16 +129,12 @@ export const MessageItem = memo(({
         "h-8 w-8 md:h-9 md:w-9 shrink-0 mt-auto mb-1 ring-2 ring-background shadow-sm transition-transform hover:scale-105", 
         isOwn ? "order-1" : "order-none"
       )}>
-        {groupMessage && <AvatarImage src={groupMessage.sender_avatar_url} />}
+        {avatarSrc && <AvatarImage src={avatarSrc} />}
         <AvatarFallback className={cn(
           "text-[10px] md:text-xs font-bold",
-          groupMessage ? "bg-orange-100 text-orange-600" : (isOwn ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")
+          groupMessage && !isOwn ? "bg-orange-100 text-orange-600" : (isOwn ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")
         )}>
-          {groupMessage 
-            ? (groupMessage.sender_nickname?.[0] || 'U').toUpperCase() 
-            : isOwn 
-              ? user?.nickname?.[0]?.toUpperCase() || 'U' 
-              : 'U'}
+          {avatarInitial}
         </AvatarFallback>
       </Avatar>
       
