@@ -74,17 +74,29 @@ test.describe('BFF 会话层', () => {
       .poll(async () => (await context.cookies()).some((c) => c.name === 'hv_session' && c.value !== ''))
       .toBe(true)
 
-    const framePromise = page.waitForEvent('websocket').then((ws) => {
-      expect(ws.url()).toContain('/ws') // 同源，浏览器侧
-      expect(ws.url()).not.toContain('token') // 浏览器从没发过 token
-      return ws.waitForEvent('framereceived')
+    // 监听**所有** WS，并在 websocket 事件回调里同步挂 framereceived。原来是
+    // waitForEvent('websocket').then(ws => ws.waitForEvent('framereceived'))，约 1/20 超时：
+    // 登录成功后 LoginForm 自己会 router.push('/app/chat')，SPA 里的聊天页先建一条 WS，
+    // waitForEvent 可能抓到的是这一条；紧接着 page.goto 重载页面把它掐掉，它收不到 hello、
+    // 也不一定报 close，于是一直等到超时。在 .then 里才挂帧监听，本身也留着一个窗口。
+    const socketUrls: string[] = []
+    const firstFrame = new Promise<string>((resolve) => {
+      page.on('websocket', (ws) => {
+        socketUrls.push(ws.url())
+        ws.on('framereceived', (frame) => resolve(String(frame.payload)))
+      })
     })
     await page.goto('/app/chat')
-    const frame = await framePromise
     // 假后端 open() 回的 {"type":"hello","from":"fake-backend"} —— 只有握手
     // 带上了 ?token=（否则假后端在 /ws 直接回 400）才可能收到这一帧。这一帧
     // 同时是正对照：收到它就证明上游 server.upgrade 真的发生过。
-    expect(frame.payload.toString()).toContain('fake-backend')
+    expect(await firstFrame).toContain('fake-backend')
+    // 浏览器侧的每一条 WS 都是同源 /ws，URL 里从没带过 token
+    expect(socketUrls.length).toBeGreaterThan(0)
+    for (const url of socketUrls) {
+      expect(url).toContain('/ws')
+      expect(url).not.toContain('token')
+    }
   })
 
   test('未登录访问受保护页面 → 跳登录页', async ({ page }) => {
