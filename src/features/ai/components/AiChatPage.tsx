@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { aiChatApi } from '@/features/ai/api/aiChat'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,6 +45,8 @@ export default function AiChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // 后端按会话保存上下文：第一句不带、之后都带上它返回的 conversation_id；清空聊天即新会话
+  const conversationIdRef = useRef<string | null>(null)
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -64,9 +67,24 @@ export default function AiChat() {
   }
 
   const sendToAI = async (userMessage: string): Promise<string> => {
-    const apiUrl = apiConfigStore.useCustomApi ? apiConfigStore.aiApiUrl : `${apiConfigStore.aiApiUrl}`
-
     abortControllerRef.current = new AbortController()
+
+    // 默认：后端 AI 助手 POST /api/ai/chat（原来打的是不存在的 /api/chat，还在信封顶层找 reply）
+    if (!apiConfigStore.useCustomApi) {
+      try {
+        const result = await aiChatApi.send(userMessage, conversationIdRef.current, abortControllerRef.current.signal)
+        conversationIdRef.current = result.conversation_id
+        return result.reply
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('请求已取消', { cause: err })
+        }
+        throw err
+      }
+    }
+
+    // 自定义 API：用户自备的第三方地址，形状未知，沿用宽松解析
+    const apiUrl = apiConfigStore.aiApiUrl
 
     try {
       const headers: Record<string, string> = {
@@ -160,6 +178,7 @@ export default function AiChat() {
           timestamp: Date.now(),
         },
       ])
+      conversationIdRef.current = null
       setError(null)
     }
   }
@@ -199,23 +218,24 @@ export default function AiChat() {
         <Card className="flex h-full flex-col overflow-hidden border-border/80">
           <CardHeader className="space-y-3 border-b pb-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted text-primary">
+              {/* 窄屏：标题区可收缩、文字不换行；右侧按钮只留图标（原来三个带字按钮把标题挤成竖排、设置按钮溢出屏幕） */}
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-muted text-primary">
                   <Bot className="h-5 w-5" />
                 </div>
-                <div>
-                  <CardTitle className="text-lg">AI 聊天助手</CardTitle>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="min-w-0">
+                  <CardTitle className="truncate text-lg">AI 聊天助手</CardTitle>
+                  <div className="mt-1 flex items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
                     <Badge variant="secondary" className="h-5 px-2">在线</Badge>
-                    <span>上下文对话模式</span>
+                    <span className="truncate">上下文对话模式</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={exportChat} className="gap-1.5"><Download className="h-4 w-4" />导出</Button>
-                <Button variant="outline" size="sm" onClick={clearChat} className="gap-1.5"><Trash className="h-4 w-4" />清空</Button>
-                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5"><Settings className="h-4 w-4" />设置</Button>
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <Button variant="outline" size="sm" onClick={exportChat} className="gap-1.5" aria-label="导出" title="导出"><Download className="h-4 w-4" /><span className="hidden sm:inline">导出</span></Button>
+                <Button variant="outline" size="sm" onClick={clearChat} className="gap-1.5" aria-label="清空" title="清空"><Trash className="h-4 w-4" /><span className="hidden sm:inline">清空</span></Button>
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="gap-1.5" aria-label="设置" title="设置"><Settings className="h-4 w-4" /><span className="hidden sm:inline">设置</span></Button>
               </div>
             </div>
           </CardHeader>
