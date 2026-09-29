@@ -8,7 +8,10 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 
+import { FormErrorSlot } from '@/features/auth/components/FormErrorSlot'
+import { useRedirectIfAuthenticated } from '@/features/auth/hooks/useRedirectIfAuthenticated'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -52,6 +55,9 @@ export default function Register() {
   const router = useRouter()
   const { t } = useI18n()
   const register = useAuthStore((state) => state.register)
+  const login = useAuthStore((state) => state.login)
+  const { toast } = useToast()
+  useRedirectIfAuthenticated()
 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -109,11 +115,22 @@ export default function Register() {
         email: values.email,
         password: values.password
       })
-      playSuccess()
-      router.push(DEFAULT_AUTHENTICATED_ROUTE)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.register.failed'))
       playError()
+      setLoading(false)
+      return
+    }
+
+    playSuccess()
+    // 注册接口不建会话。原来直接 push 到 /app/chat，被守卫弹回一个空白登录页，看不出注册成没成；
+    // 与 APP 一样（App.tsx handleRegister）用刚填的账号密码直接登录。
+    try {
+      await login({ user_id: values.user_id, password: values.password })
+      router.push(DEFAULT_AUTHENTICATED_ROUTE)
+    } catch {
+      toast({ title: t('auth.register.successPleaseLogin') })
+      router.push(ROUTES.auth.login)
     } finally {
       setLoading(false)
     }
@@ -132,8 +149,6 @@ export default function Register() {
               <CardDescription>{t('auth.register.description')}</CardDescription>
             </CardHeader>
             <CardContent>
-              {error && <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
-
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
@@ -252,9 +267,12 @@ export default function Register() {
                     )}
                   />
 
-                  <Button type="submit" disabled={loading} className="w-full gap-1.5">
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.register.submit')}<ArrowRight className="h-4 w-4" /></>}
-                  </Button>
+                  <div className="space-y-2">
+                    <FormErrorSlot message={error} />
+                    <Button type="submit" disabled={loading} className="w-full gap-1.5">
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{t('auth.register.submit')}<ArrowRight className="h-4 w-4" /></>}
+                    </Button>
+                  </div>
                 </form>
               </Form>
 

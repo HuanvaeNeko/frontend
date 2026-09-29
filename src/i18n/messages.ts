@@ -120,6 +120,7 @@ const zhCN = {
       errPasswordNumber: '密码需要包含数字',
       errAgreeTerms: '请先阅读并同意服务条款和隐私政策',
       failed: '注册失败，请稍后再试',
+      successPleaseLogin: '注册成功，请登录',
     },
   },
   home: {
@@ -740,6 +741,7 @@ const enUS = {
       errPasswordNumber: 'Password must contain a number',
       errAgreeTerms: 'Please read and accept the Terms and Privacy Policy',
       failed: 'Registration failed, please try again later',
+      successPleaseLogin: 'Account created. Please sign in.',
     },
   },
   home: {

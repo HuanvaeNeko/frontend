@@ -219,3 +219,23 @@ test('手机上输入区不溢出、不占掉大半屏', async ({ page, context 
   expect(r.overflowing).toBe(0)
   expect(r.height).toBeLessThanOrEqual(120)
 })
+
+test('登录失败出现报错时，登录卡片不跳：标题和输入框都停在原位', async ({ page }) => {
+  // 原来报错条插在表单最上面，卡片变高、整页重新垂直居中——标题上窜、输入框下沉
+  await page.goto('/app/login')
+  const title = page.getByText('登录账户', { exact: true })
+  const userId = page.getByLabel(/^用户\s*ID$/)
+  await expect(userId).toBeVisible()
+  const titleY = (await title.boundingBox())?.y
+  const inputY = (await userId.boundingBox())?.y
+  expect(titleY).toBeDefined()
+
+  await userId.fill('alice')
+  await page.getByLabel(/^密码$/).fill('wrong-password')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  // 正对照：报错确实出现了（否则「没动」是因为什么都没发生）
+  await expect(page.getByText('用户名或密码错误')).toBeVisible()
+
+  expect((await title.boundingBox())?.y).toBeCloseTo(titleY as number, 0)
+  expect((await userId.boundingBox())?.y).toBeCloseTo(inputY as number, 0)
+})
