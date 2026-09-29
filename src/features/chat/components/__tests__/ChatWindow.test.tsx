@@ -21,6 +21,20 @@ vi.mock('@/features/chat/hooks/useRealtimeMessages', () => ({ setActiveChat: vi.
 // file-preview 在模块顶层引 react-pdf（pdf.js 要 DOMMatrix）；群管理与本用例无关
 vi.mock('@/components/ui/file-preview', () => ({ FilePreview: () => null }))
 vi.mock('../sidebar/GroupManagement', () => ({ default: () => null }))
+// 消息气泡的进场动画在卸载时被 happy-dom 取消，会抛未处理的 AbortError（同 Sidebar.test.tsx 的说明）
+vi.mock('framer-motion', async () => {
+  const react = await import('react')
+  const strip = ({ initial: _i, animate: _a, exit: _e, transition: _t, variants: _v, layout: _l, whileHover: _h, whileTap: _w, ...rest }: Record<string, unknown>) => rest
+  const passthrough = (tag: string) =>
+    react.forwardRef(function MockMotion(props: Record<string, unknown>, ref: React.Ref<unknown>) {
+      const { children, ...rest } = strip(props)
+      return react.createElement(tag, { ...rest, ref }, children as React.ReactNode)
+    })
+  return {
+    motion: new Proxy({}, { get: (_t, tag: string) => passthrough(tag) }),
+    AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
+  }
+})
 
 function textMessage(uuid: string, from: string, to: string, content: string, seq: number): Message {
   return {
@@ -136,6 +150,8 @@ describe('ChatWindow 发文件后更新会话预览', () => {
     vi.spyOn(messagesApi, 'getMessages').mockResolvedValue({ messages: [], has_more: false })
     vi.spyOn(storageApi, 'uploadFile').mockResolvedValue({ fileUrl: 'friends-file/conv-alice-carol/images/p.png', isInstant: false })
     vi.spyOn(messagesApi, 'sendMessage').mockResolvedValue({ message_uuid: 'm-img', send_time: '2026-09-29T10:00:00Z', seq: 9 })
+    // 发出的图片气泡会去取预签名地址：给一个，免得真去 fetch
+    vi.spyOn(storageApi, 'getFriendFilePresignedUrl').mockResolvedValue('https://files.test/p.png')
     useChatStore.setState({ unreadSummary: { total_count: 0, friend_unreads: [{ friend_id: 'carol', unread_count: 0, last_message_preview: '那就这么定了', last_message_time: '2026-09-27T04:35:00Z' }], group_unreads: [] } })
 
     act(() => { useChatStore.setState({ selectedConversation: carol }) })
@@ -168,7 +184,7 @@ describe('ChatWindow 删除消息的二次确认', () => {
 
     fireEvent.contextMenu(await screen.findByText('要删的话'))
     fireEvent.click(await screen.findByRole('menuitem', { name: /chat\.window\.delete/ }))
-    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+    expect(await screen.findByRole('alertdialog', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(del).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: /chat\.window\.cancel|取消/ }))

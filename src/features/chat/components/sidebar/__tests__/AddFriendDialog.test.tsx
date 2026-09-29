@@ -51,8 +51,8 @@ describe('AddFriendDialog', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
     const call = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/api/friends/requests') && (init as RequestInit)?.method === 'POST')
-    expect(call).toBeTruthy()
-    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toMatchObject({ target_user_id: 'grace', reason: '桌游局见过' })
+    if (!call) throw new Error('没有发出 POST /api/friends/requests')
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toMatchObject({ target_user_id: 'grace', reason: '桌游局见过' })
   })
 
   it('没填 ID 不发请求、不关闭', async () => {
