@@ -68,7 +68,7 @@ export const ChatInput = memo(({
 
   return (
     <div 
-      className="p-4 shrink-0 border-t border-border/40 bg-card/80 backdrop-blur-md pb-[max(1.5rem,env(safe-area-inset-bottom))]" 
+      className="p-2 sm:p-4 shrink-0 border-t border-border/40 bg-card/80 backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]" 
       onPaste={onPaste}
     >
       <AnimatePresence>
@@ -116,7 +116,7 @@ export const ChatInput = memo(({
         )}
       </AnimatePresence>
 
-      <div className="flex items-end gap-3 bg-muted/30 p-2 rounded-[24px] border border-border/40 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/30 transition-all shadow-sm">
+      <div className="flex items-end gap-1.5 sm:gap-3 bg-muted/30 p-1.5 sm:p-2 rounded-[24px] border border-border/40 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/30 transition-all shadow-sm">
         <input 
           ref={fileInputRef} 
           type="file" 

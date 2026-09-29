@@ -248,9 +248,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
 
   return (
     <div className={`markdown-editor ${className}`}>
-      {/* 工具栏 */}
+      {/* 工具栏：窄屏隐藏——手机上 11 个按钮会溢出编辑框，整块输入区占掉近三成屏幕；
+          Markdown 语法照样能直接打，快捷键也还在 */}
       <div 
-        className="flex items-center gap-0.5 border-b bg-muted/40 px-2 py-1.5"
+        className="hidden items-center gap-0.5 border-b bg-muted/40 px-2 py-1.5 md:flex"
       >
         <ToolbarButton onClick={insertBold} disabled={disabled} title="粗体 **text** (Ctrl+B)">
           <Bold className="h-4 w-4" />
