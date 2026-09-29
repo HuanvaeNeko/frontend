@@ -9,6 +9,8 @@ export default [
   route('api/auth/register', 'routes/api.auth.register.ts'),
   route('api/auth/logout', 'routes/api.auth.logout.ts'),
   route('api/session', 'routes/api.session.ts'),
+  // 视频会议「加入房间」无需登录（后端唯一一个），访客拿着会议链接进来不能被 api/* 的会话校验挡掉
+  route('api/webrtc/rooms/:roomId/join', 'routes/api.webrtc.join.ts'),
   route('api/*', 'routes/api.$.ts'),
   // 四条透传前缀指向同一个模块，必须各给一个 id：RR 用 (file, id) 唯一标识路由，
   // 同一文件注册多次不给 id 会报重复定义。
@@ -46,9 +48,10 @@ export default [
       route('app/miniapps', 'routes/shell/miniapps.tsx'),
       route('app/ai-chat', 'routes/shell/ai-chat.tsx'),
     ]),
-    route('app/video-meeting', 'routes/video-meeting.tsx'),
     route('app/oauth/authorize', 'routes/oauth-authorize.tsx'),
   ]),
+  // 会议页不在登录守卫后面：后端「加入房间」无需登录，访客拿着会议链接可以直接进（先填显示名称）
+  route('app/video-meeting', 'routes/video-meeting.tsx'),
   // 旧 URL 重定向（spec §3）。同一模块注册五次必须各给 id（同 passthrough 的理由）
   route('app/friends', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-friends' }),
   route('app/groups', 'routes/shell/legacy-redirect.tsx', { id: 'legacy-groups' }),

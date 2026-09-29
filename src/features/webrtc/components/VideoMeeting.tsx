@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { webrtcApi, type ICEServer, type WSMessage, type Participant } from '@/features/webrtc/api/webrtc'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { useI18n } from '@/i18n/I18nProvider'
+import { GuestJoinLobby } from './GuestJoinLobby'
 import { toAbsoluteApiUrl, toApiRelativePath } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 import { MOBILE_INTERACTIONS } from '@/lib/mobileInteractions'
@@ -104,6 +106,7 @@ function parseMediaError(err: unknown, type: 'camera' | 'microphone'): MediaErro
 // =============================================
 
 export default function VideoMeeting() {
+  const { t } = useI18n()
   const router = useRouter()
   const searchParams = useSearchParams()
   const params = useParams<{ roomId?: string }>()
@@ -112,8 +115,12 @@ export default function VideoMeeting() {
   
   const roomId = urlRoomId || searchParams.get('room') || ''
   const password = searchParams.get('pwd') || ''
-  const displayName = searchParams.get('name') || user?.nickname || '访客'
+  const nameParam = searchParams.get('name')
   const urlToken = searchParams.get('token') || ''
+  // 没登录、链接里也没带 name 的访客：先在 GuestJoinLobby 填一个显示名称再入会
+  const [guestName, setGuestName] = useState<string | null>(null)
+  const needsGuestName = !nameParam && !user && !urlToken && guestName === null
+  const displayName = nameParam || user?.nickname || guestName || '访客'
   
   // UI 状态
   const [isConnected, setIsConnected] = useState(false)
@@ -186,11 +193,12 @@ export default function VideoMeeting() {
       setIsConnecting(false)
       return
     }
+    if (needsGuestName) return
     setAvailableResolutions(getAvailableResolutions())
     initMeeting()
     return () => cleanup()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId])
+  }, [roomId, needsGuestName])
 
   // Controls Visibility Logic (ahooks)
   const { run: hideControls } = useDebounceFn(
@@ -838,7 +846,10 @@ export default function VideoMeeting() {
   const leaveMeeting = () => { cleanup(); router.push(ROUTES.app.meeting) }
 
   const copyShareLink = () => {
-    copyText(`${window.location.origin}/video-meeting?room=${roomId}&pwd=${password}`)
+    // 原来拼的是 /video-meeting（少了 /app），别人点开是 404；访客拿着这条链接可以免登录进会
+    const query = new URLSearchParams({ room: roomId })
+    if (password) query.set('pwd', password)
+    copyText(`${window.location.origin}${ROUTES.app.videoMeeting}?${query.toString()}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -874,6 +885,10 @@ export default function VideoMeeting() {
   // =============================================
   // 错误页面
   // =============================================
+
+  if (roomId && needsGuestName) {
+    return <GuestJoinLobby roomId={roomId} onJoin={setGuestName} />
+  }
 
   if (error) {
     return (
@@ -960,6 +975,7 @@ export default function VideoMeeting() {
                 {formatDuration(meetingDuration)}
               </div>
               <button type="button" onClick={(e) => { e.stopPropagation(); copyShareLink() }}
+                aria-label={t('chat.webrtc.copyInviteLink')} title={t('chat.webrtc.copyInviteLink')}
                 className="p-2 rounded-full bg-black/20 backdrop-blur-md text-white/90 hover:bg-black/40 transition-colors">
                 {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
               </button>

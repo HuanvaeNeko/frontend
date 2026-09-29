@@ -239,3 +239,32 @@ test('登录失败出现报错时，登录卡片不跳：标题和输入框都�
   expect((await title.boundingBox())?.y).toBeCloseTo(titleY as number, 0)
   expect((await userId.boundingBox())?.y).toBeCloseTo(inputY as number, 0)
 })
+
+test('访客（没登录）拿着会议链接能进会：先填名字，加入请求穿过 BFF 以访客身份到达后端，信令连上', async ({ browser, page }) => {
+  // 建房要登录：alice 在另一个上下文里建一间
+  const host = await browser.newContext()
+  await loginAs(host, 'alice')
+  const created = await host.request.post('/api/webrtc/rooms', { data: { name: '周会' } })
+  expect(created.ok(), '建房失败').toBeTruthy()
+  const { room_id: roomId, password } = (await created.json()).data as { room_id: string; password: string }
+  await host.close()
+
+  // 访客：同一个浏览器里没有任何会话 cookie
+  const joined = new Promise<string>((resolve) => {
+    page.on('websocket', (ws) => {
+      if (ws.url().includes('/ws/webrtc/rooms/')) ws.on('framereceived', (frame) => resolve(String(frame.payload)))
+    })
+  })
+  await page.goto(`/app/video-meeting?room=${roomId}&pwd=${password}`)
+
+  // 原来：会议页在登录守卫后面，访客直接被送去 /app/login
+  await expect(page).toHaveURL(/\/app\/video-meeting/)
+  await page.getByLabel('你的名字').fill('路人甲')
+  const joinResponse = page.waitForResponse((r) => r.url().includes(`/api/webrtc/rooms/${roomId}/join`))
+  await page.getByRole('button', { name: '加入会议' }).click()
+
+  const response = await joinResponse
+  expect(response.status()).toBe(200)
+  expect((await response.json()).data.user_info).toMatchObject({ nickname: '路人甲', is_authenticated: false })
+  expect(await joined).toContain('"type":"joined"')
+})
