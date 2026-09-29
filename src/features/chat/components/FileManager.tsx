@@ -403,7 +403,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
              {uploading && (
                 <div className="max-w-xs mx-auto mb-6 space-y-2">
                   <div className="flex justify-between text-xs font-medium">
-                    <span>Uploading...</span>
+                    <span>{t('chat.fileManager.uploading')}</span>
                     <span>{uploadProgress}%</span>
                   </div>
                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden">

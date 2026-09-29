@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ChatHeader } from '../ChatHeader'
 
@@ -52,5 +52,11 @@ describe('ChatHeader 的 hideMobileHeader 断点', () => {
     const header = container.firstElementChild as HTMLElement
     expect(header.className).not.toContain('hidden')
     expect(header.className).not.toContain('lg:flex')
+  })
+
+  it('好友在线时显示「在线」，不是写死的英文 Online', () => {
+    render(<ChatHeader conversation={mockConversation} onGroupManage={() => {}} />)
+    expect(screen.getByText('在线')).toBeInTheDocument()
+    expect(screen.queryByText('Online')).toBeNull()
   })
 })

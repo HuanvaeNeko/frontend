@@ -1,3 +1,5 @@
+/** 全部发布（历史版本）。下载页原来写的是 huanvae/Huanvae-Chat-App/releases，那个仓库不存在（404） */
+export const RELEASES_URL = 'https://github.com/huanwei520/Huanvae-Chat-App/releases'
 export const RELEASE_PAGE_URL = 'https://github.com/huanwei520/Huanvae-Chat-App/releases/latest'
 export const RELEASE_API_URL = 'https://api.github.com/repos/huanwei520/Huanvae-Chat-App/releases/latest'
 export const PROXY_PREFIX_URL = 'https://ghproxy.com/'

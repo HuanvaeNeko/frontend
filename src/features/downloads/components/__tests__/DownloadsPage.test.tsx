@@ -60,7 +60,20 @@ describe('DownloadsPage', () => {
     // 前置：发布信息确实渲染出来了（否则「没有英文」只是因为什么都没渲染）
     await screen.findByText('v1.1.52')
     const text = document.body.textContent ?? ''
-    expect(text).not.toMatch(/Recommended|Latest Release|Released on/)
+    expect(text).not.toMatch(/Recommended|Latest Release|Released on|Looking for older versions|View release history/)
     expect(screen.queryByText(/^Download$/)).toBeNull()
+  })
+
+  it('「在 GitHub 查看历史版本」指向真实的发布仓库（原来是 huanvae/Huanvae-Chat-App，404）', async () => {
+    renderWithRelease('v1.1.52')
+    await screen.findByText('v1.1.52')
+    expect(screen.getByRole('link', { name: '在 GitHub 查看历史版本' })).toHaveAttribute('href', 'https://github.com/huanwei520/Huanvae-Chat-App/releases')
+  })
+
+  it('还在取版本信息时显示中文的加载提示，不是写死的英文', () => {
+    vi.spyOn(appInstall, 'fetchReleaseInfo').mockReturnValue(new Promise(() => {}))
+    render(<DownloadsPage />)
+    expect(screen.getByText('正在获取最新版本…')).toBeInTheDocument()
+    expect(screen.queryByText(/Fetching latest release/)).toBeNull()
   })
 })

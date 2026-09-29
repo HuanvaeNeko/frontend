@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Download, Globe, Laptop, Smartphone, Monitor, HardDrive, Package, Calendar, Info, ArrowLeft } from 'lucide-react'
-import { fetchReleaseInfo, type GitHubRelease, PROXY_PREFIX_URL } from '@/lib/appInstall'
+import { fetchReleaseInfo, type GitHubRelease, PROXY_PREFIX_URL, RELEASES_URL } from '@/lib/appInstall'
 import { useI18n } from '@/i18n/I18nProvider'
 import { ROUTES } from '@/lib/routes'
 import { useRouter } from '@/lib/navigation'
@@ -213,7 +213,7 @@ export default function DownloadsPage() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-4">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-500 border-t-transparent" />
-                <p className="text-muted-foreground">Fetching latest release...</p>
+                <p className="text-muted-foreground">{t('landing.download.fetchingLatest')}</p>
               </div>
             ) : (
               <div className="rounded-2xl border bg-white p-6 shadow-xl shadow-slate-200/40 dark:bg-slate-900 dark:shadow-none sm:p-8 transition-all">
@@ -276,14 +276,14 @@ export default function DownloadsPage() {
 
         <div className="mt-16 text-center">
           <p className="text-sm text-muted-foreground">
-            Looking for older versions? {' '}
-            <a 
-              href="https://github.com/huanvae/Huanvae-Chat-App/releases" 
-              target="_blank" 
+            {t('landing.download.olderVersions')}{' '}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
               rel="noreferrer"
               className="font-medium text-sky-600 hover:underline dark:text-sky-400"
             >
-              View release history on GitHub
+              {t('landing.download.releaseHistory')}
             </a>
           </p>
         </div>
