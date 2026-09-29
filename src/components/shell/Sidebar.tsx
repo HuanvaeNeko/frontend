@@ -87,6 +87,9 @@ export function Sidebar({ activeTab }: SidebarProps) {
   // 裸 <img src=""> 会让 React 告警并重下整页。`||` 而不是 `??`：空串必须继续往后找。
   const avatarSrc = toAbsoluteApiUrl(profile?.user_avatar_url || user?.avatar_url) ?? null
   const avatarInitial = (profile?.user_nickname || user?.nickname || 'U')[0]?.toUpperCase() ?? 'U'
+  // 加载失败的那个地址（对象存储里没有 / 过期）：退回首字母，而不是露浏览器破图图标。
+  // 记的是地址而不是布尔值：换了新头像（地址变了）会自动重新尝试。
+  const [failedAvatarSrc, setFailedAvatarSrc] = useState<string | null>(null)
 
   // ---- 双区布局：SSR 先渲染默认布局，挂载后再读 localStorage（避免 hydration 不一致） ----
   const [layout, setLayout] = useState<SidebarLayout>(defaultLayout)
@@ -177,8 +180,8 @@ export function Sidebar({ activeTab }: SidebarProps) {
       <aside data-testid="sidebar" className="glass-surface z-10 flex h-full w-[60px] flex-col items-center border-r border-[var(--glass-border)] py-4">
         {/* APP .sidebar-avatar + .online-indicator */}
         <NavLink to={ROUTES.app.profile} aria-label={t('shell.nav.profile')} title={t('shell.nav.profile')} className="relative mb-6 block h-10 w-10 overflow-hidden rounded-[10px] border-2 border-[var(--white-alpha-90)] bg-[linear-gradient(135deg,var(--white-alpha-80),var(--white-alpha-50))] shadow-[0_4px_12px_rgba(59,130,246,0.15)]">
-          {avatarSrc ? (
-            <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+          {avatarSrc && avatarSrc !== failedAvatarSrc ? (
+            <img src={avatarSrc} alt="" className="h-full w-full object-cover" onError={() => setFailedAvatarSrc(avatarSrc)} />
           ) : (
             <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-app-light">{avatarInitial}</span>
           )}

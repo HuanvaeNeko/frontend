@@ -120,6 +120,19 @@ describe('Sidebar', () => {
     expect(avatar.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/a.png')
   })
 
+  it('头像图片加载失败（404 / 对象存储里没有）：退回首字母，不露浏览器破图图标', () => {
+    renderAt('/app/chat', 'chat')
+    const avatar = screen.getByRole('link', { name: '个人资料' })
+    const img = avatar.querySelector('img')
+    // 前置：确实先渲染了图片，下面的「退回首字母」才有意义
+    expect(img).not.toBeNull()
+
+    fireEvent.error(img as HTMLImageElement)
+
+    expect(avatar.querySelector('img')).toBeNull()
+    expect(avatar).toHaveTextContent('爱')
+  })
+
   it('「更多」面板列出五个工具并链接到各自 URL；设置链接到 /app/settings', async () => {
     renderAt('/app/chat', 'chat')
     screen.getByRole('button', { name: '更多功能' }).click()
