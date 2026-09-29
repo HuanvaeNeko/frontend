@@ -173,8 +173,9 @@ const ROUTES: Array<[path: string, check: Check]> = [
     await expect(content(page).getByText(/已授权应用|Authorized apps/).first()).toBeVisible()
     await expect(content(page).getByText('胶片日记 Web')).toBeVisible()
   }],
+  // 「AI 配置」分区已移除（启用开关与模型下拉是摆设）：旧书签落到「外观」，不是 404
   ['/app/settings/ai', async (page) => {
-    await expect(content(page).getByText(/AI 配置|AI Config/).first()).toBeVisible()
+    await expect(page).toHaveURL(/\/app\/settings\/appearance$/)
   }],
   ['/app/settings/about', async (page) => {
     await expect(content(page).getByText(/版本|Version/).first()).toBeVisible()

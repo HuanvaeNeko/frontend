@@ -21,7 +21,7 @@ export const ROUTES = {
   },
 } as const
 
-export const SETTINGS_SECTIONS = ['appearance', 'notifications', 'account', 'apps', 'ai', 'about'] as const
+export const SETTINGS_SECTIONS = ['appearance', 'notifications', 'account', 'apps', 'about'] as const
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 export function isSettingsSection(value: string): value is SettingsSection {

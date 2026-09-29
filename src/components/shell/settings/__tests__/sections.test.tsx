@@ -24,7 +24,7 @@ vi.mock('@/i18n/I18nProvider', async () => {
 })
 
 describe('设置分区注册表', () => {
-  it('六个分区与 SETTINGS_SECTIONS 同序，每个都有组件', () => {
+  it('五个分区与 SETTINGS_SECTIONS 同序，每个都有组件', () => {
     expect(SETTINGS_SECTION_META.map((m) => m.key)).toEqual([...SETTINGS_SECTIONS])
     for (const key of SETTINGS_SECTIONS) expect(typeof SECTION_COMPONENTS[key]).toBe('function')
   })
@@ -35,6 +35,13 @@ describe('设置分区注册表', () => {
     expect(screen.getByRole('link', { name: '账户与安全' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: '外观' })).not.toHaveAttribute('aria-current')
     expect(screen.getByRole('link', { name: '授权与应用' })).toHaveAttribute('href', '/app/settings/apps')
-    expect(screen.getAllByRole('link')).toHaveLength(6)
+    expect(screen.getAllByRole('link')).toHaveLength(5)
+  })
+
+  it('没有「AI 配置」：启用开关与模型下拉没有任何代码读取（APP 与后端都没有这两项，模型固定 GLM-5）；自定义 API 在 AI 助手页自己的设置里', () => {
+    render(<RouterProvider router={createMemoryRouter([{ path: '/app/settings/:section', element: <SettingsSectionList /> }], { initialEntries: ['/app/settings/appearance'] })} />)
+    expect(screen.getByRole('link', { name: '外观' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'AI 配置' })).toBeNull()
+    expect(SETTINGS_SECTIONS as readonly string[]).not.toContain('ai')
   })
 })
