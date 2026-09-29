@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { setActiveLocale } from '@/i18n/translate'
 import { useWSStore } from '@/store/wsStore'
 
 /**
@@ -69,6 +70,26 @@ it('重连放弃之后问一声 BFF 还登不登录着；更早的一次尝试�
 
   expect(restoreSession).toHaveBeenCalledTimes(1)
   expect(useWSStore.getState().error).toBe('无法连接到服务器，请刷新页面重试')
+})
+
+it('英文界面：给上重连后写进 error 的是英文（写入那一刻按当前语言取）', () => {
+  useAuthStore.setState({ restoreSession: vi.fn().mockResolvedValue(undefined) })
+  setActiveLocale('en-US')
+  try {
+    useWSStore.getState().connect()
+    const ws = useWSStore.getState().ws as unknown as {
+      onerror?: (event: unknown) => void
+      onclose?: (event: { code: number; reason: string }) => void
+    }
+    ws.onerror?.({})
+    expect(useWSStore.getState().error).toBe('WebSocket connection error')
+
+    useWSStore.setState({ reconnectAttempts: 10, reconnecting: false })
+    ws.onclose?.({ code: 1006, reason: 'abnormal' })
+    expect(useWSStore.getState().error).toBe('Can’t connect to the server. Please refresh the page and try again.')
+  } finally {
+    setActiveLocale('zh-CN')
+  }
 })
 
 it('同一个 give-up episode 只问一次：两次连续放弃（中间没有真正连上）只调一次 restoreSession', () => {

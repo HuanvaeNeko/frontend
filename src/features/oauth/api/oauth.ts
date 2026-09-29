@@ -2,6 +2,7 @@ import { fetchWithAuth } from '@/api/authedFetch'
 import { resolveSameOriginUrl } from '@/features/miniapps/api/miniapps'
 import { assertEnvelopeOk, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, arrayOf, asRecord, bool, describe, str } from '@/lib/apiParse'
+import { translate } from '@/i18n/translate'
 
 /** backend-docs oauth/OAuth授权服务器API.md（本期只调下面七个端点；token / userinfo / revoke 是第三方与后端之间的接口） */
 
@@ -116,34 +117,34 @@ const parser = <T>(parse: (input: unknown) => T) => ({ parse })
 export const oauthApi = {
   listClients: async (): Promise<OAuthClient[]> => {
     const response = await fetchWithAuth('/api/oauth/clients')
-    return readEnvelope<OAuthClient[]>(response, { endpoint: 'GET /api/oauth/clients', fallbackMessage: '加载 OAuth 客户端失败', parse: arrayOf(parseOAuthClient) })
+    return readEnvelope<OAuthClient[]>(response, { endpoint: 'GET /api/oauth/clients', fallbackMessage: translate('errors.oauth.loadClients'), parse: arrayOf(parseOAuthClient) })
   },
   createClient: async (req: CreateClientRequest): Promise<CreateClientResponse> => {
     const response = await fetchWithAuth('/api/oauth/clients', { method: 'POST', body: JSON.stringify(req) })
-    return readEnvelope<CreateClientResponse>(response, { endpoint: 'POST /api/oauth/clients', fallbackMessage: '创建客户端失败', parse: parser(parseCreateClientResponse) })
+    return readEnvelope<CreateClientResponse>(response, { endpoint: 'POST /api/oauth/clients', fallbackMessage: translate('shell.oauth.clients.createFailed'), parse: parser(parseCreateClientResponse) })
   },
   deleteClient: async (clientId: string): Promise<void> => {
     const response = await fetchWithAuth(`/api/oauth/clients/${encodeURIComponent(clientId)}`, { method: 'DELETE' })
-    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/oauth/clients/{client_id}', fallbackMessage: '删除客户端失败' })
+    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/oauth/clients/{client_id}', fallbackMessage: translate('errors.oauth.deleteClient') })
   },
   resetClientSecret: async (clientId: string): Promise<{ client_secret: string }> => {
     const response = await fetchWithAuth(`/api/oauth/clients/${encodeURIComponent(clientId)}/reset-secret`, { method: 'POST', body: '{}' })
     return readEnvelope<{ client_secret: string }>(response, {
       endpoint: 'POST /api/oauth/clients/{client_id}/reset-secret',
-      fallbackMessage: '重置密钥失败',
+      fallbackMessage: translate('errors.oauth.resetSecret'),
       parse: parser((input) => ({ client_secret: str(asRecord(input, 'reset-secret 的 data'), 'client_secret') })),
     })
   },
   listGrants: async (): Promise<OAuthGrant[]> => {
     const response = await fetchWithAuth('/api/oauth/grants')
-    return readEnvelope<OAuthGrant[]>(response, { endpoint: 'GET /api/oauth/grants', fallbackMessage: '加载已授权应用失败', parse: arrayOf(parseOAuthGrant) })
+    return readEnvelope<OAuthGrant[]>(response, { endpoint: 'GET /api/oauth/grants', fallbackMessage: translate('errors.oauth.loadGrants'), parse: arrayOf(parseOAuthGrant) })
   },
   revokeGrant: async (grantId: string): Promise<void> => {
     const response = await fetchWithAuth(`/api/oauth/grants/${encodeURIComponent(grantId)}`, { method: 'DELETE' })
-    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/oauth/grants/{grant_id}', fallbackMessage: '取消授权失败' })
+    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/oauth/grants/{grant_id}', fallbackMessage: translate('shell.oauth.revokeFailed') })
   },
   authorize: async (req: AuthorizeRequest): Promise<AuthorizeResult> => {
     const response = await fetchWithAuth('/api/oauth/authorize', { method: 'POST', body: JSON.stringify(req) })
-    return readEnvelope<AuthorizeResult>(response, { endpoint: 'POST /api/oauth/authorize', fallbackMessage: '授权请求失败', parse: parser(parseAuthorizeResult) })
+    return readEnvelope<AuthorizeResult>(response, { endpoint: 'POST /api/oauth/authorize', fallbackMessage: translate('errors.oauth.authorize'), parse: parser(parseAuthorizeResult) })
   },
 }

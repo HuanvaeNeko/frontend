@@ -194,8 +194,8 @@ const ROUTES: Array<[path: string, check: Check]> = [
     await expect(page.getByText(/创建房间|Create room/).first()).toBeVisible()
   }],
   ['/app/ai-chat', async (page) => {
-    // 这一页整页没接 i18n（报告里记为前端缺陷），英文界面下也是中文；英文分支留给以后翻译
-    await expect(page.getByText(/AI 聊天助手|AI (chat )?assistant/i).first()).toBeVisible()
+    // 标题跟 APP 一致叫「AI 助手」（ChatPanel.tsx:140）；这一页已接 i18n，英文界面是 AI assistant
+    await expect(page.getByText(/AI 助手|AI assistant/i).first()).toBeVisible()
     await expect(page.getByPlaceholder(/输入你的问题|Ask a question/i)).toBeVisible()
   }],
 ]

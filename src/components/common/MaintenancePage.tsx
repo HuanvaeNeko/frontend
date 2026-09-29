@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { useI18n } from '@/i18n/I18nProvider'
 
 interface MaintenancePageProps {
   error: {
@@ -22,6 +23,7 @@ interface MaintenancePageProps {
 }
 
 export default function MaintenancePage({ error, onRetry, isRetrying }: MaintenancePageProps) {
+  const { t } = useI18n()
   const [showDetails, setShowDetails] = useState(false)
 
   return (
@@ -39,7 +41,7 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
             <div className="flex items-center justify-between">
               <Badge variant="secondary" className="gap-1.5">
                 <WifiOff className="h-3.5 w-3.5" />
-                服务异常
+                {t('system.maintenance.badge')}
               </Badge>
               {typeof error.status === 'number' && <Badge variant="outline">HTTP {error.status}</Badge>}
             </div>
@@ -49,8 +51,8 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
                 <ServerCrash className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <CardTitle className="text-xl">服务暂时不可用</CardTitle>
-                <CardDescription className="mt-1">无法连接后端服务，请稍后重试。</CardDescription>
+                <CardTitle className="text-xl">{t('system.maintenance.title')}</CardTitle>
+                <CardDescription className="mt-1">{t('system.maintenance.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -58,13 +60,13 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
           <CardContent className="space-y-4">
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>错误信息</AlertTitle>
-              <AlertDescription>{error.message || '连接失败'}</AlertDescription>
+              <AlertTitle>{t('system.maintenance.errorTitle')}</AlertTitle>
+              <AlertDescription>{error.message || t('system.maintenance.connectFailed')}</AlertDescription>
             </Alert>
 
             <Button onClick={onRetry} disabled={isRetrying} className="w-full gap-2">
               <RefreshCw className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
-              {isRetrying ? '正在重试...' : '重新连接'}
+              {isRetrying ? t('system.maintenance.retrying') : t('system.maintenance.reconnect')}
             </Button>
 
             {(error.details || error.url) && (
@@ -77,7 +79,7 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
                   className="w-full justify-between"
                   onClick={() => setShowDetails((v) => !v)}
                 >
-                  查看诊断信息
+                  {t('system.maintenance.showDiagnostics')}
                   {showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
 
@@ -91,19 +93,19 @@ export default function MaintenancePage({ error, onRetry, isRetrying }: Maintena
                     >
                       {error.url && (
                         <div className="rounded-lg border bg-muted/50 p-3 text-xs">
-                          <div className="mb-1 font-medium">请求地址</div>
+                          <div className="mb-1 font-medium">{t('system.maintenance.requestUrl')}</div>
                           <code className="break-all text-muted-foreground">{error.url}</code>
                         </div>
                       )}
                       {error.timestamp && (
                         <div className="rounded-lg border bg-muted/50 p-3 text-xs">
-                          <div className="mb-1 font-medium">发生时间</div>
+                          <div className="mb-1 font-medium">{t('system.maintenance.occurredAt')}</div>
                           <code className="text-muted-foreground">{error.timestamp}</code>
                         </div>
                       )}
                       {error.details && (
                         <div className="rounded-lg border bg-muted/50 p-3 text-xs">
-                          <div className="mb-1 font-medium">详细信息</div>
+                          <div className="mb-1 font-medium">{t('system.maintenance.details')}</div>
                           <pre className="whitespace-pre-wrap break-all text-muted-foreground">{error.details}</pre>
                         </div>
                       )}

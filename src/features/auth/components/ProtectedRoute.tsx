@@ -6,6 +6,7 @@ import { useRouter } from '@/lib/navigation'
 import { useAuthStore } from '../store/authStore'
 import SimpleLoading from '@/components/common/SimpleLoading'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n/I18nProvider'
 import { DEFAULT_AUTHENTICATED_ROUTE, DEFAULT_UNAUTHENTICATED_ROUTE } from '@/lib/routes'
 
 interface ProtectedRouteProps {
@@ -65,6 +66,7 @@ interface ProtectedRouteProps {
  * 循环）——这里把 `router` 放进依赖数组是安全的，不需要绕开它。
  */
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { t } = useI18n()
   const router = useRouter()
   const location = useLocation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -108,7 +110,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
         <div className="text-center space-y-4 px-4">
           <p className="text-sm text-muted-foreground">{error}</p>
-          <Button onClick={() => void restoreSession()}>重试</Button>
+          <Button onClick={() => void restoreSession()}>{t('shell.list.retry')}</Button>
         </div>
       </div>
     )

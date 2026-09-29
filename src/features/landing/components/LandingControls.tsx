@@ -29,8 +29,9 @@ export default function LandingControls() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="auto">{t('settings.languageOptions.auto')}</SelectItem>
-            <SelectItem value="zh-CN">简体中文</SelectItem>
-            <SelectItem value="en-US">English</SelectItem>
+            {/* 与设置页（AppearanceSection）同一组 key：两个语言选择器在同一种界面语言下说同一套话 */}
+            <SelectItem value="zh-CN">{t('settings.languageOptions.zhCN')}</SelectItem>
+            <SelectItem value="en-US">{t('settings.languageOptions.enUS')}</SelectItem>
           </SelectContent>
         </Select>
       </div>

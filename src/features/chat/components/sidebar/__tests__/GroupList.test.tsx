@@ -281,6 +281,21 @@ describe('GroupList selectionError → toast 消费（groupStore.selectGroup 失
 })
 
 
+describe('GroupList 群列表为空时的提示', () => {
+  // 这里的 t 回显 key：断言的是「接的是哪个 key」，key 背后的中英文由 i18n 的 key 覆盖测试兜住。
+  it('没有群、也没在搜索：提示去创建或加入（原来这句写死中文，英文界面也照样显示中文）', async () => {
+    render(<GroupList subTab="main" searchQuery="" />)
+    expect(await screen.findByText('groupManage.list.emptyHint')).toBeInTheDocument()
+    expect(screen.queryByText('chat.groupList.tryOtherSearch')).not.toBeInTheDocument()
+  })
+
+  it('搜索无结果：换成「试试其他搜索条件」，不再提示去创建', async () => {
+    render(<GroupList subTab="main" searchQuery="no-such-group" />)
+    expect(await screen.findByText('chat.groupList.tryOtherSearch')).toBeInTheDocument()
+    expect(screen.queryByText('groupManage.list.emptyHint')).not.toBeInTheDocument()
+  })
+})
+
 describe('GroupList 建群入口', () => {
   it('点「创建群聊」打开对话框（表单标题出现），再点取消关闭', async () => {
     render(<GroupList subTab="main" searchQuery="" />)

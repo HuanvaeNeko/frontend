@@ -3,6 +3,7 @@ import { friendsApi } from '@/features/chat/api/friends'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
+import { setActiveLocale } from '@/i18n/translate'
 import { apiClient, AuthenticationError, isAuthError } from '../apiClient'
 // 业务 401 白名单的查询函数住在 `authedFetch.ts`（表本身住在
 // `src/lib/business401.ts`）；`apiClient.ts` 只剩分类器与四个动词方法。
@@ -133,11 +134,15 @@ describe('isAuthError —— 没有状态码时只认前端自己写的哨兵', 
     expect(isAuthError(new AuthenticationError('Token 刷新失败'))).toBe(true)
   })
 
-  it('两条前端哨兵整串相等时判真', () => {
+  it('前端哨兵整串相等时判真', () => {
     // authStore.refreshAccessToken 抛的（refresh token 都没有了）
     expect(isAuthError(new Error('No refresh token available'))).toBe(true)
-    // friends.ts 四处抛的（拿不到自己的 user_id，请求根本没发出去）
-    expect(isAuthError(new Error('用户未登录'))).toBe(true)
+  })
+
+  it('「未登录」靠类型判，不靠文案：它随界面语言变，文案比对迟早漏一种语言', () => {
+    expect(isAuthError(new AuthenticationError('Not signed in'))).toBe(true)
+    // 同样的字，只是普通 Error：不再是哨兵（抛出点 friends.ts 抛的是 AuthenticationError）
+    expect(isAuthError(new Error('用户未登录'))).toBe(false)
   })
 
   it('不做子串匹配：含哨兵词但不是哨兵的后端文案一律判假', () => {
@@ -182,8 +187,28 @@ describe('哨兵两端一致：抛出点的文案也被钉住', () => {
     // 这条在发请求之前就抛，不需要 stub fetch。
     const error = await friendsApi.sendFriendRequest('u2').catch((e: unknown) => e)
 
-    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(AuthenticationError)
     expect(isAuthError(error as Error)).toBe(true)
+  })
+
+  /**
+   * 抛出点按**当前界面语言**取文案（`translate('errors.auth.notLoggedIn')`），判定只看类型
+   * （AuthenticationError）。若按文案判，英文界面下这条会被漏判：用户看到一条 "Not signed in"
+   * 报错，而不是静默跳登录页。
+   */
+  it('英文界面：抛出来的是英文，照样判成认证错误', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    useAuthStore.setState({ user: null, isAuthenticated: true })
+    setActiveLocale('en-US')
+    try {
+      const error = await friendsApi.removeFriend('u2').catch((e: unknown) => e)
+
+      expect((error as Error).message).toBe('Not signed in')
+      expect(error).toBeInstanceOf(AuthenticationError)
+      expect(isAuthError(error as Error)).toBe(true)
+    } finally {
+      setActiveLocale('zh-CN')
+    }
   })
 })
 
@@ -232,6 +257,29 @@ describe('apiClient 的 30 秒超时', () => {
 
     await vi.advanceTimersByTimeAsync(30_000)
     await pending
+  })
+
+  it('英文界面：超时文案是英文（抛错那一刻按当前语言取）', async () => {
+    setActiveLocale('en-US')
+    try {
+      fetchMock.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => {
+              const abort = new Error('aborted')
+              abort.name = 'AbortError'
+              reject(abort)
+            })
+          }),
+      )
+
+      const pending = expect(apiClient.get('/api/probe')).rejects.toThrow('Request timed out. Please check your network connection.')
+
+      await vi.advanceTimersByTimeAsync(30_000)
+      await pending
+    } finally {
+      setActiveLocale('zh-CN')
+    }
   })
 
   it('正对照：没到 30 秒就回来，照常返回响应，且定时器被清掉', async () => {

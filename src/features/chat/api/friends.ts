@@ -1,8 +1,10 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
+import { AuthenticationError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { assertEnvelopeOk, readEnvelope, readEnvelopeList } from '@/lib/apiEnvelope'
 import { arrayOf, asRecord, nullableStr, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 
 const FRIENDS_BASE_URL = `${getApiBaseUrl()}/api/friends`
 
@@ -132,7 +134,7 @@ export const friendsApi = {
     // 于是"后端换了形状"和"这个账号真的没有好友"变成同一种表现，活了半年。
     const rows = await readEnvelopeList<Friend>(response, {
       endpoint: 'GET /api/friends',
-      fallbackMessage: '获取好友列表失败',
+      fallbackMessage: translate('errors.friends.loadList'),
     })
 
     return rows.map((friend) => ({
@@ -151,7 +153,7 @@ export const friendsApi = {
     const userId = authStore.user?.user_id
 
     if (!userId) {
-      throw new Error('用户未登录')
+      throw new AuthenticationError(translate('errors.auth.notLoggedIn'))
     }
 
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests`, {
@@ -159,14 +161,14 @@ export const friendsApi = {
       body: JSON.stringify({
         user_id: userId,
         target_user_id: targetUserId,
-        reason: reason || '你好，我想加你为好友',
+        reason: reason || translate('errors.friends.defaultRequestReason'),
         request_time: new Date().toISOString(),
       }),
     })
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/friends/requests',
-      fallbackMessage: '发送好友请求失败',
+      fallbackMessage: translate('errors.friends.sendRequest'),
     })
   },
 
@@ -191,7 +193,7 @@ export const friendsApi = {
     const userId = authStore.user?.user_id
 
     if (!userId) {
-      throw new Error('用户未登录')
+      throw new AuthenticationError(translate('errors.auth.notLoggedIn'))
     }
 
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/approve`, {
@@ -204,7 +206,7 @@ export const friendsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/friends/requests/approve',
-      fallbackMessage: '同意好友请求失败',
+      fallbackMessage: translate('errors.friends.approve'),
     })
   },
 
@@ -218,7 +220,7 @@ export const friendsApi = {
     const userId = authStore.user?.user_id
 
     if (!userId) {
-      throw new Error('用户未登录')
+      throw new AuthenticationError(translate('errors.auth.notLoggedIn'))
     }
 
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/requests/reject`, {
@@ -232,7 +234,7 @@ export const friendsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/friends/requests/reject',
-      fallbackMessage: '拒绝好友请求失败',
+      fallbackMessage: translate('errors.friends.reject'),
     })
   },
 
@@ -248,7 +250,7 @@ export const friendsApi = {
     // 同 getFriendsList：`data` 就是数组，不传 field、不传 legacyBare。
     const rows = await readEnvelopeList<SentRequest>(response, {
       endpoint: 'GET /api/friends/requests/sent',
-      fallbackMessage: '获取已发送请求失败',
+      fallbackMessage: translate('errors.friends.loadSent'),
     })
 
     return rows.map((request) => ({
@@ -269,7 +271,7 @@ export const friendsApi = {
     // 同 getFriendsList：`data` 就是数组，不传 field、不传 legacyBare。
     const rows = await readEnvelopeList<PendingRequest>(response, {
       endpoint: 'GET /api/friends/requests/pending',
-      fallbackMessage: '获取待处理请求失败',
+      fallbackMessage: translate('errors.friends.loadPending'),
     })
 
     return rows.map((request) => ({
@@ -288,7 +290,7 @@ export const friendsApi = {
     const userId = authStore.user?.user_id
 
     if (!userId) {
-      throw new Error('用户未登录')
+      throw new AuthenticationError(translate('errors.auth.notLoggedIn'))
     }
 
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/remove`, {
@@ -303,7 +305,7 @@ export const friendsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/friends/remove',
-      fallbackMessage: '删除好友失败',
+      fallbackMessage: translate('shell.contacts.removeFailed'),
     })
   },
 
@@ -316,7 +318,7 @@ export const friendsApi = {
   setRemark: async (friendUserId: string, remark: string): Promise<void> => {
     const userId = useAuthStore.getState().user?.user_id
     if (!userId) {
-      throw new Error('用户未登录')
+      throw new AuthenticationError(translate('errors.auth.notLoggedIn'))
     }
 
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/remark`, {
@@ -324,7 +326,7 @@ export const friendsApi = {
       body: JSON.stringify({ user_id: userId, friend_user_id: friendUserId, remark }),
     })
 
-    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/remark', fallbackMessage: '设置备注失败' })
+    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/remark', fallbackMessage: translate('errors.friends.setRemark') })
   },
 
   /** GET /api/friends/blacklist */
@@ -332,7 +334,7 @@ export const friendsApi = {
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist`, { method: 'GET' })
     return readEnvelope<BlacklistedUser[]>(response, {
       endpoint: 'GET /api/friends/blacklist',
-      fallbackMessage: '获取黑名单失败',
+      fallbackMessage: translate('errors.friends.loadBlacklist'),
       parse: arrayOf(parseBlacklistedUser),
     })
   },
@@ -343,12 +345,12 @@ export const friendsApi = {
       method: 'POST',
       body: JSON.stringify({ target_user_id: targetUserId }),
     })
-    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/blacklist', fallbackMessage: '拉黑失败' })
+    await assertEnvelopeOk(response, { endpoint: 'POST /api/friends/blacklist', fallbackMessage: translate('errors.friends.block') })
   },
 
   /** DELETE /api/friends/blacklist/{target_user_id} */
   removeBlacklist: async (targetUserId: string): Promise<void> => {
     const response = await fetchWithAuth(`${FRIENDS_BASE_URL}/blacklist/${encodeURIComponent(targetUserId)}`, { method: 'DELETE' })
-    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/friends/blacklist/{target_user_id}', fallbackMessage: '取消拉黑失败' })
+    await assertEnvelopeOk(response, { endpoint: 'DELETE /api/friends/blacklist/{target_user_id}', fallbackMessage: translate('shell.settings.blacklist.removeFailed') })
   },
 }

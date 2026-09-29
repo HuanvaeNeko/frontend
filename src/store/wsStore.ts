@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { registerSessionReset } from '@/lib/sessionScope'
+import { translate } from '@/i18n/translate'
 
 // =============================================
 // WebSocket 消息类型定义（匹配后端文档）
@@ -317,7 +318,7 @@ export const useWSStore = create<WSState>((set, get) => {
     const state = get()
     if (state.reconnecting || state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        set({ error: '无法连接到服务器，请刷新页面重试', reconnecting: false })
+        set({ error: translate('errors.ws.unreachable'), reconnecting: false })
 
         // 给上重连不等于「还登录着」：这是一个只读页面，可能从头到尾不发一次
         // HTTP 请求，也就永远不会触发那个能让 `fetchWithAuth` 发现 401 并
@@ -506,7 +507,7 @@ export const useWSStore = create<WSState>((set, get) => {
           }
           
           set({
-            error: 'WebSocket 连接错误',
+            error: translate('errors.ws.connectionError'),
             connected: false,
             connecting: false
           })
@@ -535,7 +536,7 @@ export const useWSStore = create<WSState>((set, get) => {
       } catch (error) {
         console.error('创建 WebSocket 连接失败:', error)
         set({
-          error: error instanceof Error ? error.message : 'WebSocket 连接失败',
+          error: error instanceof Error ? error.message : translate('errors.ws.connectFailed'),
           connected: false,
           connecting: false
         })

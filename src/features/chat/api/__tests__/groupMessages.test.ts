@@ -3,6 +3,7 @@ import { useAuthStore } from '@/features/auth/store/authStore'
 import { ApiError, ApiShapeError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { groupMessagesApi } from '../groupMessages'
+import { setActiveLocale } from '@/i18n/translate'
 
 /**
  * 群消息端点的信封解包 + DESC→ASC 归一。
@@ -285,5 +286,18 @@ describe('groupMessagesApi.deleteMessage / recallMessage', () => {
     const result = await groupMessagesApi.deleteMessage('m1')
 
     expect(result).toEqual({ success: true, message: '' })
+  })
+})
+
+describe('群消息兜底文案跟着当前界面语言走', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('后端没给文案时，英文界面给英文兜底（原来写死中文）', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(groupMessagesApi.getMessages(GROUP_ID)).rejects.toThrow('获取群消息失败 (HTTP 500)')
+
+    setActiveLocale('en-US')
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(groupMessagesApi.getMessages(GROUP_ID)).rejects.toThrow('Failed to load group messages (HTTP 500)')
   })
 })

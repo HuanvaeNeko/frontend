@@ -172,8 +172,8 @@ test('「+ → 添加好友」能真正发出好友申请，并出现在「申�
 test('群主打开群管理就能看到待审的入群申请（不必手点刷新）', async ({ page, context }) => {
   await loginAs(context, 'alice')
   await page.goto(`/app/contacts/groups/${G.hiking}`)
-  const tab = page.getByRole('button', { name: /^加入申请\s*\d+$/ })
-  await expect(tab).toHaveText(/加入申请\s*2/)
+  const tab = page.getByRole('button', { name: /^入群申请\s*\d+$/ })
+  await expect(tab).toHaveText(/入群申请\s*2/)
   await tab.click()
   await expect(content(page).getByText('弗兰克').first()).toBeVisible()
 })

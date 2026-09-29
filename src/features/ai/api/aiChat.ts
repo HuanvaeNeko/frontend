@@ -1,4 +1,5 @@
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 import { readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, str } from '@/lib/apiParse'
 
@@ -31,7 +32,7 @@ export const aiChatApi = {
     })
     return readEnvelope<AiChatReply>(response, {
       endpoint: 'POST /api/ai/chat',
-      fallbackMessage: 'AI 回复失败',
+      fallbackMessage: translate('aiChat.errors.replyFailed'),
       parse: { parse: parseAiChatReply },
     })
   },

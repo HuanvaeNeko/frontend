@@ -46,6 +46,8 @@
  *   不是默认姿势。
  */
 
+import { translate } from '@/i18n/translate'
+
 /** 后端统一信封。`message`/`error` 是失败时的文案字段，两个都兼容。 */
 export interface ApiEnvelope<T = unknown> {
   success?: boolean
@@ -156,7 +158,10 @@ function throwShape(
 export interface EnvelopeOptions<T> {
   /** 形如 `'GET /api/friends'`。会出现在每一条错误信息里，排查时不用猜是哪个请求。 */
   endpoint: string
-  /** 后端没给任何文案时的兜底中文提示。 */
+  /**
+   * 后端没给任何文案时的兜底提示。调用点传 `translate()` 取的 `errors.*` 文案（在发请求的那一刻按
+   * 当前语言取）；不传时是 `errors.requestFailed`，同样在调用时才翻译。
+   */
   fallbackMessage?: string
   /** 强校验：任何带 `.parse(unknown): T` 的对象，zod schema 直接可用。 */
   parse?: Parser<T>
@@ -194,7 +199,7 @@ async function readBody(
   try {
     text = await response.text()
   } catch (cause) {
-    throw new ApiError(`${endpoint}: 读取响应失败`, {
+    throw new ApiError(`${endpoint}: ${translate('errors.readResponseFailed')}`, {
       status: response.status,
       endpoint,
       payload: cause,
@@ -409,7 +414,7 @@ export async function readEnvelope<T>(
   response: Response,
   options: EnvelopeOptions<T>,
 ): Promise<T> {
-  const { endpoint, fallbackMessage = '请求失败' } = options
+  const { endpoint, fallbackMessage = translate('errors.requestFailed') } = options
   const body = await readBody(response, endpoint)
 
   assertOk(response, body, endpoint, fallbackMessage)
@@ -493,7 +498,7 @@ export async function assertEnvelopeOk(
   response: Response,
   options: { endpoint: string; fallbackMessage?: string },
 ): Promise<void> {
-  const { endpoint, fallbackMessage = '请求失败' } = options
+  const { endpoint, fallbackMessage = translate('errors.requestFailed') } = options
   const body = await readBody(response, endpoint)
   assertOk(response, body, endpoint, fallbackMessage)
 }
@@ -507,7 +512,7 @@ export function unwrapEnvelope<T>(
   json: unknown,
   options: Omit<EnvelopeOptions<T>, 'fallbackMessage'> & { fallbackMessage?: string },
 ): T {
-  const { endpoint, fallbackMessage = '请求失败' } = options
+  const { endpoint, fallbackMessage = translate('errors.requestFailed') } = options
 
   if (!isRecord(json)) {
     return throwShape(`${endpoint}: 响应不是 JSON 对象`, { status: 200, endpoint, payload: json })

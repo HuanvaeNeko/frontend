@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AuthenticationError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { setActiveLocale } from '@/i18n/translate'
 import { ApiError, ApiShapeError } from '@/lib/apiEnvelope'
 import { ROUTES } from '@/lib/routes'
 import { friendsApi } from '../../api/friends'
@@ -159,15 +161,47 @@ describe('friendsStore 的认证分支（handleApiError 返回 null）', () => {
     expect(useFriendsStore.getState().error).toBeNull()
   })
 
-  it('前端哨兵「用户未登录」同样跳登录页且 reject', async () => {
-    // friends.ts 在拿不到自己的 user_id 时抛的正是这条裸 Error，请求根本没发出去。
-    // 它走的是 isAuthError 的第 3 档（哨兵整串相等），与上面的状态码档不是同一条路。
-    vi.spyOn(friendsApi, 'sendFriendRequest').mockRejectedValue(new Error('用户未登录'))
+  it('前端「用户未登录」同样跳登录页且 reject', async () => {
+    // friends.ts 在拿不到自己的 user_id 时抛的正是这条 AuthenticationError，请求根本没发出去。
+    // 它走的是 isAuthError 的第 1 档（类型），与上面的状态码档不是同一条路。
+    vi.spyOn(friendsApi, 'sendFriendRequest').mockRejectedValue(new AuthenticationError('用户未登录'))
 
     await expect(useFriendsStore.getState().sendFriendRequest('u2')).rejects.toThrow('用户未登录')
 
     expect(loggedIn()).toBe(false)
     expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+  })
+
+  it('英文界面：真实抛出点抛的英文哨兵同样跳登录页且 reject（不是一条可见的 "Not signed in"）', async () => {
+    // 不 mock friendsApi：让 friends.ts 自己在拿不到 user_id 时按当前语言抛
+    setActiveLocale('en-US')
+    useAuthStore.setState({ user: null })
+    try {
+      await expect(useFriendsStore.getState().removeFriend('u2')).rejects.toThrow('Not signed in')
+
+      expect(loggedIn()).toBe(false)
+      expect(replaceSpy).toHaveBeenCalledWith(ROUTES.auth.login)
+      expect(useFriendsStore.getState().error).toBeNull()
+    } finally {
+      setActiveLocale('zh-CN')
+    }
+  })
+})
+
+describe('friendsStore 的兜底文案（抛出来的不是 Error 时才用得上）跟随界面语言', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('中文（默认语言）', async () => {
+    vi.spyOn(friendsApi, 'getFriendsList').mockRejectedValue('boom')
+    await expect(useFriendsStore.getState().loadFriends()).rejects.toBe('boom')
+    expect(useFriendsStore.getState().error).toBe('获取好友列表失败')
+  })
+
+  it('英文', async () => {
+    setActiveLocale('en-US')
+    vi.spyOn(friendsApi, 'approveFriendRequest').mockRejectedValue('boom')
+    await expect(useFriendsStore.getState().approveFriendRequest('u2')).rejects.toBe('boom')
+    expect(useFriendsStore.getState().error).toBe('Failed to accept friend request')
   })
 })
 

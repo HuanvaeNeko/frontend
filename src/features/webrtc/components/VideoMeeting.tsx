@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Fragment, type ReactNode } from 'react'
 import { useRouter, useSearchParams, useParams } from '@/lib/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useInterval, useEventListener, useDebounceFn } from 'ahooks'
@@ -83,22 +83,29 @@ function getAvailableResolutions(): ScreenShareResolution[] {
   })
 }
 
-function parseMediaError(err: unknown, type: 'camera' | 'microphone'): MediaError {
-  const typeName = type === 'camera' ? '摄像头' : '麦克风'
+type Translate = ReturnType<typeof useI18n>['t']
+
+function parseMediaError(err: unknown, type: 'camera' | 'microphone', t: Translate): MediaError {
+  const device = type === 'camera' ? t('meeting.media.camera') : t('meeting.media.microphone')
   if (err instanceof Error) {
     switch (err.name) {
       case 'NotAllowedError':
       case 'PermissionDeniedError':
-        return { type, reason: 'denied', message: `${typeName}权限被拒绝` }
+        return { type, reason: 'denied', message: t('meeting.media.denied', { device }) }
       case 'NotFoundError':
-        return { type, reason: 'not_found', message: `未检测到${typeName}` }
+        return { type, reason: 'not_found', message: t('meeting.media.notFound', { device }) }
       case 'NotReadableError':
-        return { type, reason: 'in_use', message: `${typeName}被其他应用占用` }
+        return { type, reason: 'in_use', message: t('meeting.media.inUse', { device }) }
       default:
-        return { type, reason: 'unknown', message: `${typeName}初始化失败: ${err.message}` }
+        return { type, reason: 'unknown', message: t('meeting.media.failedWithDetail', { device, detail: err.message }) }
     }
   }
-  return { type, reason: 'unknown', message: `${typeName}初始化失败` }
+  return { type, reason: 'unknown', message: t('meeting.media.failed', { device }) }
+}
+
+/** 文案里的 `{name}` 占位换成 React 节点（`t` 不传参数时占位原样保留） */
+function withNodes(template: string, nodes: Record<string, ReactNode>): ReactNode[] {
+  return template.split(/\{(\w+)\}/).map((part, i) => (i % 2 === 1 ? <Fragment key={part}>{nodes[part] ?? `{${part}}`}</Fragment> : part))
 }
 
 // =============================================
@@ -120,7 +127,7 @@ export default function VideoMeeting() {
   // 没登录、链接里也没带 name 的访客：先在 GuestJoinLobby 填一个显示名称再入会
   const [guestName, setGuestName] = useState<string | null>(null)
   const needsGuestName = !nameParam && !user && !urlToken && guestName === null
-  const displayName = nameParam || user?.nickname || guestName || '访客'
+  const displayName = nameParam || user?.nickname || guestName || t('meeting.guest')
   
   // UI 状态
   const [isConnected, setIsConnected] = useState(false)
@@ -188,8 +195,8 @@ export default function VideoMeeting() {
   // =============================================
 
   useEffect(() => {
+    // 没有房间号的报错文案在渲染时按当前语言取（见下方 shownError），这里只停掉「连接中」
     if (!roomId) {
-      setError('房间号不能为空')
       setIsConnecting(false)
       return
     }
@@ -436,7 +443,7 @@ export default function VideoMeeting() {
       connectSignaling(wsToken)
     } catch (err) {
       console.error('初始化会议失败:', err)
-      setError(err instanceof Error ? err.message : '初始化会议失败')
+      setError(err instanceof Error ? err.message : t('meeting.errors.joinFailed'))
       setIsConnecting(false)
     }
   }
@@ -445,7 +452,7 @@ export default function VideoMeeting() {
     try {
       if (!navigator.mediaDevices?.enumerateDevices) {
         console.warn('navigator.mediaDevices 不可用，可能不在安全上下文中（需要 HTTPS 或 localhost）')
-        setMediaError({ type: 'camera', reason: 'unknown', message: '请使用 HTTPS 或 localhost 访问以启用媒体设备' })
+        setMediaError({ type: 'camera', reason: 'unknown', message: t('meeting.media.insecureContext') })
         setIsVideoEnabled(false)
         setIsMuted(true)
         return
@@ -454,7 +461,7 @@ export default function VideoMeeting() {
       const hasVideo = devices.some(d => d.kind === 'videoinput')
       const hasAudio = devices.some(d => d.kind === 'audioinput')
       if (!hasVideo && !hasAudio) {
-        setMediaError({ type: 'camera', reason: 'not_found', message: '未检测到摄像头或麦克风' })
+        setMediaError({ type: 'camera', reason: 'not_found', message: t('meeting.media.noDevices') })
         setIsVideoEnabled(false)
         setIsMuted(true)
         return
@@ -469,7 +476,7 @@ export default function VideoMeeting() {
       setIsMuted(!hasAudio)
       if (hasAudio) startVolumeDetection(stream)
     } catch (err) {
-      const mediaErr = parseMediaError(err, 'camera')
+      const mediaErr = parseMediaError(err, 'camera', t)
       console.warn('获取媒体流失败:', mediaErr.message)
       setMediaError(mediaErr)
       setIsVideoEnabled(false)
@@ -487,7 +494,7 @@ export default function VideoMeeting() {
     ws.onopen = () => { setIsConnected(true); setIsConnecting(false) }
     ws.onmessage = (event) => handleSignalingMessage(JSON.parse(event.data))
     ws.onclose = () => setIsConnected(false)
-    ws.onerror = () => { setError('信令连接失败'); setIsConnecting(false) }
+    ws.onerror = () => { setError(t('meeting.errors.signalingFailed')); setIsConnecting(false) }
   }
 
   const handleSignalingMessage = async (message: WSMessage) => {
@@ -512,7 +519,7 @@ export default function VideoMeeting() {
       case 'offer': await handleOffer(message.from, message.sdp); break
       case 'answer': await handleAnswer(message.from, message.sdp); break
       case 'candidate': await handleCandidate(message.from, message.candidate); break
-      case 'room_closed': setError(`房间已关闭: ${message.reason}`); cleanup(); break
+      case 'room_closed': setError(t('meeting.errors.roomClosed', { reason: message.reason })); cleanup(); break
       case 'error': console.error('服务器错误:', message.code, message.message); break
     }
   }
@@ -813,7 +820,7 @@ export default function VideoMeeting() {
     } else {
       try {
         if (!navigator.mediaDevices?.getDisplayMedia) {
-          setMediaError({ type: 'camera', reason: 'unknown', message: '屏幕共享需要 HTTPS 或 localhost 环境' })
+          setMediaError({ type: 'camera', reason: 'unknown', message: t('meeting.media.screenShareInsecure') })
           setShowPermissionGuide(true)
           return
         }
@@ -890,7 +897,8 @@ export default function VideoMeeting() {
     return <GuestJoinLobby roomId={roomId} onJoin={setGuestName} />
   }
 
-  if (error) {
+  const shownError = roomId ? error : t('meeting.errors.missingRoomId')
+  if (shownError) {
     return (
       <div className="app-screen bg-background flex items-center justify-center p-4 sm:p-6">
         <motion.div
@@ -902,15 +910,15 @@ export default function VideoMeeting() {
           <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
             <PhoneOff size={28} className="text-destructive" />
           </div>
-          <h1 className="text-xl font-semibold text-foreground mb-2">无法加入会议</h1>
-          <p className="text-[13px] text-muted-foreground mb-8 leading-relaxed">{error}</p>
+          <h1 className="text-xl font-semibold text-foreground mb-2">{t('meeting.errorTitle')}</h1>
+          <p className="text-[13px] text-muted-foreground mb-8 leading-relaxed">{shownError}</p>
           <button
             type="button"
             onClick={() => router.push(ROUTES.app.chat)}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent/50 border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
           >
             <ArrowLeft size={16} />
-            返回聊天
+            {t('meeting.backToChat')}
           </button>
         </motion.div>
       </div>
@@ -934,7 +942,7 @@ export default function VideoMeeting() {
             transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
             className="mx-auto mb-5 h-10 w-10 rounded-full border-2 border-border border-t-primary"
           />
-          <p className="text-foreground text-sm font-medium">正在加入会议</p>
+          <p className="text-foreground text-sm font-medium">{t('meeting.connecting')}</p>
           <p className="text-muted-foreground text-xs font-mono mt-1.5">{roomId}</p>
         </motion.div>
       </div>
@@ -944,6 +952,15 @@ export default function VideoMeeting() {
   // =============================================
   // 主页面
   // =============================================
+
+  // 纯图标按钮的可读名称（同 APP MeetingPage.tsx 控制栏的 title）
+  const leaveLabel = t('meeting.controls.leave')
+  const participantsLabel = t('meeting.participants', { n: participants.length + 1 })
+  const closeParticipantsLabel = t('meeting.closeParticipants')
+  const micLabel = isMuted ? t('meeting.controls.micOn') : t('meeting.controls.micOff')
+  const cameraLabel = isVideoEnabled ? t('meeting.controls.cameraOff') : t('meeting.controls.cameraOn')
+  const screenShareLabel = isScreenSharing ? t('meeting.controls.stopSharing') : t('meeting.controls.shareScreen')
+  const screenShareSettingsLabel = t('meeting.screenShare.title')
 
   return (
     <div 
@@ -961,6 +978,7 @@ export default function VideoMeeting() {
           >
             <div className="flex min-w-0 items-center gap-1.5 sm:gap-3 pointer-events-auto">
               <button type="button" onClick={(e) => { e.stopPropagation(); leaveMeeting() }}
+                aria-label={leaveLabel} title={leaveLabel}
                 className="flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-full bg-black/20 backdrop-blur-md text-white/90 text-sm font-medium hover:bg-black/40 transition-colors">
                 <ArrowLeft size={18} />
               </button>
@@ -980,6 +998,7 @@ export default function VideoMeeting() {
                 {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
               </button>
               <button type="button" onClick={(e) => { e.stopPropagation(); setShowParticipants(!showParticipants) }}
+                aria-label={participantsLabel} title={participantsLabel}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/20 backdrop-blur-md text-white/90 text-sm hover:bg-black/40 transition-colors">
                 <Users size={18} /><span>{participants.length + 1}</span>
               </button>
@@ -1040,7 +1059,7 @@ export default function VideoMeeting() {
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-black/40 backdrop-blur-md border border-white/5">
                       <span className="text-white/90 text-xs font-medium truncate max-w-[80px] sm:max-w-[120px]">{item.name}</span>
-                      {item.isLocal && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary-foreground">我</span>}
+                      {item.isLocal && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary-foreground">{t('meeting.me')}</span>}
                     </div>
                     <div className="flex items-center gap-1.5">
                       {item.isSpeaking && <span className="p-1.5 rounded-full bg-primary/20 backdrop-blur-md"><Mic size={12} className="text-primary-foreground" /></span>}
@@ -1065,7 +1084,7 @@ export default function VideoMeeting() {
                   transition={{ duration: 0.18 }}
                   className="absolute inset-0 z-20 bg-background/40 backdrop-blur-[1px]"
                   onClick={() => setShowParticipants(false)}
-                  aria-label="关闭参与者面板"
+                  aria-label={closeParticipantsLabel}
                 />
               )}
               <motion.aside
@@ -1116,8 +1135,8 @@ export default function VideoMeeting() {
                     </div>
                   )}
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-foreground text-sm font-medium">参与者 · {participants.length + 1}</h3>
-                    <button type="button" onClick={() => setShowParticipants(false)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60">
+                    <h3 className="text-foreground text-sm font-medium">{participantsLabel}</h3>
+                    <button type="button" onClick={() => setShowParticipants(false)} aria-label={closeParticipantsLabel} title={closeParticipantsLabel} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60">
                       <X size={16} />
                     </button>
                   </div>
@@ -1129,8 +1148,8 @@ export default function VideoMeeting() {
                       <div className="flex-1 min-w-0">
                         <p className="text-foreground text-sm truncate">{displayName}</p>
                         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                          <span className="text-primary">我</span>
-                          {isCreatorRef.current && <span className="text-primary">主持人</span>}
+                          <span className="text-primary">{t('meeting.me')}</span>
+                          {isCreatorRef.current && <span className="text-primary">{t('meeting.host')}</span>}
                         </div>
                       </div>
                       {isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
@@ -1158,7 +1177,7 @@ export default function VideoMeeting() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-foreground text-sm truncate">{rs.participant.name}</p>
-                          {rs.participant.is_creator && <span className="text-[10px] text-primary">主持人</span>}
+                          {rs.participant.is_creator && <span className="text-[10px] text-primary">{t('meeting.host')}</span>}
                         </div>
                         {rs.isSpeaking && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                       </li>
@@ -1183,6 +1202,7 @@ export default function VideoMeeting() {
           >
             <div className="flex items-center gap-3 sm:gap-4 px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl pointer-events-auto">
               <button type="button" onClick={(e) => { e.stopPropagation(); toggleMute() }}
+                aria-label={micLabel} title={micLabel}
                 className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
                   isMuted 
                     ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
@@ -1192,6 +1212,7 @@ export default function VideoMeeting() {
               </button>
               
               <button type="button" onClick={(e) => { e.stopPropagation(); toggleVideo() }}
+                aria-label={cameraLabel} title={cameraLabel}
                 className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
                   !isVideoEnabled 
                     ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' 
@@ -1201,12 +1222,14 @@ export default function VideoMeeting() {
               </button>
 
               <button type="button" onClick={(e) => { e.stopPropagation(); leaveMeeting() }}
+                aria-label={leaveLabel} title={leaveLabel}
                 className="w-14 h-14 rounded-2xl bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-all duration-200 shadow-lg shadow-red-500/20 mx-2">
                 <PhoneOff size={26} />
               </button>
 
               <button type="button"
                 onClick={(e) => { e.stopPropagation(); if (isScreenSharing) toggleScreenShare(); else setShowScreenShareSettings(true) }}
+                aria-label={screenShareLabel} title={screenShareLabel}
                 className={`hidden sm:flex w-12 h-12 rounded-full items-center justify-center transition-all duration-200 ${
                   isScreenSharing 
                     ? 'bg-primary/20 text-primary hover:bg-primary/30' 
@@ -1216,6 +1239,7 @@ export default function VideoMeeting() {
               </button>
               
               <button type="button" onClick={(e) => { e.stopPropagation(); setShowScreenShareSettings(true) }} // Mobile more menu
+                aria-label={screenShareSettingsLabel} title={screenShareSettingsLabel}
                 className="sm:hidden w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-all duration-200">
                 <Settings size={22} />
               </button>
@@ -1227,12 +1251,12 @@ export default function VideoMeeting() {
       <Dialog open={showScreenShareSettings} onOpenChange={setShowScreenShareSettings}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto max-w-sm bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-foreground">屏幕共享设置</DialogTitle>
-            <DialogDescription className="text-muted-foreground">选择分辨率和帧率</DialogDescription>
+            <DialogTitle className="text-foreground">{screenShareSettingsLabel}</DialogTitle>
+            <DialogDescription className="text-muted-foreground">{t('meeting.screenShare.description')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
-              <label className="text-xs text-muted-foreground mb-2 block">分辨率</label>
+              <label className="text-xs text-muted-foreground mb-2 block">{t('meeting.screenShare.resolution')}</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['1080p', '2k', '4k'] as ScreenShareResolution[]).map(res => {
                   const available = availableResolutions.includes(res)
@@ -1255,7 +1279,7 @@ export default function VideoMeeting() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-2 block">帧率</label>
+              <label className="text-xs text-muted-foreground mb-2 block">{t('meeting.screenShare.frameRate')}</label>
               <div className="grid grid-cols-2 gap-2">
                 {([60, 120] as ScreenShareFrameRate[]).map(fps => (
                   <button key={fps}
@@ -1271,7 +1295,7 @@ export default function VideoMeeting() {
               </div>
             </div>
             <Button className="w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => { setShowScreenShareSettings(false); toggleScreenShare(screenShareSettings) }}>
-              开始共享
+              {t('meeting.screenShare.start')}
             </Button>
           </div>
         </DialogContent>
@@ -1282,10 +1306,10 @@ export default function VideoMeeting() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground">
               <ShieldAlert size={20} className="text-primary" />
-              媒体权限被拒绝
+              {t('meeting.permission.title')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {mediaError?.message || '需要授权才能使用摄像头和麦克风'}
+              {mediaError?.message || t('meeting.permission.fallback')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
@@ -1293,26 +1317,28 @@ export default function VideoMeeting() {
               <div className="flex items-start gap-3">
                 <AlertTriangle size={20} className="text-primary shrink-0 mt-0.5" />
                 <div className="text-sm text-foreground space-y-2">
-                  <p>请按照以下步骤开启权限：</p>
+                  <p>{t('meeting.permission.stepsTitle')}</p>
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                    <li>点击浏览器地址栏左侧的锁定图标</li>
-                    <li>找到「摄像头」和「麦克风」选项</li>
-                    <li>将权限设置为「允许」</li>
-                    <li>刷新页面</li>
+                    <li>{t('meeting.permission.step1')}</li>
+                    <li>{t('meeting.permission.step2')}</li>
+                    <li>{t('meeting.permission.step3')}</li>
+                    <li>{t('meeting.permission.step4')}</li>
                   </ol>
                   <p className="text-muted-foreground text-xs mt-2">
-                    若部署在 Cloudflare Pages，请确认站点 <code className="bg-accent px-1 rounded">_headers</code> 中
-                    Permissions-Policy 包含 <code className="bg-accent px-1 rounded">camera=(self), microphone=(self)</code>。
+                    {withNodes(t('meeting.permission.deployHint'), {
+                      file: <code className="bg-accent px-1 rounded">_headers</code>,
+                      policy: <code className="bg-accent px-1 rounded">camera=(self), microphone=(self)</code>,
+                    })}
                   </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 rounded-xl border-border text-foreground hover:bg-accent/60" onClick={() => setShowPermissionGuide(false)}>
-                暂不开启
+                {t('meeting.permission.later')}
               </Button>
               <Button className="flex-1 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => { window.location.reload() }}>
-                刷新页面
+                {t('meeting.permission.reload')}
               </Button>
             </div>
           </div>

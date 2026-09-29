@@ -504,7 +504,7 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                 <Users className="h-8 w-8 text-muted-foreground/60" />
               </div>
               <p className="text-sm font-medium text-foreground">{t('chat.groupList.noGroups')}</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.groupList.tryOtherSearch') : '创建或加入一个群聊吧！'}</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.groupList.tryOtherSearch') : t('groupManage.list.emptyHint')}</p>
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">

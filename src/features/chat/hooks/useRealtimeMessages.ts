@@ -7,6 +7,7 @@ import { useGroupStore } from '../store/groupStore'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { notifyMessage } from '@/hooks/useNotification'
 import { playMessage } from '@/hooks/useSound'
+import { translate } from '@/i18n/translate'
 import type { Message } from '../api/messages'
 
 /**
@@ -148,7 +149,7 @@ export function useRealtimeMessages() {
     if (data.sender_id !== currentUser?.user_id && !isActiveChat) {
       const title = data.source_type === 'friend'
         ? data.sender_nickname
-        : `群聊 · ${data.sender_nickname}`
+        : translate('notify.groupMessageTitle', { name: data.sender_nickname })
 
       notifyMessage(title, previewText, { native: true })
       playMessage()
@@ -164,7 +165,7 @@ export function useRealtimeMessages() {
     // 标记为已撤回而不是删除
     const updatedMessages = store.messages.map(m =>
       m.message_uuid === data.message_uuid
-        ? { ...m, message_content: '此消息已被撤回', message_type: 'text' as const, is_recalled: true }
+        ? { ...m, message_content: translate('notify.messageRecalled'), message_type: 'text' as const, is_recalled: true }
         : m
     )
     store.setMessages(updatedMessages)
@@ -191,20 +192,23 @@ export function useRealtimeMessages() {
   const handleSystemNotification = useCallback((data: Omit<WSSystemNotification, 'type'>) => {
     console.log('🔔 系统通知:', data.notification_type, data.data)
     const notifData = data.data as Record<string, string>
+    // 文案在收到通知的这一刻按当前语言取（不是模块加载时），切换语言后立刻生效
+    const someone = translate('notify.someone')
+    const group = notifData.group_name || ''
 
     switch (data.notification_type) {
       case 'friend_request':
         loadPendingRequests().catch(console.error)
-        notifyMessage('好友请求', `${notifData.from_nickname || '某人'} 请求添加你为好友`, { native: true })
+        notifyMessage(translate('notify.friendRequest.title'), translate('notify.friendRequest.body', { name: notifData.from_nickname || someone }), { native: true })
         break
 
       case 'friend_request_approved':
         loadFriends().catch(console.error)
-        notifyMessage('好友请求已通过', `${notifData.friend_nickname || '某人'} 已通过你的好友请求`, { native: true })
+        notifyMessage(translate('notify.friendRequestApproved.title'), translate('notify.friendRequestApproved.body', { name: notifData.friend_nickname || someone }), { native: true })
         break
 
       case 'friend_request_rejected':
-        notifyMessage('好友请求被拒绝', `${notifData.user_nickname || '某人'} 拒绝了你的好友请求`)
+        notifyMessage(translate('notify.friendRequestRejected.title'), translate('notify.friendRequestRejected.body', { name: notifData.user_nickname || someone }))
         break
 
       case 'friend_deleted': {
@@ -218,17 +222,17 @@ export function useRealtimeMessages() {
       }
 
       case 'group_invite':
-        notifyMessage('群邀请', `${notifData.inviter_nickname || '某人'} 邀请你加入群聊 ${notifData.group_name || ''}`, { native: true })
+        notifyMessage(translate('notify.groupInvite.title'), translate('notify.groupInvite.body', { name: notifData.inviter_nickname || someone, group }), { native: true })
         loadMyGroups().catch(console.error)
         break
 
       case 'group_join_request':
-        notifyMessage('入群申请', `${notifData.applicant_nickname || notifData.user_nickname || '某人'} 申请加入群聊 ${notifData.group_name || ''}`)
+        notifyMessage(translate('notify.groupJoinRequest.title'), translate('notify.groupJoinRequest.body', { name: notifData.applicant_nickname || notifData.user_nickname || someone, group }))
         break
 
       case 'group_join_approved':
         loadMyGroups().catch(console.error)
-        notifyMessage('入群申请已通过', `你已加入群聊 ${notifData.group_name || ''}`, { native: true })
+        notifyMessage(translate('notify.groupJoinApproved.title'), translate('notify.groupJoinApproved.body', { group }), { native: true })
         break
 
       case 'group_removed':
@@ -236,7 +240,7 @@ export function useRealtimeMessages() {
         if (notifData.group_id) {
           useChatStore.getState().removeConversation(notifData.group_id)
         }
-        notifyMessage('已被移出群聊', `你已被移出群聊 ${notifData.group_name || ''}`)
+        notifyMessage(translate('notify.groupRemoved.title'), translate('notify.groupRemoved.body', { group }))
         break
 
       case 'group_disbanded':
@@ -244,16 +248,16 @@ export function useRealtimeMessages() {
         if (notifData.group_id) {
           useChatStore.getState().removeConversation(notifData.group_id)
         }
-        notifyMessage('群聊已解散', `群聊 ${notifData.group_name || ''} 已解散`)
+        notifyMessage(translate('notify.groupDisbanded.title'), translate('notify.groupDisbanded.body', { group }))
         break
 
       case 'group_notice_updated':
-        notifyMessage('群公告更新', `群聊 ${notifData.group_name || ''} 的公告已更新`)
+        notifyMessage(translate('notify.groupNoticeUpdated.title'), translate('notify.groupNoticeUpdated.body', { group }))
         break
 
       case 'owner_transferred':
         loadMyGroups().catch(console.error)
-        notifyMessage('群主已转让', `群聊 ${notifData.group_name || ''} 的群主已转让给 ${notifData.new_owner_nickname || '某人'}`)
+        notifyMessage(translate('notify.ownerTransferred.title'), translate('notify.ownerTransferred.body', { group, name: notifData.new_owner_nickname || someone }))
         break
 
       case 'admin_set':

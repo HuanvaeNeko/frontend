@@ -1,5 +1,6 @@
 import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { storageApi, type AvatarUploadProgress, type AvatarUploadResult } from '@/api/storage'
+import { translate } from '@/i18n/translate'
 import { PASSWORD_LIMITS } from '@/lib/passwordRules'
 import { ApiError, assertEnvelopeOk, readEnvelope, type Parser } from '@/lib/apiEnvelope'
 import { asRecord, bool, describe as describeValue, str } from '@/lib/apiParse'
@@ -456,13 +457,16 @@ const UPDATABLE_PROFILE_FIELDS = [
 /** doc:305-306：`old_password` ≥ 6，`new_password` 6-100。注册页共用，定义在 lib/passwordRules。 */
 export { PASSWORD_LIMITS }
 
+/** doc:152-160 的长度规则：昵称 1-50、签名 ≤ 200、地区 ≤ 100。判定与报错文案共用这一份。 */
+const PROFILE_FIELD_LIMITS = { nicknameMin: 1, nicknameMax: 50, signatureMax: 200, regionMax: 100 } as const
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
  * 请求体的本地校验，doc:152-160 的「验证规则」逐条。
  *
  * 与 `uploadAvatar` 的大小/格式检查同一性质：真正的闸在后端，这里只省一次注定
- * 失败的往返，并且把提示写成中文（后端返回的是
+ * 失败的往返，并且把提示写成界面语言（后端返回的是
  * `Validation error: nickname: ...` 这种英文串）。
  *
  * 唯独 `email` 的格式不在这里判——「有效邮箱格式」没有可照抄的判据，自己写一个
@@ -470,31 +474,32 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
  * `type="email"`，格式由后端定论，400 文案原样透出。
  */
 function assertValidUpdate(body: Record<string, unknown>): void {
+  const { nicknameMin, nicknameMax, signatureMax, regionMax } = PROFILE_FIELD_LIMITS
   const nickname = body.nickname
-  if (typeof nickname === 'string' && (nickname.length < 1 || nickname.length > 50)) {
-    throw new Error('昵称长度需为 1-50 个字符')
+  if (typeof nickname === 'string' && (nickname.length < nicknameMin || nickname.length > nicknameMax)) {
+    throw new Error(translate('profile.validation.nicknameLength', { min: nicknameMin, max: nicknameMax }))
   }
   const signature = body.signature
-  if (typeof signature === 'string' && signature.length > 200) {
-    throw new Error('个性签名最长 200 个字符')
+  if (typeof signature === 'string' && signature.length > signatureMax) {
+    throw new Error(translate('profile.validation.signatureTooLong', { max: signatureMax }))
   }
   const region = body.region
-  if (typeof region === 'string' && region.length > 100) {
-    throw new Error('地区最长 100 个字符')
+  if (typeof region === 'string' && region.length > regionMax) {
+    throw new Error(translate('profile.validation.regionTooLong', { max: regionMax }))
   }
   const gender = body.gender
   if (gender !== undefined && !(PROFILE_GENDERS as readonly unknown[]).includes(gender)) {
-    throw new Error(`性别取值须为 ${PROFILE_GENDERS.join(' / ')}`)
+    throw new Error(translate('profile.validation.genderInvalid', { values: PROFILE_GENDERS.join(' / ') }))
   }
   for (const key of ['friend_request_policy', 'group_invite_policy'] as const) {
     const value = body[key]
     if (value !== undefined && !(PROFILE_POLICIES as readonly unknown[]).includes(value)) {
-      throw new Error(`${key} 取值须为 ${PROFILE_POLICIES.join(' / ')}`)
+      throw new Error(translate('profile.validation.policyInvalid', { field: key, values: PROFILE_POLICIES.join(' / ') }))
     }
   }
   const birthday = body.birthday
   if (typeof birthday === 'string' && birthday !== '' && !ISO_DATE.test(birthday)) {
-    throw new Error('生日须为 ISO 日期格式 YYYY-MM-DD')
+    throw new Error(translate('profile.validation.birthdayFormat'))
   }
 }
 
@@ -509,7 +514,7 @@ export interface ProfileFormValues {
  * 资料 → 表单初值。{@link pickProfileEdits} 的**左逆**：
  * `pickProfileEdits(p, profileFormValues(p))` 对任何 `p` 都是 `{}`（有用例钉着）。
  *
- * 这条等式就是「保存更改」按钮不会闪的全部理由：表单只要是从**当前这份**资料
+ * 这条等式就是「保存修改」按钮不会闪的全部理由：表单只要是从**当前这份**资料
  * 种出来的，差分就必然为空，按钮必然是灰的。`ProfileModal` 此前把初值写成空三元组
  * 再靠一个 `useEffect` 回填，于是 `profile` 刚变成非空的那一拍，差分拿"空表单"
  * 对"有值的资料"算出三个键——按钮亮着、输入框却是空的。
@@ -653,7 +658,7 @@ export const profileApi = {
 
     return readEnvelope<UserProfile>(response, {
       endpoint: 'GET /api/profile',
-      fallbackMessage: '获取个人资料失败',
+      fallbackMessage: translate('profile.errors.fetch'),
       parse: profileResponse,
       legacyBare: PROFILE_LEGACY_BARE,
     })
@@ -693,7 +698,7 @@ export const profileApi = {
     // doc:160「至少提供一个字段」。空体的后端答复是一句和字段校验失败长得一样的
     // 400，用户看到"更新失败"却不知道自己什么都没改——就地拦下，说人话。
     if (Object.keys(body).length === 0) {
-      throw new Error('没有需要保存的修改')
+      throw new Error(translate('profile.noChanges'))
     }
     assertValidUpdate(body)
 
@@ -708,7 +713,7 @@ export const profileApi = {
     // 有没有 `invalid`。
     await assertEnvelopeOk(response, {
       endpoint: 'PUT /api/profile',
-      fallbackMessage: '更新个人资料失败',
+      fallbackMessage: translate('profile.errors.update'),
     })
     console.log('✅ 个人资料更新成功')
   },
@@ -729,13 +734,13 @@ export const profileApi = {
     console.log('🔐 修改密码')
 
     if (passwordData.old_password.length < PASSWORD_LIMITS.oldMin) {
-      throw new Error(`当前密码长度至少 ${PASSWORD_LIMITS.oldMin} 位`)
+      throw new Error(translate('profile.password.oldTooShort', { min: PASSWORD_LIMITS.oldMin }))
     }
     if (passwordData.new_password.length < PASSWORD_LIMITS.newMin) {
-      throw new Error(`新密码长度至少 ${PASSWORD_LIMITS.newMin} 位`)
+      throw new Error(translate('profile.password.newTooShort', { min: PASSWORD_LIMITS.newMin }))
     }
     if (passwordData.new_password.length > PASSWORD_LIMITS.newMax) {
-      throw new Error(`新密码长度最多 ${PASSWORD_LIMITS.newMax} 位`)
+      throw new Error(translate('profile.password.newTooLong', { max: PASSWORD_LIMITS.newMax }))
     }
 
     const response = await fetchWithAuth(`${PROFILE_BASE_URL}/password`, {
@@ -755,7 +760,7 @@ export const profileApi = {
     // store / `safeApiCall` 的人踩回同一个坑。
     await assertEnvelopeOk(response, {
       endpoint: 'PUT /api/profile/password',
-      fallbackMessage: '修改密码失败',
+      fallbackMessage: translate('profile.errors.changePassword'),
     })
     console.log('✅ 密码修改成功')
   },
@@ -951,7 +956,7 @@ export const profileApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/profile/background',
-      fallbackMessage: '重置资料背景图失败',
+      fallbackMessage: translate('profile.errors.resetBackground'),
     })
     console.log('✅ 资料背景图已重置为默认')
   },
@@ -984,7 +989,7 @@ export const profileApi = {
 
     return readEnvelope<PublicProfileResponse>(response, {
       endpoint: 'GET /api/profile/{user_id}/public',
-      fallbackMessage: '获取用户公开资料失败',
+      fallbackMessage: translate('profile.errors.fetchPublic'),
       parse: publicProfileResponse,
     })
   },

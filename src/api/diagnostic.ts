@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './apiClient'
+import { translate } from '@/i18n/translate'
 
 // ============================================
 // 诊断报告类型
@@ -102,7 +103,7 @@ export const diagnosticApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '上报诊断信息失败')
+      throw new Error(error.error || translate('errors.diagnostic.report'))
     }
 
     const data: DiagnosticReportResponse = await response.json()
@@ -118,7 +119,7 @@ export const diagnosticApi = {
     const response = await apiClient.get('/api/admin/diagnostic/statistics')
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '获取诊断统计失败')
+      throw new Error(error.error || translate('errors.diagnostic.loadStatistics'))
     }
     return response.json()
   },
@@ -152,7 +153,7 @@ export const diagnosticApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '获取错误日志失败')
+      throw new Error(error.error || translate('errors.diagnostic.loadErrorLogs'))
     }
     return response.json()
   },
@@ -186,7 +187,7 @@ export const diagnosticApi = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '获取诊断报告失败')
+      throw new Error(error.error || translate('errors.diagnostic.loadReports'))
     }
     return response.json()
   },
@@ -199,7 +200,7 @@ export const diagnosticApi = {
     const response = await apiClient.get(`/api/admin/diagnostic/reports/${reportId}`)
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '获取诊断报告详情失败')
+      throw new Error(error.error || translate('errors.diagnostic.loadReportDetail'))
     }
     return response.json()
   },
@@ -218,7 +219,7 @@ export const diagnosticApi = {
     const response = await apiClient.put(`/api/admin/diagnostic/reports/${reportId}/status`, payload)
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '更新诊断报告状态失败')
+      throw new Error(error.error || translate('errors.diagnostic.updateReportStatus'))
     }
     return response.json()
   },
@@ -231,7 +232,7 @@ export const diagnosticApi = {
     const response = await apiClient.get(`/api/admin/diagnostic/reports/${reportId}/file`)
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || '获取诊断报告原始文件失败')
+      throw new Error(error.error || translate('errors.diagnostic.loadReportFile'))
     }
     return response.json()
   },

@@ -8,6 +8,7 @@ import {
 } from '../api/profile'
 import { isAuthError } from '@/api/apiClient'
 import { useAuthStore } from '@/features/auth/store/authStore'
+import { translate } from '@/i18n/translate'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { ROUTES } from '@/lib/routes'
 import {
@@ -177,7 +178,7 @@ export const useProfileStore = create<ProfileState>()(
           set({ profile, isLoading: false })
         } catch (error) {
           if (!stillMine()) throw error
-          settleError(error, '加载个人资料失败', set)
+          settleError(error, translate('profile.errors.load'), set)
           throw error
         }
       },
@@ -202,7 +203,7 @@ export const useProfileStore = create<ProfileState>()(
           await profileApi.updateProfile(updates)
         } catch (error) {
           if (!stillMine()) throw error
-          settleError(error, '更新个人资料失败', set)
+          settleError(error, translate('profile.errors.update'), set)
           throw error
         }
 
@@ -232,7 +233,7 @@ export const useProfileStore = create<ProfileState>()(
        * ⚠️ **本 action 今天没有非测试调用点**：两个 UI
        * （`ProfilePage` / `ProfileModal` 的 `handleAvatarChange`）都直接
        * `await profileApi.uploadAvatar(...)`，自管局部 `uploadingAvatar` 与进度。
-       * 保持那样是有意的——本 store 的 `isLoading` 同时驱动"保存更改"按钮
+       * 保持那样是有意的——本 store 的 `isLoading` 同时驱动"保存修改"按钮
        * （`ProfilePage` / `ProfileModal` 都从本 store 解构它），把头像上传接进来
        * 会让传头像时保存按钮跟着转圈变灰。这和 `changePassword` 被删掉的理由
        * 是同一条（见本文件顶部），区别在于那一条是无状态操作，而这一条**确实**
@@ -256,7 +257,7 @@ export const useProfileStore = create<ProfileState>()(
           }
         } catch (error) {
           if (!stillMine()) throw error
-          settleError(error, '上传头像失败', set)
+          settleError(error, translate('profile.errors.uploadAvatar'), set)
           throw error
         }
       },
@@ -320,7 +321,7 @@ export const useProfileStore = create<ProfileState>()(
        * ## 为什么这一条进了 store，而上传背景图没有
        *
        * 判据与 `uploadAvatar` 那段 JSDoc 里写的是同一条：本 store 的 `isLoading`
-       * 同时驱动两个资料页的「保存更改」按钮。**上传**要报进度、可能持续好几秒，
+       * 同时驱动两个资料页的「保存修改」按钮。**上传**要报进度、可能持续好几秒，
        * 接进来会让整段传输期间保存按钮转圈变灰，所以它留在组件里自管局部态
        * （`uploadBackground` 与 `uploadAvatar` 同型）。**重置**是一次没有进度的
        * DELETE，占用 `isLoading` 的时长与 {@link ProfileState.updateProfile} 自己
@@ -354,7 +355,7 @@ export const useProfileStore = create<ProfileState>()(
           await profileApi.resetBackground()
         } catch (error) {
           if (!stillMine()) throw error
-          settleError(error, '重置资料背景图失败', set)
+          settleError(error, translate('profile.errors.resetBackground'), set)
           throw error
         }
 
@@ -381,7 +382,7 @@ export const useProfileStore = create<ProfileState>()(
        *
        * `isLoading` 一并归零：登出时若正好有一个 `loadProfile()` 在飞，
        * 它的 `set({isLoading:false})` 会在 reject 之后才到，中间这段时间
-       * 两个页面的"保存更改"按钮是灰的。
+       * 两个页面的"保存修改"按钮是灰的。
        */
       clearProfile: () => {
         set({

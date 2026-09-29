@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setActiveLocale } from '@/i18n/translate'
 import { setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { beginSession } from '@/lib/sessionScope'
@@ -190,6 +191,27 @@ describe('authStore.restoreSession —— 启动时的唯一真值', () => {
     // 正对照：这不是 401，状态跟 502 / 网络失败一样保持，不清空登录态。
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
     expect(useAuthStore.getState().user?.user_id).toBe('old')
+  })
+
+  /**
+   * 这两句会原样显示在 ProtectedRoute 的重试界面上（`{error}` + 「重试」按钮）。
+   * 写进 state 的那一刻按当前界面语言取；两句在英文里也必须仍然是两句不同的话。
+   */
+  it('英文界面：网络失败 / 形状不对写进 error 的都是英文，且彼此不同', async () => {
+    setActiveLocale('en-US')
+    try {
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+      await useAuthStore.getState().restoreSession()
+      const networkError = useAuthStore.getState().error
+      expect(networkError).toBe('Couldn’t confirm your sign-in status. Please try again later.')
+
+      fetchMock.mockResolvedValueOnce(new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      await useAuthStore.getState().restoreSession()
+      expect(useAuthStore.getState().error).toBe('The session response had an unexpected format')
+      expect(useAuthStore.getState().error).not.toBe(networkError)
+    } finally {
+      setActiveLocale('zh-CN')
+    }
   })
 })
 

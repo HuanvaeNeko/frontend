@@ -78,7 +78,7 @@ describe('AccountSection', () => {
 
     // PrivacySettings 真实渲染出来的文案——这一行是本条用例存在的全部意义：证明它
     // 在 AccountSection 里真的挂得起来，不是靠 vi.mock 探针"假装"挂了。
-    await waitFor(() => expect(screen.getByRole('switch', { name: '允许被搜索' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('switch', { name: '允许被搜索 / 添加' })).toBeTruthy())
     expect(screen.getByTestId('devices')).toBeInTheDocument()
     expect(screen.getByTestId('blacklist')).toBeInTheDocument()
     expect(screen.getByText('黑名单')).toBeInTheDocument()

@@ -14,6 +14,7 @@ import {
 } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { fetchWithAuth } from '@/api/authedFetch'
+import { translate } from '@/i18n/translate'
 
 const GROUPS_BASE_URL = `${getApiBaseUrl()}/api/groups`
 
@@ -822,8 +823,8 @@ export const groupsApi = {
     })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: '创建群聊失败' }))
-      throw new Error(error.error || '创建群聊失败')
+      const error = await response.json().catch(() => ({ error: translate('chat.groupList.createFailed') }))
+      throw new Error(error.error || translate('chat.groupList.createFailed'))
     }
 
     const result = await response.json()
@@ -850,7 +851,7 @@ export const groupsApi = {
 
     const rows = await readEnvelopeList<MyGroup>(response, {
       endpoint: 'GET /api/groups/my',
-      fallbackMessage: '获取群聊列表失败',
+      fallbackMessage: translate('groupManage.errors.loadMyGroups'),
     })
 
     return rows.map((group) => ({
@@ -914,7 +915,7 @@ export const groupsApi = {
 
     return readEnvelope<Group>(response, {
       endpoint: 'GET /api/groups/{group_id}',
-      fallbackMessage: '获取群聊详情失败',
+      fallbackMessage: translate('groupManage.errors.loadGroupDetail'),
       parse: groupDetailResponse,
     })
   },
@@ -941,7 +942,7 @@ export const groupsApi = {
 
     return readEnvelope<PublicGroupInfo>(response, {
       endpoint: 'GET /api/groups/{group_id}/public',
-      fallbackMessage: '获取群聊公开信息失败',
+      fallbackMessage: translate('groupManage.errors.loadPublicInfo'),
       parse: publicGroupInfoResponse,
     })
   },
@@ -966,7 +967,7 @@ export const groupsApi = {
 
     return readEnvelope<GroupQrCode>(response, {
       endpoint: 'GET /api/groups/{group_id}/qr',
-      fallbackMessage: '获取群二维码失败',
+      fallbackMessage: translate('groupManage.errors.loadQrCode'),
       parse: groupQrResponse,
     })
   },
@@ -990,7 +991,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'PUT /api/groups/{group_id}',
-      fallbackMessage: '更新群聊信息失败',
+      fallbackMessage: translate('groupManage.errors.updateGroup'),
     })
   },
 
@@ -1048,7 +1049,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'PUT /api/groups/{group_id}/nickname',
-      fallbackMessage: '修改群内昵称失败',
+      fallbackMessage: translate('groupManage.errors.updateNickname'),
     })
   },
 
@@ -1085,7 +1086,7 @@ export const groupsApi = {
 
     return readEnvelope<JoinPolicy>(response, {
       endpoint: 'PUT /api/groups/{group_id}/join-policy',
-      fallbackMessage: '更新入群策略失败',
+      fallbackMessage: translate('groupManage.errors.updateJoinPolicy'),
       parse: joinPolicyResponse,
     })
   },
@@ -1102,7 +1103,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/groups/{group_id}',
-      fallbackMessage: '解散群聊失败',
+      fallbackMessage: translate('groupManage.errors.disband'),
     })
   },
 
@@ -1126,7 +1127,7 @@ export const groupsApi = {
 
     const data = await readEnvelope<{ members: GroupMember[]; total: number }>(response, {
       endpoint: 'GET /api/groups/{group_id}/members',
-      fallbackMessage: '获取成员列表失败',
+      fallbackMessage: translate('groupManage.errors.loadMembers'),
       parse: groupMembersResponse,
     })
 
@@ -1166,7 +1167,7 @@ export const groupsApi = {
 
     return readEnvelope<{ results: InviteResult[] }>(response, {
       endpoint: 'POST /api/groups/{group_id}/invite',
-      fallbackMessage: '邀请成员失败',
+      fallbackMessage: translate('groupManage.errors.invite'),
       parse: inviteResultsResponse,
     })
   },
@@ -1184,7 +1185,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/{group_id}/leave',
-      fallbackMessage: '退出群聊失败',
+      fallbackMessage: translate('groupManage.errors.leave'),
     })
   },
 
@@ -1200,7 +1201,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/groups/{group_id}/members/{user_id}',
-      fallbackMessage: '移除成员失败',
+      fallbackMessage: translate('groupManage.errors.removeMember'),
     })
   },
 
@@ -1221,7 +1222,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/{group_id}/transfer',
-      fallbackMessage: '转让群主失败',
+      fallbackMessage: translate('groupManage.errors.transferOwner'),
     })
   },
 
@@ -1238,7 +1239,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/{group_id}/admins',
-      fallbackMessage: '设置管理员失败',
+      fallbackMessage: translate('groupManage.errors.setAdmin'),
     })
   },
 
@@ -1254,7 +1255,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/groups/{group_id}/admins/{user_id}',
-      fallbackMessage: '取消管理员失败',
+      fallbackMessage: translate('groupManage.errors.removeAdmin'),
     })
   },
 
@@ -1280,7 +1281,7 @@ export const groupsApi = {
 
     return readEnvelope<{ muted_until: string }>(response, {
       endpoint: 'POST /api/groups/{group_id}/mute',
-      fallbackMessage: '禁言失败',
+      fallbackMessage: translate('groupManage.errors.mute'),
       parse: muteMemberResponse,
     })
   },
@@ -1297,7 +1298,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/groups/{group_id}/mute/{user_id}',
-      fallbackMessage: '解除禁言失败',
+      fallbackMessage: translate('groupManage.errors.unmute'),
     })
   },
 
@@ -1337,7 +1338,7 @@ export const groupsApi = {
 
     return readEnvelope<ApplyJoinResult>(response, {
       endpoint: 'POST /api/groups/{group_id}/apply',
-      fallbackMessage: '申请入群失败',
+      fallbackMessage: translate('groupManage.errors.apply'),
       parse: applyJoinResponse,
     })
   },
@@ -1357,7 +1358,7 @@ export const groupsApi = {
     const rows = await readEnvelopeList<GroupInvitation>(response, {
       endpoint: 'GET /api/groups/invitations',
       field: 'invitations',
-      fallbackMessage: '获取邀请失败',
+      fallbackMessage: translate('groupManage.errors.loadInvitations'),
     })
 
     return rows.map((invitation) => ({
@@ -1394,7 +1395,7 @@ export const groupsApi = {
 
     return readEnvelope<AcceptInvitationResult>(response, {
       endpoint: 'POST /api/groups/invitations/{request_id}/accept',
-      fallbackMessage: '接受邀请失败',
+      fallbackMessage: translate('chat.groupList.acceptInviteFailed'),
       parse: acceptInvitationResponse,
     })
   },
@@ -1411,7 +1412,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/invitations/{request_id}/decline',
-      fallbackMessage: '拒绝邀请失败',
+      fallbackMessage: translate('chat.groupList.declineInviteFailed'),
     })
   },
 
@@ -1437,7 +1438,7 @@ export const groupsApi = {
 
     return readEnvelope<JoinRequest[]>(response, {
       endpoint: 'GET /api/groups/{group_id}/requests',
-      fallbackMessage: '获取申请失败',
+      fallbackMessage: translate('groupManage.errors.loadJoinRequests'),
       parse: joinRequestsResponse,
     })
   },
@@ -1462,7 +1463,7 @@ export const groupsApi = {
 
     return readEnvelope<SentJoinRequest[]>(response, {
       endpoint: 'GET /api/groups/requests/sent',
-      fallbackMessage: '获取我发出的加群申请失败',
+      fallbackMessage: translate('groupManage.errors.loadSentRequests'),
       parse: sentJoinRequestsResponse,
     })
   },
@@ -1482,7 +1483,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/{group_id}/requests/{request_id}/approve',
-      fallbackMessage: '同意申请失败',
+      fallbackMessage: translate('groupManage.errors.approveRequest'),
     })
   },
 
@@ -1499,7 +1500,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'POST /api/groups/{group_id}/requests/{request_id}/reject',
-      fallbackMessage: '拒绝申请失败',
+      fallbackMessage: translate('groupManage.errors.rejectRequest'),
     })
   },
 
@@ -1527,7 +1528,7 @@ export const groupsApi = {
 
     return readEnvelope<{ id: string; published_at: string }>(response, {
       endpoint: 'POST /api/groups/{group_id}/notices',
-      fallbackMessage: '发布公告失败',
+      fallbackMessage: translate('groupManage.errors.createNotice'),
       parse: createNoticeResponse,
     })
   },
@@ -1547,7 +1548,7 @@ export const groupsApi = {
     return readEnvelopeList<GroupNotice>(response, {
       endpoint: 'GET /api/groups/{group_id}/notices',
       field: 'notices',
-      fallbackMessage: '获取公告失败',
+      fallbackMessage: translate('groupManage.errors.loadNotices'),
     })
   },
 
@@ -1568,7 +1569,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'PUT /api/groups/{group_id}/notices/{notice_id}',
-      fallbackMessage: '更新公告失败',
+      fallbackMessage: translate('groupManage.errors.updateNotice'),
     })
   },
 
@@ -1584,7 +1585,7 @@ export const groupsApi = {
 
     await assertEnvelopeOk(response, {
       endpoint: 'DELETE /api/groups/{group_id}/notices/{notice_id}',
-      fallbackMessage: '删除公告失败',
+      fallbackMessage: translate('groupManage.errors.deleteNotice'),
     })
   },
 }

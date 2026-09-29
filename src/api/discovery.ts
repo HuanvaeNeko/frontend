@@ -2,6 +2,7 @@ import { getApiBaseUrl, toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { type Parser, readEnvelope } from '@/lib/apiEnvelope'
 import { arr, asRecord, bool, num, str } from '@/lib/apiParse'
 import { fetchWithAuth } from './authedFetch'
+import { translate } from '@/i18n/translate'
 
 /**
  * 统一发现搜索 `GET /api/discovery/search`（`backend-docs/discovery/发现搜索.md`）。
@@ -181,7 +182,7 @@ export async function searchDiscovery<T>(options: {
 
   return readEnvelope<T[]>(response, {
     endpoint: 'GET /api/discovery/search',
-    fallbackMessage: '搜索失败',
+    fallbackMessage: translate('errors.discovery.search'),
     parse: sectionRows(options.section, options.row),
   })
 }

@@ -169,7 +169,7 @@ describe('profileApi.changePassword 的本地长度闸', () => {
   it('新密码超过 100 位：一个请求都不发', async () => {
     await expect(
       profileApi.changePassword({ old_password: 'oldpass123', new_password: 'a'.repeat(101) }),
-    ).rejects.toThrow('新密码长度最多 100 位')
+    ).rejects.toThrow('新密码最多 100 个字符')
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -177,7 +177,7 @@ describe('profileApi.changePassword 的本地长度闸', () => {
   it('新密码不足 6 位：一个请求都不发', async () => {
     await expect(
       profileApi.changePassword({ old_password: 'oldpass123', new_password: 'abc' }),
-    ).rejects.toThrow('新密码长度至少 6 位')
+    ).rejects.toThrow('新密码至少 6 个字符')
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -185,7 +185,7 @@ describe('profileApi.changePassword 的本地长度闸', () => {
   it('旧密码不足 6 位：一个请求都不发（doc:305，此前两个组件都没判）', async () => {
     await expect(
       profileApi.changePassword({ old_password: 'abc', new_password: 'newpass456' }),
-    ).rejects.toThrow('当前密码长度至少 6 位')
+    ).rejects.toThrow('旧密码至少 6 个字符')
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -999,7 +999,7 @@ describe('pickProfileEdits', () => {
   })
 
   it('左逆：从一份资料种出来的表单，差分必然为空', () => {
-    // 这条等式是「保存更改」不会闪的**全部**理由（`ProfileModal` 那一侧靠它把
+    // 这条等式是「保存修改」不会闪的**全部**理由（`ProfileModal` 那一侧靠它把
     // "表单空着但按钮亮着"那一拍消掉）。三种形态各来一份：有值 / `null` /
     // 空串——后两种在输入框里都长成"空的"，差分必须同样为空。（解析器出口只会给
     // `null`，空串那份来自落盘 rehydrate 的旧值。）

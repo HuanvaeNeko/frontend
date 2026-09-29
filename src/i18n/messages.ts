@@ -1,3 +1,15 @@
+import { groupManage } from './modules/groupManage'
+import { profile } from './modules/profile'
+import { privacy } from './modules/privacy'
+import { devices } from './modules/devices'
+import { aiChat } from './modules/aiChat'
+import { meeting } from './modules/meeting'
+import { editor } from './modules/editor'
+import { filePreview } from './modules/filePreview'
+import { notify } from './modules/notify'
+import { errors } from './modules/errors'
+import { system } from './modules/system'
+
 export type AppLocale = 'zh-CN' | 'en-US'
 export type LanguagePreference = AppLocale | 'auto'
 
@@ -21,7 +33,7 @@ const zhCN = {
   shell: {
     list: {
       searchPlaceholder: '搜索会话', add: '添加', createGroup: '创建群聊', addFriend: '添加好友', joinGroup: '加入群',
-      pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', loading: '加载中...',
+      pin: '置顶', unpin: '取消置顶', markRead: '标记已读', noMessage: '暂无消息', typing: '正在输入', loading: '加载中...',
       loadFailed: '加载失败', retry: '重试', empty: '还没有会话，先去添加好友或创建群聊', noMatch: '没有匹配的会话', groupTag: '[群聊]',
       yesterday: '昨天', weekdays: '周日,周一,周二,周三,周四,周五,周六', pinned: '已置顶',
     },
@@ -185,6 +197,9 @@ const zhCN = {
       },
     },
     download: {
+      fetchingLatest: '正在获取最新版本…',
+      olderVersions: '想找旧版本？',
+      releaseHistory: '在 GitHub 查看历史版本',
       title: '客户端',
       desktopTitle: '客户端',
       desktopDesc: 'Windows / macOS / Linux，优先推荐。',
@@ -622,6 +637,17 @@ const zhCN = {
     passwordMatch: '密码匹配',
     passwordNotMatch: '密码不匹配',
   },
+  groupManage: groupManage.zh,
+  profile: profile.zh,
+  privacy: privacy.zh,
+  devices: devices.zh,
+  aiChat: aiChat.zh,
+  meeting: meeting.zh,
+  editor: editor.zh,
+  filePreview: filePreview.zh,
+  notify: notify.zh,
+  errors: errors.zh,
+  system: system.zh,
 } as const
 
 const enUS = {
@@ -641,7 +667,7 @@ const enUS = {
   shell: {
     list: {
       searchPlaceholder: 'Search conversations', add: 'Add', createGroup: 'Create group', addFriend: 'Add friend', joinGroup: 'Join group',
-      pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', loading: 'Loading...',
+      pin: 'Pin', unpin: 'Unpin', markRead: 'Mark as read', noMessage: 'No messages yet', typing: 'Typing', loading: 'Loading...',
       loadFailed: 'Failed to load', retry: 'Retry', empty: 'No conversations yet — add a friend or create a group', noMatch: 'No matching conversations', groupTag: '[Group]',
       yesterday: 'Yesterday', weekdays: 'Sun,Mon,Tue,Wed,Thu,Fri,Sat', pinned: 'Pinned',
     },
@@ -804,6 +830,9 @@ const enUS = {
       },
     },
     download: {
+      fetchingLatest: 'Fetching latest release…',
+      olderVersions: 'Looking for older versions?',
+      releaseHistory: 'View release history on GitHub',
       title: 'Client',
       desktopTitle: 'Client',
       desktopDesc: 'Windows / macOS / Linux, recommended.',
@@ -1221,6 +1250,17 @@ const enUS = {
     passwordMatch: 'Passwords match',
     passwordNotMatch: 'Passwords do not match',
   },
+  groupManage: groupManage.en,
+  profile: profile.en,
+  privacy: privacy.en,
+  devices: devices.en,
+  aiChat: aiChat.en,
+  meeting: meeting.en,
+  editor: editor.en,
+  filePreview: filePreview.en,
+  notify: notify.en,
+  errors: errors.en,
+  system: system.en,
 } as const
 
 export const messages = {
@@ -1228,8 +1268,13 @@ export const messages = {
   'en-US': enUS,
 } as const
 
+/**
+ * 设置里存的精确值原样返回；浏览器语言按前缀归类：中文的各种写法（zh、zh-TW、zh-Hans-CN）→ 中文，
+ * 其他语言 → 英文（与 sw.ts 推送的判断一致）。原来只认精确的 en-US，en-GB / en 的用户在「跟随系统」
+ * 下看到的是中文界面。
+ */
 export function normalizeLocale(value?: string): AppLocale {
   if (!value) return DEFAULT_LOCALE
   if (SUPPORTED_LOCALES.includes(value as AppLocale)) return value as AppLocale
-  return DEFAULT_LOCALE
+  return value.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
 }

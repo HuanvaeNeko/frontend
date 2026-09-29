@@ -209,7 +209,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 <Users className="h-8 w-8 text-muted-foreground/60" />
               </div>
               <p className="text-sm font-medium text-foreground">{t('chat.friendList.noFriends')}</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.friendList.tryOtherSearch') : '添加好友开始聊天吧！'}</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">{searchQuery ? t('chat.friendList.tryOtherSearch') : t('system.addFriendsToChat')}</p>
             </motion.div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -218,7 +218,7 @@ export default function FriendList({ subTab, searchQuery }: FriendListProps) {
                 const summary = useChatStore.getState().unreadSummary
                 const friendUnread = summary?.friend_unreads.find(u => u.friend_id === friend.friend_id)
                 // 后端 FriendDto 不返回 signature，这一档回退随字段一起消失
-                const lastMsg = friendUnread?.last_message_preview || "Say hi!"
+                const lastMsg = friendUnread?.last_message_preview || t('shell.list.noMessage')
 
                 return (
                   <div key={friend.friend_id} className="relative group">

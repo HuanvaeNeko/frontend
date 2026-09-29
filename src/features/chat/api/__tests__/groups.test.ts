@@ -4,6 +4,7 @@ import { type ApiError, setApiShapeErrorReporter } from '@/lib/apiEnvelope'
 import { getApiBaseUrl } from '@/lib/apiConfig'
 import { isUploadSessionExpired, storageApi } from '@/api/storage'
 import { groupsApi, isGroupNotFound } from '../groups'
+import { setActiveLocale } from '@/i18n/translate'
 
 /**
  * 批 2：20 个"形状不变"的方法接入信封解包层。
@@ -474,7 +475,7 @@ describe('groupsApi.updateJoinPolicy', () => {
     expect(error).toMatchObject({ name: 'ApiError', status: 403 })
     expect((error as Error).message).toBe('只有群主可以修改入群策略')
     // 关键：403 绝不能被当成登录态失效（isAuthApiError 只认 401）。
-    expect((error as Error).message).not.toBe('更新入群策略失败')
+    expect((error as Error).message).not.toBe('更新入群与可见性设置失败')
   })
 
   it('404（群不存在）同样透出后端原文', async () => {
@@ -1665,5 +1666,34 @@ describe('groupsApi.getSentJoinRequests（data.requests，不是裸数组）', (
     fetchMock.mockResolvedValueOnce(ok({ success: false, code: 500, message: '群聊服务不可用' }))
 
     await expect(groupsApi.getSentJoinRequests()).rejects.toThrow('群聊服务不可用')
+  })
+})
+
+/**
+ * 兜底文案原来写死中文，英文界面里后端一旦没给文案（空响应体、网关页）就冒出一句中文。
+ * 现在是 `translate()`，而且必须在**发请求那一刻**取值——写成模块顶层常量的话，
+ * 切语言之后这里仍是中文，第一条用例的后半段会红。
+ */
+describe('兜底文案跟着当前界面语言走', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('后端没给文案：中文界面给中文兜底，切到英文后同一个调用给英文兜底', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(groupsApi.getMyGroups()).rejects.toThrow('获取群聊列表失败 (HTTP 500)')
+
+    setActiveLocale('en-US')
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 500 }))
+    await expect(groupsApi.getMyGroups()).rejects.toThrow('Failed to load groups (HTTP 500)')
+  })
+
+  it('updateJoinPolicy / createGroup（旧式错误体）在英文界面下也是英文', async () => {
+    setActiveLocale('en-US')
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 502 }))
+    await expect(groupsApi.updateJoinPolicy('g1', { allow_join_via_qr: false })).rejects.toThrow(
+      'Failed to update joining & visibility settings (HTTP 502)',
+    )
+
+    fetchMock.mockResolvedValueOnce(new Response('<html>502 Bad Gateway</html>', { status: 502 }))
+    await expect(groupsApi.createGroup({ group_name: 'Hiking Club' })).rejects.toThrow('Failed to create group')
   })
 })

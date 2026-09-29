@@ -3,6 +3,7 @@ import { getApiBaseUrl } from '../lib/apiConfig'
 import { ApiError, isAuthApiError } from '@/lib/apiEnvelope'
 import { isBusiness401Endpoint } from '@/lib/business401'
 import { ROUTES } from '@/lib/routes'
+import { translate } from '@/i18n/translate'
 import { fetchWithAuth } from './authedFetch'
 
 const BASE_URL = getApiBaseUrl()
@@ -45,12 +46,10 @@ export class AuthenticationError extends Error {
  * "bot token 无效"（`backend-docs/bots/Bot平台API.md:630`）。
  * **凡是猜后端文案的分类都是同一个 bug**，区别只是哪天撞上。
  *
- * 现在只剩两条，且都是**本仓库源码里的字符串常量**、不是后端文案。
- * `src/api/__tests__/apiClient.test.ts` 的「哨兵两端一致」两条用例是真的从
- * **抛出点**取错误的（`authStore.refreshAccessToken()` / `friendsApi`
- * 在没有 user_id 时），所以抛出点或本表任一端改文案都会红；
- * 只断言 `isAuthError(new Error('用户未登录'))` 的那条用例做不到这一点，
- * 它只钉本表自己。
+ * 现在只剩一条，是**本仓库源码里的字符串常量**、不是后端文案。「用户未登录」原来也在这张表里，
+ * 但它现在按界面语言翻译（friends.ts 抛出点用 `translate('errors.auth.notLoggedIn')`），文案随语言变，
+ * 整串比对迟早漏掉一种语言——所以抛出点改抛 {@link AuthenticationError}，靠类型判，不再靠文案。
+ * `src/api/__tests__/apiClient.test.ts` 的「哨兵两端一致」用例是真的从**抛出点**取错误的，中英各钉一次。
  */
 const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
   // `src/features/auth/store/authStore.ts` 的 `refreshAccessToken`：
@@ -58,9 +57,6 @@ const FRONTEND_AUTH_SENTINELS: ReadonlySet<string> = new Set([
   // 会话确实没了。`authedFetch.ts` 的 401 分支 catch 到它之后原样 rethrow，
   // 于是它以裸 `Error` 的形态到达这里。
   'No refresh token available',
-  // `src/features/chat/api/friends.ts` 四处（sendFriendRequest / approve /
-  // reject / removeFriend）：拿不到自己的 user_id 就不发请求。
-  '用户未登录',
 ])
 
 /**
@@ -225,7 +221,7 @@ const sendWithTimeout = async (url: string, options: RequestInit): Promise<Respo
     return await fetchWithAuth(url, init)
   } catch (error) {
     if (timedOut() && error instanceof Error && error.name === 'AbortError') {
-      throw new Error('请求超时，请检查网络连接', { cause: error })
+      throw new Error(translate('errors.requestTimeout'), { cause: error })
     }
     throw error
   } finally {

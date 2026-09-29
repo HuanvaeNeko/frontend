@@ -37,6 +37,7 @@ import {
 } from '@/features/profile/api/profile'
 import { useToast } from '@/hooks/use-toast'
 import { playTap, playToggle, playButton, playPop } from '@/hooks/useSound'
+import { useI18n } from '@/i18n/I18nProvider'
 import { ApiError } from '@/lib/apiEnvelope'
 
 // ============================================
@@ -55,16 +56,6 @@ interface Tab {
   label: string
   icon: React.ElementType
 }
-
-// ============================================
-// 常量
-// ============================================
-
-const TABS: Tab[] = [
-  { id: 'profile', label: '基本信息', icon: Edit3 },
-  { id: 'password', label: '修改密码', icon: Lock },
-  { id: 'account', label: '账户信息', icon: Shield },
-]
 
 // ============================================
 // 子组件
@@ -192,6 +183,7 @@ function FormTextarea({
 
 // 基本信息面板
 function ProfileSettings({ onSaved }: { onSaved: () => void }) {
+  const { t } = useI18n()
   const { toast } = useToast()
   const { profile, isLoading, loadProfile, updateProfile, setAvatarUrl } = useProfileStore()
   const { user } = useAuthStore()
@@ -203,7 +195,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
    *
    * 存的是"改动"而不是"表单当前值"，是因为后者必须与 `profile` 同步，而任何
    * "state + useEffect 回填"的写法都有一拍两者不一致的窗口——那一拍里
-   * `pickProfileEdits` 拿空表单对着有值的资料算差分，「保存更改」会闪成可点，
+   * `pickProfileEdits` 拿空表单对着有值的资料算差分，「保存修改」会闪成可点，
    * 输入框却还是空的。带上 `source` 之后，两者**在同一次渲染里**必然成对。
    */
   const [draft, setDraft] = useState<{
@@ -218,7 +210,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
    */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
-  const displayName = profile?.user_nickname || user?.nickname || '用户'
+  const displayName = profile?.user_nickname || user?.nickname || t('profile.defaultName')
 
   useEffect(() => {
     loadProfile().catch(console.error)
@@ -242,7 +234,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
    *
    * 渲染时**就地算**，而不是放进 state 由 effect 去同步。
    *
-   * ⚠️ 这一行本身**不足以**关掉「保存更改」闪一下的窗口，此前这里写反了。
+   * ⚠️ 这一行本身**不足以**关掉「保存修改」闪一下的窗口，此前这里写反了。
    * 真正关掉它的是上面那个 `formData` 的派生：`profile` 第一次变成非空的那一拍，
    * 旧写法的 `formData` 还是空三元组（回填 effect 尚未执行），`pickProfileEdits`
    * 照样算出三个键——按钮亮着、而且输入框是空的，比改之前**更差**
@@ -266,17 +258,17 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     e.preventDefault()
     playButton()
     if (!hasChanges) {
-      toast({ title: '没有需要保存的修改' })
+      toast({ title: t('profile.noChanges') })
       return
     }
     try {
       await updateProfile(edits)
-      toast({ title: '成功', description: '个人资料已更新' })
+      toast({ title: t('profile.success'), description: t('profile.saved') })
       onSaved()
     } catch (error) {
       toast({
-        title: '更新失败',
-        description: error instanceof Error ? error.message : '请稍后重试',
+        title: t('profile.updateFailed'),
+        description: error instanceof Error ? error.message : t('profile.retryLater'),
         variant: 'destructive',
       })
     }
@@ -305,14 +297,14 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
     try {
       const { file_url } = await profileApi.uploadAvatar(file, ({ percent }) => setUploadProgress(percent))
       setAvatarUrl(file_url)
-      toast({ title: '成功', description: '头像上传成功' })
+      toast({ title: t('profile.success'), description: t('profile.avatar.uploaded') })
       await loadProfile().catch((error) => {
         console.error('头像已上传成功，刷新完整资料失败:', error)
       })
     } catch (error) {
       toast({
-        title: '上传失败',
-        description: error instanceof Error ? error.message : '请稍后重试',
+        title: t('profile.avatar.uploadFailed'),
+        description: error instanceof Error ? error.message : t('profile.retryLater'),
         variant: 'destructive',
       })
     } finally {
@@ -366,7 +358,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
           onChange={handleAvatarChange}
         />
         <h3 className="text-lg font-semibold">{displayName}</h3>
-        <p className="text-xs text-muted-foreground">点击头像更换</p>
+        <p className="text-xs text-muted-foreground">{t('profile.avatar.changeHint')}</p>
       </div>
 
       {/* 表单 */}
@@ -378,16 +370,16 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         */}
         <FormInput
           icon={UserIcon}
-          label="昵称"
+          label={t('profile.fields.nickname')}
           value={formData.nickname}
           onChange={(v) => setFormData({ ...formData, nickname: v })}
-          placeholder="给自己起个名字"
+          placeholder={t('profile.fields.nicknamePlaceholder')}
           maxLength={50}
         />
 
         <FormInput
           icon={Mail}
-          label="邮箱"
+          label={t('profile.fields.email')}
           type="email"
           value={formData.email}
           onChange={(v) => setFormData({ ...formData, email: v })}
@@ -395,10 +387,10 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
         />
 
         <FormTextarea
-          label="个性签名"
+          label={t('profile.fields.signature')}
           value={formData.signature}
           onChange={(v) => setFormData({ ...formData, signature: v })}
-          placeholder="介绍一下自己吧..."
+          placeholder={t('profile.fields.signaturePlaceholder')}
           maxLength={200}
           showCount
         />
@@ -420,7 +412,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
             ) : (
               <Check className="w-4 h-4" />
             )}
-            保存更改
+            {t('profile.save')}
           </Button>
           <Button
             type="button"
@@ -430,7 +422,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
             className="h-10"
           >
             <RefreshCw className="w-4 h-4" />
-            重置
+            {t('profile.reset')}
           </Button>
         </div>
       </form>
@@ -440,6 +432,7 @@ function ProfileSettings({ onSaved }: { onSaved: () => void }) {
 
 // 修改密码面板
 function PasswordSettings() {
+  const { t } = useI18n()
   const { toast } = useToast()
   const [passwordData, setPasswordData] = useState({
     oldPassword: '',
@@ -462,7 +455,7 @@ function PasswordSettings() {
     // 一致性检查是纯 UI 概念，留在这里；长度规则是端点契约（doc:305-306），
     // 已收进 `profileApi.changePassword` 一处执行——理由见 `ProfilePage` 同一处。
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast({ title: '错误', description: '两次输入的新密码不一致', variant: 'destructive' })
+      toast({ title: t('profile.password.errorTitle'), description: t('profile.password.mismatch'), variant: 'destructive' })
       return
     }
 
@@ -472,16 +465,16 @@ function PasswordSettings() {
         old_password: passwordData.oldPassword,
         new_password: passwordData.newPassword,
       })
-      toast({ title: '成功', description: '密码修改成功' })
+      toast({ title: t('profile.success'), description: t('profile.password.changed') })
       setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' })
     } catch (error) {
       toast({
-        title: '修改失败',
+        title: t('profile.password.changeFailedTitle'),
         // 这个端点的 401 是业务失败「旧密码错误」（见 profileApi.changePassword），后端原文是英文
         // `Old password is incorrect`，原样透进中文界面不合适
         description: error instanceof ApiError && error.status === 401
-          ? '当前密码不正确'
-          : error instanceof Error ? error.message : '修改密码失败',
+          ? t('profile.password.oldIncorrect')
+          : error instanceof Error ? error.message : t('profile.errors.changePassword'),
         variant: 'destructive',
       })
     } finally {
@@ -500,12 +493,12 @@ function PasswordSettings() {
         <div className="flex gap-3">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div className="text-sm text-foreground">
-            <p className="font-medium mb-1">密码安全提示</p>
+            <p className="font-medium mb-1">{t('profile.password.tipTitle')}</p>
             <ul className="space-y-0.5 text-xs text-muted-foreground">
               {/* 数字来自 `PASSWORD_LIMITS`（doc:305-306），不写字面量——
                   界面上的提示与真正执行的规则各写一份，迟早对不上。 */}
-              <li>• 新密码长度 {PASSWORD_LIMITS.newMin}-{PASSWORD_LIMITS.newMax} 位</li>
-              <li>• 建议使用字母、数字和符号的组合</li>
+              <li>• {t('profile.password.tipLength', { min: PASSWORD_LIMITS.newMin, max: PASSWORD_LIMITS.newMax })}</li>
+              <li>• {t('profile.password.tipStrength')}</li>
             </ul>
           </div>
         </div>
@@ -513,11 +506,11 @@ function PasswordSettings() {
 
       <FormInput
         icon={Lock}
-        label="当前密码"
+        label={t('profile.password.old')}
         type={showPasswords.old ? 'text' : 'password'}
         value={passwordData.oldPassword}
         onChange={(v) => setPasswordData({ ...passwordData, oldPassword: v })}
-        placeholder="输入当前密码"
+        placeholder={t('profile.password.oldPlaceholder')}
         rightElement={
           <button
             type="button"
@@ -531,11 +524,11 @@ function PasswordSettings() {
 
       <FormInput
         icon={Lock}
-        label="新密码"
+        label={t('profile.password.new')}
         type={showPasswords.new ? 'text' : 'password'}
         value={passwordData.newPassword}
         onChange={(v) => setPasswordData({ ...passwordData, newPassword: v })}
-        placeholder={`${PASSWORD_LIMITS.newMin}-${PASSWORD_LIMITS.newMax} 位`}
+        placeholder={t('profile.password.newPlaceholder', { min: PASSWORD_LIMITS.newMin })}
         rightElement={
           <button
             type="button"
@@ -549,11 +542,11 @@ function PasswordSettings() {
 
       <FormInput
         icon={Lock}
-        label="确认新密码"
+        label={t('profile.password.confirm')}
         type={showPasswords.confirm ? 'text' : 'password'}
         value={passwordData.confirmPassword}
         onChange={(v) => setPasswordData({ ...passwordData, confirmPassword: v })}
-        placeholder="再次输入新密码"
+        placeholder={t('profile.password.confirmPlaceholder')}
         rightElement={
           <button
             type="button"
@@ -581,7 +574,7 @@ function PasswordSettings() {
         ) : (
           <Lock className="w-4 h-4" />
         )}
-        修改密码
+        {t('shell.settings.changePassword')}
       </Button>
     </form>
   )
@@ -589,6 +582,7 @@ function PasswordSettings() {
 
 // 账户信息面板
 function AccountSettings() {
+  const { t, locale } = useI18n()
   const { profile } = useProfileStore()
   const { user } = useAuthStore()
 
@@ -597,26 +591,26 @@ function AccountSettings() {
       <SettingRow
         icon={UserIcon}
         iconClass="text-primary"
-        label="用户 ID"
+        label={t('profile.account.userId')}
         value={profile?.user_id || user?.user_id || '-'}
       />
       <SettingRow
         icon={Shield}
         iconClass={profile?.admin === 'true' ? 'text-primary' : 'text-muted-foreground'}
-        label="账户类型"
-        value={profile?.admin === 'true' ? '管理员' : '普通用户'}
+        label={t('profile.account.type')}
+        value={profile?.admin === 'true' ? t('profile.account.admin') : t('profile.account.regular')}
       />
       <SettingRow
         icon={Calendar}
         iconClass="text-primary"
-        label="注册时间"
-        value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN') : '-'}
+        label={t('profile.account.createdAt')}
+        value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString(locale) : '-'}
       />
       <SettingRow
         icon={Calendar}
         iconClass="text-primary"
-        label="最后更新"
-        value={profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString('zh-CN') : '-'}
+        label={t('profile.account.updatedAt')}
+        value={profile?.updated_at ? new Date(profile.updated_at).toLocaleDateString(locale) : '-'}
       />
     </div>
   )
@@ -627,7 +621,14 @@ function AccountSettings() {
 // ============================================
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
+  const { t } = useI18n()
   const [activeTab, setActiveTab] = useState<TabId>('profile')
+
+  const tabs: Tab[] = [
+    { id: 'profile', label: t('profile.tabs.basic'), icon: Edit3 },
+    { id: 'password', label: t('shell.settings.changePassword'), icon: Lock },
+    { id: 'account', label: t('profile.tabs.account'), icon: Shield },
+  ]
 
   const handleClose = useCallback(() => {
     playPop()
@@ -647,8 +648,8 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
               <UserIcon className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <DialogTitle>个人资料</DialogTitle>
-              <DialogDescription>管理您的个人信息</DialogDescription>
+              <DialogTitle>{t('shell.nav.profile')}</DialogTitle>
+              <DialogDescription>{t('profile.description')}</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -664,7 +665,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         >
           <div className="hidden h-full w-48 border-r p-3 md:block">
             <TabsList className="h-auto w-full flex-col bg-transparent p-0">
-              {TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
                   <TabsTrigger key={tab.id} value={tab.id} className="w-full justify-start gap-2 px-3 py-2.5">
@@ -678,7 +679,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
           <div className="border-b p-2 md:hidden">
             <TabsList className="grid w-full grid-cols-3">
-              {TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
                   <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs">

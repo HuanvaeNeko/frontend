@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setActiveLocale } from '@/i18n/translate'
 import {
   ApiError,
   ApiShapeError,
@@ -430,5 +431,34 @@ describe('isAuthApiError', () => {
   it('不含任何认证关键词的 401 也能被识别 —— 这正是 apiClient 的回归点', () => {
     const error = new ApiError('您的会话已结束，请重新开始', { status: 401, endpoint: 'GET /x' })
     expect(isAuthApiError(error)).toBe(true)
+  })
+})
+
+/**
+ * 不传 fallbackMessage 时的兜底（errors.requestFailed）和「读响应失败」都在**调用那一刻**按当前
+ * 界面语言翻译。原来是写死的中文默认参数：英文界面下后端不给文案时，照样冒出「请求失败」。
+ */
+describe('兜底文案跟随界面语言', () => {
+  afterEach(() => setActiveLocale('zh-CN'))
+
+  it('默认中文：不传 fallbackMessage 仍是「请求失败」（正对照）', async () => {
+    const error = await reject(assertEnvelopeOk(json({}, 500), { endpoint: 'POST /x' }))
+    expect(error.message).toBe('请求失败 (HTTP 500): {}')
+  })
+
+  it('英文：三个入口不传 fallbackMessage 时都兜底成 Request failed', async () => {
+    setActiveLocale('en-US')
+    expect((await reject(assertEnvelopeOk(json({}, 500), { endpoint: 'POST /x' }))).message).toBe('Request failed (HTTP 500): {}')
+    expect((await reject(readEnvelope(new Response(null, { status: 503 }), { endpoint: 'GET /x' }))).message).toBe('Request failed (HTTP 503)')
+    expect(() => unwrapEnvelope({ success: false, details: { field: 'x' } }, { endpoint: 'WS message' })).toThrow('Request failed: {"field":"x"}')
+  })
+
+  it('英文：响应体读到一半断掉时，endpoint 后面那句也是英文', async () => {
+    setActiveLocale('en-US')
+    const broken = new Response('{}', { status: 200 })
+    vi.spyOn(broken, 'text').mockRejectedValue(new TypeError('network error'))
+    const error = await reject(readEnvelope(broken, { endpoint: 'GET /x' }))
+    expect(error.message).toBe('GET /x: Failed to read the response')
+    expect(error).not.toBeInstanceOf(ApiShapeError)
   })
 })
