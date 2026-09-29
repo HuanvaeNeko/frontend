@@ -424,3 +424,19 @@ describe('ProfileModal 的首屏：保存按钮不闪', () => {
     expect(disabledChanges(records, save).length).toBeGreaterThan(0)
   })
 })
+
+describe('ProfileModal 关闭', () => {
+  /**
+   * 其它弹窗右上角都有 ×，资料弹窗原来显式关掉了（showCloseButton={false}），桌面上
+   * 只能点遮罩或按 Esc 关——很多人不知道。
+   */
+  it('有可见的关闭按钮，点了会关', async () => {
+    fetchMock.mockResolvedValue(envelope(PROFILE_DTO))
+    const onClose = vi.fn()
+    render(<ProfileModal isOpen onClose={onClose} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /关闭|close/i }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})

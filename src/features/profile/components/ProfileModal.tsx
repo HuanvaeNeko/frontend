@@ -635,7 +635,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
-      <DialogContent showCloseButton={false} className="max-w-[600px] p-0 overflow-hidden">
+      <DialogContent className="p-0 overflow-hidden sm:max-w-[720px]">
         <DialogHeader className="border-b px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">

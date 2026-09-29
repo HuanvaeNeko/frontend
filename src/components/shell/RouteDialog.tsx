@@ -6,16 +6,26 @@ import { ROUTES } from '@/lib/routes'
 import { cn } from '@/lib/utils'
 
 /**
- * 带 URL 的模态框共用的关闭规则(RouteDialog 与 /app/profile 都用)：有来路
- * （useLocation().key !== 'default'）则 router.back()，直接打开（没有站内来路）
- * 则 router.replace(ROUTES.app.chat)。RR 给直接打开的第一个 location 的 key
- * 是 'default'，站内导航过来的不是——用它区分来路。
+ * 带 URL 的模态框共用的关闭规则(RouteDialog 与 /app/profile 都用)：有站内来路则
+ * router.back()，直接打开（新标签 / 书签 / 地址栏）则 router.replace(ROUTES.app.chat)。
+ *
+ * 「有没有来路」看 RR 写在 `history.state` 里的 `idx`（本标签页里 app 的第几条记录，
+ * 首条为 0）。不能只看 `location.key === 'default'`：`<ScrollRestoration>` 的内联脚本会在
+ * 水合前给首条记录补一个随机 key，浏览器里它永远不是 'default'——原实现因此一律 back()，
+ * 直接打开的弹窗一关就退出应用（about:blank / 上一个网站）。没有 idx 的环境（memory
+ * router）才退回按 key 判断。
  */
+function isFirstAppEntry(locationKey: string): boolean {
+  const state = typeof window !== 'undefined' ? (window.history.state as { idx?: unknown } | null) : null
+  if (typeof state?.idx === 'number') return state.idx === 0
+  return locationKey === 'default'
+}
+
 export function useRouteDialogClose(): () => void {
   const router = useRouter()
   const location = useLocation()
   return useCallback(() => {
-    if (location.key === 'default') router.replace(ROUTES.app.chat)
+    if (isFirstAppEntry(location.key)) router.replace(ROUTES.app.chat)
     else router.back()
   }, [router, location.key])
 }
