@@ -326,6 +326,16 @@ describe('GroupList 申请入群：source 必填 + status 两态', () => {
     searchGroupsMock.mockResolvedValue([SEARCH_RESULT])
   })
 
+  it('在搜索框里按回车就搜索（原来只能点「搜索」按钮）', async () => {
+    render(<GroupList subTab="join" searchQuery="" />)
+    const input = await screen.findByPlaceholderText('chat.groupList.enterGroupKeywordPlaceholder')
+    fireEvent.change(input, { target: { value: 'Test Group' } })
+
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13 })
+
+    await waitFor(() => expect(searchGroupsMock).toHaveBeenCalledWith('Test Group'))
+  })
+
   it('搜索结果卡片按 join_approval_required 显示审核角标（不是按已删的 join_mode 猜）', async () => {
     render(<GroupList subTab="join" searchQuery="" />)
     fireEvent.change(

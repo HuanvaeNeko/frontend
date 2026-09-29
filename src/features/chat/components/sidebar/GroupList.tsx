@@ -552,6 +552,10 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
               placeholder={t('chat.groupList.enterGroupKeywordPlaceholder')}
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
+              // 回车即搜（原来只能点按钮）；输入法组字中的回车是上屏，不算
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && !searchingGroup) void handleSearchGroup()
+              }}
               className="flex-1 h-10"
             />
             <Button
