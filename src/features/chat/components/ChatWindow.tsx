@@ -14,6 +14,7 @@ import { setActiveChat } from '@/features/chat/hooks/useRealtimeMessages'
 import type { MarkdownEditorRef } from './window/MarkdownEditor'
 import { useI18n } from '@/i18n/I18nProvider'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { differenceInMinutes } from 'date-fns'
 import { useDropzone } from 'react-dropzone'
 
@@ -54,6 +55,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   const [showGroupManagement, setShowGroupManagement] = useState(false)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null)
   const [editorHasContent, setEditorHasContent] = useState(false)
+  // 待确认删除的消息：删除不可撤销，右键「删除」先弹确认（原来即刻删除）
+  const [pendingDeleteUuid, setPendingDeleteUuid] = useState<string | null>(null)
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -345,6 +348,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
       
       if (uploadResult.messageUuid) {
         await loadMessages()
+        // 秒传/后端代插消息这条路径同样要更新会话预览（下面显式发送那条也是）
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, file.name, messageType, new Date().toISOString())
         toast({ 
           title: t('chat.window.sendSuccessTitle'), 
           description: uploadResult.isInstant ? t('chat.window.fileInstantSuccess') : t('chat.window.fileSendSuccess') 
@@ -385,6 +390,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
           seq: response.seq, 
           send_time: response.send_time 
         })
+        // 原来只有文本消息更新会话预览：发完图片，列表里还是上一条文字、时间停在几天前
+        useChatStore.getState().updateLastMessage(selectedConversation.type, selectedConversation.id, file.name, messageType, response.send_time)
         
         toast({ 
           title: t('chat.window.sendSuccessTitle'), 
@@ -543,7 +550,7 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         onLoadMore={loadMoreMessages}
         onScroll={handleScroll}
         onCopy={handleCopyMessage}
-        onDelete={handleDeleteMessage}
+        onDelete={setPendingDeleteUuid}
         onRecall={handleRecallMessage}
         onDownload={handleFileDownload}
         onPreview={handleFilePreview}
@@ -593,6 +600,28 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingDeleteUuid !== null} onOpenChange={(open) => { if (!open) setPendingDeleteUuid(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('chat.window.confirmDeleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('chat.window.confirmDeleteDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('chat.window.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                const uuid = pendingDeleteUuid
+                setPendingDeleteUuid(null)
+                if (uuid) void handleDeleteMessage(uuid)
+              }}
+            >
+              {t('chat.window.confirmDeleteAction')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {previewFile && <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />}
     </div>

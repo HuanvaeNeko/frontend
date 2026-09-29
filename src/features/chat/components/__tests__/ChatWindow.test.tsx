@@ -1,6 +1,7 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Message, messagesApi } from '@/features/chat/api/messages'
+import { storageApi } from '@/api/storage'
 import { useAuthStore } from '@/features/auth/store/authStore'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import ChatWindow from '../ChatWindow'
@@ -123,5 +124,60 @@ describe('ChatWindow 切会话与在途的历史请求', () => {
     })
     expect(screen.queryByText('鲍勃旧消息')).not.toBeInTheDocument()
     expect(screen.getByText('卡萝尔说的话')).toBeInTheDocument()
+  })
+})
+
+/**
+ * 发图片/文件后，自己的会话列表也要更新预览与时间（「[图片]」并按时间排到前面）。
+ * 原实现只有文本消息调了 updateLastMessage：发完图片，列表里还是上一条文字、时间停在几天前。
+ */
+describe('ChatWindow 发文件后更新会话预览', () => {
+  it('好友会话里发一张图片：会话预览变成「[图片]」', async () => {
+    vi.spyOn(messagesApi, 'getMessages').mockResolvedValue({ messages: [], has_more: false })
+    vi.spyOn(storageApi, 'uploadFile').mockResolvedValue({ fileUrl: 'friends-file/conv-alice-carol/images/p.png', isInstant: false })
+    vi.spyOn(messagesApi, 'sendMessage').mockResolvedValue({ message_uuid: 'm-img', send_time: '2026-09-29T10:00:00Z', seq: 9 })
+    useChatStore.setState({ unreadSummary: { total_count: 0, friend_unreads: [{ friend_id: 'carol', unread_count: 0, last_message_preview: '那就这么定了', last_message_time: '2026-09-27T04:35:00Z' }], group_unreads: [] } })
+
+    act(() => { useChatStore.setState({ selectedConversation: carol }) })
+    const { container } = render(<ChatWindow />)
+    await waitFor(() => expect(messagesApi.getMessages).toHaveBeenCalled())
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['x'], 'p.png', { type: 'image/png' })] } })
+    const buttons = await screen.findAllByRole('button')
+    fireEvent.click(buttons[buttons.length - 1])
+
+    await waitFor(() => expect(messagesApi.sendMessage).toHaveBeenCalled())
+    await waitFor(() => {
+      const row = useChatStore.getState().unreadSummary?.friend_unreads.find((u) => u.friend_id === 'carol')
+      expect(row?.last_message_preview).toBe('[图片]')
+    })
+  })
+})
+
+/**
+ * 删除消息不可恢复（后端只对自己隐藏，但没有撤销），原实现右键「删除」即刻删掉、没有确认。
+ */
+describe('ChatWindow 删除消息的二次确认', () => {
+  it('右键删除先弹确认；取消不删，确认才删', async () => {
+    vi.spyOn(messagesApi, 'getMessages').mockResolvedValue({ messages: [textMessage('m1', 'alice', 'carol', '要删的话', 1)], has_more: false })
+    const del = vi.spyOn(messagesApi, 'deleteMessage').mockResolvedValue({ success: true, message: 'ok' } as never)
+
+    act(() => { useChatStore.setState({ selectedConversation: carol }) })
+    render(<ChatWindow />)
+
+    fireEvent.contextMenu(await screen.findByText('要删的话'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /chat\.window\.delete/ }))
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+    expect(del).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /chat\.window\.cancel|取消/ }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(del).not.toHaveBeenCalled()
+
+    fireEvent.contextMenu(screen.getByText('要删的话'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /chat\.window\.delete/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /chat\.window\.confirmDeleteAction/ }))
+    await waitFor(() => expect(del).toHaveBeenCalledWith('m1'))
   })
 })
