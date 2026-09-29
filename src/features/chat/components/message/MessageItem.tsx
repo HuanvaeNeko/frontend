@@ -17,6 +17,7 @@ import { useProfileStore } from '@/features/profile/store/profileStore'
 import { toAbsoluteApiUrl } from '@/lib/apiConfig'
 import { cn } from '@/lib/utils'
 import { FileMessageContent } from './FileMessageContent'
+import { GroupCardMessage, MeetingInviteCard } from './SpecialMessageContent'
 
 interface MessageItemProps {
   message: Message
@@ -59,7 +60,8 @@ export const MessageItem = memo(({
   const avatarInitial = (avatarName?.trim()?.[0] || 'U').toUpperCase()
 
   const renderContent = () => {
-    switch (message.message_type) {
+    // message_type 的类型只列了四种，但后端还会发 system / meeting_invite / group_card / card
+    switch (message.message_type as string) {
       case 'text':
         return (
            <Markdown 
@@ -111,9 +113,25 @@ export const MessageItem = memo(({
             onDownload={onDownload} 
           />
         )
+      // 会议邀请 / 群名片 / 可交互卡片：原来都落到「不支持的消息类型」
+      case 'meeting_invite':
+        return <MeetingInviteCard content={message.message_content} isOwn={isOwn} />
+      case 'group_card':
+        return <GroupCardMessage content={message.message_content} isOwn={isOwn} />
+      case 'card':
+        return <p className="text-sm opacity-80">{t('chat.window.cardMessage')}</p>
       default:
         return <p className="text-sm opacity-70">[{t('chat.window.unsupportedMessageType')}]</p>
     }
+  }
+
+  // 系统消息（「某某加入了群聊」之类）：居中的一行提示，不是某个人的气泡
+  if ((message.message_type as string) === 'system') {
+    return (
+      <div role="note" data-message-uuid={message.message_uuid} className="flex justify-center py-1">
+        <span className="max-w-[80%] rounded-full bg-muted/60 px-3 py-1 text-center text-xs text-muted-foreground">{message.message_content}</span>
+      </div>
+    )
   }
 
   return (
