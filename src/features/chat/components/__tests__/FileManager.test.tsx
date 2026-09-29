@@ -26,6 +26,21 @@ vi.mock('@/hooks/use-toast', () => ({
   toast: toastMock,
 }))
 
+// 文件行的进出场动画在卸载时被 happy-dom 取消，会抛未处理的 AbortError（同 Sidebar.test.tsx 的说明）
+vi.mock('framer-motion', async () => {
+  const react = await import('react')
+  const strip = ({ initial: _i, animate: _a, exit: _e, transition: _t, variants: _v, layout: _l, whileHover: _h, whileTap: _w, ...rest }: Record<string, unknown>) => rest
+  const passthrough = (tag: string) =>
+    react.forwardRef(function MockMotion(props: Record<string, unknown>, ref: React.Ref<unknown>) {
+      const { children, ...rest } = strip(props)
+      return react.createElement(tag, { ...rest, ref }, children as React.ReactNode)
+    })
+  return {
+    motion: new Proxy({}, { get: (_t, tag: string) => passthrough(tag) }),
+    AnimatePresence: ({ children }: { children?: React.ReactNode }) => children,
+  }
+})
+
 // t 直接回显 key：断言与语言环境无关，"这个文案还在不在"也看得最清楚。
 vi.mock('@/i18n/I18nProvider', () => ({
   useI18n: () => ({ locale: 'zh', t: (key: string) => key }),
