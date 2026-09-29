@@ -89,9 +89,13 @@ export default function AppShellLayout() {
     if (pathname.startsWith('/app')) localStorage.setItem('last_visited_path', pathname)
   }, [pathname])
   return (
-    <AppShell activeTab={tab} list={tab === 'settings' ? <SettingsSectionList /> : tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
+    <>
+      {/* 放在 AppShell 外：折叠布局在「列表 ↔ 详情」间切换时 children 会换父节点重新挂载，
+          挂在里面的话每次进出会话都要注销重注册一遍处理器、再跑一次增量同步 */}
       <RealtimeBridge />
-      <Outlet />
-    </AppShell>
+      <AppShell activeTab={tab} list={tab === 'settings' ? <SettingsSectionList /> : tab === 'contacts' ? <ContactsList /> : <ChatListColumn />}>
+        <Outlet />
+      </AppShell>
+    </>
   )
 }
