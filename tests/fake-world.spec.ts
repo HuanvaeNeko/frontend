@@ -98,10 +98,11 @@ function wsFrames(page: Page): string[] {
 }
 
 /** 内容栏里是否至少有一张消息图片真的解码出来了（404 的 HTML 解不出尺寸，naturalWidth 恒为 0） */
+// 消息图片的 alt 跟着界面语言走（chat.window.image：「图片」/ Image）；这个 spec 跑在 en-US 上
 const anyImageDecoded = (page: Page) =>
   page
     .getByTestId('content-column')
-    .locator('img[alt="图片"]')
+    .locator('img[alt="图片"], img[alt="Image"]')
     .evaluateAll((imgs) => imgs.some((img) => (img as HTMLImageElement).naturalWidth > 0))
 
 test.beforeEach(async ({ request }, testInfo) => {

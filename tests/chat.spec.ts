@@ -151,7 +151,7 @@ test.describe('Chat Functionality', () => {
     await expect(page.getByRole('dialog', { name: /我的文件|My files/ })).toBeVisible()
   })
 
-  test('设置六个分区可达；授权页缺参数显示错误页而不跳转', async ({ page }, testInfo) => {
+  test('设置五个分区可达；授权页缺参数显示错误页而不跳转', async ({ page }, testInfo) => {
     await mockListEndpoints(page, [], [])
     await page.route('**/api/oauth/grants', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 200, data: [] }) }))
     await page.route('**/api/friends/blacklist', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, code: 200, data: [] }) }))
@@ -162,15 +162,13 @@ test.describe('Chat Functionality', () => {
     // 内容文案核对自 src/i18n/messages.ts：notifications 的英文侧 `sounds.title`
     // ('Notification sound') 在组件树里实际没有任何调用点渲染（只有 `hint`/`water`/
     // `classic` 等子键被消费），真正渲染在屏幕上的是 `shell.settings.sound`
-    // （单数，通知开关那一行的标题）—— zh '提示音' / en 'Sounds'；ai 分区标题取自
-    // `AiSection.tsx` 用的 `settings.aiConfig`（不是 `shell.settings.ai`，那个 key
-    // 只是侧栏链接名）—— zh 'AI 配置' / en 'AI Config'。
+    // （单数，通知开关那一行的标题）—— zh '提示音' / en 'Sounds'。「AI 配置」分区已移除
+    // （启用开关与模型下拉是摆设），旧链接 /app/settings/ai 落到外观，见 fake-world.spec。
     const sections: Array<[string, RegExp, RegExp]> = [
       ['appearance', /^外观$|^Appearance$/, /主题配色|Color scheme/],
       ['notifications', /通知与提醒|Notifications/, /提示音|Sounds/],
       ['account', /账户与安全|Account & security/, /黑名单|Blocked users/],
       ['apps', /授权与应用|Apps & access/, /已授权应用|Authorized apps/],
-      ['ai', /^AI 配置$|^AI$/, /AI 配置|AI Config/],
       ['about', /^关于$|^About$/, /版本|Version/],
     ]
     for (const [key, linkName, contentText] of sections) {
