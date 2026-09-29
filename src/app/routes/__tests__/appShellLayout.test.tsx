@@ -206,7 +206,10 @@ describe('AppShellLayout（app-shell.tsx 接线，终审 finding #8）', () => {
     // 折叠布局里列表态把 children 放在 hidden 容器、详情态放进 <main>——换了父节点，挂在
     // children 里的东西会重新挂载。实时桥若在里面，每次进出会话都注销再注册一遍、再跑一次增量同步。
     stubViewport(390)
-    const registerHandler = vi.spyOn(useWSStore.getState(), 'registerHandler')
+    // 记录调用、照常转给真实实现。不用 vi.spyOn：registerHandler 是泛型签名，spy 的 Mock 经
+    // Parameters<> 把 T 抹成 unknown，喂回 setState 时 tsc 报错；参数写成 (data: never) => void 才对得上。
+    const realRegisterHandler = useWSStore.getState().registerHandler
+    const registerHandler = vi.fn((type: string, handler: (data: never) => void) => realRegisterHandler(type, handler))
     useWSStore.setState({ registerHandler })
     const { router } = renderShellWithConversation('/app/chat')
     await waitFor(() => expect(registerHandler.mock.calls.some(([type]) => type === 'new_message')).toBe(true))
