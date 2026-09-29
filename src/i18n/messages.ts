@@ -341,6 +341,8 @@ const zhCN = {
       peopleTyping: '{count} 人正在输入...',
       uploading: '上传中...',
       inputPlaceholder: '输入消息... (支持 Markdown，Enter 发送)',
+      send: '发送',
+      attachFile: '发送文件',
       emoji: '表情',
     },
     emoji: {
@@ -388,6 +390,7 @@ const zhCN = {
       statusPending: '待处理',
     },
     groupList: {
+      refresh: '刷新',
       error: '错误',
       success: '成功',
       failed: '失败',
@@ -484,6 +487,7 @@ const zhCN = {
       previewFailedDesc: '获取预览链接失败',
       totalFiles: '共 {count} 个文件',
       noFiles: '暂无文件',
+      searchPlaceholder: '搜索文件名',
       noFilesHint: '上传文件后将在这里显示',
       loadMore: '加载更多',
       uploadFile: '上传文件',
@@ -564,6 +568,7 @@ const zhCN = {
   common: {
     or: '或',
     search: '搜索',
+    delete: '删除',
     appIntro: '统一通信工作台。即时消息、AI 助手、会议协作集中在一个应用中。',
     appSecurity: '安全登录 · 端到端传输 · 多端同步',
     joinTitle: '加入 Huanvae Chat',
@@ -917,6 +922,8 @@ const enUS = {
       peopleTyping: '{count} people are typing...',
       uploading: 'Uploading...',
       inputPlaceholder: 'Type message... (Markdown supported, Enter to send)',
+      send: 'Send',
+      attachFile: 'Send a file',
       emoji: 'Emoji',
     },
     emoji: {
@@ -961,6 +968,7 @@ const enUS = {
       statusPending: 'Pending',
     },
     groupList: {
+      refresh: 'Refresh',
       error: 'Error',
       success: 'Success',
       failed: 'Failed',
@@ -1040,6 +1048,7 @@ const enUS = {
       previewFailedDesc: 'Failed to get preview link',
       totalFiles: '{count} files total',
       noFiles: 'No files',
+      searchPlaceholder: 'Search by file name',
       noFilesHint: 'Uploaded files will appear here',
       loadMore: 'Load more',
       uploadFile: 'Upload file',
@@ -1120,6 +1129,7 @@ const enUS = {
   common: {
     or: 'or',
     search: 'Search',
+    delete: 'Delete',
     appIntro: 'A unified communication workspace for chat, AI and meetings.',
     appSecurity: 'Secure login · End-to-end transport · Multi-device sync',
     joinTitle: 'Join Huanvae Chat',

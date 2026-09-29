@@ -266,7 +266,7 @@ export default function FileManager({ subTab }: FileManagerProps) {
               <Input 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('chat.fileManager.searchPlaceholder') || "Search files..."}
+                placeholder={t('chat.fileManager.searchPlaceholder')}
                 className="pl-9 h-10 bg-muted/50 border-transparent focus:bg-background focus:border-input rounded-xl"
               />
             </div>
