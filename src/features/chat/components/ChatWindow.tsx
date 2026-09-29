@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, memo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { useChatStore } from '@/features/chat/store/chatStore'
 import { messagesApi, type Message, type MessageType } from '@/features/chat/api/messages'
 import { groupMessagesApi } from '@/features/chat/api/groupMessages'
@@ -65,6 +66,10 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
   // 晚到会写进后一个的窗口（标题是 B、消息是 A）。
   const loadSeqRef = useRef(0)
   const convKey = selectedConversation ? `${selectedConversation.type}:${selectedConversation.id}` : null
+  // 用户是否停在消息区底部（滚动时更新）；「加载更早」前记下的滚动高度，用来还原视口
+  const stickToBottomRef = useRef(true)
+  const prependAnchorRef = useRef<{ height: number; top: number } | null>(null)
+  const [unseenCount, setUnseenCount] = useState(0)
 
   // =============================================
   // Effects
@@ -84,10 +89,40 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convKey])
 
-  // Scroll to bottom on new messages
-  useEffect(() => { 
-    scrollToBottom() 
-  }, [messages.length, selectedConversation?.id]) // Scroll only when message count changes or conversation changes
+  // 消息区滚动：原来只要 messages.length 变就拽到底——上翻「加载更早」会被拽回
+  // 最底部，看历史时来一条新消息也被拽走。现在按变化的种类处理：
+  // - 换了会话 / 首屏：到底
+  // - 头部拼进更早的一页：按加载前记下的高度差还原视口，读到哪还在哪
+  // - 尾部来了新消息：本来就在底部、或是自己发的，才跟到底；否则计入「N 条新消息」
+  const prevEdgesRef = useRef<{ key: string | null; last?: string }>({ key: null })
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current
+    const prev = prevEdgesRef.current
+    const lastMessage = messages[messages.length - 1]
+    prevEdgesRef.current = { key: convKey, last: lastMessage?.message_uuid }
+    if (!container || !lastMessage) return
+
+    const anchor = prependAnchorRef.current
+    if (anchor) {
+      prependAnchorRef.current = null
+      container.scrollTop = container.scrollHeight - anchor.height + anchor.top
+      return
+    }
+    if (prev.key !== convKey || prev.last === undefined) {
+      container.scrollTop = container.scrollHeight
+      stickToBottomRef.current = true
+      setUnseenCount(0)
+      return
+    }
+    if (lastMessage.message_uuid !== prev.last) {
+      if (stickToBottomRef.current || lastMessage.sender_id === user?.user_id) {
+        container.scrollTop = container.scrollHeight
+        setUnseenCount(0)
+      } else {
+        setUnseenCount((n) => n + 1)
+      }
+    }
+  }, [messages, convKey, user?.user_id])
 
   // =============================================
   // Message Loading Logic
@@ -125,6 +160,8 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         ? await messagesApi.getMessages(selectedConversation.id, oldestTime, 50)
         : await groupMessagesApi.getMessages(selectedConversation.id, oldestTime, 50)
       if (seq !== loadSeqRef.current) return
+      const container = messagesContainerRef.current
+      prependAnchorRef.current = container ? { height: container.scrollHeight, top: container.scrollTop } : null
       prependMessages(response.messages as unknown as Message[])
       setHasMore(response.has_more)
     } catch (error) {
@@ -136,17 +173,20 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current
-    if (container && container.scrollTop === 0 && hasMore && !loading) {
+    if (!container) return
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+    stickToBottomRef.current = atBottom
+    if (atBottom) setUnseenCount(0)
+    if (container.scrollTop === 0 && hasMore && !loading) {
       loadMoreMessages()
     }
   }, [hasMore, loading, loadMoreMessages])
 
-  const scrollToBottom = () => {
-    requestAnimationFrame(() => {
-      const container = messagesContainerRef.current
-      if (container) container.scrollTop = container.scrollHeight
-    })
-  }
+  const jumpToLatest = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    setUnseenCount(0)
+  }, [])
 
   // =============================================
   // Message Sending Logic
@@ -476,6 +516,7 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         onGroupManage={() => setShowGroupManagement(true)}
       />
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <MessageList
         messages={messages}
         conversation={selectedConversation}
@@ -494,6 +535,17 @@ const ChatWindow = memo(({ hideMobileHeader = false }: ChatWindowProps) => {
         messagesContainerRef={messagesContainerRef}
         messagesEndRef={messagesEndRef}
       />
+      {unseenCount > 0 && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          {t('chat.window.newMessagesBelow', { n: unseenCount })}
+        </button>
+      )}
+      </div>
 
       <ChatInput
         sending={sending}
