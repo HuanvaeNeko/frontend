@@ -4,6 +4,7 @@ import { NavLink, useParams, useSearchParams } from 'react-router'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CreateGroupDialog } from '@/features/chat/components/sidebar/CreateGroupDialog'
 import { AddFriendDialog } from '@/features/chat/components/sidebar/AddFriendDialog'
+import { AddMenu } from './AddMenu'
 import FriendList from '@/features/chat/components/sidebar/FriendList'
 import GroupList from '@/features/chat/components/sidebar/GroupList'
 import { friendDisplayName } from '@/features/chat/lib/friendName'
@@ -50,6 +51,9 @@ function ContactRow({ testId, to, name, subtitle, avatarUrl, selected, muted }: 
   )
 }
 
+// /api/groups/my 不返回人数（文档 7 字段）：副标题退到「我在群里的角色」，而不是把群 UUID 露给用户
+const GROUP_ROLE_LABEL = { owner: 'shell.contacts.roleOwner', admin: 'shell.contacts.roleAdmin', member: 'shell.contacts.roleMember' } as const
+
 /** 联系人栏：好友 / 群 / 申请三段；主列表自渲染并导航，add 与申请面板复用旧组件 */
 export function ContactsList() {
   const { t } = useI18n()
@@ -75,6 +79,8 @@ export function ContactsList() {
 
   const setTab = (next: ContactsTab) => { const p = new URLSearchParams(params); p.set('tab', next); p.delete('add'); setParams(p, { replace: true }) }
   const closeAdd = () => { const p = new URLSearchParams(params); p.delete('add'); setParams(p, { replace: true }) }
+  // 与会话列表「+」同一套落点（app-shell 的 ChatListColumn）：加好友留在好友页，加群/建群切到群页
+  const openAdd = (next: ContactsAdd, nextTab?: ContactsTab) => { const p = new URLSearchParams(); if (nextTab) p.set('tab', nextTab); p.set('add', next); setParams(p) }
 
   const segment = (key: ContactsTab, label: string) => (
     <button type="button" key={key} onClick={() => setTab(key)} aria-pressed={tab === key}
@@ -102,8 +108,15 @@ export function ContactsList() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 p-3">
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('shell.contacts.search')}
-          className="w-full rounded-[10px] border border-[var(--white-alpha-70)] bg-[var(--white-alpha-60)] px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-app-light focus:border-[var(--border-strong)]" />
+        <div className="flex items-center gap-2">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('shell.contacts.search')} aria-label={t('shell.contacts.search')}
+            className="min-w-0 flex-1 rounded-[10px] border border-[var(--white-alpha-70)] bg-[var(--white-alpha-60)] px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-app-light focus:border-[var(--border-strong)]" />
+          <AddMenu
+            onAddFriend={() => openAdd('friend')}
+            onJoinGroup={() => openAdd('join-group', 'groups')}
+            onCreateGroup={() => openAdd('create-group', 'groups')}
+          />
+        </div>
         <div className="flex gap-1 rounded-md bg-[var(--bg-tertiary)] p-1">
           {segment('friends', t('shell.contacts.friends'))}
           {segment('groups', t('shell.contacts.groups'))}
@@ -121,7 +134,7 @@ export function ContactsList() {
         {tab === 'groups' && ((groupsLoading || !groupsHasLoaded) ? <ListLoading /> : groupsError ? <ListError error={groupsError} onRetry={() => { loadMyGroups().catch(console.error) }} /> :
           groups.length === 0 ? <ListEmpty message={t('shell.contacts.noGroups')} /> : shownGroups.length === 0 ? <ListEmpty message={t('shell.contacts.noMatch')} /> :
           shownGroups.map((g) => (
-            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? t('shell.contacts.memberCount', { n: g.member_count }) : g.group_id}
+            <ContactRow key={g.group_id} testId={`contact-g-${g.group_id}`} to={contactGroupPath(g.group_id)} name={g.group_name} subtitle={g.member_count ? t('shell.contacts.memberCount', { n: g.member_count }) : t(GROUP_ROLE_LABEL[g.role])}
               avatarUrl={g.group_avatar_url ? (toAbsoluteApiUrl(g.group_avatar_url) ?? null) : null} selected={groupId === g.group_id} />
           )))}
         {tab === 'requests' && (

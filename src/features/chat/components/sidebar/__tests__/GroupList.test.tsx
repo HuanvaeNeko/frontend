@@ -202,6 +202,17 @@ describe('GroupList 群邀请 tab 的三态', () => {
     expect(screen.queryByText('chat.groupList.retry')).not.toBeInTheDocument()
   })
 
+  it('邀请行的两个图标按钮与刷新按钮都有可访问名称（读屏不再只读「按钮」）', async () => {
+    getInvitationsMock.mockResolvedValueOnce([INVITATION])
+
+    render(<GroupList subTab="invites" searchQuery="" />)
+
+    await waitFor(() => expect(screen.getByText('Test Group')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'chat.groupList.acceptInvite' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'chat.groupList.declineInvite' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'chat.groupList.refresh' })).toBeInTheDocument()
+  })
+
   it('成功：渲染真实邀请数据（行数与字段值），不是"没抛错"就算数', async () => {
     getInvitationsMock.mockResolvedValueOnce([INVITATION])
 

@@ -774,6 +774,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
             size="icon-sm"
             onClick={loadInvitations}
             disabled={loadingInvites}
+            aria-label={t('chat.groupList.refresh')}
+            title={t('chat.groupList.refresh')}
           >
             <RefreshCw className={`h-4 w-4 ${loadingInvites ? 'animate-spin' : ''}`} />
           </Button>
@@ -859,6 +861,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       className="bg-primary hover:bg-primary/90 text-primary-foreground"
                       onClick={() => handleAcceptInvite(invitation)}
                       disabled={processingInvite === invitation.request_id}
+                      aria-label={t('chat.groupList.acceptInvite')}
+                      title={t('chat.groupList.acceptInvite')}
                     >
                       {processingInvite === invitation.request_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -872,6 +876,8 @@ export default function GroupList({ subTab, searchQuery }: GroupListProps) {
                       onClick={() => handleDeclineInvite(invitation.request_id)}
                       disabled={processingInvite === invitation.request_id}
                       className="hover:text-destructive"
+                      aria-label={t('chat.groupList.declineInvite')}
+                      title={t('chat.groupList.declineInvite')}
                     >
                       <X className="h-4 w-4" />
                     </Button>

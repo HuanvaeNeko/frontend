@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFriendsStore } from '@/features/chat/store/friendsStore'
@@ -110,6 +111,31 @@ describe('ContactsList', () => {
     expect(screen.queryByTestId('friend-list')).toBeNull()   // 没有 add 参数不渲染旧面板
     expect(screen.getByTestId('contact-f-bob').querySelector('.line-through')).not.toBeNull()
     expect(screen.getByTestId('contact-f-alice').querySelector('.line-through')).toBeNull()
+  })
+
+  it('联系人页也有「添加」入口：加好友 / 加入群 / 创建群聊各自落到对应的 add 参数', async () => {
+    // 原来只有会话列表有「+」，联系人页（最该加好友的地方）连入口都没有
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('添加好友'))
+    expect(testRouter?.state.location.search).toBe('?add=friend')
+
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('加入群'))
+    expect(testRouter?.state.location.search).toBe('?tab=groups&add=join-group')
+
+    renderAt('/app/contacts')
+    await userEvent.click(screen.getByRole('button', { name: '添加' }))
+    await userEvent.click(await screen.findByText('创建群聊'))
+    expect(testRouter?.state.location.search).toBe('?tab=groups&add=create-group')
+  })
+
+  it('群行副标题：/api/groups/my 不返回人数时显示我在群里的角色，不把群 UUID 露给用户', () => {
+    renderAt('/app/contacts?tab=groups')
+    const row = screen.getByTestId('contact-g-g1')
+    expect(row).toHaveTextContent('成员')
+    expect(row).not.toHaveTextContent('g1')
   })
 
   it('?tab=groups：群行链接到 /app/contacts/groups/:id；?tab=requests：申请面板复用旧组件', () => {

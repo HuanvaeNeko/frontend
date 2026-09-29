@@ -27,7 +27,7 @@ const zhCN = {
     },
     nav: { chat: '消息', contacts: '联系人', more: '更多功能', settings: '设置', profile: '个人资料', theme: '切换明暗', meeting: '视频会议', files: '我的文件', bots: '机器人', miniapps: '小程序', ai: 'AI 助手', backToList: '返回列表', dragHint: '拖到侧栏可钉住', allPinned: '已全部钉到侧栏', dragBackHint: '从侧栏拖回此处可收纳' },
     empty: { title: '欢迎使用 Huanvae Chat', chat: '选择一个会话开始聊天', contacts: '选择一个联系人查看资料' },
-    contacts: { friends: '好友', groups: '群', requests: '申请', search: '搜索联系人', noFriends: '还没有好友', noGroups: '还没有加入任何群', noMatch: '没有匹配的联系人', closePanel: '收起', message: '发消息', removeFriend: '删除好友', confirmRemove: '确定删除这位好友？', removeFailed: '删除好友失败', notFriend: '不是你的好友', loadFailed: '资料加载失败', signature: '签名', region: '地区', memberSince: '成为好友', memberCount: '{n} 人', block: '拉黑', unblock: '取消拉黑', confirmBlock: '拉黑后你们互相收不到对方的消息，好友关系保留。确定拉黑？', blockFailed: '操作失败' },
+    contacts: { friends: '好友', groups: '群', requests: '申请', search: '搜索联系人', noFriends: '还没有好友', noGroups: '还没有加入任何群', noMatch: '没有匹配的联系人', closePanel: '收起', message: '发消息', removeFriend: '删除好友', confirmRemove: '确定删除这位好友？', removeFailed: '删除好友失败', notFriend: '不是你的好友', loadFailed: '资料加载失败', signature: '签名', region: '地区', memberSince: '成为好友', memberCount: '{n} 人', roleOwner: '群主', roleAdmin: '管理员', roleMember: '成员', block: '拉黑', unblock: '取消拉黑', confirmBlock: '拉黑后你们互相收不到对方的消息，好友关系保留。确定拉黑？', blockFailed: '操作失败' },
     settings: {
       title: '设置', appearance: '外观', notifications: '通知与提醒', account: '账户与安全', apps: '授权与应用', ai: 'AI 配置', about: '关于', theme: '主题', themeLight: '浅色', themeDark: '深色', themeAuto: '跟随系统', language: '语言', animations: '界面动画', particles: '粒子背景', notify: '桌面通知', sound: '提示音', volume: '音量', privacy: '隐私', devices: '登录设备', logout: '退出登录', version: '版本', downloads: '下载客户端', changePassword: '修改密码', changePasswordHint: '在资料对话框中修改', open: '前往',
       themeEditor: {
@@ -442,6 +442,8 @@ const zhCN = {
       // 这一句和上面那句必须不同，否则两种结局在屏幕上无法区分。
       inviteAcceptedPendingApproval: '已同意邀请，等待管理员审核',
       inviteAcceptedUnconfirmed: '已同意邀请，但暂时无法确认是否已入群，请稍后刷新群聊列表',
+      acceptInvite: '接受邀请',
+      declineInvite: '拒绝邀请',
       acceptInviteFailed: '接受邀请失败',
       inviteRejected: '已拒绝群邀请',
       declineInviteFailed: '拒绝邀请失败',
@@ -632,7 +634,7 @@ const enUS = {
     },
     nav: { chat: 'Chats', contacts: 'Contacts', more: 'More', settings: 'Settings', profile: 'Profile', theme: 'Toggle theme', meeting: 'Meetings', files: 'My files', bots: 'Bots', miniapps: 'Mini apps', ai: 'AI assistant', backToList: 'Back to list', dragHint: 'Drag to the sidebar to pin', allPinned: 'Everything is pinned', dragBackHint: 'Drag back here to unpin' },
     empty: { title: 'Welcome to Huanvae Chat', chat: 'Pick a conversation to start chatting', contacts: 'Pick a contact to see their profile' },
-    contacts: { friends: 'Friends', groups: 'Groups', requests: 'Requests', search: 'Search contacts', noFriends: 'No friends yet', noGroups: 'No groups yet', noMatch: 'No matching contacts', closePanel: 'Close', message: 'Message', removeFriend: 'Remove friend', confirmRemove: 'Remove this friend?', removeFailed: 'Failed to remove friend', notFriend: 'Not your friend', loadFailed: 'Failed to load profile', signature: 'Signature', region: 'Region', memberSince: 'Friends since', memberCount: '{n} members', block: 'Block', unblock: 'Unblock', confirmBlock: 'Blocked users cannot message each other; friendship is kept. Block this user?', blockFailed: 'Action failed' },
+    contacts: { friends: 'Friends', groups: 'Groups', requests: 'Requests', search: 'Search contacts', noFriends: 'No friends yet', noGroups: 'No groups yet', noMatch: 'No matching contacts', closePanel: 'Close', message: 'Message', removeFriend: 'Remove friend', confirmRemove: 'Remove this friend?', removeFailed: 'Failed to remove friend', notFriend: 'Not your friend', loadFailed: 'Failed to load profile', signature: 'Signature', region: 'Region', memberSince: 'Friends since', memberCount: '{n} members', roleOwner: 'Owner', roleAdmin: 'Admin', roleMember: 'Member', block: 'Block', unblock: 'Unblock', confirmBlock: 'Blocked users cannot message each other; friendship is kept. Block this user?', blockFailed: 'Action failed' },
     settings: {
       title: 'Settings', appearance: 'Appearance', notifications: 'Notifications', account: 'Account & security', apps: 'Apps & access', ai: 'AI', about: 'About', theme: 'Theme', themeLight: 'Light', themeDark: 'Dark', themeAuto: 'System', language: 'Language', animations: 'Animations', particles: 'Particle background', notify: 'Desktop notifications', sound: 'Sounds', volume: 'Volume', privacy: 'Privacy', devices: 'Devices', logout: 'Log out', version: 'Version', downloads: 'Download the app', changePassword: 'Change password', changePasswordHint: 'Change it in the profile dialog', open: 'Open',
       themeEditor: {
@@ -1034,6 +1036,8 @@ const enUS = {
       inviteAcceptedPendingApproval: 'Invitation accepted, waiting for admin approval',
       inviteAcceptedUnconfirmed:
         'Invitation accepted, but we could not confirm whether you joined. Please refresh the group list later',
+      acceptInvite: 'Accept invite',
+      declineInvite: 'Decline invite',
       acceptInviteFailed: 'Failed to accept invite',
       inviteRejected: 'Group invite rejected',
       declineInviteFailed: 'Failed to decline invite',
