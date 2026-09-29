@@ -87,20 +87,18 @@ export default function FileManager({ subTab }: FileManagerProps) {
     setLoading(true)
     setLoadError(null)
     try {
-      const currentPage = refresh ? 1 : page
+      // page 是「已加载到第几页」：刷新拿第 1 页，加载更多拿下一页。原来刷新后 page 停在 1、
+      // 只在非刷新分支推进——第一次「加载更多」请求的还是第 1 页，列表翻倍全是重复项
+      const currentPage = refresh ? 1 : page + 1
       const response = await storageApi.getFileList(currentPage, 20, 'created_at', 'desc')
       
       if (refresh) {
         setFiles(response.files)
-        setPage(1)
       } else {
         setFiles(prev => [...prev, ...response.files])
       }
-      
+      setPage(currentPage)
       setHasMore(response.has_more)
-      if (!refresh && response.has_more) {
-        setPage(p => p + 1)
-      }
     } catch (error) {
       // 列表区原地显示错误 + 重试；原来只弹 toast，列表落到「暂无文件 / 上传后显示」——
       // 用户会以为文件丢了
